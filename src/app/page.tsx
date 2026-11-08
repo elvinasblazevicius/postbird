@@ -48,7 +48,7 @@ export default async function HomePage() {
         <img src="/world-dots.svg" alt="" aria-hidden="true" className="world-dots -right-10 top-12 hidden w-[940px] opacity-[0.18] lg:block" />
         <div className="relative mx-auto max-w-6xl px-4 pb-14 pt-14 sm:px-6 sm:pt-20">
           <div className="max-w-3xl">
-            <h1 className="text-[2.6rem] font-semibold leading-[1.05] text-white sm:text-[3.6rem]">{siteConfig.home.headline}</h1>
+            <h1 className="max-w-[20ch] text-[2.4rem] font-semibold leading-[1.06] text-white sm:text-[3.5rem]">{siteConfig.home.headline}</h1>
             <p className="mt-5 max-w-2xl text-lg leading-relaxed text-white/85">{siteConfig.home.subheadline}</p>
           </div>
           <div className="mt-9 max-w-4xl">

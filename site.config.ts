@@ -14,7 +14,7 @@ const siteConfig = {
   /** Short name used where space is tight (browser tab, app icon). */
   shortName: "Postbird",
   /** What the site is, in a few words (header, page titles). */
-  tagline: "UN and international organization job aggregator",
+  tagline: "UN, EU and international organization jobs in one place",
   /** One line describing the site (meta description default). */
   description:
     "The UN and international organization job aggregator: vacancies from UN agencies, development banks, EU institutions and other international organizations in one place, linked straight to the official application pages.",
@@ -34,9 +34,9 @@ const siteConfig = {
 
   /** Homepage wording. */
   home: {
-    headline: "Discover Your Next International Career",
+    headline: "Jobs at the UN, EU and international organizations",
     subheadline:
-      "UN and international organization jobs in one place. Search in seconds, or let email alerts bring new vacancies straight to your inbox.",
+      "UN agencies, EU institutions, development banks and more, in one place. Every listing links to the official vacancy. Search in seconds, or let email alerts bring new ones to you.",
   },
 
   /**
