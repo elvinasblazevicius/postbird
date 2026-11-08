@@ -117,25 +117,30 @@ a {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
 
-/* Bright candy-blue gradients */
-.bg-candy-hero {
-  background:
-    radial-gradient(60rem 30rem at 85% -10%, color-mix(in srgb, var(--sky) 70%, transparent), transparent 60%),
-    radial-gradient(40rem 24rem at -10% 110%, color-mix(in srgb, #8b7bff 45%, transparent), transparent 60%),
-    linear-gradient(135deg, var(--brand) 0%, #1f7bff 50%, color-mix(in srgb, var(--sky) 88%, var(--brand)) 100%);
+/* Brand surfaces: one deep-to-bright blue direction, no decorative blobs */
+.bg-candy-hero,
+.bg-candy-band {
+  background-color: #0b2c78;
+  background-image: linear-gradient(155deg, #0a2566 0%, #0f3aa6 52%, var(--brand) 100%);
 }
 .bg-candy-soft {
-  background: linear-gradient(180deg, #eaf1ff 0%, #f5f8ff 100%);
+  background: #f5f8fd;
 }
-.bg-candy-band {
-  background:
-    radial-gradient(30rem 16rem at 100% 0%, color-mix(in srgb, var(--sky) 65%, transparent), transparent 70%),
-    linear-gradient(120deg, var(--brand) 0%, #3b5bff 55%, #7a5cff 100%);
+/* Dot-matrix world map (public/world-dots.svg) used behind brand surfaces */
+.world-dots {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  max-width: none;
 }
+
 .card-lift {
   box-shadow: 0 1px 2px rgba(11, 27, 63, 0.04);
   transition: box-shadow 150ms ease, border-color 150ms ease;
 }
 .card-lift:hover {
   box-shadow: 0 10px 28px -14px rgba(29, 91, 255, 0.45);
+}
+.bg-candy-band > :not(.world-dots) {
+  position: relative;
 }

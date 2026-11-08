@@ -230,7 +230,7 @@ export default async function JobPage({ params }: Props) {
           ) : null}
         </div>
 
-        <aside className="lg:sticky lg:top-6 lg:self-start">
+        <aside className="lg:sticky lg:top-24 lg:self-start">
           <div className="rounded-xl border border-rule p-5">
             {open ? (
               <>

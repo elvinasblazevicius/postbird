@@ -44,7 +44,8 @@ export default async function HomePage() {
 
       {/* Hero */}
       <section className="bg-candy-hero relative overflow-hidden">
-        <Meridians />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/world-dots.svg" alt="" aria-hidden="true" className="world-dots -right-10 top-12 hidden w-[940px] opacity-[0.18] lg:block" />
         <div className="relative mx-auto max-w-6xl px-4 pb-14 pt-14 sm:px-6 sm:pt-20">
           <div className="max-w-3xl">
             <h1 className="text-[2.6rem] font-semibold leading-[1.05] text-white sm:text-[3.6rem]">{siteConfig.home.headline}</h1>
@@ -58,10 +59,7 @@ export default async function HomePage() {
               <strong className="font-semibold">{stats.active.toLocaleString("en-US")}</strong> open vacancies
               {stats.orgs ? <> from <strong className="font-semibold">{stats.orgs}</strong> organizations</> : null}
             </span>
-            <Link href="/alerts" className="rounded-full bg-highlight px-3 py-0.5 font-semibold text-ink hover:brightness-95">Get email alerts</Link>
-            <Link href="/remote-jobs" className="rounded-full bg-white/15 px-3 py-0.5 text-white hover:bg-white/25">Remote and home-based</Link>
-            <Link href="/jobs?closing=7&sort=deadline" className="rounded-full bg-white/15 px-3 py-0.5 text-white hover:bg-white/25">Closing this week</Link>
-            <Link href="/categories/data-analytics" className="rounded-full bg-white/15 px-3 py-0.5 text-white hover:bg-white/25">Data &amp; analytics</Link>
+            <Link href="/alerts" className="font-semibold text-highlight underline decoration-highlight/50 underline-offset-4 hover:decoration-highlight">Get new ones by email</Link>
           </p>
           {orgs.length ? (
             <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-white/20 pt-5">
@@ -159,7 +157,9 @@ export default async function HomePage() {
 
       {/* Alerts */}
       <section className="mx-auto mt-20 max-w-6xl px-4 sm:px-6" aria-labelledby="alerts-heading">
-        <div className="bg-candy-band grid items-center gap-8 rounded-3xl px-6 py-10 text-white sm:px-10 lg:grid-cols-[1.1fr_1fr]">
+        <div className="bg-candy-band relative grid items-center gap-8 overflow-hidden rounded-2xl px-6 py-10 text-white sm:px-10 lg:grid-cols-[1.1fr_1fr]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/world-dots.svg" alt="" aria-hidden="true" className="world-dots -left-40 -top-24 w-[900px] opacity-[0.10]" />
           <div>
             <h2 id="alerts-heading" className="text-[1.9rem] font-semibold leading-tight">Let new vacancies come to you</h2>
             <p className="mt-3 max-w-lg leading-relaxed text-white/80">
@@ -172,23 +172,5 @@ export default async function HomePage() {
         </div>
       </section>
     </>
-  );
-}
-
-/** Faint latitude/longitude lines behind the hero. Decorative only. */
-function Meridians() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 600 600" className="pointer-events-none absolute -right-40 -top-24 hidden h-[640px] w-[640px] text-white opacity-[0.18] md:block">
-      <g fill="none" stroke="currentColor" strokeWidth="1.2">
-        <circle cx="300" cy="300" r="280" />
-        {[70, 140, 210].map((rx) => (
-          <ellipse key={rx} cx="300" cy="300" rx={rx} ry="280" />
-        ))}
-        {[-200, -110, 0, 110, 200].map((y) => {
-          const half = Math.sqrt(280 * 280 - y * y);
-          return <line key={y} x1={300 - half} x2={300 + half} y1={300 + y} y2={300 + y} />;
-        })}
-      </g>
-    </svg>
   );
 }

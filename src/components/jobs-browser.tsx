@@ -89,7 +89,7 @@ export async function JobsBrowser({
             <FilterForm formId="filters-mobile" filters={filters} facets={facets} action={base} hidden={formHidden} />
           </div>
         </details>
-        <div className="sticky top-6 hidden lg:block">
+        <div className="sticky top-24 hidden lg:block">
           <FilterForm formId="filters-desktop" filters={filters} facets={facets} action={base} hidden={formHidden} />
         </div>
       </aside>
