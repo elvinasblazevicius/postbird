@@ -1,0 +1,29 @@
+{
+  "version": "https://jsonfeed.org/version/1.1",
+  "title": "Test JSON jobs (fixture)",
+  "items": [
+    {
+      "id": "json-1",
+      "url": "https://www.inoreader.com/article/3a9c-json-1",
+      "external_url": "https://jobs.undp.org/cj_view_job.cfm?cur_job_id=99001",
+      "title": "Programme Specialist, Climate Finance",
+      "content_html": "<p>Agency: UNDP</p><p>Location: Hanoi, Viet Nam</p><p>Application deadline: 10 December 2026</p><p>Vacancy number: UNDP-VN-99001</p>",
+      "date_published": "2026-11-06T03:00:00Z",
+      "tags": ["Viet Nam"]
+    },
+    {
+      "id": "json-2",
+      "url": "https://unjobs.example.net/vacancies/7777",
+      "title": "Programme Specialist, Climate Finance - Hanoi, Viet Nam",
+      "content_html": "<p>Organization: UNDP</p><p>Deadline: 10 December 2026</p><p>Vacancy number: UNDP-VN-99001</p>",
+      "date_published": "2026-11-06T05:00:00Z"
+    },
+    {
+      "id": "json-3",
+      "url": "https://example-ngo.org/careers/hr-officer",
+      "title": "Human Resources Officer",
+      "content_html": "<p>We are hiring.</p>",
+      "date_published": "2026-11-07T05:00:00Z"
+    }
+  ]
+}

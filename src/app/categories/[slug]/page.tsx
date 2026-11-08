@@ -1,0 +1,46 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { JobsBrowser } from "@/components/jobs-browser";
+import { PageHeader } from "@/components/page-header";
+import { categoryBySlug } from "@/config/categories";
+import { parseFilters } from "@/lib/jobs";
+import { countFor, landingMetadata } from "@/lib/landing";
+
+export const dynamic = "force-dynamic";
+
+type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
+
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+  const { slug } = await params;
+  const cat = categoryBySlug(slug);
+  if (!cat) return { title: "Category not found", robots: { index: false } };
+  const count = await countFor({ category: slug });
+  const name = cat.slug === "other" ? "Other international" : cat.name;
+  return landingMetadata({
+    title: `${name} jobs at the UN, international organizations and NGOs`,
+    description: `${count} open ${cat.name.toLowerCase()} vacancies at UN agencies, international organizations and NGOs. ${cat.blurb}`,
+    path: `/categories/${slug}`,
+    count,
+    filters: parseFilters(await searchParams),
+  });
+}
+
+export default async function CategoryPage({ params, searchParams }: Props) {
+  const { slug } = await params;
+  const cat = categoryBySlug(slug);
+  if (!cat) notFound();
+  const filters = parseFilters(await searchParams);
+  delete filters.category;
+  return (
+    <>
+      <PageHeader
+        title={`${cat.slug === "other" ? "Other" : cat.name} jobs`}
+        crumbs={[{ href: "/", label: "Home" }, { href: "/categories", label: "Categories" }, { href: `/categories/${slug}`, label: cat.name }]}
+        intro={`${cat.blurb} Openings at UN agencies, international organizations and NGOs.`}
+      />
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        <JobsBrowser filters={filters} fixed={{ category: slug }} base={`/categories/${slug}`} />
+      </div>
+    </>
+  );
+}

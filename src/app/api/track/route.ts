@@ -1,0 +1,53 @@
+import { cleanCampaign, recordEvent, isBot, visitorHash, type EventType } from "@/lib/analytics";
+
+export const dynamic = "force-dynamic";
+
+// Events the browser may send. Sign-ups are recorded on the server, not here.
+const CLIENT_EVENTS: EventType[] = ["pageview", "job_view", "search", "apply_click", "premium_cta_click"];
+
+export async function POST(req: Request) {
+  const ua = req.headers.get("user-agent");
+  if (isBot(ua)) return new Response(null, { status: 204 });
+  let body: { type?: string; path?: string; jobId?: unknown; ref?: string; props?: Record<string, unknown> };
+  try {
+    const text = await req.text();
+    if (text.length > 4000) return new Response(null, { status: 413 });
+    body = JSON.parse(text);
+  } catch {
+    return new Response(null, { status: 400 });
+  }
+  const type = body.type as EventType;
+  if (!CLIENT_EVENTS.includes(type)) return new Response(null, { status: 400 });
+
+  const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || req.headers.get("x-real-ip") || "0.0.0.0";
+  let referrer: string | null = null;
+  try {
+    if (body.ref) {
+      const host = new URL(body.ref).hostname.replace(/^www\./, "");
+      const own = new URL(req.url).hostname.replace(/^www\./, "");
+      referrer = host && host !== own ? host : null;
+    }
+  } catch {
+    referrer = null;
+  }
+  const rawId = typeof body.jobId === "string" && /^\d{1,12}$/.test(body.jobId) ? Number(body.jobId) : body.jobId;
+  const jobId = typeof rawId === "number" && Number.isInteger(rawId) && rawId > 0 ? rawId : null;
+  let props: Record<string, unknown> | null = null;
+  if (body.props && typeof body.props === "object") {
+    if (type === "search") props = body.props;
+    if (type === "pageview") {
+      const campaign = cleanCampaign(body.props.campaign as Record<string, unknown> | undefined);
+      props = campaign ? { campaign } : null;
+    }
+  }
+
+  await recordEvent({
+    type,
+    path: typeof body.path === "string" ? body.path : null,
+    jobId,
+    visitor: visitorHash(ip, ua ?? ""),
+    referrer,
+    props,
+  });
+  return new Response(null, { status: 204 });
+}

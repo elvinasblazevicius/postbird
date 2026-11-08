@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Test Atom jobs (fixture)</title>
+  <entry>
+    <id>atom-1</id>
+    <title>Information Management Officer</title>
+    <link rel="alternate" href="https://jobs.example-relief.org/vacancy/1001"/>
+    <updated>2026-11-02T10:00:00Z</updated>
+    <summary type="html">&lt;p&gt;Organization: UNICEF&lt;/p&gt;&lt;p&gt;Duty Station: Juba, South Sudan&lt;/p&gt;&lt;p&gt;Closing date: 26 Nov 2026&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <id>atom-2</id>
+    <title>Data Scientist, P3 - Geneva</title>
+    <link rel="alternate" href="https://careers.who.int/careersection/ex/jobdetail.ftl?job=2601234"/>
+    <published>2026-11-05T07:00:00Z</published>
+    <updated>2026-11-05T07:00:00Z</updated>
+    <author><name>World Health Organization</name></author>
+    <content type="html">&lt;p&gt;Grade: P3&lt;/p&gt;&lt;p&gt;Closing Date: 2026-12-04&lt;/p&gt;&lt;p&gt;Lead the analytics of disease surveillance data.&lt;/p&gt;</content>
+  </entry>
+</feed>

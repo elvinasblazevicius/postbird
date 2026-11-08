@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+<channel>
+  <title>Test RSS jobs (fixture)</title>
+  <link>https://www.inoreader.com/</link>
+  <item>
+    <title>Information Management Officer</title>
+    <link>https://jobs.example-relief.org/vacancy/1001?utm_source=inoreader</link>
+    <guid isPermaLink="false">rss-1001</guid>
+    <pubDate>Mon, 02 Nov 2026 09:00:00 GMT</pubDate>
+    <source url="https://reliefweb.int/jobs/rss.xml">ReliefWeb - Jobs</source>
+    <description><![CDATA[<p>Organization: United Nations Children's Fund</p><p>Country: South Sudan</p><p>City: Juba</p><p>Closing date: 26 Nov 2026</p><p>Job ID: 581234</p><p>UNICEF is seeking an Information Management Officer to support data collection and dashboards.</p>]]></description>
+  </item>
+  <item>
+    <title>Finance Associate (G-6) - Bangkok, Thailand</title>
+    <link>https://careers.example-agency.int/jobs/2002</link>
+    <guid>rss-2002</guid>
+    <pubDate>Tue, 03 Nov 2026 11:30:00 GMT</pubDate>
+    <dc:creator>UNOPS</dc:creator>
+    <description><![CDATA[<p>Contract type: Fixed-term appointment</p><p>Deadline: 15 December 2026</p><p>The Finance Associate will manage payments and budget monitoring.</p>]]></description>
+  </item>
+  <item>
+    <title>Consultant – Remote Monitoring and Evaluation Specialist (home-based)</title>
+    <link>https://www.ungm.example/consultancies/3003</link>
+    <pubDate>Wed, 04 Nov 2026 08:00:00 GMT</pubDate>
+    <category>Remote</category>
+    <description><![CDATA[<p>Location: Home-based</p><p>Apply by 30/11/2026</p><p>Evaluation of a regional programme.</p>]]></description>
+  </item>
+  <item>
+    <title>Communications Intern</title>
+    <link>https://jobs.example-relief.org/vacancy/4004</link>
+    <pubDate>Thu, 15 Oct 2026 08:00:00 GMT</pubDate>
+    <description><![CDATA[<p>Organization: Example Relief Network International</p><p>Location: Nairobi</p><p>Closing date: 01 November 2026</p>]]></description>
+  </item>
+  <item>
+    <title></title>
+    <link>https://jobs.example-relief.org/vacancy/5005</link>
+  </item>
+</channel>
+</rss>

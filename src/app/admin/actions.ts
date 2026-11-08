@@ -1,0 +1,151 @@
+"use server";
+
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { ALL_CATEGORIES } from "@/config/categories";
+import { IMPORT_SETTINGS } from "@/config/import";
+import { ADMIN_COOKIE, checkPassword, createSessionValue, isAdminConfigured } from "@/lib/admin-auth";
+import { sql } from "@/lib/db";
+import { runDigest } from "@/lib/digest";
+import { isEmailConfigured, sendEmail } from "@/lib/email";
+import { confirmationEmail } from "@/lib/email-templates";
+import { fetchFeedText, runSync } from "@/lib/feeds/sync";
+import { parseFeed } from "@/lib/feeds/parse";
+import { absoluteUrl } from "@/lib/site";
+import { requireAdmin } from "./guard";
+
+export type AdminState = { ok: boolean; message: string } | null;
+
+// ── Auth ──
+export async function loginAction(_prev: AdminState, form: FormData): Promise<AdminState> {
+  if (!isAdminConfigured()) {
+    return { ok: false, message: "Admin login isn't set up. Add ADMIN_PASSWORD (10+ characters) and CRON_SECRET (16+ characters) to the environment variables." };
+  }
+  await new Promise((r) => setTimeout(r, 400)); // slows down password guessing
+  if (!checkPassword(String(form.get("password") ?? ""))) return { ok: false, message: "That password isn't correct." };
+  const session = createSessionValue();
+  (await cookies()).set(ADMIN_COOKIE, session.value, {
+    httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: session.maxAge,
+  });
+  redirect("/admin");
+}
+
+export async function logoutAction() {
+  (await cookies()).delete(ADMIN_COOKIE);
+  redirect("/admin/login");
+}
+
+// ── Feeds ──
+const POLICIES = ["none", "excerpt", "full"] as const;
+
+export async function addFeedAction(_prev: AdminState, form: FormData): Promise<AdminState> {
+  await requireAdmin();
+  const url = String(form.get("url") ?? "").trim();
+  const name = String(form.get("name") ?? "").trim().slice(0, 120) || "Untitled feed";
+  const org = String(form.get("default_organization") ?? "").trim().slice(0, 120) || null;
+  const policyRaw = String(form.get("content_policy") ?? IMPORT_SETTINGS.defaultContentPolicy);
+  const policy = (POLICIES as readonly string[]).includes(policyRaw) ? policyRaw : "none";
+  if (!/^https?:\/\/\S+$/i.test(url)) return { ok: false, message: "Enter a full feed address starting with https://" };
+
+  // Check the feed before saving it, so typos are caught immediately.
+  let note = "";
+  try {
+    const parsed = parseFeed(await fetchFeedText(url));
+    note = ` It currently has ${parsed.items.length} items.`;
+  } catch (e) {
+    return { ok: false, message: `Couldn't read that feed: ${(e as Error).message}` };
+  }
+  const rows = await sql`
+    insert into feeds (name, url, default_organization, content_policy) values (${name}, ${url}, ${org}, ${policy})
+    on conflict (url) do nothing returning id`;
+  revalidatePath("/admin/feeds");
+  if (!rows.length) return { ok: false, message: "That feed is already in the list." };
+  return { ok: true, message: `Feed added.${note} Run a sync to import it now.` };
+}
+
+export async function updateFeedAction(form: FormData) {
+  await requireAdmin();
+  const id = Number(form.get("id"));
+  const policyRaw = String(form.get("content_policy") ?? "none");
+  const policy = (POLICIES as readonly string[]).includes(policyRaw) ? policyRaw : "none";
+  await sql`
+    update feeds set name = ${String(form.get("name") ?? "").trim().slice(0, 120) || "Untitled feed"},
+      default_organization = ${String(form.get("default_organization") ?? "").trim().slice(0, 120) || null},
+      content_policy = ${policy}, is_active = ${form.get("is_active") === "on"}, updated_at = now()
+    where id = ${id}`;
+  revalidatePath("/admin/feeds");
+}
+
+export async function deleteFeedAction(form: FormData) {
+  await requireAdmin();
+  const id = Number(form.get("id"));
+  const [feed] = await sql<{ from_env: boolean }[]>`select from_env from feeds where id = ${id}`;
+  if (!feed) return;
+  if (feed.from_env) {
+    // It would come back from INOREADER_FEED_URLS on the next sync, so switch it off instead.
+    await sql`update feeds set is_active = false, updated_at = now() where id = ${id}`;
+  } else {
+    await sql`delete from feeds where id = ${id}`;
+  }
+  revalidatePath("/admin/feeds");
+}
+
+// ── Sync ──
+export async function syncNowAction(): Promise<void> {
+  await requireAdmin();
+  const result = await runSync("manual");
+  revalidatePath("/admin", "layout");
+  redirect(`/admin/imports/${result.runId}`);
+}
+
+// ── Jobs ──
+export async function setJobStatusAction(form: FormData) {
+  await requireAdmin();
+  const id = Number(form.get("id"));
+  const op = String(form.get("op"));
+  if (op === "remove") {
+    await sql`update jobs set status = 'removed', removed_reason = ${String(form.get("reason") ?? "").slice(0, 200) || "Removed by admin"}, updated_at = now() where id = ${id}`;
+  } else if (op === "restore") {
+    await sql`
+      update jobs set status = case when deadline is not null and deadline < (now() at time zone 'utc')::date then 'expired' else 'active' end,
+        removed_reason = null, updated_at = now()
+      where id = ${id} and status = 'removed'`;
+  }
+  revalidatePath("/admin/jobs");
+}
+
+export async function setJobCategoryAction(form: FormData) {
+  await requireAdmin();
+  const id = Number(form.get("id"));
+  const cat = String(form.get("category"));
+  if (!ALL_CATEGORIES.some((c) => c.slug === cat)) return;
+  await sql`update jobs set category = ${cat}, category_locked = true, updated_at = now() where id = ${id}`;
+  revalidatePath("/admin/jobs");
+}
+
+// ── Subscribers ──
+export async function resendConfirmationsAction(): Promise<void> {
+  await requireAdmin();
+  if (!isEmailConfigured()) redirect("/admin/subscribers?msg=email-not-configured");
+  const pending = await sql<{ id: number; email: string; confirm_token: string; wants_alerts: boolean; premium_waitlist: boolean }[]>`
+    select id, email, confirm_token, wants_alerts, premium_waitlist from subscribers
+    where status = 'pending' and confirm_token is not null and (confirm_sent_at is null or confirm_sent_at < now() - interval '1 hour')
+    order by id limit 90`;
+  let sent = 0;
+  for (const p of pending) {
+    const msg = confirmationEmail({ confirmUrl: absoluteUrl(`/alerts/confirm?token=${encodeURIComponent(p.confirm_token)}`), waitlist: p.premium_waitlist, alerts: p.wants_alerts });
+    const res = await sendEmail({ to: p.email, ...msg });
+    if (res.ok) {
+      sent++;
+      await sql`update subscribers set confirm_sent_at = now() where id = ${p.id}`;
+    }
+  }
+  redirect(`/admin/subscribers?msg=confirmations-sent-${sent}`);
+}
+
+export async function sendDigestNowAction(): Promise<void> {
+  await requireAdmin();
+  const r = await runDigest();
+  redirect(`/admin/subscribers?msg=${encodeURIComponent(`digest: ${r.status}${r.message ? ` — ${r.message}` : ` — sent ${r.sent} of ${r.recipients}`}`)}`);
+}
