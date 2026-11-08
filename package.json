@@ -16,7 +16,8 @@
     "demo:seed": "tsx --env-file-if-exists=.env.local scripts/demo.ts seed",
     "demo:clear": "tsx --env-file-if-exists=.env.local scripts/demo.ts clear",
     "digest": "tsx --env-file-if-exists=.env.local scripts/digest.ts",
-    "build:map": "node scripts/build-world-dots.mjs"
+    "build:map": "node scripts/build-world-dots.mjs",
+    "build:flags": "node scripts/build-flag-wall.mjs"
   },
   "dependencies": {
     "@fontsource-variable/newsreader": "^5.3.0",

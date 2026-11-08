@@ -46,7 +46,7 @@ export default async function HomePage() {
       {/* Hero */}
       <section className="bg-candy-hero relative overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/world-dots.svg" alt="" aria-hidden="true" className="world-dots -right-10 top-12 hidden w-[940px] opacity-[0.18] lg:block" />
+        <img src="/flag-wall.svg" alt="" aria-hidden="true" className="flag-wall" />
         <div className="relative mx-auto max-w-6xl px-4 pb-14 pt-14 sm:px-6 sm:pt-20">
           <div className="max-w-3xl">
             <h1 className="max-w-[20ch] text-[2.4rem] font-semibold leading-[1.06] text-white sm:text-[3.5rem]">{siteConfig.home.headline}</h1>
