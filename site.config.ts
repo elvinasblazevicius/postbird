@@ -34,7 +34,7 @@ const siteConfig = {
   home: {
     headline: "Discover Your Next International Career",
     subheadline:
-      "Open positions at United Nations agencies, international organizations, humanitarian groups and NGOs — searchable in one place, with every listing linked to the employer's official vacancy page.",
+      "UN and international organization jobs in one place. Search in seconds, or let email alerts bring new vacancies straight to your inbox.",
   },
 
   /**
@@ -43,13 +43,26 @@ const siteConfig = {
    * tells visitors honestly that Premium opens soon. Change the price
    * here to test different price points.
    */
+  /**
+   * Email alerts. false = alerts are part of the paid plan (every sign-up box
+   * offers the free trial). true = a free weekly email for everyone, with
+   * Premium as the paid upgrade.
+   */
+  freeWeeklyEmail: false,
+
   premium: {
-    name: "Premium alerts",
-    price: "$4",
-    period: "month",
+    name: "Email alerts",
     trialDays: 14,
+    /** Shown on /pricing; the first plan is the headline price. */
+    plans: [
+      { label: "Monthly", price: "$5", per: "month", note: "" },
+      { label: "3 months", price: "$12", per: "3 months", note: "Save 20%" },
+    ],
+    /** Short version used in sign-up boxes. */
+    priceSummary: "$5/month or $12 for 3 months",
     features: [
-      "Daily alerts filtered by keyword, organization and location",
+      "New vacancies by email, daily or weekly",
+      "Filtered by keyword, organization and location",
       "Deadline reminders before applications close",
       "Saved searches",
     ],

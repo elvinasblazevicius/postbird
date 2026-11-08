@@ -85,7 +85,7 @@ export default async function AdminHome({ searchParams }: Props) {
   if (!lastOk) warnings.push(<>No successful import yet. Use &quot;Sync now&quot; to run the first one.</>);
   else if (olderThanHours(lastOk.started_at, 8)) warnings.push(<>The last successful import was over 8 hours ago. Check that the scheduled sync (GitHub Actions) is running.</>);
   if (!isEmailConfigured()) warnings.push(<>Email isn&apos;t set up (RESEND_API_KEY missing). Sign-ups are saved but no confirmation or alert emails are sent.</>);
-  if (!process.env.CRON_SECRET) warnings.push(<>CRON_SECRET is missing, so scheduled imports can&apos;t run.</>);
+  if (!process.env.CRON_SECRET) warnings.push(<>CRON_SECRET is missing, so the /api/cron addresses are switched off.</>);
   if (jobs.demo) warnings.push(<>{jobs.demo} demo listings are in the database. Remove them with <code>npm run demo:clear</code> before launch.</>);
 
   const maxV = Math.max(1, ...daily.map((d) => d.visitors));

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AlertSignup } from "@/components/alert-signup";
 import { JobGrid, OrgBadge } from "@/components/job-card";
 import { HeroSearch } from "@/components/search-forms";
-import { categoryFacets, countryFacets, jobTypeFacets, latestJobs, organizationFacets, siteStats } from "@/lib/jobs";
+import { categoryFacets, countryFacets, experienceFacets, gradeFacets, jobTypeFacets, languageFacets, latestJobs, organizationFacets, orgTypeFacets, regionFacets, siteStats } from "@/lib/jobs";
 import { absoluteUrl, jsonLd, siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -12,13 +12,18 @@ export const metadata = {
 };
 
 export default async function HomePage() {
-  const [latest, orgs, countries, categories, stats, types] = await Promise.all([
+  const [latest, orgs, countries, categories, stats, types, regions, grades, langs, exps, orgTypes] = await Promise.all([
     latestJobs(9),
     organizationFacets(),
     countryFacets(),
     categoryFacets(),
     siteStats(),
     jobTypeFacets(),
+    regionFacets(),
+    gradeFacets(),
+    languageFacets(),
+    experienceFacets(),
+    orgTypeFacets(),
   ]);
 
   const websiteLd = {
@@ -46,13 +51,14 @@ export default async function HomePage() {
             <p className="mt-5 max-w-2xl text-lg leading-relaxed text-white/85">{siteConfig.home.subheadline}</p>
           </div>
           <div className="mt-9 max-w-4xl">
-            <HeroSearch facets={{ orgs, countries, categories, types }} />
+            <HeroSearch facets={{ orgs, countries, regions, categories, types, grades, langs, exps, orgTypes }} />
           </div>
           <p className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[0.95rem] text-white/85">
             <span className="text-white">
               <strong className="font-semibold">{stats.active.toLocaleString("en-US")}</strong> open vacancies
               {stats.orgs ? <> from <strong className="font-semibold">{stats.orgs}</strong> organizations</> : null}
             </span>
+            <Link href="/alerts" className="rounded-full bg-white px-3 py-0.5 font-medium text-brand hover:bg-white/90">Get email alerts</Link>
             <Link href="/remote-jobs" className="rounded-full bg-white/15 px-3 py-0.5 text-white hover:bg-white/25">Remote and home-based</Link>
             <Link href="/jobs?closing=7&sort=deadline" className="rounded-full bg-white/15 px-3 py-0.5 text-white hover:bg-white/25">Closing this week</Link>
             <Link href="/categories/data-analytics" className="rounded-full bg-white/15 px-3 py-0.5 text-white hover:bg-white/25">Data &amp; analytics</Link>
@@ -140,9 +146,11 @@ export default async function HomePage() {
       <section className="mx-auto mt-20 max-w-6xl px-4 sm:px-6" aria-labelledby="alerts-heading">
         <div className="bg-candy-band grid items-center gap-8 rounded-3xl px-6 py-10 text-white sm:px-10 lg:grid-cols-[1.1fr_1fr]">
           <div>
-            <h2 id="alerts-heading" className="text-[1.9rem] font-semibold leading-tight">New vacancies in your inbox every week</h2>
+            <h2 id="alerts-heading" className="text-[1.9rem] font-semibold leading-tight">Let new vacancies come to you</h2>
             <p className="mt-3 max-w-lg leading-relaxed text-white/80">
-              A short Monday email with the week&apos;s newest openings. Free, no account needed, unsubscribe with one click.
+              {siteConfig.freeWeeklyEmail
+                ? "A short Monday email with the week's newest openings. Free, no account needed, unsubscribe with one click."
+                : `Email alerts for the roles, organizations and places you choose, with reminders before deadlines. ${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}.`}
             </p>
           </div>
           <AlertSignup source="home" tone="dark" />

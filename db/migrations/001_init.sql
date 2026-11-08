@@ -51,6 +51,8 @@ create table if not exists jobs (
   category_locked boolean not null default false, -- set when an admin picks the category
   job_type text,
   grade text,
+  languages text[],             -- languages named in the requirements (besides English)
+  min_experience_years integer, -- "at least N years of experience", when stated
   reference text,               -- vacancy / requisition number from the source
   summary text,                 -- only stored when the feed's policy allows
   description_html text,        -- only stored when the feed's policy is 'full'
@@ -80,6 +82,8 @@ create index if not exists jobs_org_idx on jobs (organization_id) where status =
 create index if not exists jobs_category_idx on jobs (category) where status = 'active';
 create index if not exists jobs_country_idx on jobs (country_code) where status = 'active';
 create index if not exists jobs_fingerprint_idx on jobs (fingerprint);
+create index if not exists jobs_grade_idx on jobs (grade) where status = 'active';
+create index if not exists jobs_languages_idx on jobs using gin (languages);
 create index if not exists jobs_search_idx on jobs using gin (search_vector);
 
 -- Which feed(s) each job came from (for attribution and duplicate checks).

@@ -1,12 +1,18 @@
 import Link from "next/link";
+import { GRADE_GROUPS } from "@/config/regions";
 import { JOB_TYPES, jobsUrl, type JobFilters } from "@/lib/jobs";
 import { AutoSubmit } from "./auto-submit";
 
 export type FacetData = {
   orgs: { slug: string; name: string; count: number }[];
   countries: { slug: string; name: string; count: number }[];
+  regions: { slug: string; name: string; count: number }[];
   categories: { slug: string; name: string; count: number }[];
+  grades: { grade: string; count: number }[];
   types?: { job_type: string; count: number }[];
+  langs?: { lang: string; count: number }[];
+  exps?: { value: string; name: string; count: number }[];
+  orgTypes?: { value: string; name: string; count: number }[];
 };
 
 const fieldCls =
@@ -20,79 +26,152 @@ const chevron = {
   paddingRight: "2rem",
 } as const;
 
-function Select({ name, label, value, options, all, idPrefix = "f" }: { name: string; label: string; value?: string; options: { value: string; label: string }[]; all: string; idPrefix?: string }) {
+type Option = { value: string; label: string };
+type Group = { label: string; options: Option[] };
+
+function Select({ name, label, value, options, groups, all, idPrefix = "f" }: { name: string; label: string; value?: string; options?: Option[]; groups?: Group[]; all: string; idPrefix?: string }) {
   const id = `${idPrefix}-${name}`;
   return (
     <div>
       <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-ink">{label}</label>
       <select id={id} name={name} defaultValue={value ?? ""} className={fieldCls} style={chevron}>
         <option value="">{all}</option>
-        {options.map((o) => (
+        {options?.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+        {groups?.filter((g) => g.options.length).map((g) => (
+          <optgroup key={g.label} label={g.label}>
+            {g.options.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </optgroup>
         ))}
       </select>
     </div>
   );
 }
 
-/** Homepage search: keyword plus location, organization and category. */
+const withCount = (name: string, count: number) => `${name} (${count})`;
+
+/** One "Where" field: world regions first, then countries. */
+function WhereSelect({ facets, filters, idPrefix }: { facets: FacetData; filters: JobFilters; idPrefix: string }) {
+  return (
+    <Select
+      idPrefix={idPrefix}
+      name="where"
+      label="Where"
+      all="Anywhere"
+      value={filters.region ? `region-${filters.region}` : filters.country}
+      groups={[
+        { label: "Regions", options: facets.regions.filter((r) => r.count > 0).map((r) => ({ value: `region-${r.slug}`, label: withCount(r.name, r.count) })) },
+        { label: "Countries", options: facets.countries.map((c) => ({ value: c.slug, label: withCount(c.name, c.count) })) },
+      ]}
+    />
+  );
+}
+
+/** Grade: groups (Professional, National Officer…) and the exact grades that have open jobs. */
+function GradeSelect({ facets, filters, idPrefix }: { facets: FacetData; filters: JobFilters; idPrefix: string }) {
+  const total = (grades: string[], sc = false) =>
+    facets.grades.filter((g) => (sc ? /^(SB|LICA|NPSA|IPSA|ICS)-/.test(g.grade) : grades.includes(g.grade))).reduce((n, g) => n + g.count, 0);
+  const groups = GRADE_GROUPS.map((g) => ({ ...g, count: total(g.grades, g.value === "SC") })).filter((g) => g.count > 0);
+  return (
+    <Select
+      idPrefix={idPrefix}
+      name="grade"
+      label="Grade"
+      all="Any grade"
+      value={filters.grade}
+      groups={[
+        { label: "Grade groups", options: groups.map((g) => ({ value: g.value, label: withCount(g.name, g.count) })) },
+        { label: "Exact grade", options: facets.grades.map((g) => ({ value: g.grade, label: withCount(g.grade, g.count) })) },
+      ]}
+    />
+  );
+}
+
+function RemoteToggle({ checked, id }: { checked?: boolean; id: string }) {
+  return (
+    <div>
+      <span className="mb-1.5 block text-sm font-medium text-ink" aria-hidden="true">&nbsp;</span>
+      <label htmlFor={id} className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-rule bg-paper px-3 py-2.5 text-[0.95rem] text-ink">
+        <input id={id} type="checkbox" name="remote" value="1" defaultChecked={checked} className="h-4 w-4 accent-[var(--accent)]" />
+        Remote only
+      </label>
+    </div>
+  );
+}
+
+/** Secondary filters, folded away to keep the form simple. */
+function MoreFilterFields({ idPrefix, filters, facets }: { idPrefix: string; filters: JobFilters; facets: FacetData }) {
+  return (
+    <>
+      {facets.types && facets.types.length ? (
+        <Select idPrefix={idPrefix} name="type" label="Contract type" value={filters.type} all="Any contract"
+          options={JOB_TYPES.filter((t) => facets.types!.some((x) => x.job_type === t)).map((t) => ({ value: t, label: withCount(t, facets.types!.find((x) => x.job_type === t)!.count) }))} />
+      ) : null}
+      {facets.exps && facets.exps.some((e) => e.count) ? (
+        <Select idPrefix={idPrefix} name="exp" label="Experience required" value={filters.exp} all="Any experience"
+          options={facets.exps.filter((e) => e.count).map((e) => ({ value: e.value, label: withCount(e.name, e.count) }))} />
+      ) : null}
+      {facets.langs && facets.langs.length ? (
+        <Select idPrefix={idPrefix} name="lang" label="Language in requirements" value={filters.lang} all="Any language"
+          options={facets.langs.map((l) => ({ value: l.lang, label: withCount(l.lang, l.count) }))} />
+      ) : null}
+      {facets.orgTypes && facets.orgTypes.some((o) => o.count) ? (
+        <Select idPrefix={idPrefix} name="orgtype" label="Type of organization" value={filters.orgtype} all="Any type"
+          options={facets.orgTypes.filter((o) => o.count).map((o) => ({ value: o.value, label: withCount(o.name, o.count) }))} />
+      ) : null}
+      <Select idPrefix={idPrefix} name="closing" label="Deadline" value={filters.closing} all="Any deadline"
+        options={[{ value: "7", label: "Closing within 7 days" }, { value: "30", label: "Closing within 30 days" }]} />
+      <Select idPrefix={idPrefix} name="posted" label="Posted" value={filters.posted} all="Any time"
+        options={[{ value: "1", label: "Last 24 hours" }, { value: "7", label: "Last 7 days" }, { value: "30", label: "Last 30 days" }]} />
+    </>
+  );
+}
+
+function MoreToggle() {
+  return (
+    <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-accent [&::-webkit-details-marker]:hidden">
+      <span className="group-open:hidden">More filters</span>
+      <span className="hidden group-open:inline">Fewer filters</span>
+      <svg viewBox="0 0 12 12" className="h-3 w-3 transition-transform group-open:rotate-180" aria-hidden="true"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+    </summary>
+  );
+}
+
+const moreIsOpen = (f: JobFilters) => Boolean(f.type || f.posted || f.closing || f.lang || f.exp || f.orgtype);
+
+/** Homepage search: What / Where / Search, then organization, category, grade and remote; the rest under "More filters". */
 export function HeroSearch({ facets }: { facets: FacetData }) {
   return (
     <form id="hero-search" action="/jobs" method="get" role="search" className="rounded-2xl bg-paper p-4 shadow-[0_20px_50px_-20px_rgba(11,27,63,0.55)] sm:p-5">
-      <label htmlFor="hero-q" className="mb-1.5 block text-sm font-medium text-ink">Job title, skill or keyword</label>
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <input
-          id="hero-q"
-          name="q"
-          type="search"
-          placeholder="e.g. data analyst, programme officer, WASH"
-          className={`${fieldCls} py-3 text-base sm:flex-1`}
-          autoComplete="off"
-        />
-        <button type="submit" className="rounded-lg bg-brand px-6 py-3 text-base font-semibold text-white hover:bg-accent sm:w-auto">
-          Search jobs
-        </button>
+      <div className="grid gap-3 sm:grid-cols-[1.7fr_1fr_auto] sm:items-end">
+        <div>
+          <label htmlFor="hero-q" className="mb-1.5 block text-sm font-medium text-ink">What</label>
+          <input id="hero-q" name="q" type="search" placeholder="Job title, skill or keyword" className={fieldCls} autoComplete="off" />
+        </div>
+        <WhereSelect facets={facets} filters={{}} idPrefix="hero" />
+        <button type="submit" className="rounded-lg bg-brand px-7 py-2.5 text-base font-semibold text-white hover:bg-accent">Search jobs</button>
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Select idPrefix="hero" name="country" label="Location" all="Any country" options={facets.countries.map((c) => ({ value: c.slug, label: `${c.name} (${c.count})` }))} />
-        <Select idPrefix="hero" name="org" label="Organization" all="Any organization" options={facets.orgs.map((o) => ({ value: o.slug, label: `${o.name} (${o.count})` }))} />
-        <Select idPrefix="hero" name="category" label="Category" all="Any category" options={facets.categories.filter((c) => c.count > 0).map((c) => ({ value: c.slug, label: `${c.name} (${c.count})` }))} />
-        {facets.types && facets.types.length ? (
-          <Select idPrefix="hero" name="type" label="Job type" all="Any type" options={JOB_TYPES.filter((t) => facets.types!.some((x) => x.job_type === t)).map((t) => ({ value: t, label: t }))} />
-        ) : (
-          <Select idPrefix="hero" name="closing" label="Deadline" all="Any deadline" options={[{ value: "7", label: "Closing within 7 days" }, { value: "30", label: "Closing within 30 days" }]} />
-        )}
+        <Select idPrefix="hero" name="org" label="Organization" all="Any organization" options={facets.orgs.map((o) => ({ value: o.slug, label: withCount(o.name, o.count) }))} />
+        <Select idPrefix="hero" name="category" label="Category" all="Any category" options={facets.categories.filter((c) => c.count > 0).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) }))} />
+        <GradeSelect facets={facets} filters={{}} idPrefix="hero" />
+        <RemoteToggle id="hero-remote" />
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3">
-        <label className="flex cursor-pointer items-center gap-2.5 text-[0.95rem] text-ink">
-          <input type="checkbox" name="remote" value="1" className="h-4 w-4 accent-[var(--accent)]" />
-          Remote or home-based only
-        </label>
-        {facets.types && facets.types.length ? (
-          <label className="flex items-center gap-2.5 text-[0.95rem] text-ink">
-            <span>Deadline</span>
-            <select name="closing" defaultValue="" className="rounded-lg border border-rule bg-paper px-2.5 py-1.5 text-[0.95rem] text-ink">
-              <option value="">Any</option>
-              <option value="7">Within 7 days</option>
-              <option value="30">Within 30 days</option>
-            </select>
-          </label>
-        ) : null}
-        <label className="flex items-center gap-2.5 text-[0.95rem] text-ink">
-          <span>Posted</span>
-          <select name="posted" defaultValue="" className="rounded-lg border border-rule bg-paper px-2.5 py-1.5 text-[0.95rem] text-ink">
-            <option value="">Any time</option>
-            <option value="1">Last 24 hours</option>
-            <option value="7">Last 7 days</option>
-          </select>
-        </label>
-      </div>
+      <details className="group mt-3">
+        <MoreToggle />
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <MoreFilterFields idPrefix="hero" filters={{}} facets={facets} />
+        </div>
+      </details>
       <AutoSubmit formId="hero-search" onChange={false} />
     </form>
   );
 }
 
-/** Full filter panel for /jobs. Works without JavaScript; submits on change when JS is available. */
+/** Filter panel for result pages. Works without JavaScript; submits on change when JS is available. */
 export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, formId = "job-filters" }: { filters: JobFilters; facets: FacetData; action?: string; hidden?: Record<string, string>; formId?: string }) {
   const P = formId;
   return (
@@ -100,33 +179,33 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
       {Object.entries(hidden).map(([k, v]) => (
         <input key={k} type="hidden" name={k} value={v} />
       ))}
+      {filters.sort ? <input type="hidden" name="sort" value={filters.sort} /> : null}
       <div>
-        <label htmlFor={`${P}-q`} className="mb-1.5 block text-sm font-medium text-ink">Keywords</label>
+        <label htmlFor={`${P}-q`} className="mb-1.5 block text-sm font-medium text-ink">What</label>
         <input id={`${P}-q`} name="q" type="search" defaultValue={filters.q ?? ""} placeholder="Title, skill or organization" className={fieldCls} />
       </div>
+      {!("country" in hidden) && !("region" in hidden) ? <WhereSelect facets={facets} filters={filters} idPrefix={P} /> : null}
       {!("org" in hidden) ? (
-        <Select idPrefix={P} name="org" label="Organization" value={filters.org} all="Any organization" options={facets.orgs.map((o) => ({ value: o.slug, label: `${o.name} (${o.count})` }))} />
-      ) : null}
-      {!("country" in hidden) ? (
-        <Select idPrefix={P} name="country" label="Country" value={filters.country} all="Any country" options={facets.countries.map((c) => ({ value: c.slug, label: `${c.name} (${c.count})` }))} />
+        <Select idPrefix={P} name="org" label="Organization" value={filters.org} all="Any organization" options={facets.orgs.map((o) => ({ value: o.slug, label: withCount(o.name, o.count) }))} />
       ) : null}
       {!("category" in hidden) ? (
-        <Select idPrefix={P} name="category" label="Category" value={filters.category} all="Any category" options={facets.categories.filter((c) => c.count > 0 || c.slug === filters.category).map((c) => ({ value: c.slug, label: `${c.name} (${c.count})` }))} />
+        <Select idPrefix={P} name="category" label="Category" value={filters.category} all="Any category" options={facets.categories.filter((c) => c.count > 0 || c.slug === filters.category).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) }))} />
       ) : null}
-      {facets.types && facets.types.length ? (
-        <Select idPrefix={P} name="type" label="Job type" value={filters.type} all="Any type" options={JOB_TYPES.filter((t) => facets.types!.some((x) => x.job_type === t)).map((t) => ({ value: t, label: `${t} (${facets.types!.find((x) => x.job_type === t)?.count ?? 0})` }))} />
-      ) : null}
-      <Select idPrefix={P} name="posted" label="Posted" value={filters.posted} all="Any time" options={[{ value: "1", label: "Last 24 hours" }, { value: "7", label: "Last 7 days" }, { value: "30", label: "Last 30 days" }]} />
-      <Select idPrefix={P} name="closing" label="Application deadline" value={filters.closing} all="Any deadline" options={[{ value: "7", label: "Closing within 7 days" }, { value: "30", label: "Closing within 30 days" }]} />
+      <GradeSelect facets={facets} filters={filters} idPrefix={P} />
       {!("remote" in hidden) ? (
         <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-rule px-3 py-2.5 text-[0.95rem] text-ink">
           <input type="checkbox" name="remote" value="1" defaultChecked={!!filters.remote} className="h-4 w-4 accent-[var(--accent)]" />
-          Remote or home-based only
+          Remote / home-based only
         </label>
       ) : null}
-      <Select idPrefix={P} name="sort" label="Sort by" value={filters.sort} all="Newest first" options={[{ value: "deadline", label: "Closing soonest" }, ...(filters.q ? [{ value: "relevance", label: "Best match" }] : [])]} />
+      <details className="group" open={moreIsOpen(filters)}>
+        <MoreToggle />
+        <div className="mt-3 space-y-4">
+          <MoreFilterFields idPrefix={P} filters={filters} facets={facets} />
+        </div>
+      </details>
       <div className="flex items-center gap-3 pt-1">
-        <button type="submit" className="flex-1 rounded-lg bg-brand px-4 py-2.5 font-semibold text-white hover:bg-accent">Apply filters</button>
+        <button type="submit" className="flex-1 rounded-lg bg-brand px-4 py-2.5 font-semibold text-white hover:bg-accent">Show jobs</button>
         <Link href={jobsUrl({}, action)} className="rounded-lg px-3 py-2.5 text-sm font-medium text-accent hover:bg-mist">Clear</Link>
       </div>
       <AutoSubmit formId={formId} />

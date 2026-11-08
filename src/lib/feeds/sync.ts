@@ -45,6 +45,7 @@ type ExistingJob = {
   organization_id: number | null;
   title: string; slug: string; country_code: string | null; city: string | null; location_text: string | null;
   is_remote: boolean | null; category: string; job_type: string | null; grade: string | null; reference: string | null;
+  languages: string[] | null; min_experience_years: number | null;
   summary: string | null; description_html: string | null; content_policy: string;
   published_at: Date | null; deadline: string | null;
 };
@@ -52,7 +53,18 @@ type ExistingJob = {
 type ItemLog = { feed_id: number | null; job_id: number | null; outcome: string; title: string | null; url: string | null; message: string | null };
 
 const USER_AGENT = "GlobalCareersHub-FeedSync/1.0 (+https://github.com/; job feed importer)";
-const TIME_BUDGET_MS = 240_000; // stay well under the 300 s function limit
+/**
+ * How long one sync may run. The scheduled import runs from GitHub Actions
+ * (no limit). When triggered through the website ("Sync now" or the cron
+ * URL) it must finish within the host's request limit: 10 s on Netlify's
+ * free plan, 300 s on Vercel. Unfinished items are picked up next time.
+ */
+function timeBudgetMs(trigger: SyncTrigger): number {
+  if (trigger === "cli") return Number.POSITIVE_INFINITY; // GitHub Actions / command line
+  const fromEnv = Number(process.env.SYNC_TIME_BUDGET_MS);
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
+  return process.env.VERCEL ? 240_000 : 7_500; // Netlify free plan: 10 s per request
+}
 
 // ── Feeds from environment variables ─────────────────────────
 
@@ -155,6 +167,9 @@ function statusFor(deadline: string | null, today: string): "active" | "expired"
 
 export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
   const started = Date.now();
+  const budget = timeBudgetMs(trigger);
+  const outOfTime = () => Date.now() - started > budget;
+  let stoppedEarly = false;
   const holder = `${trigger}-${started}-${Math.random().toString(36).slice(2, 8)}`;
   const [run] = await sql<{ id: number }[]>`insert into sync_runs (trigger) values (${trigger}) returning id`;
   const runId = Number(run.id);
@@ -183,9 +198,8 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
     const today = new Date().toISOString().slice(0, 10);
 
     for (const feed of feeds) {
-      if (Date.now() - started > TIME_BUDGET_MS) {
-        notes.push(`Stopped before "${feed.name}" and later feeds to stay within the time limit; they will run next time.`);
-        result.feedsFailed++;
+      if (outOfTime()) {
+        stoppedEarly = true;
         continue;
       }
       const feedId = Number(feed.id);
@@ -218,6 +232,7 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
         const existing = await sql<ExistingJob[]>`
           select id, url_hash, fingerprint, status, primary_feed_id, category_locked, apply_host, organization_id,
                  title, slug, country_code, city, location_text, is_remote, category, job_type, grade, reference,
+                 languages, min_experience_years,
                  summary, description_html, content_policy, published_at, deadline::text as deadline
           from jobs where url_hash = any(${hashes}) or (fingerprint is not null and fingerprint = any(${fps}))`;
         const byHash = new Map(existing.map((e) => [e.url_hash, e]));
@@ -230,6 +245,7 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
         const touched: { job_id: number; feed_id: number; item_guid: string | null; item_url: string; source_title: string | null }[] = [];
 
         for (const j of jobs) {
+          if (outOfTime()) { stoppedEarly = true; break; }
           try {
             const orgId = j.organization ? orgIds.get(j.organization.slug) ?? null : null;
             let ex = byHash.get(j.urlHash);
@@ -243,10 +259,10 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
               const status = statusFor(j.deadline, today);
               const [row] = await sql<{ id: number }[]>`
                 insert into jobs (slug, title, organization_id, primary_feed_id, country_code, city, location_text, is_remote,
-                  category, job_type, grade, reference, summary, description_html, content_policy, apply_url, apply_host,
+                  category, job_type, grade, languages, min_experience_years, reference, summary, description_html, content_policy, apply_url, apply_host,
                   url_hash, fingerprint, published_at, deadline, status)
                 values (${j.slug}, ${j.title}, ${orgId}, ${feedId}, ${j.countryCode}, ${j.city}, ${j.locationText}, ${j.isRemote},
-                  ${j.category}, ${j.jobType}, ${j.grade}, ${j.reference}, ${j.summary}, ${j.descriptionHtml}, ${j.contentPolicy},
+                  ${j.category}, ${j.jobType}, ${j.grade}, ${j.languages}, ${j.minExperienceYears}, ${j.reference}, ${j.summary}, ${j.descriptionHtml}, ${j.contentPolicy},
                   ${j.applyUrl}, ${j.applyHost}, ${j.urlHash}, ${j.fingerprint}, ${j.publishedAt}, ${j.deadline}, ${status})
                 on conflict (url_hash) do nothing
                 returning id`;
@@ -288,7 +304,8 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
               ex.title !== j.title || ex.slug !== j.slug || (ex.organization_id === null ? null : Number(ex.organization_id)) !== orgId ||
               ex.country_code !== j.countryCode || ex.city !== j.city || ex.location_text !== j.locationText ||
               ex.is_remote !== j.isRemote || ex.category !== category || ex.job_type !== j.jobType || ex.grade !== j.grade ||
-              ex.reference !== j.reference || ex.summary !== j.summary || ex.description_html !== j.descriptionHtml ||
+              ex.reference !== j.reference || (ex.languages ?? []).join() !== (j.languages ?? []).join() ||
+              (ex.min_experience_years ?? null) !== j.minExperienceYears || ex.summary !== j.summary || ex.description_html !== j.descriptionHtml ||
               ex.content_policy !== j.contentPolicy || !sameTime(ex.published_at, j.publishedAt) ||
               dateOnly(ex.deadline) !== j.deadline || ex.status !== newStatus || ex.primary_feed_id === null;
 
@@ -297,6 +314,7 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
               update jobs set title = ${j.title}, slug = ${j.slug}, organization_id = ${orgId}, primary_feed_id = ${feedId},
                 country_code = ${j.countryCode}, city = ${j.city}, location_text = ${j.locationText}, is_remote = ${j.isRemote},
                 category = ${category}, job_type = ${j.jobType}, grade = ${j.grade}, reference = ${j.reference},
+                languages = ${j.languages}, min_experience_years = ${j.minExperienceYears},
                 summary = ${j.summary}, description_html = ${j.descriptionHtml}, content_policy = ${j.contentPolicy},
                 published_at = ${j.publishedAt}, deadline = ${j.deadline}, fingerprint = ${j.fingerprint},
                 status = ${newStatus}, updated_at = now()
@@ -331,6 +349,8 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
         await sql`update feeds set last_synced_at = now(), last_status = 'error', last_error = ${msg.slice(0, 1000)}, updated_at = now() where id = ${feedId}`;
       }
     }
+
+    if (stoppedEarly) notes.push("Stopped early to stay within the website's time limit; the remaining items will be imported by the next scheduled run.");
 
     // Expire / archive / clean up
     const expired = await sql`
@@ -367,7 +387,7 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
     }
     if (result.status !== "failed") {
       if (result.feedsTotal > 0 && result.feedsFailed === result.feedsTotal) result.status = "failed";
-      else if (result.feedsFailed > 0 || result.itemsFailed > 0) result.status = "partial";
+      else if (result.feedsFailed > 0 || result.itemsFailed > 0 || stoppedEarly) result.status = "partial";
     }
     result.message = notes.join(" ") || null;
     await sql`

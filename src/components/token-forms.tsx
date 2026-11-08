@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect } from "react";
 import { confirmAction, signupAction, unsubscribeAction, type FormState } from "@/app/actions";
+import siteConfig from "@site-config";
 import { AttributionField, uetEvent } from "./ads";
 
 const initial: FormState = { status: "idle", message: "" };
@@ -44,7 +45,7 @@ export function UnsubscribeForm({ token }: { token: string }) {
 const field = "w-full rounded-lg border border-rule bg-paper px-4 py-3 text-base text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]";
 
 /** Premium interest form (fake-door test: records interest, no payment). */
-export function PremiumInterestForm() {
+export function PremiumInterestForm({ source = "pricing", search, remindJobId }: { source?: string; search?: string; remindJobId?: number }) {
   const [state, action, pending] = useActionState(signupAction, initial);
   useEffect(() => {
     if (state.status === "success") uetEvent("trial_signup", { event_category: "premium" });
@@ -53,7 +54,9 @@ export function PremiumInterestForm() {
   return (
     <form action={action} className="space-y-4">
       <input type="hidden" name="kind" value="waitlist" />
-      <input type="hidden" name="source" value="pricing" />
+      <input type="hidden" name="source" value={source} />
+      {search ? <input type="hidden" name="search" value={search} /> : null}
+      {remindJobId ? <input type="hidden" name="remind_job" value={String(remindJobId)} /> : null}
       <AttributionField />
       <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
         <label>Leave empty<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label>
@@ -62,6 +65,8 @@ export function PremiumInterestForm() {
         <label htmlFor="pi-email" className="mb-1.5 block text-sm font-medium text-ink">Email address</label>
         <input id="pi-email" name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} />
       </div>
+      {search ? null : (
+        <>
       <div>
         <label htmlFor="pi-keywords" className="mb-1.5 block text-sm font-medium text-ink">Roles or keywords to watch <span className="font-normal text-slate">(optional)</span></label>
         <input id="pi-keywords" name="keywords" placeholder="e.g. data analyst, M&E, WASH" className={field} />
@@ -76,15 +81,19 @@ export function PremiumInterestForm() {
           <input id="pi-locations" name="locations" placeholder="e.g. Geneva, remote" className={field} />
         </div>
       </div>
+        </>
+      )}
       <div>
-        <label htmlFor="pi-note" className="mb-1.5 block text-sm font-medium text-ink">Anything else you&apos;d want from Premium? <span className="font-normal text-slate">(optional)</span></label>
+        <label htmlFor="pi-note" className="mb-1.5 block text-sm font-medium text-ink">Anything else you&apos;d want from {siteConfig.premium.name.toLowerCase()}? <span className="font-normal text-slate">(optional)</span></label>
         <textarea id="pi-note" name="note" rows={3} className={field} />
       </div>
       {state.status === "error" ? <p role="alert" className="text-sm text-[#9b1c1c]">{state.message}</p> : null}
       <button disabled={pending} className="w-full rounded-lg bg-brand px-6 py-3.5 text-base font-semibold text-white hover:bg-accent disabled:opacity-60">
         {pending ? "Saving…" : "Reserve my free trial"}
       </button>
-      <p className="text-sm text-slate">No card and no charge. We&apos;ll email you once to confirm, then again when Premium opens.</p>
+      <p className="text-sm text-slate">
+        {siteConfig.premium.trialDays}-day free trial, then {siteConfig.premium.priceSummary}. No card needed and nothing is charged today.
+      </p>
     </form>
   );
 }

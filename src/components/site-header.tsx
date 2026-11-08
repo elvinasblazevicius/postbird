@@ -3,11 +3,9 @@ import { siteConfig } from "@/lib/site";
 import { BrandMark } from "./brand-mark";
 
 const NAV = [
-  { href: "/jobs", label: "All jobs" },
-  { href: "/organizations", label: "Organizations" },
-  { href: "/categories", label: "Categories" },
-  { href: "/remote-jobs", label: "Remote" },
-  { href: "/pricing", label: "Premium" },
+  { href: "/jobs", label: "Find jobs" },
+  { href: "/remote-jobs", label: "Remote jobs" },
+  { href: "/pricing", label: "Pricing" },
 ];
 
 export function SiteHeader() {
@@ -29,7 +27,7 @@ export function SiteHeader() {
             href="/alerts"
             className="ml-2 rounded-md bg-brand px-4 py-2 text-[0.95rem] font-medium text-white hover:bg-accent"
           >
-            Get job alerts
+            Get email alerts
           </Link>
         </nav>
 
@@ -44,7 +42,7 @@ export function SiteHeader() {
               </Link>
             ))}
             <Link href="/alerts" className="mt-1 block rounded-md bg-brand px-3 py-2.5 font-medium text-white">
-              Get job alerts
+              Get email alerts
             </Link>
           </nav>
         </details>

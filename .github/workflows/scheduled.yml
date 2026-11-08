@@ -1,7 +1,12 @@
-# Runs the vacancy import every 2 hours and the weekly email every Monday.
-# Needs two repository secrets (Settings → Secrets and variables → Actions):
-#   SITE_URL     e.g. https://global-careers-hub.vercel.app  (no trailing slash)
-#   CRON_SECRET  the same value as CRON_SECRET in Vercel
+# Runs the vacancy import every 2 hours and the weekly email every Monday,
+# directly against the database (no website time limits, works on any host).
+#
+# Repository secrets needed (Settings → Secrets and variables → Actions):
+#   DATABASE_URL     same value as on your host
+#   SITE_URL         your site's address, e.g. https://globalcareershub.com (used in email links)
+#   RESEND_API_KEY   (optional until email is set up)
+#   EMAIL_FROM       (optional) e.g. Global Careers Hub <alerts@yourdomain.com>
+#   INOREADER_FEED_URLS (optional) same as on your host
 name: Scheduled jobs
 
 on:
@@ -17,22 +22,31 @@ on:
         type: choice
         options: [sync, digest]
 
+concurrency:
+  group: scheduled-jobs
+  cancel-in-progress: false
+
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 15
     steps:
-      - name: Call the site
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Run task
         env:
-          SITE_URL: ${{ secrets.SITE_URL }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
           TASK: ${{ github.event.schedule == '23 6 * * 1' && 'digest' || inputs.task || 'sync' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.SITE_URL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          INOREADER_FEED_URLS: ${{ secrets.INOREADER_FEED_URLS }}
+          ANALYTICS_SALT: ${{ secrets.ANALYTICS_SALT }}
         run: |
-          if [ -z "$SITE_URL" ] || [ -z "$CRON_SECRET" ]; then
-            echo "::error::Add SITE_URL and CRON_SECRET as repository secrets."; exit 1
-          fi
-          echo "Running $TASK on $SITE_URL"
-          curl --fail-with-body --silent --show-error --max-time 320 \
-            -H "Authorization: Bearer $CRON_SECRET" \
-            "$SITE_URL/api/cron/$TASK"
-          echo
+          if [ -z "$DATABASE_URL" ]; then echo "::error::Add the DATABASE_URL repository secret."; exit 1; fi
+          echo "Running: $TASK"
+          npm run "$TASK"

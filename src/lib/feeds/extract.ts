@@ -36,6 +36,8 @@ export type NormalizedJob = {
   category: string;
   jobType: string | null;
   grade: string | null;
+  languages: string[] | null;
+  minExperienceYears: number | null;
   reference: string | null;
   summary: string | null;
   descriptionHtml: string | null;
@@ -171,6 +173,36 @@ export function detectCategory(title: string): string {
   return OTHER_CATEGORY.slug;
 }
 
+const LANGUAGE_NAMES = ["French", "Spanish", "Arabic", "Portuguese", "Russian", "Chinese"];
+const LANG_CONTEXT = /\b(fluen\w*|proficien\w*|knowledge of|command of|language|languages|written and (?:oral|spoken)|spoken and written|oral and written|bilingual)\b/i;
+
+/** Languages (other than English) named in a sentence about language requirements. */
+export function detectLanguages(text: string): string[] | null {
+  const found = new Set<string>();
+  for (const sentence of text.split(/(?<=[.;:!?])\s+|\n/)) {
+    if (sentence.length > 600 || !LANG_CONTEXT.test(sentence)) continue;
+    for (const lang of LANGUAGE_NAMES) {
+      // "French" but not "French Polynesia" / "Spanish-speaking"-style adjectives are still fine
+      if (new RegExp(`\\b${lang}\\b(?! Polynesia| Guiana| Southern)`, "i").test(sentence)) found.add(lang);
+    }
+  }
+  return found.size ? [...found].sort() : null;
+}
+
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, fifteen: 15, twenty: 20,
+};
+
+/** Minimum years of experience from phrases like "a minimum of five (5) years of ... experience". */
+export function detectExperienceYears(text: string): number | null {
+  const re = /\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty)(?:\s*\(\d{1,2}\))?\s*\+?\s*(?:or more\s+)?years?\b[^.\n]{0,80}?\bexperience\b/i;
+  const m = text.match(re);
+  if (!m) return null;
+  const n = /^\d+$/.test(m[1]) ? Number(m[1]) : NUMBER_WORDS[m[1].toLowerCase()];
+  return n !== undefined && n >= 0 && n <= 30 ? n : null;
+}
+
 const REMOTE_RE = /\b(remote|home[- ]?based|work from home|working from home|telework(ing)?|telecommut(e|ing)|t[ée]l[ée]travail|teletrabajo)\b/i;
 
 /** Split a title into trailing segments that may hold a location, e.g. "Analyst - Nairobi, Kenya". */
@@ -267,6 +299,10 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   const refMatch = refLabel?.match(/[A-Za-z0-9][A-Za-z0-9\-/_.]{2,39}/);
   const reference = refMatch && /\d/.test(refMatch[0]) ? refMatch[0] : null;
 
+  // Requirements stated in the text (read even when the description itself isn't republished)
+  const languages = detectLanguages(text);
+  const minExperienceYears = detectExperienceYears(text);
+
   // Dates
   let publishedAt = parseFeedDate(raw.published) ?? parseFeedDate(raw.updated);
   if (publishedAt && publishedAt.getTime() > Date.now() + 36 * 3600_000) publishedAt = null; // future dates are not trusted
@@ -320,6 +356,8 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
     category,
     jobType,
     grade,
+    languages,
+    minExperienceYears,
     reference,
     summary,
     descriptionHtml,

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { LISTING_SETTINGS } from "@/config/import";
 import { sql } from "@/lib/db";
 import { countryBySlug } from "@/config/countries";
+import { regionBySlug } from "@/config/regions";
 import { jobsUrl, type JobFilters } from "@/lib/jobs";
 
 /** Number of open jobs for a landing page's fixed filter. */
@@ -10,6 +11,7 @@ export async function countFor(fixed: Partial<JobFilters>): Promise<number> {
   if (fixed.org) w = sql`${w} and o.slug = ${fixed.org}`;
   if (fixed.category) w = sql`${w} and j.category = ${fixed.category}`;
   if (fixed.country) w = sql`${w} and j.country_code = ${countryBySlug(fixed.country)?.code ?? "--"}`;
+  if (fixed.region) w = sql`${w} and j.country_code = any(${regionBySlug(fixed.region)?.codes ?? []})`;
   if (fixed.remote) w = sql`${w} and j.is_remote is true`;
   const [r] = await sql<{ n: number }[]>`select count(*)::int as n from jobs j left join organizations o on o.id = j.organization_id where ${w}`;
   return r.n;

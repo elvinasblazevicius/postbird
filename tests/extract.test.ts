@@ -165,3 +165,18 @@ describe("parseFeed", () => {
     expect(() => parseFeed("{bad json")).toThrow(/JSON/);
   });
 });
+
+import { detectExperienceYears, detectLanguages } from "@/lib/feeds/extract";
+
+describe("requirements", () => {
+  it("finds languages only in language-requirement sentences", () => {
+    expect(detectLanguages("Fluency in English and French is required. Knowledge of Arabic is an asset.")).toEqual(["Arabic", "French"]);
+    expect(detectLanguages("The office in French Polynesia covers the region. Fluency in English is required.")).toBeNull();
+    expect(detectLanguages("Duty station: Paris. We value diversity.")).toBeNull();
+  });
+  it("reads minimum years of experience", () => {
+    expect(detectExperienceYears("A minimum of five (5) years of progressively responsible experience in data analysis")).toBe(5);
+    expect(detectExperienceYears("At least 2 years of relevant professional experience is required.")).toBe(2);
+    expect(detectExperienceYears("Experience with Python is an asset.")).toBeNull();
+  });
+});

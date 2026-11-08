@@ -52,10 +52,25 @@ const CONSENT_COUNTRIES = new Set(
   "AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE IS LI NO GB CH".split(" "),
 );
 
+function visitorCountry(h: Headers): string | null {
+  const vercel = h.get("x-vercel-ip-country");
+  if (vercel) return vercel;
+  const nfGeo = h.get("x-nf-geo"); // Netlify: base64-encoded JSON
+  if (nfGeo) {
+    try {
+      const geo = JSON.parse(Buffer.from(nfGeo, "base64").toString("utf8")) as { country?: { code?: string } };
+      if (geo.country?.code) return geo.country.code;
+    } catch {
+      /* fall through */
+    }
+  }
+  return h.get("x-country") || h.get("cf-ipcountry");
+}
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const uetTagId = process.env.NEXT_PUBLIC_MS_UET_TAG_ID?.trim() || null;
-  // Vercel tells us the visitor's country; when it's unknown, ask for consent to be safe.
-  const country = uetTagId ? (await headers()).get("x-vercel-ip-country") : null;
+  // The host tells us the visitor's country; when it's unknown, ask for consent to be safe.
+  const country = uetTagId ? visitorCountry(await headers()) : null;
   const consentRequired = !country || CONSENT_COUNTRIES.has(country.toUpperCase());
   const brandVars = {
     "--brand": siteConfig.colors.brand,

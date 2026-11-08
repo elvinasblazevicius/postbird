@@ -45,9 +45,9 @@ async function main() {
       : [null];
     await sql`
       insert into jobs (slug, title, organization_id, country_code, city, location_text, is_remote, category, job_type, grade,
-        summary, content_policy, apply_url, apply_host, url_hash, fingerprint, published_at, deadline, is_demo)
+        languages, min_experience_years, summary, content_policy, apply_url, apply_host, url_hash, fingerprint, published_at, deadline, is_demo)
       values (${j.slug}, ${j.title}, ${org?.id ?? null}, ${j.countryCode}, ${j.city}, ${j.locationText}, ${j.isRemote}, ${j.category},
-        ${j.jobType}, ${j.grade}, ${j.summary}, 'excerpt', ${j.applyUrl}, ${j.applyHost}, ${j.urlHash}, null, ${j.publishedAt}, ${j.deadline}, true)
+        ${j.jobType}, ${j.grade}, ${j.languages}, ${j.minExperienceYears}, ${j.summary}, 'excerpt', ${j.applyUrl}, ${j.applyHost}, ${j.urlHash}, null, ${j.publishedAt}, ${j.deadline}, true)
       on conflict (url_hash) do nothing`;
     n++;
   }

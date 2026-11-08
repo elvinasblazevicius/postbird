@@ -5,12 +5,14 @@ import { LISTING_SETTINGS } from "@/config/import";
 
 export const NOT_SPECIFIED = "Not specified";
 
-/** Public base URL: site.config.ts → NEXT_PUBLIC_SITE_URL → Vercel's address → localhost. */
+/** Public base URL: site.config.ts → NEXT_PUBLIC_SITE_URL → Netlify/Vercel address → localhost. */
 export function siteUrl(): string {
   const fromConfig = siteConfig.url?.trim();
   const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
-  const url = fromConfig || fromEnv || (vercel ? `https://${vercel}` : `http://localhost:${process.env.PORT || 3000}`);
+  // Netlify sets URL to the site's main address (custom domain or *.netlify.app).
+  const netlify = process.env.NETLIFY ? process.env.URL : undefined;
+  const url = fromConfig || fromEnv || netlify || (vercel ? `https://${vercel}` : `http://localhost:${process.env.PORT || 3000}`);
   return url.replace(/\/+$/, "");
 }
 

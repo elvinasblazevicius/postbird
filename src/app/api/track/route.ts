@@ -35,6 +35,7 @@ export async function POST(req: Request) {
   let props: Record<string, unknown> | null = null;
   if (body.props && typeof body.props === "object") {
     if (type === "search") props = body.props;
+    if (type === "premium_cta_click" && typeof body.props.source === "string") props = { source: body.props.source.slice(0, 40) };
     if (type === "pageview") {
       const campaign = cleanCampaign(body.props.campaign as Record<string, unknown> | undefined);
       props = campaign ? { campaign } : null;

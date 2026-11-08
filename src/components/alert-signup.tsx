@@ -2,17 +2,25 @@
 
 import { useActionState, useEffect } from "react";
 import { signupAction, type FormState } from "@/app/actions";
+import siteConfig from "@site-config";
 import { AttributionField, uetEvent } from "./ads";
 
 const initial: FormState = { status: "idle", message: "" };
 
-/** Email sign-up for the weekly digest (double opt-in). */
+/**
+ * Email alert sign-up (double opt-in). When alerts are paid
+ * (siteConfig.freeWeeklyEmail = false) it offers the free trial instead and
+ * records Premium interest.
+ */
 export function AlertSignup({ source, tone = "light" }: { source: string; tone?: "light" | "dark" }) {
   const [state, action, pending] = useActionState(signupAction, initial);
   const dark = tone === "dark";
+  const paid = !siteConfig.freeWeeklyEmail;
   useEffect(() => {
-    if (state.status === "success") uetEvent("subscribe", { event_category: "alerts", event_label: source });
-  }, [state.status, source]);
+    if (state.status === "success") {
+      uetEvent(paid ? "trial_signup" : "subscribe", { event_category: paid ? "premium" : "alerts", event_label: source });
+    }
+  }, [state.status, source, paid]);
 
   if (state.status === "success") {
     return (
@@ -24,7 +32,7 @@ export function AlertSignup({ source, tone = "light" }: { source: string; tone?:
 
   return (
     <form action={action} className="w-full">
-      <input type="hidden" name="kind" value="alerts" />
+      <input type="hidden" name="kind" value={paid ? "waitlist" : "alerts"} />
       <input type="hidden" name="source" value={source} />
       <AttributionField />
       <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
@@ -50,13 +58,17 @@ export function AlertSignup({ source, tone = "light" }: { source: string; tone?:
           disabled={pending}
           className={`rounded-lg px-5 py-3 text-base font-semibold disabled:opacity-60 ${dark ? "bg-white text-brand hover:bg-mist" : "bg-brand text-white hover:bg-accent"}`}
         >
-          {pending ? "Subscribing…" : "Subscribe"}
+          {pending ? "Saving…" : paid ? "Start free trial" : "Subscribe"}
         </button>
       </div>
       {state.status === "error" ? (
         <p role="alert" className={`mt-2 text-sm ${dark ? "text-[#ffd7d7]" : "text-[#9b1c1c]"}`}>{state.message}</p>
       ) : (
-        <p className={`mt-2 text-sm ${dark ? "text-white/70" : "text-slate"}`}>We&apos;ll email you once to confirm. Unsubscribe any time.</p>
+        <p className={`mt-2 text-sm ${dark ? "text-white/70" : "text-slate"}`}>
+          {paid
+            ? `${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}. No card needed to start.`
+            : "We'll email you once to confirm. Unsubscribe any time."}
+        </p>
       )}
     </form>
   );

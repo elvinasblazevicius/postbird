@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { activeFilterCount, categoryFacets, countryFacets, jobsUrl, jobTypeFacets, organizationFacets, searchJobs, type JobFilters } from "@/lib/jobs";
+import { activeFilterCount, categoryFacets, countryFacets, experienceFacets, gradeFacets, jobsUrl, jobTypeFacets, languageFacets, organizationFacets, orgTypeFacets, regionFacets, searchJobs, type JobFilters } from "@/lib/jobs";
+import siteConfig from "@site-config";
 import { AlertSignup } from "./alert-signup";
 import { JobList } from "./job-card";
 import { FilterForm } from "./search-forms";
+import { TrackedLink } from "./tracking";
 import { TrackOnMount } from "./tracking";
 
 function Pagination({ page, pages, filters, base }: { page: number; pages: number; filters: JobFilters; base: string }) {
@@ -49,16 +51,23 @@ export async function JobsBrowser({
   emptyHint?: React.ReactNode;
 }) {
   const effective = { ...filters, ...fixed };
-  const [result, orgs, countries, categories, types] = await Promise.all([
+  const [result, orgs, countries, regions, categories, types, grades, langs, exps, orgTypes] = await Promise.all([
     searchJobs(effective),
     organizationFacets(),
     countryFacets(),
+    regionFacets(),
     categoryFacets(),
     jobTypeFacets(),
+    gradeFacets(),
+    languageFacets(),
+    experienceFacets(),
+    orgTypeFacets(),
   ]);
+  const facets = { orgs, countries, regions, categories, types, grades, langs, exps, orgTypes };
   const hidden: Record<string, string> = {};
   if (fixed.org) hidden.org = fixed.org;
   if (fixed.country) hidden.country = fixed.country;
+  if (fixed.region) hidden.region = fixed.region;
   if (fixed.category) hidden.category = fixed.category;
   if (fixed.remote) hidden.remote = "1";
   // On landing pages the fixed filter is in the path, so don't repeat it in the form.
@@ -77,11 +86,11 @@ export async function JobsBrowser({
             <span className="hidden text-sm text-accent group-open:inline">Hide</span>
           </summary>
           <div className="mt-4">
-            <FilterForm formId="filters-mobile" filters={filters} facets={{ orgs, countries, categories, types }} action={base} hidden={formHidden} />
+            <FilterForm formId="filters-mobile" filters={filters} facets={facets} action={base} hidden={formHidden} />
           </div>
         </details>
         <div className="sticky top-6 hidden lg:block">
-          <FilterForm formId="filters-desktop" filters={filters} facets={{ orgs, countries, categories, types }} action={base} hidden={formHidden} />
+          <FilterForm formId="filters-desktop" filters={filters} facets={facets} action={base} hidden={formHidden} />
         </div>
       </aside>
 
@@ -94,19 +103,48 @@ export async function JobsBrowser({
                 ? "1 open vacancy"
                 : `${from}–${to} of ${result.total.toLocaleString("en-US")} open vacancies`}
           </h2>
-          {userFilters ? (
-            <Link href={base} className="text-sm font-medium text-accent hover:underline">Clear all filters</Link>
-          ) : null}
+          <div className="flex items-center gap-1 text-sm" aria-label="Sort">
+            <span className="mr-1 text-slate">Sort:</span>
+            {[
+              { key: "newest", label: "Newest" },
+              { key: "deadline", label: "Closing soonest" },
+              ...(filters.q ? [{ key: "relevance", label: "Best match" }] : []),
+            ].map((o) => {
+              const active = result.sort === o.key;
+              return (
+                <Link
+                  key={o.key}
+                  href={jobsUrl({ ...filters, sort: o.key as JobFilters["sort"], page: undefined }, base)}
+                  aria-current={active ? "true" : undefined}
+                  className={`rounded-full px-3 py-1 ${active ? "bg-brand text-white" : "text-accent hover:bg-tint"}`}
+                >
+                  {o.label}
+                </Link>
+              );
+            })}
+          </div>
         </div>
 
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rule bg-candy-soft px-4 py-3">
+          <p className="text-[0.95rem] text-ink">Get new jobs matching this search by email.</p>
+          <TrackedLink
+            href={`/pricing/trial?search=${encodeURIComponent(jobsUrl({ ...effective, page: undefined, sort: undefined }).replace(/^\/jobs\??/, ""))}`}
+            event="premium_cta_click"
+            source="search-alert"
+            className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-accent"
+          >
+            <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true"><path d="M8 2a4 4 0 0 0-4 4v2.5L2.5 11h11L12 8.5V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
+            Email me jobs like these
+          </TrackedLink>
+        </div>
         {result.items.length ? (
           <>
             <JobList jobs={result.items.slice(0, 6)} />
             {result.page === 1 ? (
               <div className="my-3 grid items-center gap-4 rounded-xl border border-rule bg-mist p-5 sm:p-6 md:grid-cols-[1fr_1.2fr]">
                 <div>
-                  <p className="font-display text-xl font-semibold text-ink">Get vacancies like these every week</p>
-                  <p className="mt-1 text-sm text-slate">Free Monday email. Unsubscribe with one click.</p>
+                  <p className="font-display text-xl font-semibold text-ink">Get vacancies like these by email</p>
+                  <p className="mt-1 text-sm text-slate">{siteConfig.freeWeeklyEmail ? "Free Monday email. Unsubscribe with one click." : "New matches in your inbox, so you don't have to keep checking."}</p>
                 </div>
                 <AlertSignup source={`list:${base}`} />
               </div>
@@ -119,7 +157,7 @@ export async function JobsBrowser({
             <p className="mt-2 text-slate">{emptyHint ?? "Remove a filter or try a broader keyword. New vacancies are added several times a day."}</p>
             <div className="mt-5 flex flex-wrap justify-center gap-3">
               <Link href={base} className="rounded-lg border border-rule px-4 py-2 text-sm font-medium text-ink hover:bg-mist">Clear filters</Link>
-              <Link href="/alerts" className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-accent">Get weekly alerts</Link>
+              <Link href="/alerts" className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-accent">Get email alerts</Link>
             </div>
           </div>
         )}

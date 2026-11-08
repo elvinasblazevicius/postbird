@@ -1,28 +1,32 @@
 # Global Careers Hub
 
-A job board for UN agencies, international organizations, humanitarian groups and NGOs. It imports vacancies automatically from your Inoreader output feeds, builds search-friendly pages, collects email subscribers and Premium interest, and tracks Microsoft Ads conversions.
+A job board for UN agencies, international organizations, humanitarian groups and NGOs. It imports vacancies automatically from your Inoreader output feeds, builds search-friendly pages, collects paid-alert trial sign-ups, and tracks Microsoft Ads conversions.
 
-Stack: Next.js 16 (TypeScript, Tailwind 4), PostgreSQL on Supabase, hosting on Vercel, scheduling with GitHub Actions, email with Resend.
+Stack: Next.js 16 (TypeScript, Tailwind 4), PostgreSQL on Supabase, hosting on Netlify (or Vercel), scheduling with GitHub Actions, email with Resend.
 
 ---
 
 ## 1. What you need (accounts and costs)
 
+For a low-cost test, the whole thing runs on free plans; the only purchase is a domain.
+
 | Service | What for | Cost |
 |---|---|---|
-| **GitHub** | Stores the code and runs the import every 2 hours | Free. Keep the repository **private**: GitHub switches off schedules in *public* repos after 60 days without commits. This uses about 370 of the 2,000 free Actions minutes per month. |
+| **Netlify** (recommended for the test) | Hosting, with a free `*.netlify.app` address | Free. Commercial use is allowed. 300 credits a month: each deploy costs 15, and traffic uses the rest (about 10–15 GB of pages). If credits run out, the site pauses until next month; you are never billed automatically. Functions are limited to 10 seconds, which is why imports run in GitHub Actions. |
+| **GitHub** | Stores the code; runs the import every 2 hours and the weekly email | Free. Keep the repository **private**: GitHub switches off schedules in *public* repos after 60 days without commits. About 600 of the 2,000 free Actions minutes per month. |
 | **Supabase** | Database | Free plan: 500 MB, which holds tens of thousands of jobs. Free projects pause after a week of inactivity; the 2-hourly import keeps it busy. |
-| **Vercel** | Hosting, with a free `*.vercel.app` address | Free (Hobby) **for non-commercial use only**. Vercel's terms count taking payments and *advertising a paid service* as commercial. The Premium page and paid ads therefore mean **Vercel Pro, $20/month**, or another host whose free plan allows commercial use (not tested with this project). |
+| **Domain** | Your address; needed for email | A .com is about $11/year at Cloudflare Registrar, which sells at cost and renews at the same price (Porkbun: about $11.81). Avoid $1–2 first-year endings like .xyz: they renew at $15+ and hurt email delivery and trust. |
+| **Resend** | Confirmation and weekly emails | Free: 3,000 emails/month, **100 per day**. Emails only reach subscribers once your domain is verified. |
 | **Inoreader** | Your job feeds | Output feeds need an Inoreader Pro plan (you already use them). |
-| **Resend** | Confirmation and weekly emails | Free: 3,000 emails/month, **100 per day**. Emails only reach subscribers once you **verify a domain you own**. |
-| **Domain** | Needed for email; optional for the site | About $10–15/year |
 | **Microsoft Advertising** | Paid traffic (optional) | Your ad budget |
 
-**Minimum to launch: $0.** When you start charging or running ads: about $20/month (Vercel Pro) plus a domain.
+**Total for the test: about $11/year, plus ad spend.**
+
+Vercel also works (`vercel.json` is included), but its free plan is for non-commercial use only. Its terms count a pricing page or ads as commercial, which means Vercel Pro at $20/month.
 
 ---
 
-## 2. Deploy (about 30 minutes, no coding)
+## 2. Deploy on Netlify (about 30 minutes, no coding)
 
 ### Step 1 — Database (Supabase)
 1. Create a project at supabase.com. Choose a region near your visitors (e.g. Frankfurt) and save the database password.
@@ -32,34 +36,37 @@ Stack: Next.js 16 (TypeScript, Tailwind 4), PostgreSQL on Supabase, hosting on V
 ### Step 2 — Code (GitHub)
 Create a **private** repository and upload this folder, without `node_modules` or `.next`. If you'd rather not do this yourself, create an empty repository and ask Claude to push the code to it.
 
-### Step 3 — Hosting (Vercel)
-1. In Vercel, click **Add New → Project** and import the repository. Leave the framework settings as they are.
-2. Before you click Deploy, open **Environment Variables** and add:
+### Step 3 — Hosting (Netlify)
+1. In Netlify, click **Add new project → Import an existing project → GitHub** and pick the repository. The build settings are read from `netlify.toml`.
+2. Before deploying, open **Environment variables**, choose **Add a variable → scope: All**, and add:
    - `DATABASE_URL`: from Step 1.
-   - `CRON_SECRET`: a long random string. Generate one with `openssl rand -hex 32`, or use any 40+ random letters and digits.
+   - `CRON_SECRET`: a long random string. Generate one with `openssl rand -hex 32`, or use any 40+ random letters and digits. It signs admin logins and protects the `/api/cron` addresses.
    - `ADMIN_PASSWORD`: your admin password, at least 10 characters.
    - `INOREADER_FEED_URLS`: your Inoreader output feed addresses, one per line. You can also add them later in the admin.
-3. Click **Deploy**. Your site is live at `https://<project>.vercel.app`.
+   - `NEXT_PUBLIC_SITE_URL`: `https://<your-site>.netlify.app` for now; change it when you add your domain.
+3. Click **Deploy**. Your site is live at `https://<your-site>.netlify.app`.
 
-### Step 4 — Scheduled import (GitHub Actions)
+### Step 4 — Scheduled import and weekly email (GitHub Actions)
 In GitHub, open **Settings → Secrets and variables → Actions → New repository secret** and add:
-- `SITE_URL` = `https://<project>.vercel.app` (no trailing slash)
-- `CRON_SECRET` = the same value as in Vercel
+- `DATABASE_URL`: the same value as on Netlify.
+- `SITE_URL`: your site address (no trailing slash). It's used for links in emails.
+- `INOREADER_FEED_URLS`: optional, the same as on Netlify.
+- `RESEND_API_KEY` and `EMAIL_FROM`: once email is set up (Step 6).
 
-Then go to **Actions → Scheduled jobs → Run workflow**, choose `sync` and click Run to check it works. After that it runs every 2 hours by itself. `vercel.json` also adds a once-a-day import on Vercel as a backup, which is the maximum Vercel's free plan allows.
+Then go to **Actions → Scheduled jobs → Run workflow**, choose `sync` and click Run to check it works. After that it imports every 2 hours and sends the digest on Mondays by itself. It runs directly against the database, so there's no time limit.
 
 ### Step 5 — First check
-Open `https://<project>.vercel.app/admin`, sign in, and click **Sync now**. The import report shows what was created, merged and skipped. Then open the homepage.
+Open `https://<your-site>.netlify.app/admin`, sign in, and look at **Import history**. You can also click **Sync now**. On Netlify a sync started from the website stops after about 8 seconds to stay within the 10-second limit, and the scheduled run imports the rest.
 
-### Step 6 — Email (when you have a domain)
-1. In Resend, add and verify your domain, then create an API key.
-2. In Vercel, add `RESEND_API_KEY` and `EMAIL_FROM` (e.g. `Global Careers Hub <alerts@yourdomain.com>`), then redeploy.
-3. In **Admin → Subscribers**, click **Send confirmation emails to unconfirmed sign-ups**. This reaches people who signed up before email was set up.
+### Step 6 — Domain and email
+1. Buy the domain (e.g. at Cloudflare Registrar). In Netlify, open **Domain management → Add a domain** and follow the DNS instructions. Then set `NEXT_PUBLIC_SITE_URL` (Netlify) and `SITE_URL` (GitHub) to `https://yourdomain.com` and redeploy.
+2. In Resend, add and verify the domain, then create an API key.
+3. Add `RESEND_API_KEY` and `EMAIL_FROM` (e.g. `Global Careers Hub <alerts@yourdomain.com>`) on Netlify and as GitHub secrets, then redeploy.
+4. In **Admin → Subscribers**, click **Send confirmation emails to unconfirmed sign-ups**. This reaches people who signed up before email was set up.
 
-The weekly digest goes out on Mondays. Resend's free plan allows 100 emails a day, so above about 100 subscribers you'll need a paid Resend plan.
+Resend's free plan allows 100 emails a day, so above about 100 subscribers you'll need a paid Resend plan.
 
-### Step 7 — Your domain (later)
-In Vercel, open **Settings → Domains** and add your domain, then set `NEXT_PUBLIC_SITE_URL=https://yourdomain.com` (or `url` in `site.config.ts`). Update the GitHub `SITE_URL` secret to match.
+**On Vercel instead:** import the repository in Vercel, add the same environment variables, and deploy. `vercel.json` adds a daily backup import, which is the most its free plan allows. The GitHub Actions setup in Step 4 is the same.
 
 ---
 
@@ -74,7 +81,7 @@ In Vercel, open **Settings → Domains** and add your domain, then set `NEXT_PUB
 
   Only choose `excerpt` or `full` once you've checked that source's terms. Job pages without any description are kept out of search engines, because thin pages hurt SEO, so `excerpt` noticeably improves organic traffic where it's allowed.
 - **Organization for every item**: fill this in only for a feed that covers a single employer.
-- **Check the item count.** The feed card shows how many items each read returned. If it's always the same small number, the feed may only return its newest items, and busy feeds could lose some between imports. Split the feed into several folders, or run the import more often (change `17 */2 * * *` to `17 * * * *` in `.github/workflows/scheduled.yml`).
+- **Check the item count.** The feed card shows how many items each read returned. If it's always the same small number, the feed may only return its newest items, and busy feeds could lose some between imports. Split the feed into several folders, or run the import more often (change `17 */2 * * *` to `17 * * * *` in `.github/workflows/scheduled.yml`; hourly uses about 1,100 of the 2,000 free minutes).
 
 ### How importing works
 - Each item is turned into a listing using only what the item says: labelled lines such as "Duty Station:", "Closing date:" and "Organization:", the title, feed tags, and the employer's own domain. Anything not clearly stated is shown as **"Not specified"**.
@@ -85,12 +92,25 @@ In Vercel, open **Settings → Domains** and add your domain, then set `NEXT_PUB
 
 ---
 
+## 3b. Search filters
+
+- **Main filters:** What (keywords), Where (a world region or a country), Organization, Category, Grade, and Remote only.
+- **Under "More filters":** contract type, years of experience required, language in requirements, type of organization, deadline, and date posted.
+
+**Grade** offers groups (entry level, Professional, Director, National Officer, General Service, Field Service, service contracts) and exact grades such as P-3 or NO-B. **Language**, **experience** and **grade** are read from each vacancy's text and title only when they're stated, so a job without them simply doesn't appear under those filters.
+
+Regions follow the usual UN regional split; move countries between regions in `src/config/regions.ts`. Region pages (e.g. `/locations/africa`) are built automatically.
+
+Every results page has an **Email me jobs like these** button, and every job with a deadline has **Add to calendar** (a free .ics download with a reminder two days before) and **Remind me**. "Email me jobs like these" and "Remind me" lead to the free-trial sign-up and save the search or job with the sign-up, so you can see which features people want.
+
+---
+
 ## 4. Microsoft Ads (Bing) quick start
 
-1. **Tag.** In Microsoft Advertising, open **Tools → UET tag → Create** and copy the Tag ID. In Vercel, add `NEXT_PUBLIC_MS_UET_TAG_ID=<id>` and redeploy. Visitors from the EEA, UK and Switzerland see a small cookie choice, which Microsoft requires there; nobody else does.
+1. **Tag.** In Microsoft Advertising, open **Tools → UET tag → Create** and copy the Tag ID. On Netlify, add `NEXT_PUBLIC_MS_UET_TAG_ID=<id>` and redeploy. Visitors from the EEA, UK and Switzerland see a small cookie choice, which Microsoft requires there; nobody else does.
 2. **Conversion goals.** Create goals of type **Event**, each with *Action equals*:
-   - `subscribe`: weekly alert sign-up (primary).
-   - `trial_signup`: Premium interest form completed (primary).
+   - `trial_signup`: free-trial sign-up for email alerts (primary). This is the conversion that matters while alerts are paid.
+   - `subscribe`: free weekly email sign-up (primary; only used if `freeWeeklyEmail` is switched on).
    - `begin_trial`: clicked "Start free trial" (secondary).
    - `apply_click`: clicked "Apply on Official Website" (secondary; set it as not counted in conversions).
 3. **Tracking.** Turn on **auto-tagging**, then set the account-level **Final URL suffix** to:
@@ -114,23 +134,27 @@ In Vercel, open **Settings → Domains** and add your domain, then set `NEXT_PUB
 - **Feeds:** add, edit, switch off or remove feeds; run a sync now.
 - **Import history:** every run, with new, updated, duplicate, failed and skipped items and feed errors.
 - **Listings:** search, remove or restore listings, and fix a category.
-- **Subscribers:** counts, latest sign-ups with Premium interests, send confirmations, send the digest now, CSV export.
+- **Subscribers:** counts, latest sign-ups with their alert preferences, send confirmations, send the digest now, CSV export.
 
 Analytics are first-party and cookieless. No IP addresses are stored; visitors are counted with a hash that changes daily. Bots are filtered out.
 
 ---
 
-## 6. Premium (fake-door test)
+## 6. Paid email alerts (fake-door test)
 
-The `/pricing` page shows the price and a **Start free trial** button. Clicking it records interest, says plainly that Premium isn't open yet, and collects the email and alert preferences. Nobody is charged. Compare *trial clicks* with *waitlist sign-ups* in the admin to test demand and price. Change the price and features in `site.config.ts`.
+Browsing, search and filters are free. **Email alerts are the paid product: $5/month or $12 for 3 months, after a 14-day free trial with no card.** Billing isn't switched on yet. Every "Start free trial" button records the person's email and alert preferences, then tells them plainly that trials start soon and nothing is charged today. Nobody is billed.
 
-When demand is proven, the database already has `billing_customers`, `billing_subscriptions` and `saved_searches` for Stripe. Note that Stripe doesn't accept businesses based in Vietnam, so you'd need a company in a Stripe-supported country, or a merchant of record such as Lemon Squeezy or Paddle.
+To read the test, compare **trial clicks** and **waitlist sign-ups** per visitor in **Admin → Overview**, including per ad campaign. Change prices, trial length and features in `site.config.ts` (`premium`).
+
+`freeWeeklyEmail` in `site.config.ts` switches the model. With `false` (the current setting), all alerts are paid. With `true`, everyone gets a free Monday email and the paid plan is the upgrade. The weekly digest only goes to free subscribers, or to paying ones (`plan = 'premium'`), to match.
+
+When demand is proven, the database already has `billing_customers`, `billing_subscriptions` and `saved_searches` ready for Stripe. Stripe doesn't accept businesses based in Vietnam, though, so you'd need a company in a Stripe-supported country, or a merchant of record such as Lemon Squeezy or Paddle.
 
 ---
 
 ## 7. Branding
 
-Edit **`site.config.ts`** to change the name, wording, colours, contact email, disclaimer and Premium price. The logo is `src/components/brand-mark.tsx`. Categories are in `src/config/categories.ts`, known organizations (used to merge spellings) in `src/config/organizations.ts`, and duty stations in `src/config/cities.ts`.
+Edit **`site.config.ts`** to change the name, wording, colours, contact email, disclaimer, prices and trial length. The logo is `src/components/brand-mark.tsx`. Categories are in `src/config/categories.ts`, known organizations (used to merge spellings) in `src/config/organizations.ts`, and duty stations in `src/config/cities.ts`.
 
 ---
 
@@ -160,13 +184,14 @@ Demo listings use made-up organizations, are labelled "Demo data" everywhere, ar
 - Deadline changes update listings, and past deadlines close them.
 - Removed listings stay removed.
 - Two syncs at once: the second is skipped.
+- A sync started from the website stops cleanly at its time limit and leaves the rest for the scheduled run.
 - Cron endpoints reject requests without the secret.
 
-Also tested: every page returns the right status (404s for unknown pages, 308 to the canonical job address), JobPosting data appears only on open jobs with a description, `noindex` is set on closed, thin and filtered pages, and the sitemap and robots.txt are correct. In a real browser: sign-up → confirm (opening the link alone doesn't confirm) → unsubscribe, the Premium interest form, filters updating the URL, analytics events, campaign attribution saved with sign-ups, and admin login, including a wrong password.
+Also tested: every page returns the right status (404s for unknown pages, 308 to the canonical job address), JobPosting data appears only on open jobs with a description, `noindex` is set on closed, thin and filtered pages, and the sitemap and robots.txt are correct. In a real browser: sign-up → confirm (opening the link alone doesn't confirm) → unsubscribe, the free-trial sign-up form, filters updating the URL, analytics events, campaign attribution saved with sign-ups, and admin login, including a wrong password.
 
 **Not tested (needs your accounts):**
 - Real Inoreader output feeds. Their exact item fields and how many items each returns are unconfirmed; the parser handles standard RSS, Atom and JSON Feed, and Inoreader-specific link fields.
 - Sending through Resend: confirmation, digest and one-click unsubscribe headers.
-- Deployment on Vercel and Supabase's pooler.
-- The GitHub Actions schedule.
+- Deployment on Netlify or Vercel, and Supabase's pooler.
+- The GitHub Actions workflow on GitHub's servers. The commands it runs (`npm ci`, `npm run sync`, `npm run digest`) were run locally.
 - The Microsoft UET tag firing in Microsoft Advertising.

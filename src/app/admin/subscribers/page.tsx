@@ -72,7 +72,7 @@ export default async function SubscribersPage({ searchParams }: Props) {
               <td className="px-4 py-2">{[s.wants_alerts && "weekly alerts", s.premium_waitlist && "premium"].filter(Boolean).join(", ")}</td>
               <td className="px-4 py-2 text-slate">{s.source ?? "—"}</td>
               <td className="max-w-xs px-4 py-2 text-xs text-slate">
-                {Object.entries(s.preferences ?? {}).filter(([k]) => ["keywords", "organizations", "locations"].includes(k)).map(([k, v]) => `${k}: ${v}`).join(" | ")}
+                {Object.entries(s.preferences ?? {}).filter(([k]) => ["keywords", "organizations", "locations", "search", "remind_job"].includes(k)).map(([k, v]) => `${k}: ${v}`).join(" | ")}
                 {s.waitlist_note ? <div className="mt-1 text-ink">“{s.waitlist_note}”</div> : null}
               </td>
               <td className="px-4 py-2 whitespace-nowrap">{fmtDateTime(s.created_at)}</td>

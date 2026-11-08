@@ -1,4 +1,5 @@
 /** Weekly email digest to confirmed alert subscribers. */
+import siteConfig from "@site-config";
 import { sql } from "@/lib/db";
 import { isEmailConfigured, sendBatch } from "@/lib/email";
 import { digestEmail } from "@/lib/email-templates";
@@ -46,6 +47,7 @@ export async function runDigest(opts: { force?: boolean } = {}): Promise<DigestR
     const recipients = await sql<{ id: number; email: string; unsubscribe_token: string }[]>`
       select id, email, unsubscribe_token from subscribers
       where status = 'confirmed' and wants_alerts
+        and (${siteConfig.freeWeeklyEmail} or plan = 'premium')
         and (last_digest_at is null or last_digest_at < now() - interval '6 days')
       order by id`;
 

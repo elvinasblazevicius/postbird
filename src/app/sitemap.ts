@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { LISTING_SETTINGS } from "@/config/import";
 import { sql } from "@/lib/db";
-import { categoryFacets, countryFacets, organizationFacets } from "@/lib/jobs";
+import { categoryFacets, countryFacets, organizationFacets, regionFacets } from "@/lib/jobs";
 import { countFor } from "@/lib/landing";
 import { absoluteUrl, jobPath } from "@/lib/site";
 
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const min = LISTING_SETTINGS.minJobsForIndexedLandingPage;
   const now = new Date();
-  const [jobs, orgs, cats, countries, remote] = await Promise.all([
+  const [jobs, orgs, cats, countries, remote, regions] = await Promise.all([
     sql<{ id: number; slug: string; updated_at: Date }[]>`
       select id, slug, updated_at from jobs
       where status = 'active' and not is_demo
@@ -22,6 +22,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     categoryFacets(),
     countryFacets(),
     countFor({ remote: true }),
+    regionFacets(),
   ]);
 
   const staticPages: MetadataRoute.Sitemap = [
@@ -40,6 +41,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...staticPages,
     ...orgs.filter((o) => o.count >= min).map((o) => ({ url: absoluteUrl(`/organizations/${o.slug}`), lastModified: now, changeFrequency: "daily" as const, priority: 0.7 })),
     ...cats.filter((c) => c.count >= min).map((c) => ({ url: absoluteUrl(`/categories/${c.slug}`), lastModified: now, changeFrequency: "daily" as const, priority: 0.7 })),
+    ...regions.filter((r) => r.count >= min).map((r) => ({ url: absoluteUrl(`/locations/${r.slug}`), lastModified: now, changeFrequency: "daily" as const, priority: 0.6 })),
     ...countries.filter((c) => c.count >= min).map((c) => ({ url: absoluteUrl(`/locations/${c.slug}`), lastModified: now, changeFrequency: "daily" as const, priority: 0.6 })),
     ...jobs.map((j) => ({ url: absoluteUrl(jobPath(j)), lastModified: j.updated_at, changeFrequency: "weekly" as const, priority: 0.5 })),
   ];

@@ -28,8 +28,8 @@ export function SiteFooter() {
           <h2 className="font-sans text-sm font-semibold text-ink">About</h2>
           <ul className="mt-3 space-y-2 text-slate">
             <li><Link href="/about" className="hover:text-ink">How it works</Link></li>
-            <li><Link href="/alerts" className="hover:text-ink">Weekly job alerts</Link></li>
-            <li><Link href="/pricing" className="hover:text-ink">Premium alerts</Link></li>
+            <li><Link href="/alerts" className="hover:text-ink">Email alerts</Link></li>
+            <li><Link href="/pricing" className="hover:text-ink">Pricing</Link></li>
             <li><Link href="/privacy" className="hover:text-ink">Privacy</Link></li>
             <li><Link href="/terms" className="hover:text-ink">Terms</Link></li>
             {siteConfig.contactEmail ? (

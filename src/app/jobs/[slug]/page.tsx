@@ -5,7 +5,7 @@ import { cache } from "react";
 import { AlertSignup } from "@/components/alert-signup";
 import { JobList, OrgBadge, Tag } from "@/components/job-card";
 import { Breadcrumbs } from "@/components/page-header";
-import { ApplyLink, TrackOnMount } from "@/components/tracking";
+import { ApplyLink, TrackedLink, TrackOnMount } from "@/components/tracking";
 import { categoryBySlug } from "@/config/categories";
 import { countryByCode } from "@/config/countries";
 import { LISTING_SETTINGS } from "@/config/import";
@@ -238,6 +238,16 @@ export default async function JobPage({ params }: Props) {
                 <p className="font-display text-2xl font-semibold text-ink">{job.deadline ? formatDate(job.deadline) : NOT_SPECIFIED}</p>
                 {dl ? <p className={`text-sm ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>{dl.text}</p> : null}
                 <div className="mt-4">{applyButton}</div>
+                {job.deadline ? (
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                    <a href={`/api/calendar/${job.id}`} className="rounded-lg border border-rule px-3 py-2 text-center font-medium text-accent hover:bg-tint" rel="nofollow">
+                      Add to calendar
+                    </a>
+                    <TrackedLink href={`/pricing/trial?remind=${job.id}`} event="premium_cta_click" source="deadline-reminder" className="rounded-lg border border-rule px-3 py-2 text-center font-medium text-accent hover:bg-tint">
+                      Remind me
+                    </TrackedLink>
+                  </div>
+                ) : null}
                 <p className="mt-3 text-xs leading-relaxed text-slate">Opens {job.apply_host} in a new tab. {siteConfig.name} doesn&apos;t take applications and never charges a fee to apply.</p>
               </>
             ) : (
@@ -250,8 +260,8 @@ export default async function JobPage({ params }: Props) {
             )}
           </div>
           <div className="mt-5 rounded-xl border border-rule bg-mist p-5">
-            <p className="font-display text-lg font-semibold text-ink">Get roles like this weekly</p>
-            <p className="mt-1 mb-3 text-sm text-slate">A free Monday email with new vacancies.</p>
+            <p className="font-display text-lg font-semibold text-ink">Get roles like this by email</p>
+            <p className="mt-1 mb-3 text-sm text-slate">{siteConfig.freeWeeklyEmail ? "A free Monday email with new vacancies." : "Alerts for the roles and places you choose."}</p>
             <AlertSignup source="job-page" />
           </div>
         </aside>

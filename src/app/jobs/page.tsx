@@ -3,6 +3,7 @@ import { JobsBrowser } from "@/components/jobs-browser";
 import { PageHeader } from "@/components/page-header";
 import { categoryBySlug } from "@/config/categories";
 import { countryBySlug } from "@/config/countries";
+import { GRADE_GROUPS, regionBySlug } from "@/config/regions";
 import { activeFilterCount, getOrganization, parseFilters, type JobFilters } from "@/lib/jobs";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 async function describe(f: JobFilters): Promise<string> {
   const parts: string[] = [];
   if (f.remote) parts.push("Remote");
+  if (f.grade) parts.push(GRADE_GROUPS.find((g) => g.value === f.grade)?.name.replace(/ \(.*\)$/, "") ?? f.grade);
   if (f.category) parts.push(categoryBySlug(f.category)?.name ?? "");
   let title = parts.filter(Boolean).join(" ") || "International";
   title += " jobs";
@@ -20,6 +22,7 @@ async function describe(f: JobFilters): Promise<string> {
     if (org) title += ` at ${org.name}`;
   }
   if (f.country) title += ` in ${countryBySlug(f.country)?.name}`;
+  if (f.region) title += ` in ${regionBySlug(f.region)?.name}`;
   if (f.q) title = `“${f.q}” — ${title}`;
   return title;
 }

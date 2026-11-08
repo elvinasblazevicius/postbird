@@ -1,5 +1,6 @@
 import { ALL_CATEGORIES, categoryBySlug } from "@/config/categories";
 import { countryByCode, countryBySlug } from "@/config/countries";
+import { GRADE_GROUPS, LANGUAGES, ORG_TYPES, REGIONS, regionBySlug } from "@/config/regions";
 import { LISTING_SETTINGS } from "@/config/import";
 import { sql } from "@/lib/db";
 
@@ -39,10 +40,22 @@ export type JobDetail = JobListItem & {
 
 export const JOB_TYPES = ["Fixed-term", "Temporary", "Consultancy", "Internship", "Fellowship", "Volunteer", "Part-time"] as const;
 
+export const EXPERIENCE_BANDS = [
+  { value: "0-2", name: "Up to 2 years", min: 0, max: 2 },
+  { value: "3-5", name: "3–5 years", min: 3, max: 5 },
+  { value: "6-9", name: "6–9 years", min: 6, max: 9 },
+  { value: "10+", name: "10 years or more", min: 10, max: 99 },
+] as const;
+
 export type JobFilters = {
   q?: string;
   org?: string;
   country?: string; // country slug
+  region?: string; // region slug
+  grade?: string; // grade group ("P", "NO", "entry"…) or exact grade ("P-3")
+  orgtype?: string;
+  lang?: string;
+  exp?: string;
   category?: string;
   remote?: boolean;
   type?: string;
@@ -63,8 +76,22 @@ export function parseFilters(sp: SP): JobFilters {
   if (q) f.q = q.slice(0, 120);
   const org = first(sp.org);
   if (org && /^[a-z0-9-]{1,80}$/.test(org)) f.org = org;
+  // "where" is the combined region/country field used by the search forms.
+  const where = first(sp.where);
+  if (where?.startsWith("region-") && regionBySlug(where.slice(7))) f.region = where.slice(7);
+  else if (where && countryBySlug(where)) f.country = where;
   const country = first(sp.country);
   if (country && countryBySlug(country)) f.country = country;
+  const region = first(sp.region);
+  if (region && regionBySlug(region)) f.region = region;
+  const grade = first(sp.grade);
+  if (grade && (GRADE_GROUPS.some((g) => g.value === grade) || /^(P|D|NO|G|GS|FS)-[0-9A-E]$|^(ASG|USG)$/.test(grade))) f.grade = grade;
+  const orgtype = first(sp.orgtype);
+  if (orgtype && ORG_TYPES.some((o) => o.value === orgtype)) f.orgtype = orgtype;
+  const lang = first(sp.lang);
+  if (lang && (LANGUAGES as readonly string[]).includes(lang)) f.lang = lang;
+  const exp = first(sp.exp);
+  if (exp && EXPERIENCE_BANDS.some((b) => b.value === exp)) f.exp = exp;
   const category = first(sp.category);
   if (category && categoryBySlug(category)) f.category = category;
   if (first(sp.remote) === "1" || first(sp.remote) === "true") f.remote = true;
@@ -87,6 +114,11 @@ export function jobsUrl(f: JobFilters, base = "/jobs"): string {
   if (f.q) p.set("q", f.q);
   if (f.org) p.set("org", f.org);
   if (f.country) p.set("country", f.country);
+  if (f.region) p.set("region", f.region);
+  if (f.grade) p.set("grade", f.grade);
+  if (f.orgtype) p.set("orgtype", f.orgtype);
+  if (f.lang) p.set("lang", f.lang);
+  if (f.exp) p.set("exp", f.exp);
   if (f.category) p.set("category", f.category);
   if (f.remote) p.set("remote", "1");
   if (f.type) p.set("type", f.type);
@@ -99,7 +131,7 @@ export function jobsUrl(f: JobFilters, base = "/jobs"): string {
 }
 
 export function activeFilterCount(f: JobFilters): number {
-  return [f.q, f.org, f.country, f.category, f.remote, f.type, f.posted, f.closing].filter(Boolean).length;
+  return [f.q, f.org, f.country, f.region, f.grade, f.orgtype, f.lang, f.exp, f.category, f.remote, f.type, f.posted, f.closing].filter(Boolean).length;
 }
 
 const listColumns = () => sql`
@@ -114,6 +146,19 @@ function whereFor(f: JobFilters) {
   if (f.country) {
     const c = countryBySlug(f.country);
     w = sql`${w} and j.country_code = ${c?.code ?? "--"}`;
+  }
+  if (f.region) w = sql`${w} and j.country_code = any(${regionBySlug(f.region)?.codes ?? []})`;
+  if (f.grade) {
+    const group = GRADE_GROUPS.find((g) => g.value === f.grade);
+    if (group?.value === "SC") w = sql`${w} and j.grade ~ '^(SB|LICA|NPSA|IPSA|ICS)-'`;
+    else if (group) w = sql`${w} and j.grade = any(${group.grades})`;
+    else w = sql`${w} and j.grade = ${f.grade}`;
+  }
+  if (f.orgtype) w = sql`${w} and o.org_type = ${ORG_TYPES.find((o) => o.value === f.orgtype)?.type ?? "--"}`;
+  if (f.lang) w = sql`${w} and ${f.lang} = any(j.languages)`;
+  if (f.exp) {
+    const band = EXPERIENCE_BANDS.find((b) => b.value === f.exp)!;
+    w = sql`${w} and j.min_experience_years between ${band.min} and ${band.max}`;
   }
   if (f.category) w = sql`${w} and j.category = ${f.category}`;
   if (f.remote) w = sql`${w} and j.is_remote is true`;
@@ -194,6 +239,34 @@ export async function categoryFacets() {
     select category, count(*)::int as count from jobs where status = 'active' group by category`;
   const counts = new Map(rows.map((r) => [r.category, r.count]));
   return ALL_CATEGORIES.map((c) => ({ ...c, count: counts.get(c.slug) ?? 0 }));
+}
+
+export async function regionFacets() {
+  const countries = await countryFacets();
+  return REGIONS.map((r) => ({ slug: r.slug, name: r.name, count: countries.filter((c) => r.codes.includes(c.code)).reduce((n, c) => n + c.count, 0) }));
+}
+
+export async function gradeFacets() {
+  return sql<{ grade: string; count: number }[]>`
+    select grade, count(*)::int as count from jobs where status = 'active' and grade is not null group by grade order by grade`;
+}
+
+export async function languageFacets() {
+  return sql<{ lang: string; count: number }[]>`
+    select l as lang, count(*)::int as count from jobs, unnest(languages) l where status = 'active' group by l order by count(*) desc`;
+}
+
+export async function experienceFacets() {
+  const rows = await sql<{ y: number; count: number }[]>`
+    select min_experience_years as y, count(*)::int as count from jobs where status = 'active' and min_experience_years is not null group by 1`;
+  return EXPERIENCE_BANDS.map((b) => ({ ...b, count: rows.filter((r) => r.y >= b.min && r.y <= b.max).reduce((n, r) => n + r.count, 0) }));
+}
+
+export async function orgTypeFacets() {
+  const rows = await sql<{ org_type: string; count: number }[]>`
+    select o.org_type, count(*)::int as count from jobs j join organizations o on o.id = j.organization_id
+    where j.status = 'active' and o.org_type is not null group by o.org_type`;
+  return ORG_TYPES.map((t) => ({ ...t, count: rows.find((r) => r.org_type === t.type)?.count ?? 0 }));
 }
 
 export async function jobTypeFacets() {
