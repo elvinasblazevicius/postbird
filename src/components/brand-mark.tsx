@@ -1,24 +1,30 @@
 /**
- * Postbird logo: a swallow carrying a letter, the classic sign of mail and
- * of news from far away. The envelope uses the highlight colour from
- * site.config.ts. Replace this SVG to change the logo (also update
- * src/app/icon.svg, the browser-tab icon).
+ * Postbird logo: a swallow carrying a letter (mail, and news from far away),
+ * on the same deep-to-bright blue as the site. Replace this SVG to change the
+ * logo, and update src/app/icon.svg (the browser-tab icon) to match.
  */
 export function BrandMark({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
-      <rect width="32" height="32" rx="8" fill="#0B2C78" />
-      <g transform="translate(-0.6 -2.3) scale(1.06)">
-        <g transform="rotate(-8 26.2 17)">
-          <rect x="23.2" y="14.9" width="6.2" height="4.4" rx="0.7" fill="var(--highlight, #FFD23F)" />
-          <path d="M23.5 15.3 L26.3 17.4 L29.1 15.3" fill="none" stroke="#0B2C78" strokeWidth="0.7" strokeLinejoin="round" />
+      <defs>
+        <linearGradient id="pb-tile" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#0A2566"/><stop offset="0.55" stopColor="#0F3AA6"/><stop offset="1" stopColor="#1D5BFF"/>
+        </linearGradient>
+        <linearGradient id="pb-bird" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff"/><stop offset="1" stopColor="#DCE7FF"/>
+        </linearGradient>
+      </defs>
+      <rect width="32" height="32" rx="8.5" fill="url(#pb-tile)"/>
+      <rect x="0.25" y="0.25" width="31.5" height="31.5" rx="8.3" fill="none" stroke="#fff" strokeOpacity="0.16" strokeWidth="0.5"/>
+      <g transform="translate(15.6 16.4) scale(1.1) translate(-16.4 -15.4)">
+        <path d="M14.4 16.4C14.9 13.3 16.3 10.5 18.6 8.6C18.6 11.3 17.7 13.9 16.1 15.9Z" fill="#fff" fillOpacity="0.45"/>
+        <path d="M22.6 13.2C24.2 13.2 25.1 14.1 25.4 15L23.9 15.6C22.4 18.6 19 20.3 15.4 20.6C12.9 20.8 10.6 20.4 8.8 19.7L3.6 23.6L7.4 18.9L2.2 16.6C6.2 16.9 9.4 17.4 11.8 17.2C15 16.9 17.6 15.3 19.4 14C20.4 13.4 21.4 13.2 22.6 13.2Z" fill="url(#pb-bird)"/>
+        <path d="M12.2 17.1C13.4 12.5 16.1 8.2 20.8 5.3C20.2 9.5 18.7 13.2 15.9 16.1Z" fill="url(#pb-bird)"/>
+        <circle cx="22.7" cy="14.6" r="0.62" fill="#0A2566"/>
+        <g transform="rotate(-10 27.6 16.3)">
+          <rect x="24.9" y="14.4" width="5.4" height="3.8" rx="0.6" fill="var(--highlight, #FFD23F)"/>
+          <path d="M25.2 14.75L27.6 16.55L30 14.75" fill="none" stroke="#0A2566" strokeWidth="0.5" strokeLinejoin="round" strokeLinecap="round"/>
         </g>
-        <path
-          d="M3.4 19.4 L8.6 20.6 C10.4 19.6 11.6 18.6 12.8 17.6 C15 16.1 17.2 13.6 20.2 13.4 C22.2 13.3 23.4 14.2 23.9 15.3 C22.6 18.9 19.4 21.4 15.2 22.2 C12.4 22.7 9.4 22.8 6.6 22.5 L4.6 24.2 L5.6 21.9 Z"
-          fill="#fff"
-        />
-        <path d="M11.6 18.3 C12.6 14.2 14.6 10 18.6 7.2 C18.9 10.6 18.3 13.9 16.4 16.6 Z" fill="#fff" />
-        <circle cx="21.3" cy="15" r="0.75" fill="#0B2C78" />
       </g>
     </svg>
   );
