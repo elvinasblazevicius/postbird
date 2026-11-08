@@ -3,7 +3,7 @@
 #
 # Repository secrets needed (Settings → Secrets and variables → Actions):
 #   DATABASE_URL     same value as on your host
-#   SITE_URL         your site's address, e.g. https://globalcareershub.com (used in email links)
+#   SITE_URL         your site's address, e.g. https://postbirdjobs.com (used in email links)
 #   RESEND_API_KEY   (optional until email is set up)
 #   EMAIL_FROM       (optional) e.g. Postbird <alerts@yourdomain.com>
 #   INOREADER_FEED_URLS (optional) same as on your host
@@ -20,7 +20,7 @@ on:
         required: true
         default: sync
         type: choice
-        options: [sync, digest]
+        options: [sync, digest, setup]
 
 concurrency:
   group: scheduled-jobs
@@ -48,5 +48,8 @@ jobs:
           ANALYTICS_SALT: ${{ secrets.ANALYTICS_SALT }}
         run: |
           if [ -z "$DATABASE_URL" ]; then echo "::error::Add the DATABASE_URL repository secret."; exit 1; fi
+          # Database tables are created or updated first (safe to repeat; already-applied steps are skipped).
+          npm run db:migrate
+          if [ "$TASK" = "setup" ]; then echo "Database is ready."; exit 0; fi
           echo "Running: $TASK"
           npm run "$TASK"
