@@ -16,10 +16,7 @@ export function SiteHeader() {
       <div className="mx-auto flex h-[72px] max-w-6xl items-center justify-between gap-6 px-4 sm:px-6">
         <Link href="/" className="group flex items-center gap-3 text-ink no-underline" aria-label={`${siteConfig.name} home`}>
           <BrandMark className="h-9 w-9 shrink-0" />
-          <span className="flex flex-col">
-            <span className="font-display text-[1.24rem] font-semibold leading-none tracking-[-0.015em]">{siteConfig.name}</span>
-            <span className="mt-1.5 hidden text-[0.72rem] leading-none tracking-[0.01em] text-slate sm:block">{siteConfig.tagline}</span>
-          </span>
+          <span className="font-display text-[1.3rem] font-semibold leading-none tracking-[-0.015em]">{siteConfig.name}</span>
         </Link>
 
         <nav aria-label="Main" className="hidden items-center gap-6 md:flex">
