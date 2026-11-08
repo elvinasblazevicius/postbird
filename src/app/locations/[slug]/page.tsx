@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { JobsBrowser } from "@/components/jobs-browser";
+import { Flag } from "@/components/flag";
 import { PageHeader } from "@/components/page-header";
 import { countryBySlug } from "@/config/countries";
 import { regionBySlug } from "@/config/regions";
@@ -12,9 +13,9 @@ export const dynamic = "force-dynamic";
 type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 /** A country (e.g. /locations/kenya) or a world region (e.g. /locations/africa). */
-function resolve(slug: string): { name: string; fixed: Partial<JobFilters>; isRegion: boolean } | null {
+function resolve(slug: string): { name: string; fixed: Partial<JobFilters>; isRegion: boolean; code?: string } | null {
   const country = countryBySlug(slug);
-  if (country) return { name: country.name, fixed: { country: slug }, isRegion: false };
+  if (country) return { name: country.name, fixed: { country: slug }, isRegion: false, code: country.code };
   const region = regionBySlug(slug);
   if (region) return { name: region.name, fixed: { region: slug }, isRegion: true };
   return null;
@@ -45,6 +46,7 @@ export default async function LocationPage({ params, searchParams }: Props) {
     <>
       <PageHeader
         title={`Jobs in ${place.name}`}
+        badge={place.code ? <Flag code={place.code} className="h-9! rounded-md shadow-[0_0_0_1px_rgba(255,255,255,0.4)]" /> : undefined}
         crumbs={[{ href: "/", label: "Home" }, { href: "/locations", label: "Locations" }, { href: `/locations/${slug}`, label: place.name }]}
         intro={`Vacancies with a duty station in ${place.isRegion ? "this region" : place.name}. Home-based roles are listed separately under remote jobs.`}
       />

@@ -44,7 +44,7 @@ export default async function HomePage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(websiteLd) }} />
 
       {/* Hero */}
-      <section className="bg-candy-hero relative overflow-hidden">
+      <section className="bg-candy-hero grain relative overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/flag-wall.svg" alt="" aria-hidden="true" className="flag-wall" />
         <div className="relative mx-auto max-w-6xl px-4 pb-14 pt-14 sm:px-6 sm:pt-20">
@@ -106,6 +106,7 @@ export default async function HomePage() {
       </section>
 
       {/* Latest */}
+      <div className="dots-soft border-b border-rule pb-14">
       <section className="mx-auto max-w-6xl px-4 pt-14 sm:px-6" aria-labelledby="latest-heading">
         <div className="flex items-end justify-between gap-4">
           <h2 id="latest-heading" className="text-[1.9rem] font-semibold text-ink">Latest vacancies</h2>
@@ -121,6 +122,7 @@ export default async function HomePage() {
           )}
         </div>
       </section>
+      </div>
 
       {/* Browse */}
       <section className="mx-auto mt-16 grid max-w-6xl gap-12 px-4 sm:px-6 lg:grid-cols-2" aria-label="Browse">
@@ -133,7 +135,7 @@ export default async function HomePage() {
             {orgs.slice(0, 8).map((o) => (
               <li key={o.slug}>
                 <Link href={`/organizations/${o.slug}`} className="flex items-center gap-3 py-3 hover:bg-mist">
-                  <OrgBadge name={o.name} short={o.short_name} />
+                  <OrgBadge name={o.name} short={o.short_name} logo={o.logo} />
                   <span className="flex-1 text-ink">{o.name}</span>
                   <span className="pr-2 text-sm tabular-nums text-slate">{o.count} {o.count === 1 ? "job" : "jobs"}</span>
                 </Link>
@@ -169,7 +171,7 @@ export default async function HomePage() {
             ["You search one place", "Every listing is organized by organization, country, category and deadline. Closed vacancies are removed automatically."],
             ["You apply on the official site", "Each listing links to the employer's own vacancy page. We never take applications or ask for fees."],
           ].map(([title, body], i) => (
-            <li key={title} className="rounded-2xl border border-rule bg-candy-soft p-6">
+            <li key={title} className="dots-soft rounded-2xl border border-rule p-6">
               <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand font-display text-2xl font-semibold text-white">{i + 1}</span>
               <h3 className="mt-3 text-xl font-semibold text-ink">{title}</h3>
               <p className="mt-2 leading-relaxed text-slate">{body}</p>
@@ -183,7 +185,7 @@ export default async function HomePage() {
 
       {/* Alerts */}
       <section className="mx-auto mt-20 max-w-6xl px-4 sm:px-6" aria-labelledby="alerts-heading">
-        <div className="bg-candy-band relative grid items-center gap-8 overflow-hidden rounded-2xl px-6 py-10 text-white sm:px-10 lg:grid-cols-[1.1fr_1fr]">
+        <div className="bg-candy-band grain relative grid items-center gap-8 overflow-hidden rounded-2xl px-6 py-10 text-white sm:px-10 lg:grid-cols-[1.1fr_1fr]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/world-dots.svg" alt="" aria-hidden="true" className="world-dots -left-40 -top-24 w-[900px] opacity-[0.10]" />
           <div>

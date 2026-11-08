@@ -11,6 +11,8 @@ export type JobListItem = {
   org_name: string | null;
   org_slug: string | null;
   org_short: string | null;
+  /** Organization slug when it has a stored icon (served from /api/org-logo/<slug>). */
+  org_logo: string | null;
   country_code: string | null;
   city: string | null;
   location_text: string | null;
@@ -136,6 +138,7 @@ export function activeFilterCount(f: JobFilters): number {
 
 const listColumns = () => sql`
   j.id::int as id, j.slug, j.title, o.name as org_name, o.slug as org_slug, o.short_name as org_short,
+  case when o.logo is not null then o.slug end as org_logo,
   j.country_code, j.city, j.location_text, j.is_remote, j.category, j.job_type, j.grade,
   j.published_at, j.first_seen_at, j.deadline::text as deadline, j.status, j.is_demo`;
 
@@ -218,8 +221,8 @@ export async function similarJobs(job: JobDetail, limit = 4) {
 // ── Facets & stats ───────────────────────────────────────────
 
 export async function organizationFacets(limit = 500, includeDemo = true) {
-  return sql<{ slug: string; name: string; short_name: string | null; org_type: string | null; count: number }[]>`
-    select o.slug, o.name, o.short_name, o.org_type, count(*)::int as count
+  return sql<{ slug: string; name: string; short_name: string | null; org_type: string | null; logo: string | null; count: number }[]>`
+    select o.slug, o.name, o.short_name, o.org_type, case when o.logo is not null then o.slug end as logo, count(*)::int as count
     from jobs j join organizations o on o.id = j.organization_id
     where j.status = 'active' and (${includeDemo} or not j.is_demo) group by o.id order by count(*) desc, o.name limit ${limit}`;
 }
@@ -286,8 +289,8 @@ export async function siteStats() {
 }
 
 export async function getOrganization(slug: string) {
-  const rows = await sql<{ id: number; slug: string; name: string; short_name: string | null; org_type: string | null }[]>`
-    select id, slug, name, short_name, org_type from organizations where slug = ${slug}`;
+  const rows = await sql<{ id: number; slug: string; name: string; short_name: string | null; org_type: string | null; logo: string | null }[]>`
+    select id, slug, name, short_name, org_type, case when logo is not null then slug end as logo from organizations where slug = ${slug}`;
   return rows[0] ?? null;
 }
 

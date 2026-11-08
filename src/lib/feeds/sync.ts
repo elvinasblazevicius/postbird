@@ -7,6 +7,7 @@ import { sql } from "@/lib/db";
 import type { RawItem } from "./parse";
 import { normalizeItem, ItemSkipped, type ContentPolicy, type NormalizedJob } from "./extract";
 import { parseFeed, FeedParseError } from "./parse";
+import { refreshOrgLogos } from "./logos";
 import { canonicalizeUrl, isAggregatorUrl } from "./url";
 import { knownOrgByHost } from "./extract";
 
@@ -43,6 +44,8 @@ type ExistingJob = {
   primary_feed_id: number | null;
   category_locked: boolean;
   apply_host: string;
+  apply_url: string;
+  source_host: string | null;
   organization_id: number | null;
   title: string; slug: string; country_code: string | null; city: string | null; location_text: string | null;
   is_remote: boolean | null; category: string; job_type: string | null; grade: string | null; reference: string | null;
@@ -151,8 +154,9 @@ async function upsertOrganizations(jobs: NormalizedJob[]): Promise<Map<string, n
   for (const j of jobs) if (j.organization) bySlug.set(j.organization.slug, j.organization);
   const map = new Map<string, number>();
   if (bySlug.size === 0) return map;
-  const rows = [...bySlug.values()].map((o) => ({ slug: o!.slug, name: o!.name, short_name: o!.short, org_type: o!.type }));
-  await sql`insert into organizations ${sql(rows, "slug", "name", "short_name", "org_type")} on conflict (slug) do nothing`;
+  const rows = [...bySlug.values()].map((o) => ({ slug: o!.slug, name: o!.name, short_name: o!.short, org_type: o!.type, website: o!.website }));
+  await sql`insert into organizations ${sql(rows, "slug", "name", "short_name", "org_type", "website")}
+    on conflict (slug) do update set website = coalesce(organizations.website, excluded.website)`;
   const found = await sql<{ id: number; slug: string }[]>`select id, slug from organizations where slug = any(${[...bySlug.keys()]})`;
   for (const r of found) map.set(r.slug, Number(r.id));
   return map;
@@ -242,7 +246,7 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
         const hashes = jobs.map((j) => j.urlHash);
         const fps = jobs.map((j) => j.fingerprint).filter((f): f is string => !!f);
         const existing = await sql<ExistingJob[]>`
-          select id, url_hash, fingerprint, status, primary_feed_id, category_locked, apply_host, organization_id,
+          select id, url_hash, fingerprint, status, primary_feed_id, category_locked, apply_host, apply_url, source_host, organization_id,
                  title, slug, country_code, city, location_text, is_remote, category, job_type, grade, reference,
                  languages, min_experience_years,
                  summary, description_html, content_policy, published_at, deadline::text as deadline
@@ -264,7 +268,7 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
             let matchedBy: "url" | "fingerprint" | null = ex ? "url" : null;
             if (!ex && j.fingerprint) {
               const cand = byFp.get(j.fingerprint);
-              if (cand && cand.apply_host !== j.applyHost) { ex = cand; matchedBy = "fingerprint"; }
+              if (cand && (cand.source_host ?? cand.apply_host) !== j.sourceHost) { ex = cand; matchedBy = "fingerprint"; }
             }
 
             if (!ex) {
@@ -272,16 +276,16 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
               const [row] = await sql<{ id: number }[]>`
                 insert into jobs (slug, title, organization_id, primary_feed_id, country_code, city, location_text, is_remote,
                   category, job_type, grade, languages, min_experience_years, reference, summary, description_html, content_policy, apply_url, apply_host,
-                  url_hash, fingerprint, published_at, deadline, status)
+                  source_host, url_hash, fingerprint, published_at, deadline, status)
                 values (${j.slug}, ${j.title}, ${orgId}, ${feedId}, ${j.countryCode}, ${j.city}, ${j.locationText}, ${j.isRemote},
                   ${j.category}, ${j.jobType}, ${j.grade}, ${j.languages}, ${j.minExperienceYears}, ${j.reference}, ${j.summary}, ${j.descriptionHtml}, ${j.contentPolicy},
-                  ${j.applyUrl}, ${j.applyHost}, ${j.urlHash}, ${j.fingerprint}, ${j.publishedAt}, ${j.deadline}, ${status})
+                  ${j.applyUrl}, ${j.applyHost}, ${j.sourceHost}, ${j.urlHash}, ${j.fingerprint}, ${j.publishedAt}, ${j.deadline}, ${status})
                 on conflict (url_hash) do nothing
                 returning id`;
               if (!row) { result.unchanged++; continue; } // created concurrently; ignore
               const id = Number(row.id);
               byHash.set(j.urlHash, { id, url_hash: j.urlHash, fingerprint: j.fingerprint, status, primary_feed_id: feedId } as ExistingJob);
-              if (j.fingerprint) byFp.set(j.fingerprint, { id, url_hash: j.urlHash, fingerprint: j.fingerprint, apply_host: j.applyHost } as ExistingJob);
+              if (j.fingerprint) byFp.set(j.fingerprint, { id, url_hash: j.urlHash, fingerprint: j.fingerprint, apply_host: j.applyHost, source_host: j.sourceHost } as ExistingJob);
               touched.push({ job_id: id, feed_id: feedId, item_guid: j.guid, item_url: j.applyUrl, source_title: j.sourceTitle });
               result.created++;
               logs.push({ feed_id: feedId, job_id: id, outcome: "created", title: j.title, url: j.applyUrl, message: status === "expired" ? "Imported as closed (deadline has passed)" : null });
@@ -313,6 +317,10 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
               ex.status === "active" ? statusFor(j.deadline, today) :
               (j.deadline === null || j.deadline >= today) ? "active" : ex.status;
             const category = ex.category_locked ? ex.category : j.category;
+            // Keep an employer link merged in from another feed rather than switching back to a less direct one.
+            const keepMerged = knownOrgByHost(ex.apply_host) && !knownOrgByHost(j.applyHost);
+            const applyUrl = keepMerged ? ex.apply_url : j.applyUrl;
+            const applyHost = keepMerged ? ex.apply_host : j.applyHost;
             const changed =
               ex.title !== j.title || ex.slug !== j.slug || (ex.organization_id === null ? null : Number(ex.organization_id)) !== orgId ||
               ex.country_code !== j.countryCode || ex.city !== j.city || ex.location_text !== j.locationText ||
@@ -320,7 +328,8 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
               ex.reference !== j.reference || (ex.languages ?? []).join() !== (j.languages ?? []).join() ||
               (ex.min_experience_years ?? null) !== j.minExperienceYears || ex.summary !== j.summary || ex.description_html !== j.descriptionHtml ||
               ex.content_policy !== j.contentPolicy || !sameTime(ex.published_at, j.publishedAt) ||
-              dateOnly(ex.deadline) !== j.deadline || ex.status !== newStatus || ex.primary_feed_id === null;
+              dateOnly(ex.deadline) !== j.deadline || ex.status !== newStatus || ex.primary_feed_id === null ||
+              ex.apply_url !== applyUrl || ex.source_host !== j.sourceHost;
 
             if (!changed) { result.unchanged++; continue; }
             await sql`
@@ -330,6 +339,7 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
                 languages = ${j.languages}, min_experience_years = ${j.minExperienceYears},
                 summary = ${j.summary}, description_html = ${j.descriptionHtml}, content_policy = ${j.contentPolicy},
                 published_at = ${j.publishedAt}, deadline = ${j.deadline}, fingerprint = ${j.fingerprint},
+                apply_url = ${applyUrl}, apply_host = ${applyHost}, source_host = ${j.sourceHost},
                 status = ${newStatus}, updated_at = now()
               where id = ${id}`;
             result.updated++;
@@ -360,6 +370,15 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
         const msg = e instanceof FeedParseError ? e.message : `Could not read the feed: ${(e as Error).message}`;
         logs.push({ feed_id: feedId, job_id: null, outcome: "feed_error", title: feed.name, url: feed.url.replace(/([?&](?:token|key|apikey|access_token)=)[^&]+/gi, "$1…"), message: msg.slice(0, 500) });
         await sql`update feeds set last_synced_at = now(), last_status = 'error', last_error = ${msg.slice(0, 1000)}, updated_at = now() where id = ${feedId}`;
+      }
+    }
+
+    // Organization icons (a few per run, only with time to spare)
+    if (!outOfTime()) {
+      try {
+        await refreshOrgLogos(() => budget - (Date.now() - started));
+      } catch (e) {
+        notes.push(`Organization icons were not updated: ${(e as Error).message}`);
       }
     }
 

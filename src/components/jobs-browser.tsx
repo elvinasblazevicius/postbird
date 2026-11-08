@@ -125,7 +125,7 @@ export async function JobsBrowser({
           </div>
         </div>
 
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rule bg-candy-soft px-4 py-3">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rule dots-soft px-4 py-3">
           <p className="text-[0.95rem] text-ink">Get new jobs matching this search by email.</p>
           <TrackedLink
             href={`/pricing/trial?search=${encodeURIComponent(jobsUrl({ ...effective, page: undefined, sort: undefined }).replace(/^\/jobs\??/, ""))}`}

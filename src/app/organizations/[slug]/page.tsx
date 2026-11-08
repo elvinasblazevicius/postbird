@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { JobsBrowser } from "@/components/jobs-browser";
+import { OrgBadge } from "@/components/job-card";
 import { PageHeader } from "@/components/page-header";
 import { getOrganization, parseFilters } from "@/lib/jobs";
 import { countFor, landingMetadata } from "@/lib/landing";
@@ -35,6 +36,7 @@ export default async function OrganizationPage({ params, searchParams }: Props) 
     <>
       <PageHeader
         title={`Jobs at ${org.name}`}
+        badge={<OrgBadge name={org.name} short={org.short_name} logo={org.logo} size="lg" />}
         crumbs={[{ href: "/", label: "Home" }, { href: "/organizations", label: "Organizations" }, { href: `/organizations/${slug}`, label: org.short_name ?? org.name }]}
         intro={
           <>

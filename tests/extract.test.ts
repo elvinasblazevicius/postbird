@@ -217,10 +217,11 @@ describe("review regressions: extraction", () => {
 });
 
 import { isSuspendedInoreaderFeed } from "@/lib/feeds/sync";
-import { listingSiteName } from "@/lib/feeds/url";
+import { isListingSite } from "@/lib/feeds/url";
+import { cleanLink, domainMatchesOrg, findEmployerLink } from "@/lib/feeds/employer-link";
 
 /** Synthetic items shaped like real ReliefWeb / Inoreader feed items (text written for the tests). */
-function board(title: string, tags: string, body = "<p>About the role.</p>"): RawItem {
+function board(title: string, tags: string, body = '<p>About the role.</p><p>How to apply</p><p><a href="https://careers.example-ngo.org/jobs/77">Apply here</a></p>'): RawItem {
   return raw({ title, links: ["https://reliefweb.int/job/1/x"], summaryHtml: `${tags}${body}` });
 }
 
@@ -242,7 +243,7 @@ describe("real-feed regressions (ReliefWeb and Inoreader)", () => {
   it("reads territories and multi-country postings", () => {
     const t = normalizeItem(board("Logistics Officer", '<div class="tag country">Country: Martinique (France)</div>'), feed);
     expect(t.countryCode).toBe("MQ");
-    const m = normalizeItem(board("Regional Consultant", '<div class="tag country">Countries: Argentina, Bolivia (Plurinational State of), Brazil</div>', "<p>Location: Latin America</p>"), feed);
+    const m = normalizeItem(board("Regional Consultant", '<div class="tag country">Countries: Argentina, Bolivia (Plurinational State of), Brazil</div>', '<p>Location: Latin America</p><p>How to apply: <a href="https://jobs.example.org/9">apply</a></p>'), feed);
     expect(m.countryCode).toBeNull();
     expect(m.locationText).toBe("Argentina, Bolivia, Brazil");
   });
@@ -264,14 +265,51 @@ describe("real-feed regressions (ReliefWeb and Inoreader)", () => {
     expect(isSuspendedInoreaderFeed([raw({ title: "Feed suspended! (a film festival job)", links: ["https://jobs.example.org/2"] })])).toBe(false);
   });
 
-  it("names job boards so they are not called the official website", () => {
-    expect(listingSiteName("reliefweb.int")).toBe("ReliefWeb");
-    expect(listingSiteName("jobs.undp.org")).toBeNull();
+  it("recognises job boards", () => {
+    expect(isListingSite("reliefweb.int")).toBe(true);
+    expect(isListingSite("jobs.undp.org")).toBe(false);
   });
 
   it("categorises plural and non-English titles", () => {
     expect(detectCategory("Sign Language Interpreters - Kenya")).toBe("communications");
     expect(detectCategory("Oficial de Cadena de Abastecimiento y Compras")).toBe("procurement-logistics");
     expect(detectCategory("Technical Officer (Cold Chain)")).toBe("procurement-logistics");
+  });
+});
+
+describe("employer links (job boards are never linked)", () => {
+  const tags = '<div class="tag country">Country: Kenya</div><div class="tag source">Organization: Concern Worldwide</div>';
+  it("links to the employer's application page from the How to apply section", () => {
+    const body = '<p>See <a href="https://www.concern.net/">our website</a>.</p><h3>How to apply</h3><p><a href="https://jobs.concern.net/careers-home/jobs/1166?lang=en-gb">Apply online</a></p>';
+    const j = normalizeItem(board("Programme Manager", tags, body), feed);
+    expect(j.applyUrl).toBe("https://jobs.concern.net/careers-home/jobs/1166?lang=en-gb");
+    expect(j.applyHost).toBe("jobs.concern.net");
+    expect(j.sourceHost).toBe("reliefweb.int");
+    expect(j.organization?.website).toBe("concern.net");
+  });
+  it("unwraps Outlook Safe Links and markdown leftovers, and skips documents", () => {
+    expect(cleanLink("https://fra01.safelinks.protection.outlook.com/?url=https%3A%2F%2Fx.teamtailor.com%2Fjobs%2F1&amp;data=abc")).toBe("https://x.teamtailor.com/jobs/1");
+    expect(cleanLink("https://candidate.hr-manager.net/ApplicationInit.aspx?cid=1**](https://other")).toBe("https://candidate.hr-manager.net/ApplicationInit.aspx?cid=1");
+    const body = '<p>How to apply</p><p><a href="https://example.org/files/ToR.pdf">Terms of reference</a> <a href="https://forms.gle/abc123">Application form</a></p>';
+    expect(findEmployerLink(body)).toBe("https://forms.gle/abc123");
+    expect(findEmployerLink('<p>How to apply</p><a href="https://careers.example.org/jobs/8?promotion=22-trackable-share-link-reliefweb&amp;lang=en">Apply</a>'))
+      .toBe("https://careers.example.org/jobs/8?lang=en");
+  });
+  it("prefers an application form over shared documents, and skips procurement notices", () => {
+    const body = '<p>How to apply</p><p>Submit the <a href="https://docs.google.com/document/d/abc/edit">application form</a> via <a href="https://forms.gle/xyz">this form</a></p>';
+    expect(findEmployerLink(body)).toBe("https://forms.gle/xyz");
+    const tender = '<p>How to apply</p><p>Apply here: <a href="https://www.ungm.org/Public/Notice/1">notice</a></p>';
+    expect(() => normalizeItem(board("Event services", tags, tender), feed)).toThrow(/procurement/);
+  });
+  it("skips job-board items that only give an email address", () => {
+    const body = "<p>How to apply</p><p>Send your CV to jobs@example.org</p>";
+    expect(() => normalizeItem(board("Driver", tags, body), feed)).toThrow(/employer/);
+  });
+  it("matches organization websites by name or acronym only", () => {
+    expect(domainMatchesOrg("drc.ngo", "Danish Refugee Council")).toBe(true);
+    expect(domainMatchesOrg("blueventures.org", "Blue Ventures")).toBe(true);
+    expect(domainMatchesOrg("medecinsdumonde.org", "Médecins du Monde")).toBe(true);
+    expect(domainMatchesOrg("impact-initiatives.org", "Agency for Technical Cooperation and Development")).toBe(false);
+    expect(domainMatchesOrg("google.com", "World Health Organization")).toBe(false);
   });
 });

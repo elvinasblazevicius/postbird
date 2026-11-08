@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { listingSiteName } from "@/lib/feeds/url";
 import { Flag } from "@/components/flag";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
@@ -41,7 +40,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const title = `${job.title}${job.org_name ? ` — ${job.org_name}` : ""}${where !== NOT_SPECIFIED ? `, ${where}` : ""}`;
   const description = job.summary
     ? job.summary.slice(0, 155)
-    : `${job.title}${job.org_name ? ` at ${job.org_name}` : ""}${where !== NOT_SPECIFIED ? ` in ${where}` : ""}.${job.deadline ? ` Closing date ${formatDate(job.deadline)}.` : ""} ${listingSiteName(job.apply_host) ? `Full vacancy on ${listingSiteName(job.apply_host)}.` : "Apply on the official website."}`;
+    : `${job.title}${job.org_name ? ` at ${job.org_name}` : ""}${where !== NOT_SPECIFIED ? ` in ${where}` : ""}.${job.deadline ? ` Apply by ${formatDate(job.deadline)}` : ""} on the official website.`;
   const indexable = isOpen(job) && !job.is_demo && (hasDescription(job) || LISTING_SETTINGS.indexJobsWithoutDescription);
   return {
     title,
@@ -109,9 +108,6 @@ export default async function JobPage({ params }: Props) {
   const dl = deadlineLabel(job.deadline);
   const category = categoryBySlug(job.category);
   const where = locationLabel(job);
-  const source = job.sources.find((s) => s.source_title)?.source_title;
-  // A job board's page is not the employer's "official website": say where the link goes.
-  const board = listingSiteName(job.apply_host);
 
   const applyButton = (
     <ApplyLink
@@ -119,7 +115,7 @@ export default async function JobPage({ params }: Props) {
       jobId={job.id}
       className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-3.5 text-base font-semibold text-white hover:bg-accent"
     >
-      {board ? `View full vacancy on ${board}` : "Apply on Official Website"}
+      Apply on Official Website
       <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true"><path d="M6 3h7v7M13 3 4 12" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
     </ApplyLink>
   );
@@ -129,9 +125,12 @@ export default async function JobPage({ params }: Props) {
       {ld ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(ld) }} /> : null}
       <TrackOnMount event={{ type: "job_view", jobId: job.id }} />
 
-      <div className="bg-candy-soft border-b border-rule">
-        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <div className="brand-band grain">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/world-dots.svg" alt="" aria-hidden="true" className="band-map hidden md:block" />
+        <div className="mx-auto max-w-6xl px-4 pb-10 pt-8 sm:px-6">
           <Breadcrumbs
+            dark
             items={[
               { href: "/", label: "Home" },
               { href: "/jobs", label: "Jobs" },
@@ -140,13 +139,13 @@ export default async function JobPage({ params }: Props) {
             ]}
           />
           <div className="mt-5 flex gap-4">
-            <OrgBadge name={job.org_name} short={job.org_short} size="lg" />
+            <OrgBadge name={job.org_name} short={job.org_short} logo={job.org_logo} size="lg" />
             <div className="min-w-0">
-              <h1 className="text-[1.9rem] font-semibold leading-tight text-ink sm:text-[2.4rem]">{job.title}</h1>
-              <p className="mt-2 text-lg text-ink">
-                {job.org_slug ? <Link href={`/organizations/${job.org_slug}`} className="hover:underline">{job.org_name}</Link> : <span className="text-slate">Organization not specified</span>}
+              <h1 className="text-[1.9rem] font-semibold leading-tight text-white sm:text-[2.4rem]">{job.title}</h1>
+              <p className="mt-2 text-lg text-white">
+                {job.org_slug ? <Link href={`/organizations/${job.org_slug}`} className="hover:underline">{job.org_name}</Link> : <span className="text-white/70">Organization not specified</span>}
               </p>
-              <p className="flex items-center gap-1.5 text-slate"><Flag code={job.country_code} />{where}</p>
+              <p className="flex items-center gap-1.5 text-white/80"><Flag code={job.country_code} className="shadow-[0_0_0_1px_rgba(255,255,255,0.35)]" />{where}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {job.is_demo ? <Tag tone="demo">Demo data — not a real vacancy</Tag> : null}
                 {!open ? <Tag tone="signal">Closed</Tag> : null}
@@ -216,8 +215,7 @@ export default async function JobPage({ params }: Props) {
 
           <section className="mt-8 rounded-xl border border-rule p-5 text-sm leading-relaxed text-slate" aria-label="Source">
             <p>
-              <span className="font-medium text-ink">Source:</span> {job.apply_host}
-              {source ? <> via {source}</> : null}. Last checked {formatDate(job.last_seen_at)}.
+              <span className="font-medium text-ink">Official posting:</span> {job.apply_host}. Last checked {formatDate(job.last_seen_at)}.
             </p>
             <p className="mt-1">
               {siteConfig.name} lists this vacancy for discovery only. Details can change, so confirm them on the official posting. Applications are made only on the employer&apos;s website.
@@ -253,10 +251,7 @@ export default async function JobPage({ params }: Props) {
                   </div>
                 ) : null}
                 <p className="mt-3 text-xs leading-relaxed text-slate">
-                  {board
-                    ? <>Opens {board}, the job board where this vacancy was published, in a new tab. The employer&apos;s own application link is in the full vacancy. </>
-                    : <>Opens {job.apply_host} in a new tab. </>}
-                  {siteConfig.name} doesn&apos;t take applications and never charges a fee to apply.
+                  Opens {job.apply_host} in a new tab. {siteConfig.name} doesn&apos;t take applications and never charges a fee to apply.
                 </p>
               </>
             ) : (

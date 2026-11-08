@@ -19,9 +19,9 @@ export function isAggregatorUrl(url: string): boolean {
 }
 
 /**
- * Job boards that re-post vacancies from many employers. Their links are kept
- * (they are where the vacancy was found), but the site must not call them the
- * employer's "official website".
+ * Job boards that re-post vacancies from many employers. The site never links
+ * to or names them: for their items the employer's own link is used instead
+ * (see employer-link.ts), and items without one are skipped.
  */
 const LISTING_SITES: { re: RegExp; name: string }[] = [
   { re: /(^|\.)reliefweb\.int$/i, name: "ReliefWeb" },
@@ -32,10 +32,8 @@ const LISTING_SITES: { re: RegExp; name: string }[] = [
   { re: /(^|\.)idealist\.org$/i, name: "Idealist" },
 ];
 
-/** Name of the job board behind a host, or null when the host is (presumably) the employer's own site. */
-export function listingSiteName(host: string | null | undefined): string | null {
-  if (!host) return null;
-  return LISTING_SITES.find((s) => s.re.test(host))?.name ?? null;
+export function isListingSite(host: string | null | undefined): boolean {
+  return !!host && LISTING_SITES.some((s) => s.re.test(host));
 }
 
 /** Pick the application link: the first that is not a feed-reader link (never a feed-reader link). */

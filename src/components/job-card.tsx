@@ -3,7 +3,16 @@ import type { JobListItem } from "@/lib/jobs";
 import { Flag } from "./flag";
 import { categoryName, deadlineLabel, formatDate, jobPath, locationLabel, monogram, NOT_SPECIFIED, postedLabel } from "@/lib/site";
 
-export function OrgBadge({ name, short, size = "md" }: { name: string | null; short: string | null; size?: "md" | "lg" }) {
+export function OrgBadge({ name, short, logo, size = "md" }: { name: string | null; short: string | null; logo?: string | null; size?: "md" | "lg" }) {
+  if (logo) {
+    const box = size === "lg" ? "h-14 w-14 p-2" : "h-11 w-11 p-1.5";
+    return (
+      <span aria-hidden="true" className={`${box} flex shrink-0 items-center justify-center rounded-xl border border-rule bg-white shadow-[0_1px_2px_rgba(11,27,63,0.06)]`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={`/api/org-logo/${logo}`} alt="" width={40} height={40} loading="lazy" decoding="async" className="h-full w-full object-contain" />
+      </span>
+    );
+  }
   const text = name ? monogram(name, short) : "–";
   const long = text.length > 4;
   const dims = size === "lg" ? `h-14 w-14 ${long ? "text-[0.72rem]" : "text-base"}` : `h-11 w-11 ${long ? "text-[0.6rem]" : "text-[0.8rem]"}`;
@@ -57,7 +66,7 @@ export function JobCard({ job, headingLevel = 3 }: { job: JobListItem; headingLe
   return (
     <article className="card-lift group relative rounded-2xl border border-rule bg-paper p-5 hover:border-[color-mix(in_srgb,var(--brand)_45%,var(--rule))] sm:p-6">
       <div className="flex gap-4">
-        <OrgBadge name={job.org_name} short={job.org_short} />
+        <OrgBadge name={job.org_name} short={job.org_short} logo={job.org_logo} />
         <div className="min-w-0 flex-1">
           <H className="font-display text-[1.28rem] font-semibold leading-snug text-ink">
             <Link href={href} className="after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-none">
@@ -119,7 +128,7 @@ export function JobTile({ job }: { job: JobListItem }) {
   return (
     <article className="card-lift group relative flex h-full flex-col rounded-2xl border border-rule bg-paper p-5 hover:border-[color-mix(in_srgb,var(--brand)_45%,var(--rule))]">
       <div className="flex items-start justify-between gap-3">
-        <OrgBadge name={job.org_name} short={job.org_short} />
+        <OrgBadge name={job.org_name} short={job.org_short} logo={job.org_logo} />
         <div className="text-right">
           {job.deadline && dl ? (
             <>

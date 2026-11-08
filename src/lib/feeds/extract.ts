@@ -12,7 +12,8 @@ import { IMPORT_SETTINGS } from "@/config/import";
 import { escapeRegExp, excerpt, htmlToText, normalizeForCompare, oneLine, sanitizeDescription, slugify } from "@/lib/text";
 import { extractDeadline, parseFeedDate } from "./dates";
 import type { RawItem } from "./parse";
-import { canonicalizeUrl, hostOf, pickApplyUrl, sha256 } from "./url";
+import { canonicalizeUrl, hostOf, isListingSite, pickApplyUrl, sha256 } from "./url";
+import { allLinks, endsWithHost, findEmployerLink, findOrgWebsite, PROCUREMENT_HOSTS } from "./employer-link";
 
 export type ContentPolicy = "none" | "excerpt" | "full";
 
@@ -23,7 +24,7 @@ export type FeedContext = {
   contentPolicy: ContentPolicy;
 };
 
-export type OrgRef = { name: string; slug: string; short: string | null; type: string | null };
+export type OrgRef = { name: string; slug: string; short: string | null; type: string | null; website: string | null };
 
 export type NormalizedJob = {
   title: string;
@@ -42,8 +43,12 @@ export type NormalizedJob = {
   summary: string | null;
   descriptionHtml: string | null;
   contentPolicy: ContentPolicy;
+  /** Where to apply: always the employer's own link (never a job board). */
   applyUrl: string;
   applyHost: string;
+  /** Host of the feed item's own link (used to tell sites apart when merging duplicates). */
+  sourceHost: string;
+  /** Identifies the feed item: hash of its own canonical link. */
   urlHash: string;
   fingerprint: string | null;
   publishedAt: Date | null;
@@ -123,9 +128,9 @@ function toOrgRef(name: string): OrgRef {
   const known =
     knownOrgByName(name) ??
     name.split(/\s[-–—|]\s|\(|\)|,/).map((p) => knownOrgByName(p)).find(Boolean);
-  if (known) return { name: known.name, slug: slugify(known.short && known.short.length <= 12 ? known.short : known.name, 60), short: known.short ?? null, type: known.type };
+  if (known) return { name: known.name, slug: slugify(known.short && known.short.length <= 12 ? known.short : known.name, 60), short: known.short ?? null, type: known.type, website: known.domains?.[0] ?? null };
   const clean = oneLine(name).slice(0, 120);
-  return { name: clean, slug: slugify(clean, 60), short: null, type: null };
+  return { name: clean, slug: slugify(clean, 60), short: null, type: null, website: null };
 }
 
 const ORGISH = /\b(organi[sz]ation|fund|programme|program|agency|bank|council|committee|office|institute|foundation|international|united nations|union|commission|association|society|federation|mission|cent(re|er)|secretariat|ngo|alliance|network|trust|unit|authority|court|tribunal|initiative|partnership|facility|corps|rescue|relief|aid|care|vision|children)\b/i;
@@ -263,11 +268,21 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   if (!title) throw new ItemSkipped("Item has no title");
   if (IMPORT_SETTINGS.skipTitlePatterns.some((re) => re.test(title))) throw new ItemSkipped("Looks like a tender or supplier call, not a job");
 
-  const applyUrl = pickApplyUrl(raw.links);
-  if (!applyUrl) throw new ItemSkipped("Item has no link to the original vacancy");
-  const applyHost = hostOf(applyUrl);
+  const sourceUrl = pickApplyUrl(raw.links);
+  if (!sourceUrl) throw new ItemSkipped("Item has no link to the original vacancy");
+  const sourceHost = hostOf(sourceUrl);
 
   const bodyHtml = raw.contentHtml || raw.summaryHtml || "";
+  // Job-board items: link to the employer's own application page, never to the board.
+  let applyUrl = sourceUrl;
+  if (isListingSite(sourceHost)) {
+    const employer = findEmployerLink(bodyHtml);
+    if (!employer && allLinks(bodyHtml).some((u) => endsWithHost(hostOf(u), PROCUREMENT_HOSTS))) throw new ItemSkipped("Links to a procurement notice (tender), not a job");
+    if (!employer) throw new ItemSkipped("Job-board listing without a link to the employer's own vacancy (for example, apply by email)");
+    applyUrl = employer;
+  }
+  if (endsWithHost(hostOf(applyUrl), PROCUREMENT_HOSTS)) throw new ItemSkipped("Links to a procurement notice (tender), not a job");
+  const applyHost = hostOf(applyUrl);
   const text = htmlToText(bodyHtml);
   const head = text.slice(0, 4000); // labelled facts sit near the top
 
@@ -290,6 +305,9 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   else if (sourceOrg) orgName = sourceOrg.name;
   else if (raw.author && ORGISH.test(raw.author) && raw.author.length <= 120) orgName = raw.author;
   const organization = orgName ? toOrgRef(orgName) : null;
+  if (organization && !organization.website) {
+    organization.website = findOrgWebsite(organization.name, organization.short, [applyUrl, ...allLinks(bodyHtml)]);
+  }
 
   // Location
   const locLabel = labelled(head, LOCATION_LABELS, 160, true);
@@ -388,7 +406,7 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   }
 
   const category = detectCategory(title);
-  const urlHash = sha256(canonicalizeUrl(applyUrl));
+  const urlHash = sha256(canonicalizeUrl(sourceUrl));
 
   // Fingerprint for cross-site duplicates. With a vacancy number, organization + number identifies
   // the post; otherwise title + organization + at least two of (deadline, place).
@@ -425,6 +443,7 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
     contentPolicy: policy,
     applyUrl,
     applyHost,
+    sourceHost,
     urlHash,
     fingerprint,
     publishedAt,

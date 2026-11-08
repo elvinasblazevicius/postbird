@@ -82,8 +82,12 @@ export function categoryName(slug: string): string {
 export function monogram(name: string | null, short: string | null): string {
   const s = (short || "").replace(/[^A-Za-z0-9-]/g, "");
   if (s && s.length <= 6) return s;
-  const words = (name || short || "?").replace(/[^A-Za-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length > 2 || /^[A-Z]{2,}$/.test(w));
-  return (words.length >= 2 ? words[0][0] + words[1][0] : (words[0] ?? "?").slice(0, 2)).toUpperCase();
+  // Initials of the meaningful words: "Agency for Technical Cooperation and Development" → "ATCD"
+  const small = new Set(["for", "and", "of", "the", "de", "du", "des", "la", "le", "les", "et", "en", "pour", "y", "del", "in", "on"]);
+  const words = (name || short || "?").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 ]/g, " ")
+    .split(/\s+/).filter((w) => w && !small.has(w.toLowerCase()));
+  if (words.length === 1) return /^[A-Z0-9]{2,6}$/.test(words[0]) ? words[0] : words[0].slice(0, 2).toUpperCase();
+  return words.slice(0, 4).map((w) => w[0]).join("").toUpperCase() || "?";
 }
 
 /** Serialize structured data safely inside a <script> tag. */
