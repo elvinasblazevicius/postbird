@@ -64,6 +64,10 @@ function phraseRegex(phrase: string): RegExp {
   return new RegExp(`(?:^|\\s)${core}${prefix ? "" : "(?=\\s|$)"}`);
 }
 
+const COUNTRY_NAMES = new Map<string, string>(
+  COUNTRIES.flatMap((c) => [c.name, ...c.aliases].map((n) => [normalizeForCompare(n), c.code] as [string, string])),
+);
+
 const COUNTRY_MATCHERS: Matcher[] = COUNTRIES.flatMap((c) =>
   [c.name, ...c.aliases].map((n) => ({ re: phraseRegex(n), value: c.code, len: n.length })),
 ).sort((a, b) => b.len - a.len);
@@ -181,6 +185,7 @@ export function detectLanguages(text: string): string[] | null {
   const found = new Set<string>();
   for (const sentence of text.split(/(?<=[.;:!?])\s+|\n/)) {
     if (sentence.length > 600 || !LANG_CONTEXT.test(sentence)) continue;
+    if (/\b(working|official) languages?\b/i.test(sentence)) continue; // describes the organization, not the job
     for (const lang of LANGUAGE_NAMES) {
       // "French" but not "French Polynesia" / "Spanish-speaking"-style adjectives are still fine
       if (new RegExp(`\\b${lang}\\b(?! Polynesia| Guiana| Southern)`, "i").test(sentence)) found.add(lang);
@@ -196,14 +201,50 @@ const NUMBER_WORDS: Record<string, number> = {
 
 /** Minimum years of experience from phrases like "a minimum of five (5) years of ... experience". */
 export function detectExperienceYears(text: string): number | null {
-  const re = /\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty)(?:\s*\(\d{1,2}\))?\s*\+?\s*(?:or more\s+)?years?\b[^.\n]{0,80}?\bexperience\b/i;
-  const m = text.match(re);
+  const N = "(\\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty)";
+  const forward = new RegExp(`\\b${N}(?:\\s*\\(\\d{1,2}\\))?\\s*\\+?\\s*(?:or more\\s+)?years?\\s+of\\s+(?:[\\w-]+\\s+){0,5}?experience\\b`, "i");
+  const backward = new RegExp(`\\bexperience\\s+of\\s+(?:at least|a minimum of|minimum|over)?\\s*${N}(?:\\s*\\(\\d{1,2}\\))?\\s*\\+?\\s*years?\\b`, "i");
+  const m = text.match(forward) ?? text.match(backward);
   if (!m) return null;
   const n = /^\d+$/.test(m[1]) ? Number(m[1]) : NUMBER_WORDS[m[1].toLowerCase()];
   return n !== undefined && n >= 0 && n <= 30 ? n : null;
 }
 
 const REMOTE_RE = /\b(remote|home[- ]?based|work from home|working from home|telework(ing)?|telecommut(e|ing)|t[ée]l[ée]travail|teletrabajo)\b/i;
+
+/** Names that are also common words, US states or personal names: trusted only in labelled fields. */
+const AMBIGUOUS_PLACES = new Set(["georgia", "jordan", "chad", "guinea", "niger", "mali", "turkey", "panama", "lebanon"]);
+const PLACEHOLDER_RE = /\b(tbd|tba|to be (?:determined|confirmed)|n\/?a|various|multiple|several|any|office|country office|headquarters|hq|field|global|worldwide|anywhere)\b/i;
+
+/**
+ * A title segment counts as a place only if it consists of place names and
+ * nothing else ("Nairobi, Kenya" yes; "Paris Agreement" or "New Mexico" no).
+ */
+function placeOnly(segment: string): { countries: string[]; city: string | null } | null {
+  let rest = ` ${normalizeForCompare(segment)} `;
+  const countries: string[] = [];
+  let city: string | null = null;
+  for (const m of CITY_MATCHERS) {
+    const hit = rest.match(m.re);
+    if (hit && hit.index !== undefined) {
+      city ??= m.value;
+      rest = rest.slice(0, hit.index) + " " + rest.slice(hit.index + hit[0].length);
+    }
+  }
+  for (const m of COUNTRY_MATCHERS) {
+    const hit = rest.match(m.re);
+    if (hit && hit.index !== undefined) {
+      if (!countries.includes(m.value)) countries.push(m.value);
+      rest = rest.slice(0, hit.index) + " " + rest.slice(hit.index + hit[0].length);
+    }
+  }
+  if (!countries.length && !city) return null;
+  const leftover = rest.replace(/\b(and|or|based|in|duty|station|with|travel|to)\b/g, " ").trim();
+  if (leftover) return null;
+  const words = normalizeForCompare(segment);
+  if (!city && countries.length === 1 && AMBIGUOUS_PLACES.has(words)) return null;
+  return { countries, city };
+}
 
 /** Split a title into trailing segments that may hold a location, e.g. "Analyst - Nairobi, Kenya". */
 function titleTailSegments(title: string): string[] {
@@ -256,27 +297,31 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   const fromLabels = [locLabel, countryLabel].filter(Boolean).join(" ; ");
   let countries = fromLabels ? findCountries(fromLabels) : [];
   if (countries.length === 0) {
+    // A feed tag counts only when the whole tag is a country name ("Kenya", not "Jordan Smith").
     const tagCountries = raw.categories
-      .filter((c) => normalizeForCompare(c).split(" ").length <= 5)
-      .map((c) => findCountries(c))
-      .filter((found) => found.length === 1)
-      .map((found) => found[0]);
+      .map((c) => ({ tag: normalizeForCompare(c), found: findCountries(c) }))
+      .filter(({ tag, found }) => found.length === 1 && COUNTRY_NAMES.get(tag) === found[0])
+      .map(({ found }) => found[0]);
     countries = [...new Set(tagCountries)];
   }
   if (countries.length === 0) {
     for (const seg of titleTailSegments(title)) {
-      const c = findCountries(seg);
-      if (c.length) { countries = c; if (!locationText) locationText = seg; break; }
+      const place = placeOnly(seg);
+      if (place && place.countries.length) { countries = place.countries; if (!locationText) locationText = seg; break; }
     }
   }
-  const cityFrom = cityLabel ?? locLabel ?? titleTailSegments(title).join(" ; ");
-  const knownCity = cityFrom ? findCity(cityFrom) : null;
-  if (cityLabel) city = oneLine(cityLabel).slice(0, 80);
+  let knownCity: string | null = null;
+  if (cityLabel || locLabel) knownCity = findCity((cityLabel ?? locLabel)!);
+  else for (const seg of titleTailSegments(title)) {
+    const place = placeOnly(seg);
+    if (place?.city) { knownCity = place.city; if (!locationText) locationText = seg; break; }
+  }
+  if (cityLabel && !PLACEHOLDER_RE.test(cityLabel)) city = oneLine(cityLabel).slice(0, 80);
   else if (knownCity) city = knownCity;
   else if (locLabel && countries.length === 1) {
     // "Duty station: Kandahar, Afghanistan" → city is the part before the country
     const first = locLabel.split(/[,;/]/)[0].trim();
-    if (first && findCountries(first).length === 0 && !REMOTE_RE.test(first) && first.length <= 60 && !/multiple|various|several|tbd|any/i.test(first)) city = first;
+    if (first && findCountries(first).length === 0 && !REMOTE_RE.test(first) && first.length <= 60 && !PLACEHOLDER_RE.test(first)) city = first;
   }
 
   if (countries.length === 1) countryCode = countries[0];
@@ -293,7 +338,11 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   const typeLabel = labelled(head, TYPE_LABELS, 80);
   const jobType = detectJobType([title, typeLabel ?? ""].join(" | "));
   const gradeLabel = labelled(head, GRADE_LABELS, 30);
-  const gradeMatch = (gradeLabel && gradeLabel.match(GRADE_RE)) || title.match(GRADE_RE);
+  const titleGrade = [...title.matchAll(/\(([^)]{1,20})\)/g)].map((m) => m[1])
+    .concat(title.split(/\s[-–—|]\s|,|\//))
+    .map((x) => x.trim())
+    .find((x) => new RegExp(`^${GRADE_RE.source}$`).test(x));
+  const gradeMatch = (gradeLabel && gradeLabel.match(GRADE_RE)) || (titleGrade ? titleGrade.match(GRADE_RE) : null);
   const grade = gradeMatch ? normalizeGrade(gradeMatch[1]) : null;
   const refLabel = labelled(head, REF_LABELS, 40);
   const refMatch = refLabel?.match(/[A-Za-z0-9][A-Za-z0-9\-/_.]{2,39}/);

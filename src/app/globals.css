@@ -9,6 +9,7 @@
   --accent: #0f44d6;
   --sky: #38c6ff;
   --candy: #e8227a;
+  --highlight: #ffd23f;
   --ink: #0b1b3f;
   --paper: #ffffff;
   --mist: #eef4ff;
@@ -38,6 +39,7 @@
   --color-remote-bg: var(--remote-bg);
   --color-sky: var(--sky);
   --color-candy: var(--candy);
+  --color-highlight: var(--highlight);
   --color-tint: var(--tint);
   --color-tint-ink: var(--tint-ink);
   --color-lilac: var(--lilac);
@@ -120,7 +122,7 @@ a {
   background:
     radial-gradient(60rem 30rem at 85% -10%, color-mix(in srgb, var(--sky) 70%, transparent), transparent 60%),
     radial-gradient(40rem 24rem at -10% 110%, color-mix(in srgb, #8b7bff 45%, transparent), transparent 60%),
-    linear-gradient(135deg, var(--brand) 0%, #2f6dff 50%, color-mix(in srgb, var(--sky) 80%, var(--brand)) 100%);
+    linear-gradient(135deg, var(--brand) 0%, #1f7bff 50%, color-mix(in srgb, var(--sky) 88%, var(--brand)) 100%);
 }
 .bg-candy-soft {
   background: linear-gradient(180deg, #eaf1ff 0%, #f5f8ff 100%);

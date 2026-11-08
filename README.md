@@ -1,6 +1,6 @@
 # Global Careers Hub
 
-A job board for UN agencies, international organizations, humanitarian groups and NGOs. It imports vacancies automatically from your Inoreader output feeds, builds search-friendly pages, collects paid-alert trial sign-ups, and tracks Microsoft Ads conversions.
+The UN and international organization job aggregator: one place for vacancies at UN agencies, development banks, EU institutions and other international organizations. It imports vacancies automatically from your Inoreader output feeds, builds search-friendly pages, collects paid-alert trial sign-ups, and tracks Microsoft Ads conversions.
 
 Stack: Next.js 16 (TypeScript, Tailwind 4), PostgreSQL on Supabase, hosting on Netlify (or Vercel), scheduling with GitHub Actions, email with Resend.
 
@@ -56,7 +56,7 @@ In GitHub, open **Settings → Secrets and variables → Actions → New reposit
 Then go to **Actions → Scheduled jobs → Run workflow**, choose `sync` and click Run to check it works. After that it imports every 2 hours and sends the digest on Mondays by itself. It runs directly against the database, so there's no time limit.
 
 ### Step 5 — First check
-Open `https://<your-site>.netlify.app/admin`, sign in, and look at **Import history**. You can also click **Sync now**. On Netlify a sync started from the website stops after about 8 seconds to stay within the 10-second limit, and the scheduled run imports the rest.
+Open `https://<your-site>.netlify.app/admin`, sign in, and look at **Import history**. You can also click **Sync now**. On Netlify a sync started from the website stops after about 8 seconds (including feed downloads) to stay within the 10-second limit, and the scheduled run imports the rest.
 
 ### Step 6 — Domain and email
 1. Buy the domain (e.g. at Cloudflare Registrar). In Netlify, open **Domain management → Add a domain** and follow the DNS instructions. Then set `NEXT_PUBLIC_SITE_URL` (Netlify) and `SITE_URL` (GitHub) to `https://yourdomain.com` and redeploy.
@@ -177,7 +177,7 @@ Demo listings use made-up organizations, are labelled "Demo data" everywhere, ar
 
 ## 9. What was tested, and what wasn't
 
-**Tested locally:** typecheck, lint and production build pass, and 17 unit tests pass (feed parsing, field extraction, dates, categories, URLs). An end-to-end import ran against a real PostgreSQL 16 with RSS, Atom and JSON Feed sample feeds, plus a broken XML feed, an HTML page and a 404. Results:
+**Tested locally:** typecheck, lint and production build pass, and 23 unit tests pass (feed parsing, field extraction, dates, categories, grades, languages, experience, URLs, plus regression cases from an independent code review). An end-to-end import ran against a real PostgreSQL 16 with RSS, Atom and JSON Feed sample feeds, plus a broken XML feed, an HTML page and a 404. Results:
 - Broken feeds are logged and the other feeds still import.
 - A second run creates no duplicates.
 - Cross-feed and cross-site duplicates merge.
@@ -185,6 +185,8 @@ Demo listings use made-up organizations, are labelled "Demo data" everywhere, ar
 - Removed listings stay removed.
 - Two syncs at once: the second is skipped.
 - A sync started from the website stops cleanly at its time limit and leaves the rest for the scheduled run.
+- Signing up again with an address that already exists changes nothing until the owner confirms by email, and the reply is the same as for a new address. Admin sign-in locks for 15 minutes after 8 wrong passwords.
+- All filters, alone and combined (region, country, grade, language, experience, deadline and more), return results, and the calendar download works.
 - Cron endpoints reject requests without the secret.
 
 Also tested: every page returns the right status (404s for unknown pages, 308 to the canonical job address), JobPosting data appears only on open jobs with a description, `noindex` is set on closed, thin and filtered pages, and the sitemap and robots.txt are correct. In a real browser: sign-up → confirm (opening the link alone doesn't confirm) → unsubscribe, the free-trial sign-up form, filters updating the URL, analytics events, campaign attribution saved with sign-ups, and admin login, including a wrong password.

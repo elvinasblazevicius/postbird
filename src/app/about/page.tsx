@@ -17,7 +17,7 @@ export default function AboutPage() {
         <section>
           <h2 className="text-2xl font-semibold">Where the vacancies come from</h2>
           <p className="mt-3">
-            {siteConfig.name} reads the public job feeds of UN agencies, international organizations, humanitarian groups and NGOs several times a day.
+            {siteConfig.name} reads the public job feeds of UN agencies and international organizations several times a day.
             New openings are added automatically and vacancies are hidden once their closing date has passed.
           </p>
         </section>

@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "International jobs by region and country",
-  description: "Find UN, international organization and NGO vacancies by duty station country.",
+  description: "Find UN and international organization vacancies by duty station country.",
   alternates: { canonical: "/locations" },
 };
 

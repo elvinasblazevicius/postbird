@@ -180,3 +180,38 @@ describe("requirements", () => {
     expect(detectExperienceYears("Experience with Python is an asset.")).toBeNull();
   });
 });
+
+describe("review regressions", () => {
+  it("does not take unrelated dates as deadlines", () => {
+    expect(extractDeadline("Works in a deadline-driven environment. Start date: 1 January 2027")).toBeNull();
+    expect(extractDeadline("Deadline extended from 10 November 2026 to 30 November 2026")).toBe("2026-11-30");
+    expect(extractDeadline("Applications close on 15 November. Posted 1 December 2026")).toBeNull();
+    expect(extractDeadline("Closing date: 15 Nov. 2026 (midnight)")).toBe("2026-11-15");
+  });
+});
+
+describe("review regressions: extraction", () => {
+  const f: FeedContext = { id: 1, name: "T", defaultOrganization: null, contentPolicy: "none" };
+  const r = (p: Partial<RawItem>): RawItem => ({ guid: null, title: "X", links: ["https://jobs.example.org/9"], summaryHtml: null, contentHtml: null, published: null, updated: null, author: null, categories: [], sourceTitle: null, sourceUrl: null, ...p });
+  it("ignores working-language boilerplate and durations", () => {
+    expect(detectLanguages("English and French are the working languages of the United Nations Secretariat.")).toBeNull();
+    expect(detectExperienceYears("Duration: 2 years (renewable), experience in GIS")).toBeNull();
+    expect(detectExperienceYears("Minimum experience of 3 years in finance")).toBe(3);
+  });
+  it("reads grades only where they are clearly grades", () => {
+    expect(normalizeItem(r({ title: "Coordinator, G7 Summit Secretariat" }), f).grade).toBeNull();
+    expect(normalizeItem(r({ title: "Data Analyst (P-3)" }), f).grade).toBe("P-3");
+    expect(normalizeItem(r({ title: "Data Scientist, P3 - Geneva" }), f).grade).toBe("P-3");
+  });
+  it("does not read places out of ordinary words", () => {
+    const a = normalizeItem(r({ title: "Climate Advisor (Paris Agreement)" }), f);
+    expect(a.city).toBeNull();
+    expect(a.countryCode).toBeNull();
+    expect(normalizeItem(r({ title: "Field Officer - New Mexico" }), f).countryCode).toBeNull();
+    expect(normalizeItem(r({ title: "Analyst - Georgia" }), f).countryCode).toBeNull();
+    expect(normalizeItem(r({ title: "Analyst", categories: ["Jordan Smith"] }), f).countryCode).toBeNull();
+    expect(normalizeItem(r({ title: "Analyst", categories: ["Kenya"] }), f).countryCode).toBe("KE");
+    expect(normalizeItem(r({ title: "Analyst", summaryHtml: "<p>Duty station: Country Office, Kenya</p>" }), f).city).toBeNull();
+    expect(normalizeItem(r({ title: "Analyst", summaryHtml: "<p>City: TBD</p><p>Country: Kenya</p>" }), f).city).toBeNull();
+  });
+});

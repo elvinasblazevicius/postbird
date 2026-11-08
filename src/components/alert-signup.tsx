@@ -56,7 +56,7 @@ export function AlertSignup({ source, tone = "light" }: { source: string; tone?:
         <button
           type="submit"
           disabled={pending}
-          className={`rounded-lg px-5 py-3 text-base font-semibold disabled:opacity-60 ${dark ? "bg-white text-brand hover:bg-mist" : "bg-brand text-white hover:bg-accent"}`}
+          className={`rounded-lg px-5 py-3 text-base font-semibold disabled:opacity-60 ${dark ? "bg-highlight text-ink hover:brightness-95" : "bg-brand text-white hover:bg-accent"}`}
         >
           {pending ? "Saving…" : paid ? "Start free trial" : "Subscribe"}
         </button>

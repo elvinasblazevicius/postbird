@@ -9,10 +9,10 @@ export const dynamic = "force-dynamic";
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
-  const count = await countFor({ remote: true });
+  const count = await countFor({ remote: true }, false);
   return landingMetadata({
-    title: "Remote and home-based NGO, UN and international jobs",
-    description: `${count} remote and home-based vacancies and consultancies at UN agencies, international organizations and NGOs.`,
+    title: "Remote and home-based UN and international organization jobs",
+    description: `${count} remote and home-based vacancies and consultancies at UN agencies and international organizations.`,
     path: "/remote-jobs",
     count,
     filters: parseFilters(await searchParams),

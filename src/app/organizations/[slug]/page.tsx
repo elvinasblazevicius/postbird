@@ -13,7 +13,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   const { slug } = await params;
   const org = await getOrganization(slug);
   if (!org) return { title: "Organization not found", robots: { index: false } };
-  const count = await countFor({ org: slug });
+  const count = await countFor({ org: slug }, false);
   const label = org.short_name && org.short_name !== org.name ? `${org.name} (${org.short_name})` : org.name;
   return landingMetadata({
     title: `${org.short_name ?? org.name} jobs — ${count} open vacancies`,

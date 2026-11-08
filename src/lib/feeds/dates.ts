@@ -59,7 +59,7 @@ export function findDate(text: string): string | null {
 }
 
 const DEADLINE_LABEL =
-  /(closing\s+date|application\s+deadline|deadline\s+for\s+(?:applications?|submission)|deadline|apply\s+by|applications?\s+close[sd]?(?:\s+on)?|closes\s+on|closing\s+on|vacancy\s+end\s+date|posting\s+end\s+date|date\s+limite(?:\s+de\s+candidature)?|fecha\s+l[ií]mite|fecha\s+de\s+cierre)/gi;
+  /(closing\s+date|application\s+deadline|deadline\s+for\s+(?:applications?|submission)|deadline(?![-\w])|apply\s+by|applications?\s+close[sd]?(?:\s+on)?|closes\s+on|closing\s+on|vacancy\s+end\s+date|posting\s+end\s+date|date\s+limite(?:\s+de\s+candidature)?|fecha\s+l[ií]mite|fecha\s+de\s+cierre)/gi;
 
 /** Extract a deadline from text where it is explicitly labelled. */
 export function extractDeadline(text: string): string | null {
@@ -67,10 +67,16 @@ export function extractDeadline(text: string): string | null {
   DEADLINE_LABEL.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = DEADLINE_LABEL.exec(text))) {
-    const after = text.slice(m.index + m[0].length, m.index + m[0].length + 80);
-    // the date must follow the label closely (allow ":", "(GMT)", "is", "-" etc.)
-    const window = after.replace(/^\s*(?:\([^)]{0,40}\))?\s*(?:[:：\-–—]|is|on)?\s*/i, "");
-    const d = findDate(window.slice(0, 50));
+    // Look only at the rest of the same sentence, so a later unrelated date is never picked up.
+    let after = text.slice(m.index + m[0].length, m.index + m[0].length + 120).split(/\.\s+(?=[A-Z])|\n|;/)[0];
+    after = after.replace(/^\s*(?:\([^)]{0,40}\))?\s*(?::|：|\s[-–—]\s|is|on|:)?\s*/i, "");
+    // "extended from 10 November to 30 November 2026": the new date is the one after "to"
+    const extended = after.match(/extended\b.*?\bto\b(.*)$/i);
+    if (extended) {
+      const d = findDate(extended[1].slice(0, 50));
+      if (d) return d;
+    }
+    const d = findDate(after.slice(0, 45));
     if (d) return d;
   }
   return null;

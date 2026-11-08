@@ -24,10 +24,10 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   const { slug } = await params;
   const place = resolve(slug);
   if (!place) return { title: "Location not found", robots: { index: false } };
-  const count = await countFor(place.fixed);
+  const count = await countFor(place.fixed, false);
   return landingMetadata({
-    title: `UN and NGO jobs in ${place.name}`,
-    description: `${count} open vacancies in ${place.name} at UN agencies, international organizations and NGOs, with application deadlines and links to the official postings.`,
+    title: `UN and international organization jobs in ${place.name}`,
+    description: `${count} open vacancies in ${place.name} at UN agencies and international organizations, with application deadlines and links to the official postings.`,
     path: `/locations/${slug}`,
     count,
     filters: parseFilters(await searchParams),

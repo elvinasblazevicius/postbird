@@ -34,7 +34,14 @@ export async function POST(req: Request) {
   const jobId = typeof rawId === "number" && Number.isInteger(rawId) && rawId > 0 ? rawId : null;
   let props: Record<string, unknown> | null = null;
   if (body.props && typeof body.props === "object") {
-    if (type === "search") props = body.props;
+    if (type === "search") {
+      // Only the known filter fields, trimmed.
+      const keys = ["q", "org", "country", "region", "category", "remote", "type", "posted", "closing", "grade", "orgtype", "lang", "exp", "results"];
+      props = Object.fromEntries(
+        keys.filter((k) => body.props![k] !== undefined && body.props![k] !== null)
+          .map((k) => [k, typeof body.props![k] === "string" ? (body.props![k] as string).slice(0, 120) : typeof body.props![k] === "number" || typeof body.props![k] === "boolean" ? body.props![k] : null]),
+      );
+    }
     if (type === "premium_cta_click" && typeof body.props.source === "string") props = { source: body.props.source.slice(0, 40) };
     if (type === "pageview") {
       const campaign = cleanCampaign(body.props.campaign as Record<string, unknown> | undefined);

@@ -1,6 +1,7 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { visitorHash } from "@/lib/analytics";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ALL_CATEGORIES } from "@/config/categories";
@@ -23,7 +24,16 @@ export async function loginAction(_prev: AdminState, form: FormData): Promise<Ad
     return { ok: false, message: "Admin login isn't set up. Add ADMIN_PASSWORD (10+ characters) and CRON_SECRET (16+ characters) to the environment variables." };
   }
   await new Promise((r) => setTimeout(r, 400)); // slows down password guessing
-  if (!checkPassword(String(form.get("password") ?? ""))) return { ok: false, message: "That password isn't correct." };
+  const h = await headers();
+  const who = visitorHash((h.get("x-forwarded-for") ?? "").split(",")[0].trim() || "local", h.get("user-agent") ?? "");
+  const [{ n }] = await sql<{ n: number }[]>`
+    select count(*)::int as n from admin_login_failures where who = ${who} and at > now() - interval '15 minutes'`;
+  if (n >= 8) return { ok: false, message: "Too many wrong passwords. Try again in 15 minutes." };
+  if (!checkPassword(String(form.get("password") ?? ""))) {
+    await sql`insert into admin_login_failures (who) values (${who})`;
+    await sql`delete from admin_login_failures where at < now() - interval '1 day'`;
+    return { ok: false, message: "That password isn't correct." };
+  }
   const session = createSessionValue();
   (await cookies()).set(ADMIN_COOKIE, session.value, {
     httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: session.maxAge,
@@ -51,7 +61,7 @@ export async function addFeedAction(_prev: AdminState, form: FormData): Promise<
   // Check the feed before saving it, so typos are caught immediately.
   let note = "";
   try {
-    const parsed = parseFeed(await fetchFeedText(url));
+    const parsed = parseFeed(await fetchFeedText(url, 7_000)); // stays within the host time limit
     note = ` It currently has ${parsed.items.length} items.`;
   } catch (e) {
     return { ok: false, message: `Couldn't read that feed: ${(e as Error).message}` };

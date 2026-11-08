@@ -14,7 +14,10 @@ export function SiteHeader() {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-6 px-4 sm:px-6">
         <Link href="/" className="flex items-center gap-2.5 text-ink no-underline">
           <BrandMark className="h-7 w-7 shrink-0" />
-          <span className="font-display text-[1.3rem] font-semibold leading-none tracking-tight">{siteConfig.name}</span>
+          <span className="flex flex-col">
+            <span className="font-display text-[1.3rem] font-semibold leading-none tracking-tight">{siteConfig.name}</span>
+            <span className="mt-1 hidden text-xs leading-none text-slate sm:block">{siteConfig.tagline}</span>
+          </span>
         </Link>
 
         <nav aria-label="Main" className="hidden items-center gap-1 md:flex">
@@ -25,7 +28,7 @@ export function SiteHeader() {
           ))}
           <Link
             href="/alerts"
-            className="ml-2 rounded-md bg-brand px-4 py-2 text-[0.95rem] font-medium text-white hover:bg-accent"
+            className="ml-2 rounded-md bg-highlight px-4 py-2 text-[0.95rem] font-semibold text-ink hover:brightness-95"
           >
             Get email alerts
           </Link>
@@ -41,7 +44,7 @@ export function SiteHeader() {
                 {n.label}
               </Link>
             ))}
-            <Link href="/alerts" className="mt-1 block rounded-md bg-brand px-3 py-2.5 font-medium text-white">
+            <Link href="/alerts" className="mt-1 block rounded-md bg-highlight px-3 py-2.5 font-semibold text-ink">
               Get email alerts
             </Link>
           </nav>

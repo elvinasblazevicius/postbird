@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "International jobs by career category",
-  description: "Browse UN, international organization and NGO vacancies by field: data and analytics, IT, programme management, finance, HR, communications and more.",
+  description: "Browse UN and international organization vacancies by field: data and analytics, IT, programme management, finance, HR, communications and more.",
   alternates: { canonical: "/categories" },
 };
 

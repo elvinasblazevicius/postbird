@@ -3,18 +3,26 @@ import { absoluteUrl, jobPath, siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
-const icsText = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+const icsText = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 
-/** Fold lines to 75 octets as the iCalendar format requires. */
+/** Fold lines to 75 octets (bytes) as the iCalendar format requires, without splitting a character. */
 function fold(line: string): string {
   const out: string[] = [];
-  let rest = line;
-  while (rest.length > 74) {
-    out.push(rest.slice(0, 74));
-    rest = " " + rest.slice(74);
+  let current = "";
+  let bytes = 0;
+  for (const ch of line) {
+    const size = Buffer.byteLength(ch);
+    const max = out.length ? 74 : 75; // continuation lines start with a space
+    if (bytes + size > max) {
+      out.push(current);
+      current = "";
+      bytes = 0;
+    }
+    current += ch;
+    bytes += size;
   }
-  out.push(rest);
-  return out.join("\r\n");
+  out.push(current);
+  return out.join("\r\n ");
 }
 
 /** "Add deadline to calendar": an all-day event on the closing date. */

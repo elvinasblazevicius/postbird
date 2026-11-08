@@ -85,7 +85,7 @@ export function parseFilters(sp: SP): JobFilters {
   const region = first(sp.region);
   if (region && regionBySlug(region)) f.region = region;
   const grade = first(sp.grade);
-  if (grade && (GRADE_GROUPS.some((g) => g.value === grade) || /^(P|D|NO|G|GS|FS)-[0-9A-E]$|^(ASG|USG)$/.test(grade))) f.grade = grade;
+  if (grade && (GRADE_GROUPS.some((g) => g.value === grade) || /^(P|D|NO|G|GS|FS)-[0-9A-E]$|^(ASG|USG)$|^(SB|LICA|NPSA|IPSA|ICS)-\d{1,2}$/.test(grade))) f.grade = grade;
   const orgtype = first(sp.orgtype);
   if (orgtype && ORG_TYPES.some((o) => o.value === orgtype)) f.orgtype = orgtype;
   const lang = first(sp.lang);
@@ -164,7 +164,7 @@ function whereFor(f: JobFilters) {
   if (f.remote) w = sql`${w} and j.is_remote is true`;
   if (f.type) w = sql`${w} and j.job_type = ${f.type}`;
   if (f.posted) w = sql`${w} and coalesce(j.published_at, j.first_seen_at) >= now() - make_interval(days => ${Number(f.posted)})`;
-  if (f.closing) w = sql`${w} and j.deadline is not null and j.deadline <= (now() at time zone 'utc')::date + ${Number(f.closing)}`;
+  if (f.closing) w = sql`${w} and j.deadline is not null and j.deadline <= (now() at time zone 'utc')::date + ${Number(f.closing)}::int`;
   return w;
 }
 
@@ -217,32 +217,32 @@ export async function similarJobs(job: JobDetail, limit = 4) {
 
 // ── Facets & stats ───────────────────────────────────────────
 
-export async function organizationFacets(limit = 500) {
+export async function organizationFacets(limit = 500, includeDemo = true) {
   return sql<{ slug: string; name: string; short_name: string | null; org_type: string | null; count: number }[]>`
     select o.slug, o.name, o.short_name, o.org_type, count(*)::int as count
     from jobs j join organizations o on o.id = j.organization_id
-    where j.status = 'active' group by o.id order by count(*) desc, o.name limit ${limit}`;
+    where j.status = 'active' and (${includeDemo} or not j.is_demo) group by o.id order by count(*) desc, o.name limit ${limit}`;
 }
 
-export async function countryFacets() {
+export async function countryFacets(includeDemo = true) {
   const rows = await sql<{ country_code: string; count: number }[]>`
     select country_code, count(*)::int as count from jobs
-    where status = 'active' and country_code is not null group by country_code order by count(*) desc`;
+    where status = 'active' and country_code is not null and (${includeDemo} or not is_demo) group by country_code order by count(*) desc`;
   return rows
     .map((r) => ({ ...r, country: countryByCode(r.country_code) }))
     .filter((r) => r.country)
     .map((r) => ({ code: r.country_code, slug: r.country!.slug, name: r.country!.name, count: r.count }));
 }
 
-export async function categoryFacets() {
+export async function categoryFacets(includeDemo = true) {
   const rows = await sql<{ category: string; count: number }[]>`
-    select category, count(*)::int as count from jobs where status = 'active' group by category`;
+    select category, count(*)::int as count from jobs where status = 'active' and (${includeDemo} or not is_demo) group by category`;
   const counts = new Map(rows.map((r) => [r.category, r.count]));
   return ALL_CATEGORIES.map((c) => ({ ...c, count: counts.get(c.slug) ?? 0 }));
 }
 
-export async function regionFacets() {
-  const countries = await countryFacets();
+export async function regionFacets(includeDemo = true) {
+  const countries = await countryFacets(includeDemo);
   return REGIONS.map((r) => ({ slug: r.slug, name: r.name, count: countries.filter((c) => r.codes.includes(c.code)).reduce((n, c) => n + c.count, 0) }));
 }
 

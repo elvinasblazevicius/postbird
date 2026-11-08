@@ -9,11 +9,11 @@ const free = siteConfig.freeWeeklyEmail;
 
 export const metadata: Metadata = {
   title: free
-    ? "Free weekly job alerts for UN, international organization and NGO vacancies"
-    : "Email job alerts for UN, international organization and NGO vacancies",
+    ? "Free weekly job alerts for UN and international organization vacancies"
+    : "Email job alerts for UN and international organization vacancies",
   description: free
-    ? "Get a free Monday email with the week's newest vacancies at UN agencies, international organizations and NGOs. Unsubscribe with one click."
-    : "New UN, international organization and NGO vacancies by email, filtered by role, organization and location, with deadline reminders.",
+    ? "Get a free Monday email with the week's newest vacancies at UN agencies and international organizations. Unsubscribe with one click."
+    : "New UN and international organization vacancies by email, filtered by role, organization and location, with deadline reminders.",
   alternates: { canonical: "/alerts" },
 };
 

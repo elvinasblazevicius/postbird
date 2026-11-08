@@ -7,8 +7,8 @@ import { organizationFacets } from "@/lib/jobs";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Organizations hiring now — UN agencies, international organizations and NGOs",
-  description: "Browse open vacancies by employer: UN agencies, international financial institutions, EU bodies, humanitarian organizations and NGOs.",
+  title: "Organizations hiring now — UN agencies and international organizations",
+  description: "Browse open vacancies by employer: UN agencies, international financial institutions, EU bodies and other international organizations.",
   alternates: { canonical: "/organizations" },
 };
 

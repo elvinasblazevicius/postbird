@@ -14,7 +14,7 @@ export default async function ConfirmPage({ searchParams }: Props) {
   return (
     <div className="mx-auto max-w-xl px-4 py-20 sm:px-6">
       <h1 className="text-[2rem] font-semibold text-ink">Confirm your email</h1>
-      {sub && sub.status === "pending" ? (
+      {sub ? (
         <>
           <p className="mt-3 mb-6 text-lg text-slate">
             Confirm that <strong className="text-ink">{sub.email}</strong> should receive our emails.

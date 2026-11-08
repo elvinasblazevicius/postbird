@@ -30,10 +30,10 @@ async function describe(f: JobFilters): Promise<string> {
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const f = parseFilters(await searchParams);
   const filtered = activeFilterCount(f) > 0 || (f.sort && f.sort !== "newest");
-  const title = filtered ? await describe(f) : "International jobs at the UN, international organizations and NGOs";
+  const title = filtered ? await describe(f) : "International jobs at the UN and international organizations";
   return {
     title: f.page && !filtered ? `${title} — page ${f.page}` : title,
-    description: "Search open vacancies from UN agencies, international organizations, humanitarian groups and NGOs. Filter by organization, country, category, remote work and deadline.",
+    description: "Search open vacancies from UN agencies and international organizations. Filter by organization, country, category, remote work and deadline.",
     // Filtered views are useful to share but would duplicate landing pages in search engines.
     alternates: { canonical: filtered ? "/jobs" : f.page ? `/jobs?page=${f.page}` : "/jobs" },
     robots: filtered ? { index: false, follow: true } : undefined,
@@ -48,7 +48,7 @@ export default async function JobsPage({ searchParams }: Props) {
       <PageHeader
         title={heading}
         crumbs={[{ href: "/", label: "Home" }, { href: "/jobs", label: "Jobs" }]}
-        intro="Vacancies from UN agencies, international organizations, humanitarian groups and NGOs. Every listing links to the employer's official vacancy page."
+        intro="Vacancies from UN agencies and international organizations. Every listing links to the employer's official vacancy page."
       />
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <JobsBrowser filters={filters} />

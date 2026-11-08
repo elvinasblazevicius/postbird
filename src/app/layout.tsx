@@ -26,7 +26,7 @@ const newsreader = localFont({
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
   title: {
-    default: `${siteConfig.name} — UN, international organization and NGO jobs`,
+    default: `${siteConfig.name} — ${siteConfig.tagline}`,
     template: `%s | ${siteConfig.name}`,
   },
   description: siteConfig.description,
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: siteConfig.name,
-    title: `${siteConfig.name} — UN, international organization and NGO jobs`,
+    title: `${siteConfig.name} — ${siteConfig.tagline}`,
     description: siteConfig.description,
   },
   twitter: { card: "summary_large_image" },
@@ -78,6 +78,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     "--ink": siteConfig.colors.ink,
     "--sky": siteConfig.colors.sky,
     "--candy": siteConfig.colors.candy,
+    "--highlight": siteConfig.colors.highlight,
   } as React.CSSProperties;
 
   return (

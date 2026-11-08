@@ -154,6 +154,7 @@ create table if not exists subscribers (
   unsubscribe_token text not null unique,
   source text,
   attribution jsonb,               -- first ad/campaign touch: utm_*, msclkid, landing page
+  pending_changes jsonb,           -- changes requested by an already-confirmed address; applied only after it confirms again
   confirm_sent_at timestamptz,
   created_at timestamptz not null default now(),
   confirmed_at timestamptz,
@@ -222,6 +223,14 @@ create table if not exists events (
 create index if not exists events_type_time_idx on events (type, created_at desc);
 create index if not exists events_job_idx on events (job_id) where job_id is not null;
 
+-- Failed admin sign-ins (for rate limiting); kept briefly.
+create table if not exists admin_login_failures (
+  id bigserial primary key,
+  who text not null,               -- daily-rotating hash of IP and browser
+  at timestamptz not null default now()
+);
+create index if not exists admin_login_failures_idx on admin_login_failures (who, at);
+
 -- ── Security: block direct access through Supabase's public API ──
 -- The app connects to Postgres directly with its own credentials, so no
 -- row-level policies are needed; enabling RLS with no policies means the
@@ -240,5 +249,6 @@ alter table saved_searches enable row level security;
 alter table digests enable row level security;
 alter table events enable row level security;
 alter table schema_migrations enable row level security;
+alter table admin_login_failures enable row level security;
 
 insert into schema_migrations (name) values ('001_init') on conflict do nothing;

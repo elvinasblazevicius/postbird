@@ -13,9 +13,11 @@ const siteConfig = {
   name: "Global Careers Hub",
   /** Short name used where space is tight (browser tab, app icon). */
   shortName: "GCH",
+  /** What the site is, in a few words (header, page titles). */
+  tagline: "UN and international organization job aggregator",
   /** One line describing the site (meta description default). */
   description:
-    "Vacancies from UN agencies, international organizations and NGOs, gathered in one place and linked straight to the official application pages.",
+    "The UN and international organization job aggregator: vacancies from UN agencies, development banks, EU institutions and other international organizations in one place, linked straight to the official application pages.",
 
   /**
    * Public address of the site, without a trailing slash.
@@ -71,13 +73,16 @@ const siteConfig = {
   /**
    * Colours. `brand` is the main blue (buttons, hero), `accent` the darker
    * blue for links and hover states, `sky` the light end of the hero
-   * gradient, `candy` the pink used for "closing soon", `ink` the text colour.
+   * gradient, `candy` the pink used for "closing soon", `highlight` the
+   * yellow of the main call-to-action buttons, `ink` the text colour.
    */
   colors: {
     brand: "#1D5BFF",
     accent: "#0F44D6",
     sky: "#38C6FF",
     candy: "#E8227A",
+    /** Sunshine yellow for the main "Get email alerts" buttons. */
+    highlight: "#FFD23F",
     ink: "#0B1B3F",
   },
 

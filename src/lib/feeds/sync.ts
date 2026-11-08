@@ -104,9 +104,10 @@ export async function releaseLock(name: string, holder: string): Promise<void> {
 
 // ── Fetching ─────────────────────────────────────────────────
 
-export async function fetchFeedText(url: string): Promise<string> {
+export async function fetchFeedText(url: string, timeoutMs: number = IMPORT_SETTINGS.fetchTimeoutMs): Promise<string> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), IMPORT_SETTINGS.fetchTimeoutMs);
+  const limit = Math.max(1000, Math.min(timeoutMs, IMPORT_SETTINGS.fetchTimeoutMs));
+  const timer = setTimeout(() => ctrl.abort(), limit);
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
@@ -128,7 +129,7 @@ export async function fetchFeedText(url: string): Promise<string> {
     if (text.length > 15_000_000) throw new Error("Feed is larger than 15 MB and was skipped.");
     return text;
   } catch (e) {
-    if ((e as Error).name === "AbortError") throw new Error(`Timed out after ${IMPORT_SETTINGS.fetchTimeoutMs / 1000} s.`);
+    if ((e as Error).name === "AbortError") throw new Error(`Timed out after ${Math.round(limit / 1000)} s.`);
     throw e;
   } finally {
     clearTimeout(timer);
@@ -179,7 +180,7 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
     unchanged: 0, duplicates: 0, itemsFailed: 0, expired: 0, message: null,
   };
 
-  if (!(await acquireLock("sync", holder, 10))) {
+  if (!(await acquireLock("sync", holder, 20))) {
     result.status = "skipped";
     result.message = "Another sync is already running; this one was skipped.";
     await sql`update sync_runs set status = 'skipped', finished_at = now(), message = ${result.message} where id = ${runId}`;
@@ -204,7 +205,7 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
       }
       const feedId = Number(feed.id);
       try {
-        const body = await fetchFeedText(feed.url);
+        const body = await fetchFeedText(feed.url, Number.isFinite(budget) ? budget - (Date.now() - started) - 500 : undefined);
         const parsed = parseFeed(body);
         const items = parsed.items.slice(0, IMPORT_SETTINGS.maxItemsPerFeed);
         result.itemsSeen += items.length;
@@ -288,7 +289,8 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
                 message: matchedBy === "fingerprint" ? "Same title, organization and details as an existing listing on another website" : "Same vacancy link already imported from another feed" });
               // Prefer the employer's own website as the application link.
               if (matchedBy === "fingerprint" && orgId && knownOrgByHost(j.applyHost) && !knownOrgByHost(ex.apply_host)) {
-                await sql`update jobs set apply_url = ${j.applyUrl}, apply_host = ${j.applyHost}, url_hash = ${j.urlHash}, updated_at = now() where id = ${id} and not exists (select 1 from jobs where url_hash = ${j.urlHash})`;
+                // Only the link changes; url_hash keeps identifying the listing so its own feed still updates it.
+                await sql`update jobs set apply_url = ${j.applyUrl}, apply_host = ${j.applyHost}, updated_at = now() where id = ${id}`;
               }
               continue;
             }
@@ -365,7 +367,7 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
     result.expired = expired.length + archived.length;
     await sql`
       delete from jobs
-      where status in ('expired', 'archived', 'removed')
+      where status in ('expired', 'archived')
         and greatest(coalesce(deadline::timestamptz, last_seen_at), updated_at) < now() - make_interval(days => ${IMPORT_SETTINGS.deleteClosedAfterDays})`;
     await sql`delete from sync_items where created_at < now() - make_interval(days => ${IMPORT_SETTINGS.keepImportLogsDays})`;
     await sql`delete from sync_runs where started_at < now() - make_interval(days => ${IMPORT_SETTINGS.keepImportLogsDays * 3})`;

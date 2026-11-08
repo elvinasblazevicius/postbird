@@ -14,11 +14,11 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   const { slug } = await params;
   const cat = categoryBySlug(slug);
   if (!cat) return { title: "Category not found", robots: { index: false } };
-  const count = await countFor({ category: slug });
+  const count = await countFor({ category: slug }, false);
   const name = cat.slug === "other" ? "Other international" : cat.name;
   return landingMetadata({
-    title: `${name} jobs at the UN, international organizations and NGOs`,
-    description: `${count} open ${cat.name.toLowerCase()} vacancies at UN agencies, international organizations and NGOs. ${cat.blurb}`,
+    title: `${name} jobs at the UN and international organizations`,
+    description: `${count} open ${cat.name.toLowerCase()} vacancies at UN agencies and international organizations. ${cat.blurb}`,
     path: `/categories/${slug}`,
     count,
     filters: parseFilters(await searchParams),
@@ -36,7 +36,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
       <PageHeader
         title={`${cat.slug === "other" ? "Other" : cat.name} jobs`}
         crumbs={[{ href: "/", label: "Home" }, { href: "/categories", label: "Categories" }, { href: `/categories/${slug}`, label: cat.name }]}
-        intro={`${cat.blurb} Openings at UN agencies, international organizations and NGOs.`}
+        intro={`${cat.blurb} Openings at UN agencies and international organizations.`}
       />
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <JobsBrowser filters={filters} fixed={{ category: slug }} base={`/categories/${slug}`} />

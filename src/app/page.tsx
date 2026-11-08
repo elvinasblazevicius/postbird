@@ -58,11 +58,26 @@ export default async function HomePage() {
               <strong className="font-semibold">{stats.active.toLocaleString("en-US")}</strong> open vacancies
               {stats.orgs ? <> from <strong className="font-semibold">{stats.orgs}</strong> organizations</> : null}
             </span>
-            <Link href="/alerts" className="rounded-full bg-white px-3 py-0.5 font-medium text-brand hover:bg-white/90">Get email alerts</Link>
+            <Link href="/alerts" className="rounded-full bg-highlight px-3 py-0.5 font-semibold text-ink hover:brightness-95">Get email alerts</Link>
             <Link href="/remote-jobs" className="rounded-full bg-white/15 px-3 py-0.5 text-white hover:bg-white/25">Remote and home-based</Link>
             <Link href="/jobs?closing=7&sort=deadline" className="rounded-full bg-white/15 px-3 py-0.5 text-white hover:bg-white/25">Closing this week</Link>
             <Link href="/categories/data-analytics" className="rounded-full bg-white/15 px-3 py-0.5 text-white hover:bg-white/25">Data &amp; analytics</Link>
           </p>
+          {orgs.length ? (
+            <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-white/20 pt-5">
+              <span className="mr-1 text-sm font-medium text-white/80">Hiring now</span>
+              {orgs.slice(0, 10).map((o) => (
+                <Link
+                  key={o.slug}
+                  href={`/organizations/${o.slug}`}
+                  className="rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-sm font-semibold tracking-wide text-white hover:bg-white/20"
+                >
+                  {o.short_name && o.short_name.length <= 12 ? o.short_name : o.name}
+                  <span className="ml-1.5 font-normal text-white/70">{o.count}</span>
+                </Link>
+              ))}
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -126,7 +141,7 @@ export default async function HomePage() {
         <h2 id="how-heading" className="text-[1.6rem] font-semibold text-ink">How {siteConfig.name} works</h2>
         <ol className="mt-6 grid gap-6 md:grid-cols-3">
           {[
-            ["We gather vacancies", "Openings published by UN agencies, international organizations and NGOs are collected from their public job feeds several times a day."],
+            ["We gather vacancies", "Openings published by UN agencies and international organizations are collected from their public job feeds several times a day."],
             ["You search one place", "Every listing is organized by organization, country, category and deadline. Closed vacancies are removed automatically."],
             ["You apply on the official site", "Each listing links to the employer's own vacancy page. We never take applications or ask for fees."],
           ].map(([title, body], i) => (

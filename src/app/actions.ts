@@ -9,7 +9,6 @@ export type FormState = { status: "idle" | "success" | "error"; message: string 
 
 const MESSAGES = {
   check_email: "Almost done. We've sent you an email — click the link inside to confirm.",
-  already_confirmed: "You're already subscribed with this address. You're all set.",
   email_not_configured: "Thanks, your address is saved. You'll get a confirmation email before we send anything else.",
 } as const;
 
@@ -18,7 +17,6 @@ const trialOpening = () =>
 
 const WAITLIST_MESSAGES = {
   check_email: () => `Thanks! ${trialOpening()} Please confirm your email with the link we just sent.`,
-  already_confirmed: () => `You're already on the list. ${trialOpening()}`,
   email_not_configured: () => `Thanks, your address is saved. ${trialOpening()}`,
 } as const;
 
