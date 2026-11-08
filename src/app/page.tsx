@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AlertSignup } from "@/components/alert-signup";
 import { JobGrid, OrgBadge } from "@/components/job-card";
 import { HeroSearch } from "@/components/search-forms";
-import { categoryFacets, countryFacets, latestJobs, organizationFacets, siteStats } from "@/lib/jobs";
+import { categoryFacets, countryFacets, jobTypeFacets, latestJobs, organizationFacets, siteStats } from "@/lib/jobs";
 import { absoluteUrl, jsonLd, siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -12,12 +12,13 @@ export const metadata = {
 };
 
 export default async function HomePage() {
-  const [latest, orgs, countries, categories, stats] = await Promise.all([
+  const [latest, orgs, countries, categories, stats, types] = await Promise.all([
     latestJobs(9),
     organizationFacets(),
     countryFacets(),
     categoryFacets(),
     siteStats(),
+    jobTypeFacets(),
   ]);
 
   const websiteLd = {
@@ -37,24 +38,24 @@ export default async function HomePage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(websiteLd) }} />
 
       {/* Hero */}
-      <section className="relative overflow-hidden border-b border-rule bg-[linear-gradient(180deg,var(--mist)_0%,var(--paper)_100%)]">
+      <section className="bg-candy-hero relative overflow-hidden">
         <Meridians />
         <div className="relative mx-auto max-w-6xl px-4 pb-14 pt-14 sm:px-6 sm:pt-20">
           <div className="max-w-3xl">
-            <h1 className="text-[2.6rem] font-semibold leading-[1.05] text-ink sm:text-[3.6rem]">{siteConfig.home.headline}</h1>
-            <p className="mt-5 max-w-2xl text-lg leading-relaxed text-slate">{siteConfig.home.subheadline}</p>
+            <h1 className="text-[2.6rem] font-semibold leading-[1.05] text-white sm:text-[3.6rem]">{siteConfig.home.headline}</h1>
+            <p className="mt-5 max-w-2xl text-lg leading-relaxed text-white/85">{siteConfig.home.subheadline}</p>
           </div>
           <div className="mt-9 max-w-4xl">
-            <HeroSearch facets={{ orgs, countries, categories }} />
+            <HeroSearch facets={{ orgs, countries, categories, types }} />
           </div>
-          <p className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[0.95rem] text-slate">
-            <span className="text-ink">
+          <p className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[0.95rem] text-white/85">
+            <span className="text-white">
               <strong className="font-semibold">{stats.active.toLocaleString("en-US")}</strong> open vacancies
               {stats.orgs ? <> from <strong className="font-semibold">{stats.orgs}</strong> organizations</> : null}
             </span>
-            <Link href="/remote-jobs" className="text-accent hover:underline">Remote and home-based</Link>
-            <Link href="/jobs?closing=7&sort=deadline" className="text-accent hover:underline">Closing this week</Link>
-            <Link href="/categories/data-analytics" className="text-accent hover:underline">Data &amp; analytics</Link>
+            <Link href="/remote-jobs" className="rounded-full bg-white/15 px-3 py-0.5 text-white hover:bg-white/25">Remote and home-based</Link>
+            <Link href="/jobs?closing=7&sort=deadline" className="rounded-full bg-white/15 px-3 py-0.5 text-white hover:bg-white/25">Closing this week</Link>
+            <Link href="/categories/data-analytics" className="rounded-full bg-white/15 px-3 py-0.5 text-white hover:bg-white/25">Data &amp; analytics</Link>
           </p>
         </div>
       </section>
@@ -123,8 +124,8 @@ export default async function HomePage() {
             ["You search one place", "Every listing is organized by organization, country, category and deadline. Closed vacancies are removed automatically."],
             ["You apply on the official site", "Each listing links to the employer's own vacancy page. We never take applications or ask for fees."],
           ].map(([title, body], i) => (
-            <li key={title} className="rounded-xl border border-rule p-6">
-              <span className="font-display text-3xl font-semibold text-brand">{i + 1}</span>
+            <li key={title} className="rounded-2xl border border-rule bg-candy-soft p-6">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand font-display text-2xl font-semibold text-white">{i + 1}</span>
               <h3 className="mt-3 text-xl font-semibold text-ink">{title}</h3>
               <p className="mt-2 leading-relaxed text-slate">{body}</p>
             </li>
@@ -137,7 +138,7 @@ export default async function HomePage() {
 
       {/* Alerts */}
       <section className="mx-auto mt-20 max-w-6xl px-4 sm:px-6" aria-labelledby="alerts-heading">
-        <div className="grid items-center gap-8 rounded-2xl bg-brand px-6 py-10 text-white sm:px-10 lg:grid-cols-[1.1fr_1fr]">
+        <div className="bg-candy-band grid items-center gap-8 rounded-3xl px-6 py-10 text-white sm:px-10 lg:grid-cols-[1.1fr_1fr]">
           <div>
             <h2 id="alerts-heading" className="text-[1.9rem] font-semibold leading-tight">New vacancies in your inbox every week</h2>
             <p className="mt-3 max-w-lg leading-relaxed text-white/80">
@@ -154,7 +155,7 @@ export default async function HomePage() {
 /** Faint latitude/longitude lines behind the hero. Decorative only. */
 function Meridians() {
   return (
-    <svg aria-hidden="true" viewBox="0 0 600 600" className="pointer-events-none absolute -right-40 -top-24 hidden h-[640px] w-[640px] text-brand opacity-[0.07] md:block">
+    <svg aria-hidden="true" viewBox="0 0 600 600" className="pointer-events-none absolute -right-40 -top-24 hidden h-[640px] w-[640px] text-white opacity-[0.18] md:block">
       <g fill="none" stroke="currentColor" strokeWidth="1.2">
         <circle cx="300" cy="300" r="280" />
         {[70, 140, 210].map((rx) => (

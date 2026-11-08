@@ -39,7 +39,7 @@ export default function PricingPage() {
           <Link href="/alerts" className="mt-8 rounded-lg border border-rule px-5 py-3 text-center font-semibold text-ink hover:bg-mist">Get the weekly email</Link>
         </section>
 
-        <section className="flex flex-col rounded-2xl border-2 border-brand p-7" aria-labelledby="plan-premium">
+        <section className="flex flex-col rounded-2xl border-2 border-brand bg-candy-soft p-7 shadow-[0_18px_40px_-22px_rgba(29,91,255,0.6)]" aria-labelledby="plan-premium">
           <h2 id="plan-premium" className="text-2xl font-semibold text-ink">{p.name}</h2>
           <p className="mt-2">
             <span className="font-display text-4xl font-semibold text-ink">{p.price}</span>

@@ -55,11 +55,17 @@ const siteConfig = {
     ],
   },
 
-  /** Colours. `brand` is the main navy; `accent` is used for links and buttons. */
+  /**
+   * Colours. `brand` is the main blue (buttons, hero), `accent` the darker
+   * blue for links and hover states, `sky` the light end of the hero
+   * gradient, `candy` the pink used for "closing soon", `ink` the text colour.
+   */
   colors: {
-    brand: "#16325C",
-    accent: "#1F4E8C",
-    ink: "#0E1B2C",
+    brand: "#1D5BFF",
+    accent: "#0F44D6",
+    sky: "#38C6FF",
+    candy: "#E8227A",
+    ink: "#0B1B3F",
   },
 
   /**

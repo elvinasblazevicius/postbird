@@ -61,6 +61,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     "--brand": siteConfig.colors.brand,
     "--accent": siteConfig.colors.accent,
     "--ink": siteConfig.colors.ink,
+    "--sky": siteConfig.colors.sky,
+    "--candy": siteConfig.colors.candy,
   } as React.CSSProperties;
 
   return (

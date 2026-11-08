@@ -9,16 +9,17 @@ export function OrgBadge({ name, short, size = "md" }: { name: string | null; sh
   return (
     <span
       aria-hidden="true"
-      className={`${dims} flex shrink-0 items-center justify-center rounded-lg border border-rule bg-mist font-semibold tracking-wide text-brand`}
+      className={`${dims} flex shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--tint),#dff5ff)] font-semibold tracking-wide text-brand`}
     >
       {text}
     </span>
   );
 }
 
-export function Tag({ children, tone = "plain" }: { children: React.ReactNode; tone?: "plain" | "remote" | "signal" | "demo" }) {
+export function Tag({ children, tone = "plain" }: { children: React.ReactNode; tone?: "plain" | "lilac" | "remote" | "signal" | "demo" }) {
   const tones = {
-    plain: "bg-mist text-slate",
+    plain: "bg-tint text-tint-ink",
+    lilac: "bg-lilac text-lilac-ink",
     remote: "bg-remote-bg text-remote",
     signal: "bg-signal-bg text-signal",
     demo: "bg-[#fde8e8] text-[#9b1c1c]",
@@ -53,12 +54,12 @@ export function JobCard({ job, headingLevel = 3 }: { job: JobListItem; headingLe
   const H = `h${headingLevel}` as "h2" | "h3";
   const href = jobPath(job);
   return (
-    <article className="group relative rounded-xl border border-rule bg-paper p-5 transition-colors hover:border-[color-mix(in_srgb,var(--accent)_45%,var(--rule))] sm:p-6">
+    <article className="card-lift group relative rounded-2xl border border-rule bg-paper p-5 hover:border-[color-mix(in_srgb,var(--brand)_45%,var(--rule))] sm:p-6">
       <div className="flex gap-4">
         <OrgBadge name={job.org_name} short={job.org_short} />
         <div className="min-w-0 flex-1">
           <H className="font-display text-[1.28rem] font-semibold leading-snug text-ink">
-            <Link href={href} className="after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none">
+            <Link href={href} className="after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-none">
               {job.title}
             </Link>
           </H>
@@ -70,8 +71,8 @@ export function JobCard({ job, headingLevel = 3 }: { job: JobListItem; headingLe
             {job.is_demo ? <Tag tone="demo">Demo data</Tag> : null}
             {job.is_remote ? <Tag tone="remote">Remote / home-based</Tag> : null}
             {job.category !== "other" ? <Tag>{categoryName(job.category)}</Tag> : null}
-            {job.grade ? <Tag>{job.grade}</Tag> : null}
-            {job.job_type ? <Tag>{job.job_type}</Tag> : null}
+            {job.grade ? <Tag tone="lilac">{job.grade}</Tag> : null}
+            {job.job_type ? <Tag tone="lilac">{job.job_type}</Tag> : null}
             <span className="text-[0.8rem] text-slate">{postedLabel(job.published_at, job.first_seen_at)}</span>
           </div>
         </div>
@@ -115,7 +116,7 @@ export function JobList({ jobs, headingLevel = 3 }: { jobs: JobListItem[]; headi
 export function JobTile({ job }: { job: JobListItem }) {
   const dl = deadlineLabel(job.deadline);
   return (
-    <article className="group relative flex h-full flex-col rounded-xl border border-rule bg-paper p-5 shadow-[0_1px_2px_rgba(14,27,44,0.04)] transition-colors hover:border-[color-mix(in_srgb,var(--accent)_45%,var(--rule))]">
+    <article className="card-lift group relative flex h-full flex-col rounded-2xl border border-rule bg-paper p-5 hover:border-[color-mix(in_srgb,var(--brand)_45%,var(--rule))]">
       <div className="flex items-start justify-between gap-3">
         <OrgBadge name={job.org_name} short={job.org_short} />
         <div className="text-right">
@@ -134,7 +135,7 @@ export function JobTile({ job }: { job: JobListItem }) {
         </div>
       </div>
       <h3 className="mt-4 font-display text-[1.18rem] font-semibold leading-snug text-ink">
-        <Link href={jobPath(job)} className="after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none">{job.title}</Link>
+        <Link href={jobPath(job)} className="after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-none">{job.title}</Link>
       </h3>
       <p className="mt-1.5 text-[0.95rem] text-ink">{job.org_name ?? <span className="text-slate">Organization {NOT_SPECIFIED.toLowerCase()}</span>}</p>
       <p className="text-[0.95rem] text-slate">{locationLabel(job)}</p>
@@ -142,7 +143,7 @@ export function JobTile({ job }: { job: JobListItem }) {
         {job.is_demo ? <Tag tone="demo">Demo data</Tag> : null}
         {job.is_remote ? <Tag tone="remote">Remote</Tag> : null}
         {job.category !== "other" ? <Tag>{categoryName(job.category)}</Tag> : null}
-        {job.grade ? <Tag>{job.grade}</Tag> : null}
+        {job.grade ? <Tag tone="lilac">{job.grade}</Tag> : null}
       </div>
       <div className="min-h-4 flex-1" />
       <div className="flex items-center justify-between border-t border-rule pt-3">

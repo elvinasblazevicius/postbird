@@ -125,7 +125,7 @@ export default async function JobPage({ params }: Props) {
       {ld ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(ld) }} /> : null}
       <TrackOnMount event={{ type: "job_view", jobId: job.id }} />
 
-      <div className="border-b border-rule bg-mist">
+      <div className="bg-candy-soft border-b border-rule">
         <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
           <Breadcrumbs
             items={[
@@ -148,8 +148,8 @@ export default async function JobPage({ params }: Props) {
                 {!open ? <Tag tone="signal">Closed</Tag> : null}
                 {job.is_remote ? <Tag tone="remote">Remote / home-based</Tag> : null}
                 {job.category !== "other" ? <Tag>{categoryName(job.category)}</Tag> : null}
-                {job.grade ? <Tag>{job.grade}</Tag> : null}
-                {job.job_type ? <Tag>{job.job_type}</Tag> : null}
+                {job.grade ? <Tag tone="lilac">{job.grade}</Tag> : null}
+                {job.job_type ? <Tag tone="lilac">{job.job_type}</Tag> : null}
               </div>
             </div>
           </div>

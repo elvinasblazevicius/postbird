@@ -32,7 +32,7 @@ export function Breadcrumbs({ items }: { items: Crumb[] }) {
 
 export function PageHeader({ title, intro, crumbs, children }: { title: string; intro?: React.ReactNode; crumbs?: Crumb[]; children?: React.ReactNode }) {
   return (
-    <header className="border-b border-rule bg-mist">
+    <header className="bg-candy-soft border-b border-rule">
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         {crumbs ? <Breadcrumbs items={crumbs} /> : null}
         <h1 className="mt-3 text-[2.1rem] font-semibold leading-tight text-ink sm:text-[2.5rem]">{title}</h1>

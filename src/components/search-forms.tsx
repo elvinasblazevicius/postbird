@@ -38,7 +38,7 @@ function Select({ name, label, value, options, all, idPrefix = "f" }: { name: st
 /** Homepage search: keyword plus location, organization and category. */
 export function HeroSearch({ facets }: { facets: FacetData }) {
   return (
-    <form id="hero-search" action="/jobs" method="get" role="search" className="rounded-2xl border border-rule bg-paper p-4 shadow-[0_1px_2px_rgba(14,27,44,0.04),0_8px_24px_-12px_rgba(14,27,44,0.12)] sm:p-5">
+    <form id="hero-search" action="/jobs" method="get" role="search" className="rounded-2xl bg-paper p-4 shadow-[0_20px_50px_-20px_rgba(11,27,63,0.55)] sm:p-5">
       <label htmlFor="hero-q" className="mb-1.5 block text-sm font-medium text-ink">Job title, skill or keyword</label>
       <div className="flex flex-col gap-3 sm:flex-row">
         <input
@@ -53,10 +53,39 @@ export function HeroSearch({ facets }: { facets: FacetData }) {
           Search jobs
         </button>
       </div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        <Select name="country" label="Location" all="Any country" options={facets.countries.map((c) => ({ value: c.slug, label: `${c.name} (${c.count})` }))} />
-        <Select name="org" label="Organization" all="Any organization" options={facets.orgs.map((o) => ({ value: o.slug, label: `${o.name} (${o.count})` }))} />
-        <Select name="category" label="Category" all="Any category" options={facets.categories.filter((c) => c.count > 0).map((c) => ({ value: c.slug, label: `${c.name} (${c.count})` }))} />
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Select idPrefix="hero" name="country" label="Location" all="Any country" options={facets.countries.map((c) => ({ value: c.slug, label: `${c.name} (${c.count})` }))} />
+        <Select idPrefix="hero" name="org" label="Organization" all="Any organization" options={facets.orgs.map((o) => ({ value: o.slug, label: `${o.name} (${o.count})` }))} />
+        <Select idPrefix="hero" name="category" label="Category" all="Any category" options={facets.categories.filter((c) => c.count > 0).map((c) => ({ value: c.slug, label: `${c.name} (${c.count})` }))} />
+        {facets.types && facets.types.length ? (
+          <Select idPrefix="hero" name="type" label="Job type" all="Any type" options={JOB_TYPES.filter((t) => facets.types!.some((x) => x.job_type === t)).map((t) => ({ value: t, label: t }))} />
+        ) : (
+          <Select idPrefix="hero" name="closing" label="Deadline" all="Any deadline" options={[{ value: "7", label: "Closing within 7 days" }, { value: "30", label: "Closing within 30 days" }]} />
+        )}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3">
+        <label className="flex cursor-pointer items-center gap-2.5 text-[0.95rem] text-ink">
+          <input type="checkbox" name="remote" value="1" className="h-4 w-4 accent-[var(--accent)]" />
+          Remote or home-based only
+        </label>
+        {facets.types && facets.types.length ? (
+          <label className="flex items-center gap-2.5 text-[0.95rem] text-ink">
+            <span>Deadline</span>
+            <select name="closing" defaultValue="" className="rounded-lg border border-rule bg-paper px-2.5 py-1.5 text-[0.95rem] text-ink">
+              <option value="">Any</option>
+              <option value="7">Within 7 days</option>
+              <option value="30">Within 30 days</option>
+            </select>
+          </label>
+        ) : null}
+        <label className="flex items-center gap-2.5 text-[0.95rem] text-ink">
+          <span>Posted</span>
+          <select name="posted" defaultValue="" className="rounded-lg border border-rule bg-paper px-2.5 py-1.5 text-[0.95rem] text-ink">
+            <option value="">Any time</option>
+            <option value="1">Last 24 hours</option>
+            <option value="7">Last 7 days</option>
+          </select>
+        </label>
       </div>
       <AutoSubmit formId="hero-search" onChange={false} />
     </form>
