@@ -20,7 +20,7 @@ on:
         required: true
         default: sync
         type: choice
-        options: [sync, digest, setup]
+        options: [sync, digest, setup, diagnose]
 
 concurrency:
   group: scheduled-jobs
