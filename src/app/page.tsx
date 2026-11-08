@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AlertSignup } from "@/components/alert-signup";
 import { JobGrid, OrgBadge } from "@/components/job-card";
+import { Flag } from "@/components/flag";
 import { HeroSearch } from "@/components/search-forms";
 import { categoryFacets, countryFacets, experienceFacets, gradeFacets, jobTypeFacets, languageFacets, latestJobs, organizationFacets, orgTypeFacets, regionFacets, siteStats } from "@/lib/jobs";
 import { absoluteUrl, jsonLd, siteConfig } from "@/lib/site";
@@ -61,19 +62,44 @@ export default async function HomePage() {
             </span>
             <Link href="/alerts" className="font-semibold text-highlight underline decoration-highlight/50 underline-offset-4 hover:decoration-highlight">Get new ones by email</Link>
           </p>
-          {orgs.length ? (
-            <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-white/20 pt-5">
-              <span className="mr-1 text-sm font-medium text-white/80">Hiring now</span>
-              {orgs.slice(0, 10).map((o) => (
-                <Link
-                  key={o.slug}
-                  href={`/organizations/${o.slug}`}
-                  className="rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-sm font-semibold tracking-wide text-white hover:bg-white/20"
-                >
-                  {o.short_name && o.short_name.length <= 12 ? o.short_name : o.name}
-                  <span className="ml-1.5 font-normal text-white/70">{o.count}</span>
-                </Link>
-              ))}
+          {orgs.length || countries.length ? (
+            <div className="mt-6 space-y-3 border-t border-white/20 pt-5">
+              {orgs.length ? (
+                <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+                  <span className="shrink-0 text-sm font-medium text-white/80 sm:w-28 sm:pt-1.5">Hiring now</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {orgs.slice(0, 10).map((o) => (
+                      <Link
+                        key={o.slug}
+                        href={`/organizations/${o.slug}`}
+                        className="rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-sm font-semibold tracking-wide text-white hover:bg-white/20"
+                      >
+                        {o.short_name && o.short_name.length <= 12 ? o.short_name : o.name}
+                        <span className="ml-1.5 font-normal text-white/70">{o.count}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {countries.length ? (
+                <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+                  <span className="shrink-0 text-sm font-medium text-white/80 sm:w-28 sm:pt-1.5">Duty stations</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {countries.slice(0, 8).map((c) => (
+                      <Link
+                        key={c.slug}
+                        href={`/locations/${c.slug}`}
+                        className="inline-flex items-center gap-2 rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/20"
+                      >
+                        <Flag code={c.code} className="shadow-[0_0_0_1px_rgba(255,255,255,0.35)]" />
+                        {c.name}
+                        <span className="font-normal text-white/70">{c.count}</span>
+                      </Link>
+                    ))}
+                    <Link href="/locations" className="px-1 text-sm font-medium text-white/85 underline decoration-white/40 underline-offset-4 hover:decoration-white">All locations</Link>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>

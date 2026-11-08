@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Flag } from "@/components/flag";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { cache } from "react";
@@ -142,7 +143,7 @@ export default async function JobPage({ params }: Props) {
               <p className="mt-2 text-lg text-ink">
                 {job.org_slug ? <Link href={`/organizations/${job.org_slug}`} className="hover:underline">{job.org_name}</Link> : <span className="text-slate">Organization not specified</span>}
               </p>
-              <p className="text-slate">{where}</p>
+              <p className="flex items-center gap-1.5 text-slate"><Flag code={job.country_code} />{where}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {job.is_demo ? <Tag tone="demo">Demo data — not a real vacancy</Tag> : null}
                 {!open ? <Tag tone="signal">Closed</Tag> : null}

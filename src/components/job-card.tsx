@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { JobListItem } from "@/lib/jobs";
+import { Flag } from "./flag";
 import { categoryName, deadlineLabel, formatDate, jobPath, locationLabel, monogram, NOT_SPECIFIED, postedLabel } from "@/lib/site";
 
 export function OrgBadge({ name, short, size = "md" }: { name: string | null; short: string | null; size?: "md" | "lg" }) {
@@ -66,7 +67,7 @@ export function JobCard({ job, headingLevel = 3 }: { job: JobListItem; headingLe
           <p className="mt-1 text-[0.95rem] text-ink">
             {job.org_name ?? <span className="text-slate">Organization {NOT_SPECIFIED.toLowerCase()}</span>}
           </p>
-          <p className="mt-0.5 text-[0.95rem] text-slate">{locationLabel(job)}</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[0.95rem] text-slate"><Flag code={job.country_code} />{locationLabel(job)}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {job.is_demo ? <Tag tone="demo">Demo data</Tag> : null}
             {job.is_remote ? <Tag tone="remote">Remote / home-based</Tag> : null}
@@ -138,7 +139,7 @@ export function JobTile({ job }: { job: JobListItem }) {
         <Link href={jobPath(job)} className="after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-none">{job.title}</Link>
       </h3>
       <p className="mt-1.5 text-[0.95rem] text-ink">{job.org_name ?? <span className="text-slate">Organization {NOT_SPECIFIED.toLowerCase()}</span>}</p>
-      <p className="text-[0.95rem] text-slate">{locationLabel(job)}</p>
+      <p className="flex items-center gap-1.5 text-[0.95rem] text-slate"><Flag code={job.country_code} />{locationLabel(job)}</p>
       <div className="mt-3 flex flex-wrap gap-1.5">
         {job.is_demo ? <Tag tone="demo">Demo data</Tag> : null}
         {job.is_remote ? <Tag tone="remote">Remote</Tag> : null}

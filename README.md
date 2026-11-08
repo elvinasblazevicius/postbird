@@ -156,6 +156,8 @@ When demand is proven, the database already has `billing_customers`, `billing_su
 
 Edit **`site.config.ts`** to change the name, wording, colours, contact email, disclaimer, prices and trial length. The logo is `src/components/brand-mark.tsx`. Categories are in `src/config/categories.ts`, known organizations (used to merge spellings) in `src/config/organizations.ts`, and duty stations in `src/config/cities.ts`.
 
+Country flags (next to locations and in the homepage "Duty stations" row) come from the [flag-icons](https://github.com/lipis/flag-icons) package (MIT licence). They are copied into `public/flags` automatically before `npm run dev` and `npm run build`, so they are not stored in the repository. Only the flags of countries with open vacancies are shown; the UN and EU emblems are deliberately not used, because both organizations restrict use of their flags and emblems.
+
 ---
 
 ## 8. Local development
