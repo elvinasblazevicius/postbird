@@ -4,9 +4,10 @@
  */
 import { IMPORT_SETTINGS } from "@/config/import";
 import { sql } from "@/lib/db";
+import type { RawItem } from "./parse";
 import { normalizeItem, ItemSkipped, type ContentPolicy, type NormalizedJob } from "./extract";
 import { parseFeed, FeedParseError } from "./parse";
-import { canonicalizeUrl } from "./url";
+import { canonicalizeUrl, isAggregatorUrl } from "./url";
 import { knownOrgByHost } from "./extract";
 
 export type SyncTrigger = "cron" | "manual" | "cli";
@@ -67,6 +68,13 @@ function timeBudgetMs(trigger: SyncTrigger): number {
 }
 
 // ── Feeds from environment variables ─────────────────────────
+
+/** Inoreader replaces an output feed with one "Feed suspended!" notice when the owner's Pro plan lapses. */
+export function isSuspendedInoreaderFeed(items: RawItem[]): boolean {
+  return items.length > 0 && items.length <= 2 && items.every((i) =>
+    /inoreader\.com\/upgrade\//i.test(i.guid ?? "") ||
+    (/^\s*feed suspended/i.test(i.title) && i.links.every((u) => isAggregatorUrl(u))));
+}
 
 /** Add feeds listed in INOREADER_FEED_URLS (one per line or comma-separated; optional "Name | URL"). */
 export async function ensureEnvFeeds(): Promise<number> {
@@ -207,6 +215,9 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
       try {
         const body = await fetchFeedText(feed.url, Number.isFinite(budget) ? budget - (Date.now() - started) - 500 : undefined);
         const parsed = parseFeed(body);
+        if (isSuspendedInoreaderFeed(parsed.items)) {
+          throw new Error("Inoreader has suspended this feed: exporting RSS needs an active Inoreader Pro plan. Nothing was imported or removed.");
+        }
         const items = parsed.items.slice(0, IMPORT_SETTINGS.maxItemsPerFeed);
         result.itemsSeen += items.length;
 

@@ -107,7 +107,11 @@ export function findCity(text: string): string | null {
 
 export function knownOrgByName(name: string | null | undefined): KnownOrg | undefined {
   if (!name) return undefined;
-  return ORG_INDEX.get(normalizeForCompare(name));
+  const direct = ORG_INDEX.get(normalizeForCompare(name));
+  if (direct) return direct;
+  // Job boards often shorten "United Nations" to "UN" and write "Program" for "Programme".
+  const variant = name.replace(/^\s*UN\s+/, "United Nations ").replace(/\bProgram\b/g, "Programme");
+  return variant !== name ? ORG_INDEX.get(normalizeForCompare(variant)) : undefined;
 }
 
 export function knownOrgByHost(host: string): KnownOrg | undefined {
@@ -178,17 +182,17 @@ export function detectCategory(title: string): string {
 }
 
 const LANGUAGE_NAMES = ["French", "Spanish", "Arabic", "Portuguese", "Russian", "Chinese"];
-const LANG_CONTEXT = /\b(fluen\w*|proficien\w*|knowledge of|command of|language|languages|written and (?:oral|spoken)|spoken and written|oral and written|bilingual)\b/i;
+const LANG_CONTEXT = /\b(fluen\w*|proficien\w*|knowledge of|command of|written and (?:oral|spoken)|spoken and written|oral and written|bilingual|mother tongue|native speaker|language (?:skills?|requirements?|proficiency)|required|essential|desirable|an asset|advantage)\b|\blanguages?\s*[:：]/i;
 
 /** Languages (other than English) named in a sentence about language requirements. */
 export function detectLanguages(text: string): string[] | null {
   const found = new Set<string>();
-  for (const sentence of text.split(/(?<=[.;:!?])\s+|\n/)) {
+  for (const sentence of text.split(/(?<=[.;!?])\s+|\n/)) {
     if (sentence.length > 600 || !LANG_CONTEXT.test(sentence)) continue;
     if (/\b(working|official) languages?\b/i.test(sentence)) continue; // describes the organization, not the job
     for (const lang of LANGUAGE_NAMES) {
       // "French" but not "French Polynesia" / "Spanish-speaking"-style adjectives are still fine
-      if (new RegExp(`\\b${lang}\\b(?! Polynesia| Guiana| Southern)`, "i").test(sentence)) found.add(lang);
+      if (new RegExp(`\\b${lang}\\b(?! Polynesia| Guiana| Southern|-language)`, "i").test(sentence)) found.add(lang);
     }
   }
   return found.size ? [...found].sort() : null;
@@ -202,7 +206,7 @@ const NUMBER_WORDS: Record<string, number> = {
 /** Minimum years of experience from phrases like "a minimum of five (5) years of ... experience". */
 export function detectExperienceYears(text: string): number | null {
   const N = "(\\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty)";
-  const forward = new RegExp(`\\b${N}(?:\\s*\\(\\d{1,2}\\))?\\s*\\+?\\s*(?:or more\\s+)?years?\\s+of\\s+(?:[\\w-]+\\s+){0,5}?experience\\b`, "i");
+  const forward = new RegExp(`\\b${N}(?:\\s*(?:-|–|to)\\s*\\d{1,2})?(?:\\s*\\(\\d{1,2}\\))?\\s*\\+?\\s*(?:or more\\s+)?years?\\s+of\\s+(?:[\\w-]+\\s+){0,5}?experience\\b`, "i");
   const backward = new RegExp(`\\bexperience\\s+of\\s+(?:at least|a minimum of|minimum|over)?\\s*${N}(?:\\s*\\(\\d{1,2}\\))?\\s*\\+?\\s*years?\\b`, "i");
   const m = text.match(forward) ?? text.match(backward);
   if (!m) return null;
@@ -257,6 +261,7 @@ function titleTailSegments(title: string): string[] {
 export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   const title = oneLine(raw.title).slice(0, 300);
   if (!title) throw new ItemSkipped("Item has no title");
+  if (IMPORT_SETTINGS.skipTitlePatterns.some((re) => re.test(title))) throw new ItemSkipped("Looks like a tender or supplier call, not a job");
 
   const applyUrl = pickApplyUrl(raw.links);
   if (!applyUrl) throw new ItemSkipped("Item has no link to the original vacancy");
@@ -294,7 +299,9 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   let city: string | null = null;
   let locationText: string | null = locLabel ?? ([cityLabel, countryLabel].filter(Boolean).join(", ") || null);
 
-  const fromLabels = [locLabel, countryLabel].filter(Boolean).join(" ; ");
+  // "Martinique (France)", "Greenland (Denmark)": the territory, not the administering country
+  const fromLabels = [locLabel, countryLabel].filter(Boolean).join(" ; ")
+    .replace(/\s*\((?:France|United Kingdom|UK|Netherlands|United States(?: of America)?|USA|Denmark|Norway|Australia|New Zealand|China)\)/gi, "");
   let countries = fromLabels ? findCountries(fromLabels) : [];
   if (countries.length === 0) {
     // A feed tag counts only when the whole tag is a country name ("Kenya", not "Jordan Smith").
@@ -324,6 +331,11 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
     if (first && findCountries(first).length === 0 && !REMOTE_RE.test(first) && first.length <= 60 && !PLACEHOLDER_RE.test(first)) city = first;
   }
 
+  if (countries.length > 1 && countryLabel && findCountries(countryLabel).length > 1) {
+    // keep the source's order ("Argentina, Bolivia, Brazil")
+    const ordered = [...new Set(countryLabel.split(/[,;]/).flatMap((part) => findCountries(part)))];
+    locationText = (ordered.length === countries.length ? ordered : countries).map((c) => countryByCode(c)?.name ?? c).join(", ").slice(0, 200);
+  }
   if (countries.length === 1) countryCode = countries[0];
   else if (countries.length === 0 && knownCity) countryCode = DUTY_STATIONS[knownCity] ?? null;
   // several countries → keep the source's wording, no single country

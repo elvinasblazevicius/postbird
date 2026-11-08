@@ -30,6 +30,19 @@ export const IMPORT_SETTINGS = {
   /** Maximum items read from one feed per sync (protects the free database). */
   maxItemsPerFeed: 500,
 
+  /**
+   * Items whose TITLE matches one of these are not imported: tenders,
+   * requests for proposals and supplier calls are not jobs. They are logged
+   * as "skipped" in Admin → Imports, so you can see what was left out.
+   */
+  skipTitlePatterns: [
+    /^\s*(?:rfp|rfq|rfi|itb|ifb)\b/i,
+    /\brequest for (?:proposals?|quotations?|quotes?|offers?|bids?|information)\b/i,
+    /\b(?:invitation|call) (?:to|for) (?:bids?|tenders?|proposals?|offers?|quotations?)\b/i,
+    /^\s*tender\b|\btender (?:notice|no\.?|ref\.?|for)\b/i,
+    /\b(?:preferred )?supplier (?:list|roster|database)\b/i,
+  ] as RegExp[],
+
   /** Detailed per-item import logs are kept this many days. */
   keepImportLogsDays: 30,
 

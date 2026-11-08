@@ -215,3 +215,63 @@ describe("review regressions: extraction", () => {
     expect(normalizeItem(r({ title: "Analyst", summaryHtml: "<p>City: TBD</p><p>Country: Kenya</p>" }), f).city).toBeNull();
   });
 });
+
+import { isSuspendedInoreaderFeed } from "@/lib/feeds/sync";
+import { listingSiteName } from "@/lib/feeds/url";
+
+/** Synthetic items shaped like real ReliefWeb / Inoreader feed items (text written for the tests). */
+function board(title: string, tags: string, body = "<p>About the role.</p>"): RawItem {
+  return raw({ title, links: ["https://reliefweb.int/job/1/x"], summaryHtml: `${tags}${body}` });
+}
+
+describe("real-feed regressions (ReliefWeb and Inoreader)", () => {
+  it("skips tenders and supplier calls, keeps jobs", () => {
+    for (const t of ["Request for Proposal Website Redesign", "Request for Offers: Event Services", "RFQ - Office furniture", "Invitation to Bid for vehicles", "Translators - invitation to join our preferred supplier list"]) {
+      expect(() => normalizeItem(board(t, '<div class="tag country">Country: Kenya</div>'), feed)).toThrow(/tender|supplier/);
+    }
+    expect(normalizeItem(board("Procurement Officer (Tenders)", '<div class="tag country">Country: Kenya</div>'), feed).title).toBe("Procurement Officer (Tenders)");
+  });
+
+  it("maps 'UN …' and 'Program' spellings to the known organization", () => {
+    const a = normalizeItem(board("Programme Assistant", '<div class="tag source">Organization: UN Human Settlements Program</div>'), feed);
+    expect(a.organization?.short).toBe("UN-Habitat");
+    const b = normalizeItem(board("Education Officer", '<div class="tag source">Organization: UN Educational, Scientific and Cultural Organization</div>'), feed);
+    expect(b.organization?.short).toBe("UNESCO");
+  });
+
+  it("reads territories and multi-country postings", () => {
+    const t = normalizeItem(board("Logistics Officer", '<div class="tag country">Country: Martinique (France)</div>'), feed);
+    expect(t.countryCode).toBe("MQ");
+    const m = normalizeItem(board("Regional Consultant", '<div class="tag country">Countries: Argentina, Bolivia (Plurinational State of), Brazil</div>', "<p>Location: Latin America</p>"), feed);
+    expect(m.countryCode).toBeNull();
+    expect(m.locationText).toBe("Argentina, Bolivia, Brazil");
+  });
+
+  it("takes the lower end of an experience range and ignores languages that are not requirements", () => {
+    expect(detectExperienceYears("At least 3-5 years of relevant working experience in a humanitarian setting")).toBe(3);
+    expect(detectLanguages("We aim to improve the Arabic-language experience of our bilingual website.")).toBeNull();
+    expect(detectLanguages("Fluency in Arabic. Good command of English is an asset.")).toEqual(["Arabic"]);
+    expect(detectLanguages("Languages: Spanish and English.")).toEqual(["Spanish"]);
+  });
+
+  it("never uses a feed-reader link as the vacancy link", () => {
+    expect(pickApplyUrl(["https://www.inoreader.com/blog/2019/02/x.html"])).toBeNull();
+  });
+
+  it("recognises a suspended Inoreader feed", () => {
+    const notice = raw({ guid: "https://www.inoreader.com/upgrade/feature/rss_common?post", title: "Feed suspended! Please contact the owner.", links: ["https://www.inoreader.com/blog/2019/02/x.html"] });
+    expect(isSuspendedInoreaderFeed([notice])).toBe(true);
+    expect(isSuspendedInoreaderFeed([raw({ title: "Feed suspended! (a film festival job)", links: ["https://jobs.example.org/2"] })])).toBe(false);
+  });
+
+  it("names job boards so they are not called the official website", () => {
+    expect(listingSiteName("reliefweb.int")).toBe("ReliefWeb");
+    expect(listingSiteName("jobs.undp.org")).toBeNull();
+  });
+
+  it("categorises plural and non-English titles", () => {
+    expect(detectCategory("Sign Language Interpreters - Kenya")).toBe("communications");
+    expect(detectCategory("Oficial de Cadena de Abastecimiento y Compras")).toBe("procurement-logistics");
+    expect(detectCategory("Technical Officer (Cold Chain)")).toBe("procurement-logistics");
+  });
+});

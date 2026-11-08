@@ -18,7 +18,27 @@ export function isAggregatorUrl(url: string): boolean {
   return AGGREGATOR_HOSTS.some((re) => re.test(h));
 }
 
-/** Pick the best application link: the first that is not a feed-reader link. */
+/**
+ * Job boards that re-post vacancies from many employers. Their links are kept
+ * (they are where the vacancy was found), but the site must not call them the
+ * employer's "official website".
+ */
+const LISTING_SITES: { re: RegExp; name: string }[] = [
+  { re: /(^|\.)reliefweb\.int$/i, name: "ReliefWeb" },
+  { re: /(^|\.)unjobs\.org$/i, name: "UNjobs" },
+  { re: /(^|\.)impactpool\.org$/i, name: "Impactpool" },
+  { re: /(^|\.)devex\.com$/i, name: "Devex" },
+  { re: /(^|\.)unjobnet\.org$/i, name: "UNjobnet" },
+  { re: /(^|\.)idealist\.org$/i, name: "Idealist" },
+];
+
+/** Name of the job board behind a host, or null when the host is (presumably) the employer's own site. */
+export function listingSiteName(host: string | null | undefined): string | null {
+  if (!host) return null;
+  return LISTING_SITES.find((s) => s.re.test(host))?.name ?? null;
+}
+
+/** Pick the application link: the first that is not a feed-reader link (never a feed-reader link). */
 export function pickApplyUrl(candidates: string[]): string | null {
   const valid = candidates.filter((u) => {
     try {
@@ -28,7 +48,7 @@ export function pickApplyUrl(candidates: string[]): string | null {
       return false;
     }
   });
-  return valid.find((u) => !isAggregatorUrl(u)) ?? valid[0] ?? null;
+  return valid.find((u) => !isAggregatorUrl(u)) ?? null;
 }
 
 /**

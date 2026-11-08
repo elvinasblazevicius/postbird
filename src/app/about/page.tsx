@@ -34,7 +34,7 @@ export default function AboutPage() {
         <section>
           <h2 className="text-2xl font-semibold">How to apply</h2>
           <p className="mt-3">
-            Every listing has an <strong>Apply on Official Website</strong> button that opens the employer&apos;s vacancy page. Applications go directly to the employer.
+            Every listing has an <strong>Apply on Official Website</strong> button that opens the employer&apos;s vacancy page. When we found a vacancy on a job board such as ReliefWeb, the button says so and opens that board&apos;s page, where the employer&apos;s application link is. Applications always go directly to the employer.
             We never accept applications, and genuine international organizations don&apos;t charge fees at any stage of recruitment. Treat any request for payment as a scam.
           </p>
         </section>

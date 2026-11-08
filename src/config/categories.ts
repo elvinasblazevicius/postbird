@@ -23,7 +23,7 @@ export const CATEGORIES: Category[] = [
     blurb: "Data analysts, statisticians, information management and research data roles.",
     keywords: [
       "data", "analytics", "statistic*", "information management",
-      "business intelligence", "bi analyst", "gis", "data scientist", "data science", "dashboard",
+      "business intelligence", "bi analyst", "gis", "enumerator*", "enumerador*", "enquêteur*", "data scientist", "data science", "dashboard",
     ],
   },
   {
@@ -65,13 +65,13 @@ export const CATEGORIES: Category[] = [
     slug: "procurement-logistics",
     name: "Procurement & Logistics",
     blurb: "Procurement, supply chain, logistics and fleet roles.",
-    keywords: ["procurement", "supply chain", "supply", "logistics", "logistician", "warehouse", "fleet", "contracts"],
+    keywords: ["procurement", "supply chain", "supply", "logistics", "logistician", "warehouse", "fleet", "contracts", "cold chain", "compras", "abastecimiento", "adquisiciones", "achats", "approvisionnement"],
   },
   {
     slug: "legal-compliance",
     name: "Legal & Compliance",
     blurb: "Legal officers, counsel, compliance, ethics and investigation roles.",
-    keywords: ["legal", "lawyer", "counsel", "compliance", "ethics", "investigator", "investigation", "integrity"],
+    keywords: ["legal", "lawyer", "counsel", "compliance", "ethics", "investigator", "investigation", "integrity", "safeguarding", "enquêtes"],
   },
   {
     slug: "health",
@@ -88,7 +88,7 @@ export const CATEGORIES: Category[] = [
     blurb: "Communications, media, advocacy, editorial and public information roles.",
     keywords: [
       "communication*", "media", "public information", "advocacy", "editor", "writer",
-      "content", "social media", "press", "outreach", "translator", "interpreter",
+      "content", "social media", "press", "outreach", "translator*", "interpreter*",
     ],
   },
   {
@@ -112,7 +112,7 @@ export const CATEGORIES: Category[] = [
     blurb: "Administrative, office management and operations support roles.",
     keywords: [
       "administrative", "administration", "admin", "office manager", "secretary", "receptionist",
-      "operations assistant", "operations associate", "operations officer", "facilities", "driver", "clerk",
+      "operations assistant", "operations associate", "operations officer", "operations manager", "operations director", "head of operations", "facilities", "maintenance", "driver", "clerk",
     ],
   },
 ];

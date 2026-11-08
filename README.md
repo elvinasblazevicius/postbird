@@ -179,7 +179,7 @@ Demo listings use made-up organizations, are labelled "Demo data" everywhere, ar
 
 ## 9. What was tested, and what wasn't
 
-**Tested locally:** typecheck, lint and production build pass, and 23 unit tests pass (feed parsing, field extraction, dates, categories, grades, languages, experience, URLs, plus regression cases from an independent code review). An end-to-end import ran against a real PostgreSQL 16 with RSS, Atom and JSON Feed sample feeds, plus a broken XML feed, an HTML page and a 404. Results:
+**Tested locally:** typecheck, lint and production build pass, and 31 unit tests pass (feed parsing, field extraction, dates, categories, grades, languages, experience, URLs, plus regression cases from an independent code review). An end-to-end import ran against a real PostgreSQL 16 with RSS, Atom and JSON Feed sample feeds, plus a broken XML feed, an HTML page and a 404. Results:
 - Broken feeds are logged and the other feeds still import.
 - A second run creates no duplicates.
 - Cross-feed and cross-site duplicates merge.
@@ -191,10 +191,14 @@ Demo listings use made-up organizations, are labelled "Demo data" everywhere, ar
 - All filters, alone and combined (region, country, grade, language, experience, deadline and more), return results, and the calendar download works.
 - Cron endpoints reject requests without the secret.
 
+**Tested with real feeds (8 November 2026):** ReliefWeb's public jobs feed (all jobs, and international organizations only) and an Inoreader folder feed whose Pro plan had lapsed. 35 vacancies were imported with organization, country and closing date on every one that stated them. Tenders and supplier calls ("Request for Proposal…") are skipped and logged. A second run changed nothing. The lapsed Inoreader feed was reported as a feed error ("Inoreader has suspended this feed…"), with nothing imported or removed. Fixes from this test are covered by regression tests. Links to job boards such as ReliefWeb are labelled "View full vacancy on ReliefWeb", never "official website".
+
+**Licensing note on ReliefWeb:** ReliefWeb's Terms & Conditions allow "personal, non-commercial use, without any right to resell or redistribute them or to compile or create derivative works therefrom". Do not use ReliefWeb feeds on the live, paid site without written permission from ReliefWeb (OCHA). The same check applies to every source in your Inoreader folder.
+
 Also tested: every page returns the right status (404s for unknown pages, 308 to the canonical job address), JobPosting data appears only on open jobs with a description, `noindex` is set on closed, thin and filtered pages, and the sitemap and robots.txt are correct. In a real browser: sign-up → confirm (opening the link alone doesn't confirm) → unsubscribe, the free-trial sign-up form, filters updating the URL, analytics events, campaign attribution saved with sign-ups, and admin login, including a wrong password.
 
 **Not tested (needs your accounts):**
-- Real Inoreader output feeds. Their exact item fields and how many items each returns are unconfirmed; the parser handles standard RSS, Atom and JSON Feed, and Inoreader-specific link fields.
+- A working (Pro) Inoreader output feed with your sources. Only the suspended version was available; how many items each export returns is unconfirmed.
 - Sending through Resend: confirmation, digest and one-click unsubscribe headers.
 - Deployment on Netlify or Vercel, and Supabase's pooler.
 - The GitHub Actions workflow on GitHub's servers. The commands it runs (`npm ci`, `npm run sync`, `npm run digest`) were run locally.

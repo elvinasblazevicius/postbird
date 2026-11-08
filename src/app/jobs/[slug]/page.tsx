@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { listingSiteName } from "@/lib/feeds/url";
 import { Flag } from "@/components/flag";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
@@ -40,7 +41,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const title = `${job.title}${job.org_name ? ` — ${job.org_name}` : ""}${where !== NOT_SPECIFIED ? `, ${where}` : ""}`;
   const description = job.summary
     ? job.summary.slice(0, 155)
-    : `${job.title}${job.org_name ? ` at ${job.org_name}` : ""}${where !== NOT_SPECIFIED ? ` in ${where}` : ""}.${job.deadline ? ` Apply by ${formatDate(job.deadline)}` : ""} on the official website.`;
+    : `${job.title}${job.org_name ? ` at ${job.org_name}` : ""}${where !== NOT_SPECIFIED ? ` in ${where}` : ""}.${job.deadline ? ` Closing date ${formatDate(job.deadline)}.` : ""} ${listingSiteName(job.apply_host) ? `Full vacancy on ${listingSiteName(job.apply_host)}.` : "Apply on the official website."}`;
   const indexable = isOpen(job) && !job.is_demo && (hasDescription(job) || LISTING_SETTINGS.indexJobsWithoutDescription);
   return {
     title,
@@ -109,6 +110,8 @@ export default async function JobPage({ params }: Props) {
   const category = categoryBySlug(job.category);
   const where = locationLabel(job);
   const source = job.sources.find((s) => s.source_title)?.source_title;
+  // A job board's page is not the employer's "official website": say where the link goes.
+  const board = listingSiteName(job.apply_host);
 
   const applyButton = (
     <ApplyLink
@@ -116,7 +119,7 @@ export default async function JobPage({ params }: Props) {
       jobId={job.id}
       className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-3.5 text-base font-semibold text-white hover:bg-accent"
     >
-      Apply on Official Website
+      {board ? `View full vacancy on ${board}` : "Apply on Official Website"}
       <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true"><path d="M6 3h7v7M13 3 4 12" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
     </ApplyLink>
   );
@@ -249,7 +252,12 @@ export default async function JobPage({ params }: Props) {
                     </TrackedLink>
                   </div>
                 ) : null}
-                <p className="mt-3 text-xs leading-relaxed text-slate">Opens {job.apply_host} in a new tab. {siteConfig.name} doesn&apos;t take applications and never charges a fee to apply.</p>
+                <p className="mt-3 text-xs leading-relaxed text-slate">
+                  {board
+                    ? <>Opens {board}, the job board where this vacancy was published, in a new tab. The employer&apos;s own application link is in the full vacancy. </>
+                    : <>Opens {job.apply_host} in a new tab. </>}
+                  {siteConfig.name} doesn&apos;t take applications and never charges a fee to apply.
+                </p>
               </>
             ) : (
               <>
