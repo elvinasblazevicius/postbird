@@ -5,7 +5,7 @@
 #   DATABASE_URL     same value as on your host
 #   SITE_URL         your site's address, e.g. https://globalcareershub.com (used in email links)
 #   RESEND_API_KEY   (optional until email is set up)
-#   EMAIL_FROM       (optional) e.g. Global Careers Hub <alerts@yourdomain.com>
+#   EMAIL_FROM       (optional) e.g. Postbird <alerts@yourdomain.com>
 #   INOREADER_FEED_URLS (optional) same as on your host
 name: Scheduled jobs
 

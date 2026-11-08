@@ -1,4 +1,4 @@
-# Global Careers Hub
+# Postbird
 
 The UN and international organization job aggregator: one place for vacancies at UN agencies, development banks, EU institutions and other international organizations. It imports vacancies automatically from your Inoreader output feeds, builds search-friendly pages, collects paid-alert trial sign-ups, and tracks Microsoft Ads conversions.
 
@@ -61,7 +61,7 @@ Open `https://<your-site>.netlify.app/admin`, sign in, and look at **Import hist
 ### Step 6 — Domain and email
 1. Buy the domain (e.g. at Cloudflare Registrar). In Netlify, open **Domain management → Add a domain** and follow the DNS instructions. Then set `NEXT_PUBLIC_SITE_URL` (Netlify) and `SITE_URL` (GitHub) to `https://yourdomain.com` and redeploy.
 2. In Resend, add and verify the domain, then create an API key.
-3. Add `RESEND_API_KEY` and `EMAIL_FROM` (e.g. `Global Careers Hub <alerts@yourdomain.com>`) on Netlify and as GitHub secrets, then redeploy.
+3. Add `RESEND_API_KEY` and `EMAIL_FROM` (e.g. `Postbird <alerts@yourdomain.com>`) on Netlify and as GitHub secrets, then redeploy.
 4. In **Admin → Subscribers**, click **Send confirmation emails to unconfirmed sign-ups**. This reaches people who signed up before email was set up.
 
 Resend's free plan allows 100 emails a day, so above about 100 subscribers you'll need a paid Resend plan.

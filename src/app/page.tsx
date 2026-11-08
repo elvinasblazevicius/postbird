@@ -161,11 +161,11 @@ export default async function HomePage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/world-dots.svg" alt="" aria-hidden="true" className="world-dots -left-40 -top-24 w-[900px] opacity-[0.10]" />
           <div>
-            <h2 id="alerts-heading" className="text-[1.9rem] font-semibold leading-tight">Let new vacancies come to you</h2>
+            <h2 id="alerts-heading" className="text-[1.9rem] font-semibold leading-tight">Let {siteConfig.name} bring new vacancies to you</h2>
             <p className="mt-3 max-w-lg leading-relaxed text-white/80">
               {siteConfig.freeWeeklyEmail
                 ? "A short Monday email with the week's newest openings. Free, no account needed, unsubscribe with one click."
-                : `Email alerts for the roles, organizations and places you choose, with reminders before deadlines. ${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}.`}
+                : "Email alerts for the roles, organizations and places you choose, with reminders before deadlines."}
             </p>
           </div>
           <AlertSignup source="home" tone="dark" />

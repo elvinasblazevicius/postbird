@@ -1,4 +1,4 @@
--- Global Careers Hub — database schema (PostgreSQL 15+ / Supabase)
+-- Postbird — database schema (PostgreSQL 15+ / Supabase)
 -- Safe to run more than once.
 
 create table if not exists schema_migrations (

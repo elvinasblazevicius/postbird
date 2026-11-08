@@ -52,7 +52,7 @@ type ExistingJob = {
 
 type ItemLog = { feed_id: number | null; job_id: number | null; outcome: string; title: string | null; url: string | null; message: string | null };
 
-const USER_AGENT = "GlobalCareersHub-FeedSync/1.0 (+https://github.com/; job feed importer)";
+const USER_AGENT = "Postbird-FeedSync/1.0 (job feed importer)";
 /**
  * How long one sync may run. The scheduled import runs from GitHub Actions
  * (no limit). When triggered through the website ("Sync now" or the cron

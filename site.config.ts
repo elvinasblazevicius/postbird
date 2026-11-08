@@ -10,9 +10,9 @@
 
 const siteConfig = {
   /** Brand name shown in the header, page titles and emails. */
-  name: "Global Careers Hub",
+  name: "Postbird",
   /** Short name used where space is tight (browser tab, app icon). */
-  shortName: "GCH",
+  shortName: "Postbird",
   /** What the site is, in a few words (header, page titles). */
   tagline: "UN and international organization job aggregator",
   /** One line describing the site (meta description default). */
@@ -28,7 +28,7 @@ const siteConfig = {
   url: "",
 
   /** Address shown as the sender of alert emails (needs a verified domain in Resend). */
-  emailFrom: "Global Careers Hub <alerts@example.com>",
+  emailFrom: "Postbird <alerts@example.com>",
   /** Public contact address shown in the footer and legal pages. Leave empty to hide. */
   contactEmail: "",
 
@@ -91,7 +91,7 @@ const siteConfig = {
    * the site lists vacancies from these organizations but is not run by them.
    */
   disclaimer:
-    "Global Careers Hub is an independent job discovery site. It is not affiliated with, endorsed by or acting for the United Nations or any organization listed. Applications are made only on each employer's official website.",
+    "Postbird is an independent job discovery site. It is not affiliated with, endorsed by or acting for the United Nations or any organization listed. Applications are made only on each employer's official website.",
 
   /** Optional social links shown in the footer. Leave empty to hide. */
   social: {
