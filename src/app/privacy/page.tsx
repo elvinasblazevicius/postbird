@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/page-header";
+import { BILLING_LIVE } from "@/lib/billing/live";
 import { siteConfig } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -62,6 +63,14 @@ export default function PrivacyPage() {
           &quot;Anything else&quot; box, which ad or link brought you here (if allowed, see above), and when you confirmed. We use this only to send the emails you asked
           for and to measure interest in email alerts. Every email has a one-click unsubscribe link. We never sell or share your address.
         </p>
+        {BILLING_LIVE ? (
+          <p>
+            <strong>Payments.</strong> Subscriptions are sold by Paddle.com, our merchant of record, which collects your payment details, billing address and tax
+            information under its own <a className="text-accent underline" href="https://www.paddle.com/legal/privacy" rel="noopener">privacy notice</a>. We never see or
+            store your card details. Paddle tells us your email address, country, plan, subscription status and dates, and its customer and subscription IDs, which
+            we use to send your alerts and let you manage your subscription.
+          </p>
+        ) : null}
 
         <H2>Who processes data for us</H2>
         <ul className="list-disc space-y-1 pl-6">
@@ -70,6 +79,7 @@ export default function PrivacyPage() {
           <li>Resend (United States): sends our emails.</li>
           <li>GitHub (United States): runs our scheduled jobs, including sending alert emails.</li>
           <li>Microsoft (United States): advertising measurement, only as described above.</li>
+          {BILLING_LIVE ? <li>Paddle (United Kingdom): sells subscriptions as merchant of record and processes payments.</li> : null}
         </ul>
         <p>
           Some of these providers are outside your country. Where the law requires it, transfers rely on the providers&apos; standard contractual clauses or equivalent safeguards.
@@ -78,7 +88,7 @@ export default function PrivacyPage() {
         <H2>Legal bases</H2>
         <p>
           Email sign-ups and advertising cookies: your consent, which you can withdraw at any time. Anonymous visit counting and abuse protection: our legitimate interest in
-          running a useful and secure site. If paid alerts launch: performing our contract with you.
+          running a useful and secure site. Paid alerts: performing our contract with you, and keeping records the law requires.
         </p>
 
         <H2>How long we keep it</H2>
@@ -87,6 +97,7 @@ export default function PrivacyPage() {
           <li>Sign-ups that are never confirmed: deleted after 30 days.</li>
           <li>Unsubscribed addresses: deleted after 30 days.</li>
           <li>Early-access list: until paid alerts launch; if we decide not to launch, we tell you and delete the list within 30 days.</li>
+          {BILLING_LIVE ? <li>Subscription records: while you subscribe, then as long as tax and accounting law requires (Paddle keeps payment records as merchant of record).</li> : null}
         </ul>
 
         <H2>Applications</H2>

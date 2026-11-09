@@ -14,6 +14,12 @@
     <path d="M22.6 13.2C24.2 13.2 25.1 14.1 25.4 15L23.9 15.6C22.4 18.6 19 20.3 15.4 20.6C12.9 20.8 10.6 20.4 8.8 19.7L3.6 23.6L7.4 18.9L2.2 16.6C6.2 16.9 9.4 17.4 11.8 17.2C15 16.9 17.6 15.3 19.4 14C20.4 13.4 21.4 13.2 22.6 13.2Z" fill="url(#pbg)"/>
     <path d="M12.2 17.1C13.4 12.5 16.1 8.2 20.8 5.3C20.2 9.5 18.7 13.2 15.9 16.1Z" fill="url(#pbg)"/>
     <circle cx="22.7" cy="14.6" r="0.62" fill="#0A2566"/>
+    <path d="M25.9 14.9C26.2 13.0 27.0 11.5 28.4 10.3" fill="none" stroke="#8FD18B" stroke-width="0.55" stroke-linecap="round"/>
+    <ellipse cx="25.6" cy="12.6" rx="1.2" ry="0.48" transform="rotate(-60 25.6 12.6)" fill="#A8E3A0"/>
+    <ellipse cx="27.6" cy="12.9" rx="1.2" ry="0.48" transform="rotate(10 27.6 12.9)" fill="#A8E3A0"/>
+    <ellipse cx="26.6" cy="10.6" rx="1.15" ry="0.46" transform="rotate(-70 26.6 10.6)" fill="#A8E3A0"/>
+    <ellipse cx="28.5" cy="11.2" rx="1.1" ry="0.44" transform="rotate(5 28.5 11.2)" fill="#A8E3A0"/>
+    <ellipse cx="28.6" cy="9.6" rx="0.95" ry="0.4" transform="rotate(-40 28.6 9.6)" fill="#A8E3A0"/>
     <g transform="rotate(-10 27.6 16.3)">
       <rect x="24.9" y="14.4" width="5.4" height="3.8" rx="0.6" fill="#FFD23F"/>
       <path d="M25.2 14.75L27.6 16.55L30 14.75" fill="none" stroke="#0A2566" stroke-width="0.5" stroke-linejoin="round" stroke-linecap="round"/>

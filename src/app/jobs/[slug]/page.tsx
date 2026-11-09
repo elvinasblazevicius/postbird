@@ -271,8 +271,8 @@ export default async function JobPage({ params }: Props) {
                     <a href={`/api/calendar/${job.id}`} className="rounded-lg border border-rule px-3 py-2 text-center font-medium text-accent hover:bg-tint" rel="nofollow">
                       Add to calendar
                     </a>
-                    <TrackedLink href={`/pricing/trial?remind=${job.id}`} event="premium_cta_click" source="deadline-reminder" className="rounded-lg border border-rule px-3 py-2 text-center font-medium text-accent hover:bg-tint">
-                      Remind me
+                    <TrackedLink href={`/pricing/trial?search=${encodeURIComponent(`category=${job.category}`)}`} event="premium_cta_click" source="job-similar" className="rounded-lg border border-rule px-3 py-2 text-center font-medium text-accent hover:bg-tint">
+                      Alert me to similar
                     </TrackedLink>
                   </div>
                 ) : null}

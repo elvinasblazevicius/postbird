@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { TrackedLink } from "@/components/tracking";
+import { BILLING_LIVE } from "@/lib/billing/live";
 import { EARLY_ACCESS_BUTTON, earlyAccessLine } from "@/lib/early-access-copy";
 import { latestJobs } from "@/lib/jobs";
 import { formatDate, locationLabel, siteConfig } from "@/lib/site";
@@ -25,14 +26,32 @@ function Check() {
 export default async function PricingPage() {
   const p = siteConfig.premium;
   const sample = await latestJobs(3).catch(() => []);
+  const billingFaq: [string, React.ReactNode][] = BILLING_LIVE
+    ? [
+        [
+          "How does the free trial work?",
+          <>You pay $0 for {p.trialDays} days. A card is needed to start. If you don&apos;t cancel before day {p.trialDays}, the plan you chose starts automatically.</>,
+        ],
+        [
+          "How do I cancel?",
+          <>Every alert email has a link to your account, with &quot;Manage billing or cancel&quot;. Cancel any time; you keep alerts until the end of the period you paid for.</>,
+        ],
+        ["Who handles the payment?", <>Paddle.com, our reseller and merchant of record. It handles payment, invoices and tax; we never see your card details.</>],
+        ["Can I get a refund?", <>If you&apos;re charged and didn&apos;t mean to be, email us within 14 days of the charge for a full refund.</>],
+      ]
+    : [
+        ["Is anything charged now?", <>No. Email alerts aren&apos;t open yet. Joining early access is free and needs no card.</>],
+        [
+          "What happens when alerts open?",
+          <>You get one email offering the {p.trialDays}-day free trial. Nothing is charged until you choose a plan ({p.priceSummary}).</>,
+        ],
+        ["What if you don't launch?", <>We&apos;ll tell you, and delete your address within 30 days.</>],
+        ["Can I unsubscribe?", <>Yes, at any time: every email has a one-click unsubscribe link.</>],
+      ];
+  const quarterly = p.plans.find((x) => "perMonth" in x && x.perMonth);
+  const trialLine = `Card required. $0 today, then ${p.plans[0]?.price ?? ""}/month or ${quarterly?.price ?? ""} every 3 months unless you cancel before day ${p.trialDays}. Cancel any time.`;
   const faq: [string, React.ReactNode][] = [
-    ["Is anything charged now?", <>No. Email alerts aren&apos;t open yet. Joining early access is free and needs no card.</>],
-    [
-      "What happens when alerts open?",
-      <>You get one email offering the {p.trialDays}-day free trial. Nothing renews automatically: at the end of the trial you choose whether to pay {p.priceSummary}.</>,
-    ],
-    ["What if you don't launch?", <>We&apos;ll tell you, and delete your address within 30 days.</>],
-    ["Can I cancel?", <>Yes, at any time, and every email has a one-click unsubscribe link.</>],
+    ...billingFaq,
     [
       "Where do the listings come from?",
       <>From public job feeds. Every listing links to the employer&apos;s own website, where you apply. We never charge anyone to apply for a job.</>,
@@ -45,7 +64,7 @@ export default async function PricingPage() {
       <PageHeader
         title="Pricing"
         crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Pricing" }]}
-        intro="Every vacancy, search and filter is free. Paid email alerts, launching soon, bring new matches to your inbox so you don't have to keep checking."
+        intro={`Every vacancy, search and filter is free. Paid email alerts${BILLING_LIVE ? "" : ", launching soon,"} bring new matches to your inbox so you don't have to keep checking.`}
       />
       <div className="mx-auto grid max-w-4xl gap-6 px-4 py-12 sm:px-6 md:grid-cols-2">
         <section className="flex flex-col rounded-2xl border border-rule p-7" aria-labelledby="plan-free">
@@ -64,7 +83,7 @@ export default async function PricingPage() {
         <section className="flex flex-col rounded-2xl border-2 border-brand bg-candy-soft p-7" aria-labelledby="plan-premium">
           <div className="flex items-center justify-between gap-3">
             <h2 id="plan-premium" className="text-2xl font-semibold text-ink">{p.name}</h2>
-            <span className="rounded-full bg-paper px-2.5 py-0.5 text-xs font-semibold text-ink">Launching soon</span>
+            {BILLING_LIVE ? null : <span className="rounded-full bg-paper px-2.5 py-0.5 text-xs font-semibold text-ink">Launching soon</span>}
           </div>
           <dl className="mt-3 grid grid-cols-2 gap-3">
             {p.plans.map((plan) => (
@@ -89,9 +108,9 @@ export default async function PricingPage() {
             ))}
           </ul>
           <TrackedLink href="/pricing/trial" event="premium_cta_click" source="pricing" className="mt-8 rounded-lg bg-brand px-5 py-3 text-center font-semibold text-white hover:bg-accent">
-            {EARLY_ACCESS_BUTTON}
+            {BILLING_LIVE ? `Start ${p.trialDays}-day free trial` : EARLY_ACCESS_BUTTON}
           </TrackedLink>
-          <p className="mt-3 text-sm text-slate">{earlyAccessLine()}</p>
+          <p className="mt-3 text-sm text-slate">{BILLING_LIVE ? trialLine : earlyAccessLine()}</p>
         </section>
       </div>
 
@@ -136,7 +155,7 @@ export default async function PricingPage() {
           ))}
         </dl>
         <p className="mt-6 text-sm text-slate">
-          Prices in US dollars. {siteConfig.name} is run by {siteConfig.operator.name}.{" "}
+          Prices in US dollars{BILLING_LIVE ? "; sales tax or VAT is added where it applies" : ""}. {siteConfig.name} is run by {siteConfig.operator.name}.{" "}
           <Link href="/terms" className="text-accent underline">Terms</Link> · <Link href="/privacy" className="text-accent underline">Privacy</Link>
         </p>
       </section>

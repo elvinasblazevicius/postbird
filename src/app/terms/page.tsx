@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/page-header";
+import { BILLING_LIVE } from "@/lib/billing/live";
 import { siteConfig } from "@/lib/site";
 
 export const metadata: Metadata = { title: "Terms", alternates: { canonical: "/terms" } };
@@ -30,11 +31,36 @@ export default function TermsPage() {
         <p>We don&apos;t recruit, accept applications or act for any employer. We never ask job seekers for payment to apply for a job.</p>
 
         <h2 className="pt-2 text-xl font-semibold">Email alerts</h2>
-        <p>
-          Paid email alerts are not open yet; we are measuring interest first. Joining early access is free and creates no obligation. When alerts open they will cost{" "}
-          {p.priceSummary}, with a {p.trialDays}-day free trial that needs no card. Nothing renews or is charged automatically at the end of the trial: you choose then
-          whether to pay. Paid plans will be cancellable at any time, and we will publish the full billing terms here before taking any payment.
-        </p>
+        {BILLING_LIVE ? (
+          <>
+            <p>
+              Email alerts are a paid subscription: {p.priceSummary}. Our order process is conducted by our online reseller Paddle.com, which is the merchant of
+              record for all orders and handles payment, invoices, sales tax and VAT. Paddle&apos;s{" "}
+              <a className="text-accent underline" href="https://www.paddle.com/legal/checkout-buyer-terms" rel="noopener">buyer terms</a> also apply to your purchase.
+            </p>
+            <ul className="list-disc space-y-1 pl-6">
+              <li>
+                <strong>Free trial:</strong> new subscriptions start with a {p.trialDays}-day free trial. A card is required. If you don&apos;t cancel before the trial
+                ends, the plan you chose starts and you are charged automatically.
+              </li>
+              <li><strong>Renewal:</strong> plans renew automatically at the end of each period (every month or every 3 months) until you cancel.</li>
+              <li>
+                <strong>Cancelling:</strong> cancel any time from the account link in every alert email (&quot;Manage billing or cancel&quot;). Your alerts continue until
+                the end of the period you have paid for, and you are not charged again.
+              </li>
+              <li>
+                <strong>Refunds:</strong> if you are charged and didn&apos;t mean to be, email us within 14 days of the charge and we&apos;ll arrange a full refund. This
+                doesn&apos;t limit any right to withdraw or get a refund you have under consumer law where you live.
+              </li>
+              <li><strong>Price changes:</strong> we&apos;ll email you at least 30 days before any price change takes effect, so you can cancel first.</li>
+            </ul>
+          </>
+        ) : (
+          <p>
+            Paid email alerts are not open yet; we are measuring interest first. Joining early access is free and creates no obligation. When alerts open they will cost{" "}
+            {p.priceSummary}, with a {p.trialDays}-day free trial. We will publish the full billing terms here before taking any payment.
+          </p>
+        )}
 
         <h2 className="pt-2 text-xl font-semibold">Liability</h2>
         <p>

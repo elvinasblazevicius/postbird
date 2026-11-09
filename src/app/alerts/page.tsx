@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AlertSignup } from "@/components/alert-signup";
 import { PageHeader } from "@/components/page-header";
 import { PremiumInterestForm } from "@/components/token-forms";
+import { BILLING_LIVE } from "@/lib/billing/live";
 import { siteConfig } from "@/lib/site";
 
 const free = siteConfig.freeWeeklyEmail;
@@ -27,7 +28,7 @@ export default function AlertsPage() {
         intro={
           free
             ? "A short email every Monday with the newest international vacancies. Free, and you can unsubscribe with one click."
-            : `Many international vacancies are open for only a few weeks. Alerts (launching soon) send new matches for the roles, organizations and places you choose. ${p.trialDays}-day free trial, then ${p.priceSummary}.`
+            : `Many international vacancies are open for only a few weeks. Alerts${BILLING_LIVE ? "" : " (launching soon)"} send new matches for the roles, organizations and places you choose. ${p.trialDays}-day free trial, then ${p.priceSummary}.`
         }
       />
       <div className="mx-auto grid max-w-6xl gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[1.2fr_1fr]">

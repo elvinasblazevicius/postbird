@@ -151,6 +151,28 @@ export default async function HomePage() {
       ) : null}
       </div>
 
+      {/* Why Postbird */}
+      <section className="mx-auto mt-16 max-w-6xl px-4 sm:px-6" aria-labelledby="why-heading">
+        <h2 id="why-heading" className="text-[1.6rem] font-semibold text-ink">Why job seekers use {siteConfig.name}</h2>
+        <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ["One search, every kind of employer", "UN agencies, EU institutions, development banks, international organizations and NGOs, side by side."],
+            ["Apply straight to the employer", "Every Apply button opens the employer's own website. No middle pages, no account needed to browse."],
+            ["Closing dates up front", "Each listing shows when it closes, and expired vacancies disappear automatically."],
+            ["Filters made for this field", "Grade, duty station, remote work, contract type and language requirements."],
+          ].map(([title, body]) => (
+            <li key={title} className="rounded-2xl border border-rule bg-paper p-5">
+              <svg viewBox="0 0 16 16" className="h-5 w-5 text-remote" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="1.8" /></svg>
+              <h3 className="mt-2 text-lg font-semibold leading-snug text-ink">{title}</h3>
+              <p className="mt-1.5 text-[0.95rem] leading-relaxed text-slate">{body}</p>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 text-sm text-slate">
+          Details a posting doesn&apos;t give are shown as &quot;Not stated&quot;, never guessed. <Link href="/about" className="text-accent underline">How it works</Link>
+        </p>
+      </section>
+
       {/* Browse */}
       <section className="mx-auto mt-16 grid max-w-6xl gap-12 px-4 sm:px-6 lg:grid-cols-2" aria-label="Browse">
         <div>
@@ -187,27 +209,6 @@ export default async function HomePage() {
             ))}
           </ul>
         </div>
-      </section>
-
-      {/* How it works */}
-      <section className="mx-auto mt-20 max-w-6xl px-4 sm:px-6" aria-labelledby="how-heading">
-        <h2 id="how-heading" className="text-[1.6rem] font-semibold text-ink">How {siteConfig.name} works</h2>
-        <ol className="mt-6 grid gap-6 md:grid-cols-3">
-          {[
-            ["We gather vacancies", "Openings published by UN agencies and international organizations are collected from their public job feeds several times a day."],
-            ["You search one place", "Every listing is organized by organization, country, category and deadline. Closed vacancies are removed automatically."],
-            ["You apply on the employer's site", "Each listing links to the employer's own website. We never take applications or ask for fees."],
-          ].map(([title, body], i) => (
-            <li key={title} className="dots-soft rounded-2xl border border-rule p-6">
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand font-display text-2xl font-semibold text-white">{i + 1}</span>
-              <h3 className="mt-3 text-xl font-semibold text-ink">{title}</h3>
-              <p className="mt-2 leading-relaxed text-slate">{body}</p>
-            </li>
-          ))}
-        </ol>
-        <p className="mt-4 text-sm text-slate">
-          Details we can&apos;t confirm from the source are shown as &quot;Not specified&quot;. <Link href="/about" className="text-accent hover:underline">More about our sources</Link>
-        </p>
       </section>
 
       {/* Alerts */}
