@@ -22,11 +22,15 @@ function createClient() {
   return postgres(url, {
     // Supabase's transaction pooler does not support prepared statements.
     prepare: false,
-    // Enough connections for the largest page (about 12 queries at once). Supabase's
-    // transaction pooler stalls when postgres.js has to queue several queries on one
-    // connection, so the pool must never be smaller than a page's parallel queries.
-    // Each serverless instance handles one request at a time, so this stays bounded.
-    max: Number(process.env.DATABASE_POOL_SIZE || 15),
+    // Pool size must stay at least as large as the most queries any page runs at
+    // once. postgres.js has no way to switch off pipelining: when every connection
+    // is busy it queues further queries on an existing connection, and Supabase's
+    // transaction pooler (Supavisor) stalls on those pipelined queries. So the
+    // default stays 15 (the largest page runs about 12 queries in parallel) until
+    // pages run fewer parallel queries; lower it with DATABASE_POOL_SIZE only then.
+    // Each serverless instance handles one request at a time, so this stays bounded,
+    // and transaction-pooler connections are cheap (they are multiplexed).
+    max: Math.max(1, Number(process.env.DATABASE_POOL_SIZE) || 15),
     idle_timeout: 20,
     connect_timeout: 15,
     ssl: local ? false : "require",

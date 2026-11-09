@@ -3,7 +3,7 @@ import { categoryBySlug } from "@/config/categories";
 import { countryByCode } from "@/config/countries";
 import { LISTING_SETTINGS } from "@/config/import";
 
-export const NOT_SPECIFIED = "Not specified";
+export const NOT_SPECIFIED = "Not stated";
 
 /** Public base URL: site.config.ts → NEXT_PUBLIC_SITE_URL → Netlify/Vercel address → localhost. */
 export function siteUrl(): string {
@@ -51,6 +51,13 @@ export function deadlineLabel(deadline: string | null): { text: string; urgent: 
   if (n === 0) return { text: "Closes today", urgent: true };
   if (n === 1) return { text: "Closes tomorrow", urgent: true };
   return { text: n <= 60 ? `Closes in ${n} days` : `Closes ${formatDate(deadline)}`, urgent: n <= LISTING_SETTINGS.closingSoonDays };
+}
+
+/** "in 5 days", "today", "tomorrow" for open jobs closing within 60 days; null otherwise. */
+export function relativeDeadline(deadline: string | null): { text: string; urgent: boolean } | null {
+  const l = deadlineLabel(deadline);
+  if (!l || l.text === "Closed" || !/^Closes (in \d|today|tomorrow)/.test(l.text)) return null;
+  return { text: l.text.replace(/^Closes /, ""), urgent: l.urgent };
 }
 
 export function postedLabel(published: Date | null, firstSeen: Date): string {

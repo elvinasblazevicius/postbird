@@ -3,7 +3,7 @@ import { AlertSignup } from "@/components/alert-signup";
 import { JobGrid, OrgBadge } from "@/components/job-card";
 import { Flag } from "@/components/flag";
 import { HeroSearch } from "@/components/search-forms";
-import { categoryFacets, countryFacets, experienceFacets, gradeFacets, jobTypeFacets, languageFacets, latestJobs, organizationFacets, orgTypeFacets, regionFacets, siteStats } from "@/lib/jobs";
+import { closingSoonJobs, categoryFacets, countryFacets, experienceFacets, gradeFacets, jobTypeFacets, languageFacets, latestJobs, organizationFacets, orgTypeFacets, regionFacets, siteStats } from "@/lib/jobs";
 import { absoluteUrl, jsonLd, siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ export const metadata = {
 };
 
 export default async function HomePage() {
-  const [latest, orgs, countries, categories, stats, types, regions, grades, langs, exps, orgTypes] = await Promise.all([
+  const [latest, orgs, countries, categories, stats, types, regions, grades, langs, exps, orgTypes, closing] = await Promise.all([
     latestJobs(9),
     organizationFacets(),
     countryFacets(),
@@ -25,7 +25,11 @@ export default async function HomePage() {
     languageFacets(),
     experienceFacets(),
     orgTypeFacets(),
+    closingSoonJobs(6),
   ]);
+  const closingSoon = closing.filter((j) => !latest.some((l) => l.id === j.id)).slice(0, 3);
+
+  const showTotal = stats.active >= siteConfig.showVacancyCountFrom;
 
   const websiteLd = {
     "@context": "https://schema.org",
@@ -47,70 +51,39 @@ export default async function HomePage() {
       <section className="bg-candy-hero grain relative overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/flag-wall.svg" alt="" aria-hidden="true" className="flag-wall" />
-        <div className="relative mx-auto max-w-6xl px-4 pb-14 pt-14 sm:px-6 sm:pt-20">
+        <div className="relative mx-auto max-w-6xl px-4 pb-5 pt-5 sm:px-6 sm:pb-12 sm:pt-16">
           <div className="max-w-3xl">
-            <h1 className="max-w-[20ch] text-[2.4rem] font-semibold leading-[1.06] text-white sm:text-[3.5rem]">{siteConfig.home.headline}</h1>
-            <p className="mt-5 max-w-2xl text-lg leading-relaxed text-white/85">{siteConfig.home.subheadline}</p>
+            <h1 className="max-w-[20ch] text-[1.7rem] font-semibold leading-[1.1] text-white sm:text-[3.5rem]">{siteConfig.home.headline}</h1>
+            <p className="mt-5 hidden max-w-2xl text-lg leading-relaxed text-white/85 sm:block">
+              {siteConfig.home.subheadline}
+            </p>
           </div>
-          <div className="mt-9 max-w-4xl">
+          <div className="mt-4 max-w-4xl sm:mt-9">
             <HeroSearch facets={{ orgs, countries, regions, categories, types, grades, langs, exps, orgTypes }} />
           </div>
-          <p className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[0.95rem] text-white/85">
+          <p className="mt-5 hidden flex-wrap gap-x-5 gap-y-2 text-[0.95rem] text-white/85 sm:flex">
             <span className="text-white">
-              <strong className="font-semibold">{stats.active.toLocaleString("en-US")}</strong> open vacancies
-              {stats.orgs ? <> from <strong className="font-semibold">{stats.orgs}</strong> organizations</> : null}
+              {showTotal ? (
+                <>
+                  <strong className="font-semibold">{stats.active.toLocaleString("en-US")}</strong> open vacancies
+                  {stats.orgs ? <> from <strong className="font-semibold">{stats.orgs}</strong> organizations</> : null}
+                </>
+              ) : (
+                <>New vacancies added every few hours</>
+              )}
             </span>
             <Link href="/alerts" className="font-semibold text-highlight underline decoration-highlight/50 underline-offset-4 hover:decoration-highlight">Get new ones by email</Link>
           </p>
-          {orgs.length || countries.length ? (
-            <div className="mt-6 space-y-3 border-t border-white/20 pt-5">
-              {orgs.length ? (
-                <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
-                  <span className="shrink-0 text-sm font-medium text-white/80 sm:w-28 sm:pt-1.5">Hiring now</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {orgs.slice(0, 10).map((o) => (
-                      <Link
-                        key={o.slug}
-                        href={`/organizations/${o.slug}`}
-                        className="rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-sm font-semibold tracking-wide text-white hover:bg-white/20"
-                      >
-                        {o.short_name && o.short_name.length <= 12 ? o.short_name : o.name}
-                        <span className="ml-1.5 font-normal text-white/70">{o.count}</span>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              {countries.length ? (
-                <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
-                  <span className="shrink-0 text-sm font-medium text-white/80 sm:w-28 sm:pt-1.5">Duty stations</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {countries.slice(0, 8).map((c) => (
-                      <Link
-                        key={c.slug}
-                        href={`/locations/${c.slug}`}
-                        className="inline-flex items-center gap-2 rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/20"
-                      >
-                        <Flag code={c.code} className="shadow-[0_0_0_1px_rgba(255,255,255,0.35)]" />
-                        {c.name}
-                        <span className="font-normal text-white/70">{c.count}</span>
-                      </Link>
-                    ))}
-                    <Link href="/locations" className="px-1 text-sm font-medium text-white/85 underline decoration-white/40 underline-offset-4 hover:decoration-white">All locations</Link>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
+          <p className="mt-3 text-xs text-white/75 sm:text-sm">{siteConfig.name} is independent and not affiliated with the United Nations, the EU or any employer listed.</p>
         </div>
       </section>
 
       {/* Latest */}
       <div className="dots-soft border-b border-rule pb-14">
-      <section className="mx-auto max-w-6xl px-4 pt-14 sm:px-6" aria-labelledby="latest-heading">
+      <section className="mx-auto max-w-6xl px-4 pt-8 sm:px-6 sm:pt-12" aria-labelledby="latest-heading">
         <div className="flex items-end justify-between gap-4">
           <h2 id="latest-heading" className="text-[1.9rem] font-semibold text-ink">Latest vacancies</h2>
-          <Link href="/jobs" className="shrink-0 text-[0.95rem] font-medium text-accent hover:underline">See all {stats.active.toLocaleString("en-US")} jobs</Link>
+          <Link href="/jobs" className="shrink-0 text-[0.95rem] font-medium text-accent hover:underline">{showTotal ? `See all ${stats.active.toLocaleString("en-US")} jobs` : "See all jobs"}</Link>
         </div>
         <div className="mt-6">
           {latest.length ? (
@@ -122,6 +95,60 @@ export default async function HomePage() {
           )}
         </div>
       </section>
+      {closingSoon.length ? (
+        <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6" aria-labelledby="closing-heading">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <h2 id="closing-heading" className="text-[1.6rem] font-semibold text-ink">Closing soon</h2>
+              <p className="mt-1 text-[0.95rem] text-slate">Published closing dates in the next two weeks.</p>
+            </div>
+            <Link href="/jobs?sort=deadline" className="shrink-0 text-[0.95rem] font-medium text-accent hover:underline">All by closing date</Link>
+          </div>
+          <div className="mt-6"><JobGrid jobs={closingSoon} /></div>
+        </section>
+      ) : null}
+      {orgs.length || countries.length ? (
+        <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6" aria-label="Hiring now">
+              <div className="space-y-3">
+                {orgs.length ? (
+                  <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+                    <span className="shrink-0 text-sm font-medium text-slate sm:w-28 sm:pt-1.5">Hiring now</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {orgs.slice(0, 10).map((o) => (
+                        <Link
+                          key={o.slug}
+                          href={`/organizations/${o.slug}`}
+                          className="rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm font-semibold tracking-wide text-ink hover:border-accent hover:text-accent"
+                        >
+                          {o.short_name && o.short_name.length <= 12 ? o.short_name : o.name}
+                          <span className="ml-1.5 font-normal text-slate">{o.count}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {countries.length ? (
+                  <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+                    <span className="shrink-0 text-sm font-medium text-slate sm:w-28 sm:pt-1.5">Duty stations</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {countries.slice(0, 8).map((c) => (
+                        <Link
+                          key={c.slug}
+                          href={`/locations/${c.slug}`}
+                          className="inline-flex items-center gap-2 rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm font-semibold text-ink hover:border-accent hover:text-accent"
+                        >
+                          <Flag code={c.code} className="shadow-[0_0_0_1px_rgba(14,27,44,0.15)]" />
+                          {c.name}
+                          <span className="font-normal text-slate">{c.count}</span>
+                        </Link>
+                      ))}
+                      <Link href="/locations" className="px-1 text-sm font-medium text-accent underline underline-offset-4">All locations</Link>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+        </section>
+      ) : null}
       </div>
 
       {/* Browse */}
@@ -150,7 +177,7 @@ export default async function HomePage() {
             <Link href="/categories" className="text-[0.95rem] font-medium text-accent hover:underline">All categories</Link>
           </div>
           <ul className="mt-5 grid grid-cols-1 gap-x-6 border-t border-rule sm:grid-cols-2">
-            {categories.map((c) => (
+            {categories.filter((c) => c.count > 0).map((c) => (
               <li key={c.slug} className="border-b border-rule">
                 <Link href={`/categories/${c.slug}`} className="flex items-baseline justify-between gap-3 py-3 hover:text-accent">
                   <span className="text-ink">{c.name}</span>
@@ -169,7 +196,7 @@ export default async function HomePage() {
           {[
             ["We gather vacancies", "Openings published by UN agencies and international organizations are collected from their public job feeds several times a day."],
             ["You search one place", "Every listing is organized by organization, country, category and deadline. Closed vacancies are removed automatically."],
-            ["You apply on the official site", "Each listing links to the employer's own vacancy page. We never take applications or ask for fees."],
+            ["You apply on the employer's site", "Each listing links to the employer's own website. We never take applications or ask for fees."],
           ].map(([title, body], i) => (
             <li key={title} className="dots-soft rounded-2xl border border-rule p-6">
               <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand font-display text-2xl font-semibold text-white">{i + 1}</span>

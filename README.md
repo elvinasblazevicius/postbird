@@ -30,7 +30,7 @@ Vercel also works (`vercel.json` is included), but its free plan is for non-comm
 
 ### Step 1 — Database (Supabase)
 1. Create a project at supabase.com. Choose a region near your visitors (e.g. Frankfurt) and save the database password.
-2. Open **SQL Editor → New query**. Paste the whole of `db/migrations/001_init.sql`, then click **Run**. It is safe to run again.
+2. Open **SQL Editor → New query**. Paste the whole of `db/migrations/001_init.sql`, then click **Run**. Do the same with `002_employer_links_and_logos.sql` and `003_security.sql`, in that order. All are safe to run again, and the scheduled job in Step 4 also applies any missing ones before every run.
 3. Click **Connect** at the top and copy the **Transaction pooler** connection string (port **6543**). Replace `[YOUR-PASSWORD]` with your password. This is your `DATABASE_URL`.
 
 ### Step 2 — Code (GitHub)
@@ -40,8 +40,9 @@ Create a **private** repository and upload this folder, without `node_modules` o
 1. In Netlify, click **Add new project → Import an existing project → GitHub** and pick the repository. The build settings are read from `netlify.toml`.
 2. Before deploying, open **Environment variables**, choose **Add a variable → scope: All**, and add:
    - `DATABASE_URL`: from Step 1.
-   - `CRON_SECRET`: a long random string. Generate one with `openssl rand -hex 32`, or use any 40+ random letters and digits. It signs admin logins and protects the `/api/cron` addresses.
-   - `ADMIN_PASSWORD`: your admin password, at least 10 characters.
+   - `CRON_SECRET`: a long random string. Generate one with `openssl rand -hex 32`, or use any 40+ random letters and digits. It protects the `/api/cron` addresses and, unless you set `ADMIN_SESSION_SECRET`, is part of the admin sign-in key.
+   - `ADMIN_PASSWORD`: your admin password, at least 10 characters. Changing it signs out every admin session.
+   - `ADMIN_SESSION_SECRET` (recommended): another long random string (`openssl rand -hex 32`), used only for admin sign-ins, so the cron secret and admin sessions are independent. Setting or changing it signs you out once.
    - `INOREADER_FEED_URLS`: your Inoreader output feed addresses, one per line. You can also add them later in the admin.
    - `NEXT_PUBLIC_SITE_URL`: `https://<your-site>.netlify.app` for now; change it when you add your domain.
 3. Click **Deploy**. Your site is live at `https://<your-site>.netlify.app`.
@@ -56,7 +57,7 @@ In GitHub, open **Settings → Secrets and variables → Actions → New reposit
 Then go to **Actions → Scheduled jobs → Run workflow**, choose `sync` and click Run to check it works. After that it imports every 2 hours and sends the digest on Mondays by itself. It runs directly against the database, so there's no time limit.
 
 ### Step 5 — First check
-Open `https://<your-site>.netlify.app/admin`, sign in, and look at **Import history**. You can also click **Sync now**. On Netlify a sync started from the website stops after about 8 seconds (including feed downloads) to stay within the 10-second limit, and the scheduled run imports the rest.
+Open `https://<your-site>.netlify.app/admin`, sign in, and look at **Import history**. You can also click **Sync now**. On Netlify a sync started from the website reads feeds for about 5 seconds and finishes within about 7.5 seconds (it keeps time back to close the run and release its lock), so it stays within the 10-second limit; organization icons and old-data clean-up are left to the scheduled run, which also imports the rest. If the host ever cuts a run off, its lock expires after a minute and the run is marked as failed after 30 minutes.
 
 ### Step 6 — Domain and email
 1. Buy the domain (e.g. at Cloudflare Registrar). In Netlify, open **Domain management → Add a domain** and follow the DNS instructions. Then set `NEXT_PUBLIC_SITE_URL` (Netlify) and `SITE_URL` (GitHub) to `https://yourdomain.com` and redeploy.
@@ -98,7 +99,7 @@ If a feed item comes from a job board that re-posts vacancies (ReliefWeb, UNjobs
 
 ### Organization logos
 
-When an organization's website is known (built-in list, or a link in the posting whose domain matches the organization's name or acronym), the sync fetches its site icon once from Google's public favicon service, on the server, stores it in the database and serves it from `/api/org-logo/<slug>`. Visitors' browsers never contact Google. Icons smaller than 32 px are ignored and the organization's initials are shown instead. Up to 15 icons are fetched per sync; missing ones are retried after 30 days. Note that many UN agency logos contain the UN emblem, whose use is restricted; showing an agency's own icon next to its own vacancies is how job sites commonly identify employers, and the site's disclaimer says it is independent, but if an organization objects, remove its icon for good in the database (`update organizations set logo = null, logo_type = null, logo_checked_at = '9999-01-01' where slug = '…';`).
+When an organization's website is known (built-in list, or a link in the posting whose domain matches the organization's name or acronym), the sync fetches its site icon once from Google's public favicon service, on the server, stores it in the database and serves it from `/api/org-logo/<slug>`. Visitors' browsers never contact Google. Icons smaller than 32 px are ignored and the organization's initials are shown instead. Up to 15 icons are fetched per sync; missing ones are retried after 30 days. Note that many UN agency logos contain the UN emblem, whose use is restricted; showing an agency's own icon next to its own vacancies is how job sites commonly identify employers, and the site's disclaimer says it is independent, but if an organization objects, remove its icon for good in the database (`update organizations set logo = null, logo_type = null, logo_blocked = true where slug = '…';`). Blocked organizations are never fetched again and are kept even while they have no listings, so the block stays.
 
 ## 3b. Search filters
 
@@ -147,7 +148,7 @@ Every results page has an **Email me jobs like these** button, and every job wit
 - **Listings:** search, remove or restore listings, and fix a category.
 - **Subscribers:** counts, latest sign-ups with their alert preferences, send confirmations, send the digest now, CSV export.
 
-Analytics are first-party and cookieless. No IP addresses are stored; visitors are counted with a hash that changes daily. Bots are filtered out.
+Analytics are first-party and cookieless. No IP addresses are stored; visitors are counted with a hash that changes daily. Bots are filtered out. Admin and alert-link pages (`/admin`, `/alerts/confirm`, `/alerts/unsubscribe`) are never recorded, and stored page addresses keep only `utm_*` and `msclkid` parameters.
 
 ---
 
@@ -182,7 +183,18 @@ npm run dev                       # http://localhost:3000
 npm run sync                      # import feeds once
 npm run demo:clear                # remove demo listings
 npm test && npm run typecheck && npm run lint && npm run build
+# Database integration tests (sync, expiry, locks, rate limits, admin sessions, cron auth).
+# Use a THROWAWAY database: its tables are emptied. Without the variable they are skipped.
+TEST_DATABASE_URL=postgres://user:pass@localhost:5432/pb_test npm test
 ```
+
+`.github/workflows/ci.yml` runs the type check, lint, unit tests and the integration tests (against a temporary PostgreSQL container) on every push and pull request. Actions are pinned to full commit SHAs.
+
+### Security notes
+
+- **Admin sign-in:** sessions last 24 hours. Signing out ends every admin session on every device; so does changing `ADMIN_PASSWORD`. The cron secret alone can't create a session. Wrong passwords are limited per visitor IP (8 per 15 minutes); more than 50 wrong passwords in 15 minutes from anywhere pauses all sign-ins for 15 minutes. If that ever locks you out, run `delete from admin_login_failures;` in the Supabase SQL editor.
+- **Rate limits:** analytics events (120 per 10 minutes per IP) and admin sign-in use a small database table. The visitor IP comes from the host (`x-nf-client-connection-ip` on Netlify), never from a header the browser can set. IP addresses are never stored: the table keeps a salted one-way hash for at most 24 hours.
+- **Headers:** every page sends a Content-Security-Policy (only the site itself and Microsoft's UET tag at `bat.bing.com`/`bat.bing.net`; no framing by other sites), HSTS including subdomains, and the usual nosniff/referrer/permissions headers. Inline scripts are allowed because Next.js needs them on static pages (nonces only work on pages rendered for every request). If you turn on Microsoft Clarity in the UET tag settings, add `https://*.clarity.ms` to the policy in `next.config.ts`.
 
 Demo listings use made-up organizations, are labelled "Demo data" everywhere, are kept out of search engines and the sitemap, and the seed script refuses to run against a non-local database.
 
@@ -198,7 +210,7 @@ Demo listings use made-up organizations, are labelled "Demo data" everywhere, ar
 - Removed listings stay removed.
 - Two syncs at once: the second is skipped.
 - A sync started from the website stops cleanly at its time limit and leaves the rest for the scheduled run.
-- Signing up again with an address that already exists changes nothing until the owner confirms by email, and the reply is the same as for a new address. Admin sign-in locks for 15 minutes after 8 wrong passwords.
+- Signing up again with an address that already exists changes nothing until the owner confirms by email, and the reply is the same as for a new address. Admin sign-in locks for 15 minutes after 8 wrong passwords from one IP, and for everyone after more than 50 in 15 minutes.
 - All filters, alone and combined (region, country, grade, language, experience, deadline and more), return results, and the calendar download works.
 - Cron endpoints reject requests without the secret.
 

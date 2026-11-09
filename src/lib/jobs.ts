@@ -3,6 +3,7 @@ import { countryByCode, countryBySlug } from "@/config/countries";
 import { GRADE_GROUPS, LANGUAGES, ORG_TYPES, REGIONS, regionBySlug } from "@/config/regions";
 import { LISTING_SETTINGS } from "@/config/import";
 import { sql } from "@/lib/db";
+import { interpretQuery, wordPattern } from "@/lib/search-intent";
 
 export type JobListItem = {
   id: number;
@@ -136,15 +137,42 @@ export function activeFilterCount(f: JobFilters): number {
   return [f.q, f.org, f.country, f.region, f.grade, f.orgtype, f.lang, f.exp, f.category, f.remote, f.type, f.posted, f.closing].filter(Boolean).length;
 }
 
+/** A listing is shown while active and not past its published closing date (checked at query time, between syncs). */
+const isOpen = () => sql`j.status = 'active' and (j.deadline is null or j.deadline >= (now() at time zone 'utc')::date)`;
+
+/** Apply what the search words mean ("un", "remote", "internship", a country) as filters. */
+export function withSearchIntent(f: JobFilters): JobFilters {
+  if (!f.q) return f;
+  const i = interpretQuery(f.q);
+  return {
+    ...f,
+    q: i.text ?? undefined,
+    orgtype: f.orgtype ?? i.orgtype,
+    remote: f.remote || i.remote || undefined,
+    type: f.type ?? i.type,
+    country: f.country ?? (f.region ? undefined : i.country),
+    sort: !i.text && f.sort === "relevance" ? undefined : f.sort,
+  };
+}
+
 const listColumns = () => sql`
   j.id::int as id, j.slug, j.title, o.name as org_name, o.slug as org_slug, o.short_name as org_short,
-  case when o.logo is not null then o.slug end as org_logo,
+  case when o.logo is not null and coalesce(o.org_type, '') not in ('UN system', 'EU institution') then o.slug end as org_logo,
   j.country_code, j.city, j.location_text, j.is_remote, j.category, j.job_type, j.grade,
   j.published_at, j.first_seen_at, j.deadline::text as deadline, j.status, j.is_demo`;
 
 function whereFor(f: JobFilters) {
-  let w = sql`j.status = 'active'`;
-  if (f.q) w = sql`${w} and (j.search_vector @@ websearch_to_tsquery('simple', ${f.q}) or j.title ilike ${"%" + f.q.replace(/[%_\\]/g, "") + "%"} or o.name ilike ${"%" + f.q.replace(/[%_\\]/g, "") + "%"})`;
+  let w = isOpen();
+  if (f.q) {
+    // Every word must appear as a word (not inside another word: "un" never matches "fund") in the title or organization,
+    // or the words match the full text.
+    let all = sql`true`;
+    for (const t of f.q.split(" ").filter(Boolean).slice(0, 8)) {
+      const p = wordPattern(t);
+      all = sql`${all} and (j.title ~* ${p} or coalesce(o.name, '') ~* ${p} or coalesce(o.short_name, '') ~* ${p})`;
+    }
+    w = sql`${w} and (j.search_vector @@ websearch_to_tsquery('simple', ${f.q}) or (${all}))`;
+  }
   if (f.org) w = sql`${w} and o.slug = ${f.org}`;
   if (f.country) {
     const c = countryBySlug(f.country);
@@ -171,7 +199,8 @@ function whereFor(f: JobFilters) {
   return w;
 }
 
-export async function searchJobs(f: JobFilters, pageSize: number = LISTING_SETTINGS.pageSize) {
+export async function searchJobs(input: JobFilters, pageSize: number = LISTING_SETTINGS.pageSize) {
+  const f = withSearchIntent(input);
   const page = f.page ?? 1;
   const where = whereFor(f);
   const sort = f.sort ?? (f.q ? "relevance" : "newest");
@@ -194,7 +223,18 @@ export async function searchJobs(f: JobFilters, pageSize: number = LISTING_SETTI
 export async function latestJobs(limit = 8) {
   return sql<JobListItem[]>`
     select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
-    where j.status = 'active' order by coalesce(j.published_at, j.first_seen_at) desc, j.id desc limit ${limit}`;
+    where ${isOpen()}
+    order by (o.org_type = 'UN system' and coalesce(j.published_at, j.first_seen_at) >= now() - interval '10 days') desc nulls last,
+             coalesce(j.published_at, j.first_seen_at) desc, j.id desc
+    limit ${limit}`;
+}
+
+/** Open jobs with the nearest published closing dates (from today). */
+export async function closingSoonJobs(limit = 6) {
+  return sql<JobListItem[]>`
+    select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
+    where ${isOpen()} and j.deadline is not null and j.deadline <= (now() at time zone 'utc')::date + 14
+    order by j.deadline asc, coalesce(j.published_at, j.first_seen_at) desc limit ${limit}`;
 }
 
 export async function getJob(id: number): Promise<JobDetail | null> {
@@ -214,7 +254,7 @@ export async function getJob(id: number): Promise<JobDetail | null> {
 export async function similarJobs(job: JobDetail, limit = 4) {
   return sql<JobListItem[]>`
     select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
-    where j.status = 'active' and j.id <> ${job.id} and (j.category = ${job.category} or o.slug = ${job.org_slug ?? "--"})
+    where ${isOpen()} and j.id <> ${job.id} and (j.category = ${job.category} or o.slug = ${job.org_slug ?? "--"})
     order by (o.slug = ${job.org_slug ?? "--"}) desc nulls last, coalesce(j.published_at, j.first_seen_at) desc limit ${limit}`;
 }
 
@@ -222,15 +262,15 @@ export async function similarJobs(job: JobDetail, limit = 4) {
 
 export async function organizationFacets(limit = 500, includeDemo = true) {
   return sql<{ slug: string; name: string; short_name: string | null; org_type: string | null; logo: string | null; count: number }[]>`
-    select o.slug, o.name, o.short_name, o.org_type, case when o.logo is not null then o.slug end as logo, count(*)::int as count
+    select o.slug, o.name, o.short_name, o.org_type, case when o.logo is not null and coalesce(o.org_type, '') not in ('UN system', 'EU institution') then o.slug end as logo, count(*)::int as count
     from jobs j join organizations o on o.id = j.organization_id
-    where j.status = 'active' and (${includeDemo} or not j.is_demo) group by o.id order by count(*) desc, o.name limit ${limit}`;
+    where ${isOpen()} and (${includeDemo} or not j.is_demo) group by o.id order by count(*) desc, o.name limit ${limit}`;
 }
 
 export async function countryFacets(includeDemo = true) {
   const rows = await sql<{ country_code: string; count: number }[]>`
-    select country_code, count(*)::int as count from jobs
-    where status = 'active' and country_code is not null and (${includeDemo} or not is_demo) group by country_code order by count(*) desc`;
+    select j.country_code, count(*)::int as count from jobs j
+    where ${isOpen()} and j.country_code is not null and (${includeDemo} or not j.is_demo) group by j.country_code order by count(*) desc`;
   return rows
     .map((r) => ({ ...r, country: countryByCode(r.country_code) }))
     .filter((r) => r.country)
@@ -239,7 +279,7 @@ export async function countryFacets(includeDemo = true) {
 
 export async function categoryFacets(includeDemo = true) {
   const rows = await sql<{ category: string; count: number }[]>`
-    select category, count(*)::int as count from jobs where status = 'active' and (${includeDemo} or not is_demo) group by category`;
+    select j.category, count(*)::int as count from jobs j where ${isOpen()} and (${includeDemo} or not j.is_demo) group by j.category`;
   const counts = new Map(rows.map((r) => [r.category, r.count]));
   return ALL_CATEGORIES.map((c) => ({ ...c, count: counts.get(c.slug) ?? 0 }));
 }
@@ -251,50 +291,50 @@ export async function regionFacets(includeDemo = true) {
 
 export async function gradeFacets() {
   return sql<{ grade: string; count: number }[]>`
-    select grade, count(*)::int as count from jobs where status = 'active' and grade is not null group by grade order by grade`;
+    select j.grade, count(*)::int as count from jobs j where ${isOpen()} and j.grade is not null group by j.grade order by j.grade`;
 }
 
 export async function languageFacets() {
   return sql<{ lang: string; count: number }[]>`
-    select l as lang, count(*)::int as count from jobs, unnest(languages) l where status = 'active' group by l order by count(*) desc`;
+    select l as lang, count(*)::int as count from jobs j, unnest(j.languages) l where ${isOpen()} group by l order by count(*) desc`;
 }
 
 export async function experienceFacets() {
   const rows = await sql<{ y: number; count: number }[]>`
-    select min_experience_years as y, count(*)::int as count from jobs where status = 'active' and min_experience_years is not null group by 1`;
+    select j.min_experience_years as y, count(*)::int as count from jobs j where ${isOpen()} and j.min_experience_years is not null group by 1`;
   return EXPERIENCE_BANDS.map((b) => ({ ...b, count: rows.filter((r) => r.y >= b.min && r.y <= b.max).reduce((n, r) => n + r.count, 0) }));
 }
 
 export async function orgTypeFacets() {
   const rows = await sql<{ org_type: string; count: number }[]>`
     select o.org_type, count(*)::int as count from jobs j join organizations o on o.id = j.organization_id
-    where j.status = 'active' and o.org_type is not null group by o.org_type`;
+    where ${isOpen()} and o.org_type is not null group by o.org_type`;
   return ORG_TYPES.map((t) => ({ ...t, count: rows.find((r) => r.org_type === t.type)?.count ?? 0 }));
 }
 
 export async function jobTypeFacets() {
   return sql<{ job_type: string; count: number }[]>`
-    select job_type, count(*)::int as count from jobs where status = 'active' and job_type is not null group by job_type order by count(*) desc`;
+    select j.job_type, count(*)::int as count from jobs j where ${isOpen()} and j.job_type is not null group by j.job_type order by count(*) desc`;
 }
 
 export async function siteStats() {
   const [r] = await sql<{ active: number; orgs: number; countries: number; remote: number; this_week: number }[]>`
     select count(*)::int as active,
-           count(distinct organization_id)::int as orgs,
-           count(distinct country_code)::int as countries,
-           count(*) filter (where is_remote)::int as remote,
-           count(*) filter (where coalesce(published_at, first_seen_at) >= now() - interval '7 days')::int as this_week
-    from jobs where status = 'active'`;
+           count(distinct j.organization_id)::int as orgs,
+           count(distinct j.country_code)::int as countries,
+           count(*) filter (where j.is_remote)::int as remote,
+           count(*) filter (where coalesce(j.published_at, j.first_seen_at) >= now() - interval '7 days')::int as this_week
+    from jobs j where ${isOpen()}`;
   return r;
 }
 
 export async function getOrganization(slug: string) {
   const rows = await sql<{ id: number; slug: string; name: string; short_name: string | null; org_type: string | null; logo: string | null }[]>`
-    select id, slug, name, short_name, org_type, case when logo is not null then slug end as logo from organizations where slug = ${slug}`;
+    select id, slug, name, short_name, org_type, case when logo is not null and coalesce(org_type, '') not in ('UN system', 'EU institution') then slug end as logo from organizations where slug = ${slug}`;
   return rows[0] ?? null;
 }
 
 export async function hasDemoJobs(): Promise<boolean> {
-  const [r] = await sql<{ n: number }[]>`select count(*)::int as n from jobs where is_demo and status = 'active'`;
+  const [r] = await sql<{ n: number }[]>`select count(*)::int as n from jobs j where j.is_demo and ${isOpen()}`;
   return r.n > 0;
 }

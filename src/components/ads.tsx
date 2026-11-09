@@ -2,14 +2,22 @@
 
 /**
  * Microsoft Advertising (Bing Ads) support:
- *  - stores which campaign a visitor came from (utm_* and msclkid), first touch, 90 days
+ *  - remembers which campaign a visitor came from (utm_* and msclkid), first touch, 90 days
  *  - loads the UET conversion tag when NEXT_PUBLIC_MS_UET_TAG_ID is set
- *  - asks for ad-measurement consent only where Microsoft requires it (EEA, UK, Switzerland)
+ *  - in the EEA, UK and Switzerland (or when the country is unknown) nothing is
+ *    stored on the device and Microsoft's script is not loaded until the
+ *    visitor clicks "Allow"; elsewhere visitors can opt out any time
+ *  - never runs on /alerts/* (confirm/unsubscribe links carry personal tokens) or /admin
+ *  - "Cookie settings" in the footer reopens the choice
  */
-import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const ATTR_KEY = "gch_attr";
 const CONSENT_KEY = "gch_ads_consent";
+const GEO_KEY = "gch_geo";
+const OPEN_EVENT = "postbird:cookie-settings";
 const ATTR_FIELDS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "msclkid"] as const;
 
 export type Attribution = Partial<Record<(typeof ATTR_FIELDS)[number], string>> & { landing?: string; at?: string };
@@ -20,13 +28,23 @@ declare global {
   }
 }
 
-function store(): Storage | null {
+/** Pages where no tracking of any kind runs. */
+export function isPrivatePath(path: string) {
+  return path.startsWith("/alerts/") || path === "/alerts/confirm" || path.startsWith("/admin");
+}
+
+function local(): Storage | null {
   try {
     return window.localStorage;
   } catch {
     return null;
   }
 }
+
+// Attribution kept in memory too, so it survives in-site navigation even when
+// nothing may be stored on the device (no consent yet).
+let memoryAttribution: Attribution | null = null;
+let storageAllowed = false;
 
 /** Campaign parameters in the current URL, if any. */
 export function attributionFromUrl(): Attribution | null {
@@ -46,10 +64,12 @@ export function attributionFromUrl(): Attribution | null {
   }
 }
 
-/** First-touch attribution, kept for 90 days. */
+/** First-touch attribution (stored for 90 days only where allowed). */
 export function getAttribution(): Attribution | null {
+  if (memoryAttribution) return memoryAttribution;
+  if (!storageAllowed) return null;
   try {
-    const raw = store()?.getItem(ATTR_KEY);
+    const raw = local()?.getItem(ATTR_KEY);
     if (!raw) return null;
     const a = JSON.parse(raw) as Attribution;
     if (a.at && Date.now() - new Date(a.at).getTime() > 90 * 86_400_000) return null;
@@ -61,18 +81,23 @@ export function getAttribution(): Attribution | null {
 
 function captureAttribution() {
   const fromUrl = attributionFromUrl();
-  if (fromUrl && !getAttribution()) {
-    try {
-      store()?.setItem(ATTR_KEY, JSON.stringify(fromUrl));
-    } catch {
-      /* storage blocked: attribution simply isn't kept */
-    }
+  if (fromUrl && !memoryAttribution) memoryAttribution = fromUrl;
+  persistAttribution();
+}
+
+function persistAttribution() {
+  if (!storageAllowed || !memoryAttribution) return;
+  try {
+    if (!local()?.getItem(ATTR_KEY)) local()?.setItem(ATTR_KEY, JSON.stringify(memoryAttribution));
+  } catch {
+    /* storage blocked: attribution simply isn't kept */
   }
 }
 
-/** Report a conversion to Microsoft Ads (no-op when UET isn't installed). */
+/** Report a conversion to Microsoft Ads (no-op when UET isn't loaded). */
 export function uetEvent(action: string, params: Record<string, string | number> = {}) {
   try {
+    if (!document.getElementById("uet-tag")) return;
     window.uetq = window.uetq || ([] as unknown as NonNullable<Window["uetq"]>);
     window.uetq.push("event", action, params);
   } catch {
@@ -80,8 +105,10 @@ export function uetEvent(action: string, params: Record<string, string | number>
   }
 }
 
-function loadUet(tagId: string) {
+function loadUet(tagId: string, granted: boolean) {
   if (document.getElementById("uet-tag")) return;
+  window.uetq = window.uetq || ([] as unknown as NonNullable<Window["uetq"]>);
+  window.uetq.push("consent", "default", { ad_storage: granted ? "granted" : "denied" });
   const s = document.createElement("script");
   s.id = "uet-tag";
   s.async = true;
@@ -91,8 +118,9 @@ function loadUet(tagId: string) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const UET = (window as any).UET;
       const queue = window.uetq;
+      // Page views are reported manually (see AdsManager) so private pages are never sent.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const o: any = { ti: tagId, enableAutoSpaTracking: true, q: queue };
+      const o: any = { ti: tagId, enableAutoSpaTracking: false, q: queue };
       window.uetq = new UET(o);
       window.uetq!.push("pageLoad");
     } catch {
@@ -102,39 +130,122 @@ function loadUet(tagId: string) {
   document.head.appendChild(s);
 }
 
-/** Mount once in the root layout. */
-export function AdsManager({ tagId, consentRequired }: { tagId: string | null; consentRequired: boolean }) {
-  const [askConsent, setAskConsent] = useState(false);
+type Geo = { consentRequired: boolean };
 
-  useEffect(() => {
-    captureAttribution();
-    if (!tagId) return;
-    const saved = store()?.getItem(CONSENT_KEY);
-    const granted = consentRequired ? saved === "granted" : saved !== "denied";
-    window.uetq = window.uetq || ([] as unknown as NonNullable<Window["uetq"]>);
-    window.uetq.push("consent", "default", { ad_storage: granted ? "granted" : "denied" });
-    loadUet(tagId);
-    // Show the notice only where consent is required and the visitor hasn't chosen yet.
-    if (consentRequired && !saved) {
-      const t = setTimeout(() => setAskConsent(true), 0);
-      return () => clearTimeout(t);
-    }
-  }, [tagId, consentRequired]);
-
-  if (!askConsent) return null;
-  const choose = (value: "granted" | "denied") => {
+async function fetchGeo(): Promise<Geo> {
+  try {
+    const cached = window.sessionStorage.getItem(GEO_KEY);
+    if (cached) return JSON.parse(cached) as Geo;
+  } catch {
+    /* ignore */
+  }
+  try {
+    const res = await fetch("/api/geo", { cache: "no-store" });
+    const geo = (await res.json()) as Geo;
+    const value = { consentRequired: geo.consentRequired !== false };
     try {
-      store()?.setItem(CONSENT_KEY, value);
+      window.sessionStorage.setItem(GEO_KEY, JSON.stringify(value));
     } catch {
       /* ignore */
     }
-    window.uetq?.push("consent", "update", { ad_storage: value });
-    setAskConsent(false);
+    return value;
+  } catch {
+    return { consentRequired: true };
+  }
+}
+
+/** Footer link that reopens the cookie choice. */
+export function CookieSettingsLink({ className = "" }: { className?: string }) {
+  return (
+    <button type="button" className={className} onClick={() => window.dispatchEvent(new Event(OPEN_EVENT))}>
+      Cookie settings
+    </button>
+  );
+}
+
+/** Mount once in the root layout. */
+export function AdsManager({ tagId }: { tagId: string | null }) {
+  const pathname = usePathname();
+  const [panel, setPanel] = useState<null | { consentRequired: boolean }>(null);
+  const geoRef = useRef<Geo | null>(null);
+  const firstPath = useRef<string | null>(null);
+
+  const apply = useCallback(
+    (geo: Geo) => {
+      const saved = local()?.getItem(CONSENT_KEY) ?? null;
+      const granted = geo.consentRequired ? saved === "granted" : saved !== "denied";
+      storageAllowed = granted;
+      captureAttribution();
+      if (tagId && granted && !isPrivatePath(window.location.pathname)) loadUet(tagId, true);
+      return { saved, granted };
+    },
+    [tagId],
+  );
+
+  // First visit: find out whether consent is needed, then act on it.
+  useEffect(() => {
+    let cancelled = false;
+    if (attributionFromUrl() && !memoryAttribution) memoryAttribution = attributionFromUrl();
+    fetchGeo().then((geo) => {
+      if (cancelled) return;
+      geoRef.current = geo;
+      const { saved } = apply(geo);
+      if (tagId && geo.consentRequired && !saved && !isPrivatePath(window.location.pathname)) setPanel({ consentRequired: true });
+    });
+    const open = () => setPanel({ consentRequired: geoRef.current?.consentRequired ?? true });
+    window.addEventListener(OPEN_EVENT, open);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(OPEN_EVENT, open);
+    };
+  }, [apply, tagId]);
+
+  // In-site navigation: report page views manually, never for private pages.
+  useEffect(() => {
+    if (firstPath.current === null) {
+      firstPath.current = pathname;
+      return;
+    }
+    if (!document.getElementById("uet-tag") || isPrivatePath(pathname)) return;
+    try {
+      window.uetq?.push("event", "page_view", { page_path: pathname });
+    } catch {
+      /* ignore */
+    }
+  }, [pathname]);
+
+  if (!panel) return null;
+  const choose = (value: "granted" | "denied") => {
+    try {
+      local()?.setItem(CONSENT_KEY, value);
+    } catch {
+      /* ignore */
+    }
+    if (value === "denied") {
+      storageAllowed = false;
+      try {
+        local()?.removeItem(ATTR_KEY);
+      } catch {
+        /* ignore */
+      }
+      window.uetq?.push("consent", "update", { ad_storage: "denied" });
+    } else {
+      storageAllowed = true;
+      persistAttribution();
+      if (tagId && !isPrivatePath(window.location.pathname)) {
+        if (document.getElementById("uet-tag")) window.uetq?.push("consent", "update", { ad_storage: "granted" });
+        else loadUet(tagId, true);
+      }
+    }
+    setPanel(null);
   };
   return (
-    <div role="region" aria-label="Cookie choice" className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-xl rounded-xl border border-rule bg-paper p-4 shadow-lg sm:inset-x-auto sm:right-4">
-      <p className="text-sm text-ink">
-        We use one advertising cookie to measure whether our ads lead to sign-ups. Allow it?
+    <div role="dialog" aria-label="Cookie settings" className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-xl rounded-xl border border-rule bg-paper p-4 shadow-lg sm:inset-x-auto sm:right-4">
+      <p className="text-sm leading-relaxed text-ink">
+        {tagId
+          ? "May we use Microsoft Advertising cookies (_uetsid, _uetvid, MUID) and remember which ad brought you here? It only tells us whether our ads lead to sign-ups."
+          : "May we remember which ad or link brought you here (stored on your device for up to 90 days)? It only tells us whether our ads lead to sign-ups."}{" "}
+        <Link href="/privacy#cookies" className="text-accent underline">Details</Link>
       </p>
       <div className="mt-3 flex gap-2">
         <button onClick={() => choose("granted")} className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-accent">Allow</button>

@@ -48,7 +48,7 @@ export default async function JobsPage({ searchParams }: Props) {
       <PageHeader
         title={heading}
         crumbs={[{ href: "/", label: "Home" }, { href: "/jobs", label: "Jobs" }]}
-        intro="Vacancies from UN agencies and international organizations. Every listing links to the employer's official vacancy page."
+        intro="Vacancies from UN agencies and international organizations. Every listing links to the employer's own website."
       />
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <JobsBrowser filters={filters} />

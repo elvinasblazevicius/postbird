@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { activeFilterCount, categoryFacets, countryFacets, experienceFacets, gradeFacets, jobsUrl, jobTypeFacets, languageFacets, organizationFacets, orgTypeFacets, regionFacets, searchJobs, type JobFilters } from "@/lib/jobs";
+import { notFound } from "next/navigation";
+import { activeFilterCount, latestJobs, categoryFacets, countryFacets, experienceFacets, gradeFacets, jobsUrl, jobTypeFacets, languageFacets, organizationFacets, orgTypeFacets, regionFacets, searchJobs, type JobFilters } from "@/lib/jobs";
 import siteConfig from "@site-config";
 import { AlertSignup } from "./alert-signup";
 import { JobList } from "./job-card";
@@ -7,9 +8,9 @@ import { FilterForm } from "./search-forms";
 import { TrackedLink } from "./tracking";
 import { TrackOnMount } from "./tracking";
 
-function Pagination({ page, pages, filters, base }: { page: number; pages: number; filters: JobFilters; base: string }) {
+function Pagination({ page, pages, filters, base, showLast = true }: { page: number; pages: number; filters: JobFilters; base: string; showLast?: boolean }) {
   if (pages <= 1) return null;
-  const nums = new Set([1, pages, page - 1, page, page + 1].filter((n) => n >= 1 && n <= pages));
+  const nums = new Set([1, ...(showLast ? [pages] : []), page - 1, page, page + 1].filter((n) => n >= 1 && n <= pages));
   const list = [...nums].sort((a, b) => a - b);
   return (
     <nav aria-label="Pagination" className="mt-8 flex flex-wrap items-center gap-1.5">
@@ -72,8 +73,13 @@ export async function JobsBrowser({
   if (fixed.remote) hidden.remote = "1";
   // On landing pages the fixed filter is in the path, so don't repeat it in the form.
   const formHidden = base === "/jobs" ? {} : Object.fromEntries(Object.keys(hidden).map((k) => [k, ""]));
+  // Pages past the end (old links, guessed URLs) are a 404 rather than an empty, indexable page.
+  if (result.page > result.pages) notFound();
+  const fallback = result.total === 0 ? await latestJobs(6) : [];
   const userFilters = activeFilterCount(filters);
   const from = (result.page - 1) * result.pageSize + 1;
+  // The overall total is only shown once the site has enough listings; filtered result counts are always shown.
+  const showTotal = userFilters > 0 || result.total >= siteConfig.showVacancyCountFrom;
   const to = from + result.items.length - 1;
 
   return (
@@ -101,7 +107,9 @@ export async function JobsBrowser({
               ? "No open vacancies match"
               : result.total === 1
                 ? "1 open vacancy"
-                : `${from}–${to} of ${result.total.toLocaleString("en-US")} open vacancies`}
+                : showTotal
+                  ? `${from}–${to} of ${result.total.toLocaleString("en-US")} open vacancies`
+                  : `Open vacancies, ${from}–${to}`}
           </h2>
           <div className="flex items-center gap-1 text-sm" aria-label="Sort">
             <span className="mr-1 text-slate">Sort:</span>
@@ -161,8 +169,14 @@ export async function JobsBrowser({
             </div>
           </div>
         )}
+        {fallback.length ? (
+          <div className="mt-8">
+            <h3 className="mb-3 font-sans text-base font-medium text-slate">Newest vacancies instead</h3>
+            <JobList jobs={fallback} />
+          </div>
+        ) : null}
 
-        <Pagination page={result.page} pages={result.pages} filters={filters} base={base} />
+        <Pagination page={result.page} pages={result.pages} filters={filters} base={base} showLast={showTotal} />
         {userFilters > 0 && result.page === 1 ? (
           <TrackOnMount event={{ type: "search", props: { ...effective, results: result.total } }} />
         ) : null}

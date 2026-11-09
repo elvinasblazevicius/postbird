@@ -88,9 +88,11 @@ export async function findByConfirmToken(t: string) {
 }
 
 /** Confirms the address and applies any changes that were waiting for confirmation. */
-export async function confirmSubscriber(t: string): Promise<boolean> {
-  if (!t || t.length > 100) return false;
-  const rows = await sql`
+export type ConfirmResult = { ok: false } | { ok: true; waitlist: boolean; alerts: boolean };
+
+export async function confirmSubscriber(t: string): Promise<ConfirmResult> {
+  if (!t || t.length > 100) return { ok: false };
+  const rows = await sql<{ id: number; premium_waitlist: boolean; wants_alerts: boolean }[]>`
     update subscribers set
       wants_alerts = case when status = 'unsubscribed' then coalesce((pending_changes->>'wants_alerts')::boolean, wants_alerts)
                           else wants_alerts or coalesce((pending_changes->>'wants_alerts')::boolean, false) end,
@@ -105,9 +107,23 @@ export async function confirmSubscriber(t: string): Promise<boolean> {
       unsubscribed_at = null,
       confirm_token = null
     where confirm_token = ${t}
+    returning id, premium_waitlist, wants_alerts`;
+  if (rows.length !== 1) return { ok: false };
+  await recordEvent({ type: "alert_confirmed" });
+  return { ok: true, waitlist: rows[0].premium_waitlist, alerts: rows[0].wants_alerts };
+}
+
+/**
+ * Privacy-policy retention: sign-ups never confirmed and unsubscribed
+ * addresses are deleted after 30 days. Run by the scheduled job.
+ */
+export async function purgeStaleSubscribers(): Promise<number> {
+  const rows = await sql`
+    delete from subscribers
+    where coalesce(confirm_sent_at, created_at) < now() - interval '30 days'
+      and (status = 'pending' or (status = 'unsubscribed' and unsubscribed_at < now() - interval '30 days'))
     returning id`;
-  if (rows.length) await recordEvent({ type: "alert_confirmed" });
-  return rows.length === 1;
+  return rows.length;
 }
 
 export async function findByUnsubscribeToken(t: string) {

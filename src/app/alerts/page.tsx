@@ -27,7 +27,7 @@ export default function AlertsPage() {
         intro={
           free
             ? "A short email every Monday with the newest international vacancies. Free, and you can unsubscribe with one click."
-            : `New vacancies in your inbox, filtered to the roles, organizations and places you choose. ${p.trialDays}-day free trial, then ${p.priceSummary}.`
+            : `Many international vacancies are open for only a few weeks. Alerts (launching soon) send new matches for the roles, organizations and places you choose. ${p.trialDays}-day free trial, then ${p.priceSummary}.`
         }
       />
       <div className="mx-auto grid max-w-6xl gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[1.2fr_1fr]">
@@ -37,7 +37,7 @@ export default function AlertsPage() {
           <ul className="mt-3 list-disc space-y-2 pl-5 text-slate">
             {free ? (
               <>
-                <li>The week&apos;s newest openings, each linked to the official posting</li>
+                <li>The week&apos;s newest openings, each linked to the employer&apos;s own website</li>
                 <li>Deadlines shown up front, so you can prioritise</li>
                 <li>No spam and no sharing of your address</li>
               </>

@@ -78,13 +78,15 @@ export default async function AdminHome({ searchParams }: Props) {
       group by referrer order by visitors desc limit 10`,
   ]);
 
-  const [campaigns, [ct]] = await Promise.all([
+  const [campaigns, [ct], [adConfirmed], planChoices] = await Promise.all([
     campaignStats(days),
-    // Concept test: each ad visitor counted once, "converted" if that same visitor later left an email via the trial form.
+    // Concept test: each paid-ad visitor (Microsoft click id, or utm_medium=cpc) counted once,
+    // "converted" if that same visitor later joined early access the same day (the visitor code changes daily).
     sql<{ visitors: number; converted: number }[]>`
       with landings as (
         select distinct on (visitor) visitor, created_at from events
-        where type = 'pageview' and props ? 'campaign' and visitor is not null
+        where type = 'pageview' and visitor is not null
+          and (props->'campaign' ? 'msclkid' or lower(props->'campaign'->>'utm_medium') in ('cpc', 'ppc', 'paid'))
         order by visitor, created_at
       )
       select count(*)::int as visitors,
@@ -92,7 +94,14 @@ export default async function AdminHome({ searchParams }: Props) {
                select 1 from events e where e.type = 'waitlist_signup' and e.visitor = l.visitor and e.created_at >= l.created_at
              ))::int as converted
       from landings l`,
+    sql<{ n: number }[]>`
+      select count(*)::int as n from subscribers
+      where status = 'confirmed' and premium_waitlist
+        and (attribution ? 'msclkid' or lower(attribution->>'utm_medium') in ('cpc', 'ppc', 'paid'))`,
+    sql<{ plan: string; n: number }[]>`
+      select props->>'plan' as plan, count(*)::int as n from events where type = 'plan_choice' group by 1`,
   ]);
+  const planCount = (k: string) => planChoices.find((p) => p.plan === k)?.n ?? 0;
   const test = siteConfig.conceptTest;
   const adVisitors = ct.visitors;
   const adSignups = ct.converted;
@@ -102,7 +111,7 @@ export default async function AdminHome({ searchParams }: Props) {
     adVisitors < test.minVisitors
       ? { tone: "bg-mist text-ink", title: "Collecting data", text: `${adVisitors} of ${test.minVisitors} ad visitors so far. Current rate ${pct(adRate)}; no verdict yet.` }
       : adRate >= test.successRate
-        ? { tone: "bg-remote-bg text-remote", title: "Passed", text: `${pct(adRate)} of ${adVisitors} ad visitors clicked "Start free trial" and left an email (target ${pct(test.successRate)}). Worth building real billing.` }
+        ? { tone: "bg-remote-bg text-remote", title: "Passed", text: `${pct(adRate)} of ${adVisitors} ad visitors joined early access (target ${pct(test.successRate)}). Worth building real billing.` }
         : adRate < test.failRate
           ? { tone: "bg-[#fde8e8] text-[#9b1c1c]", title: "Failed", text: `${pct(adRate)} of ${adVisitors} ad visitors (below ${pct(test.failRate)}). People don't want to pay for alerts at this price or with this message.` }
           : { tone: "bg-signal-bg text-signal", title: "Unclear", text: `${pct(adRate)} of ${adVisitors} ad visitors, between ${pct(test.failRate)} and ${pct(test.successRate)}. Try a different ad message or price before deciding.` };
@@ -154,14 +163,18 @@ export default async function AdminHome({ searchParams }: Props) {
         <div className="text-sm font-medium">Concept test (all time): {verdict.title}</div>
         <div className="mt-1 text-sm">{verdict.text}</div>
         <div className="mt-1 text-xs opacity-80">
-          Rule set before launch: pass at {pct(test.successRate)} or more, fail below {pct(test.failRate)}, from at least {test.minVisitors} visitors arriving from ads. Change it in site.config.ts.
+          Rule set before launch: pass at {pct(test.successRate)} or more, fail below {pct(test.failRate)}, from at least {test.minVisitors} visitors arriving from paid ads. Change it in site.config.ts.
+        </div>
+        <div className="mt-2 text-sm">
+          Ad sign-ups that confirmed their email: {adConfirmed.n}. &quot;Which plan would you choose?&quot; (all sign-ups): {planCount("monthly")} monthly,{" "}
+          {planCount("three_months")} 3 months, {planCount("would_not_pay")} wouldn&apos;t pay.
         </div>
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Visitors" value={ev.visitors} hint={`${ev.pageviews} page views`} />
         <Stat label="Job views" value={ev.job_views} hint={`${ev.searches} filtered searches`} />
         <Stat label="Apply clicks" value={ev.apply} hint={`${rate(ev.apply, ev.job_views)} of job views`} />
-        <Stat label="Premium interest" value={ev.cta} hint={`trial clicks; ${ev.waitlist_signups} left an email (${rate(ev.waitlist_signups, ev.cta)})`} />
+        <Stat label="Email-alert interest" value={ev.cta} hint={`button clicks; ${ev.waitlist_signups} left an email (${rate(ev.waitlist_signups, ev.cta)})`} />
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <Stat label="Alert sign-ups" value={ev.alert_signups} hint={`${ev.confirmed} confirmations; ${rate(ev.alert_signups, ev.visitors)} of visitors signed up`} />

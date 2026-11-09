@@ -10,7 +10,7 @@ type Props = { searchParams: Promise<{ token?: string }> };
 
 export default async function ConfirmPage({ searchParams }: Props) {
   const token = (await searchParams).token ?? "";
-  const sub = await findByConfirmToken(token);
+  const sub = token ? await findByConfirmToken(token) : null;
   return (
     <div className="mx-auto max-w-xl px-4 py-20 sm:px-6">
       <h1 className="text-[2rem] font-semibold text-ink">Confirm your email</h1>
@@ -21,10 +21,15 @@ export default async function ConfirmPage({ searchParams }: Props) {
           </p>
           <ConfirmForm token={token} />
         </>
+      ) : !token ? (
+        <p className="mt-3 text-lg text-slate">
+          Open the link in the confirmation email we sent you to finish signing up. Didn&apos;t get it? Check your spam folder or{" "}
+          <Link href="/alerts" className="text-accent underline">sign up again</Link>.
+        </p>
       ) : (
         <p className="mt-3 text-lg text-slate">
           This confirmation link has already been used or is no longer valid. If you&apos;re not receiving our emails,{" "}
-          <Link href="/alerts" className="text-accent hover:underline">sign up again</Link>.
+          <Link href="/alerts" className="text-accent underline">sign up again</Link>.
         </p>
       )}
     </div>

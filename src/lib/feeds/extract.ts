@@ -12,6 +12,7 @@ import { IMPORT_SETTINGS } from "@/config/import";
 import { escapeRegExp, excerpt, htmlToText, normalizeForCompare, oneLine, sanitizeDescription, slugify } from "@/lib/text";
 import { extractDeadline, parseFeedDate } from "./dates";
 import type { RawItem } from "./parse";
+import { cleanTitle } from "./title";
 import { canonicalizeUrl, hostOf, isListingSite, pickApplyUrl, sha256 } from "./url";
 import { allLinks, endsWithHost, findEmployerLink, findOrgWebsite, PROCUREMENT_HOSTS } from "./employer-link";
 
@@ -264,7 +265,7 @@ function titleTailSegments(title: string): string[] {
 // ── Main ─────────────────────────────────────────────────────
 
 export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
-  const title = oneLine(raw.title).slice(0, 300);
+  const title = cleanTitle(oneLine(raw.title)).slice(0, 300);
   if (!title) throw new ItemSkipped("Item has no title");
   if (IMPORT_SETTINGS.skipTitlePatterns.some((re) => re.test(title))) throw new ItemSkipped("Looks like a tender or supplier call, not a job");
 

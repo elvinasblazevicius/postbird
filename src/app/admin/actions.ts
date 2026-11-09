@@ -1,48 +1,67 @@
 "use server";
 
 import { cookies, headers } from "next/headers";
-import { visitorHash } from "@/lib/analytics";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ALL_CATEGORIES } from "@/config/categories";
 import { IMPORT_SETTINGS } from "@/config/import";
-import { ADMIN_COOKIE, checkPassword, createSessionValue, isAdminConfigured } from "@/lib/admin-auth";
+import { ADMIN_COOKIE, checkPassword, createAdminSession, isAdminConfigured, revokeAllSessions, verifyAdminSession } from "@/lib/admin-auth";
 import { sql } from "@/lib/db";
-import { runDigest } from "@/lib/digest";
 import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { confirmationEmail } from "@/lib/email-templates";
-import { fetchFeedText, runSync } from "@/lib/feeds/sync";
 import { parseFeed } from "@/lib/feeds/parse";
+import { clientIp, hashKey, rateLimit } from "@/lib/rate-limit";
 import { absoluteUrl } from "@/lib/site";
 import { requireAdmin } from "./guard";
+
+// The sync and digest modules (and the HTML sanitizer they pull in) are
+// imported only inside the actions that need them, after the admin check, so
+// the login page never depends on them.
+const loadSync = () => import("@/lib/feeds/sync");
 
 export type AdminState = { ok: boolean; message: string } | null;
 
 // ── Auth ──
+const LOCK_MINUTES = 15;
+const MAX_FAILURES_PER_IP = 8; // per 15 minutes
+const MAX_FAILURES_GLOBAL = 50; // from all sources per 15 minutes; above this every sign-in is refused
+
 export async function loginAction(_prev: AdminState, form: FormData): Promise<AdminState> {
   if (!isAdminConfigured()) {
     return { ok: false, message: "Admin login isn't set up. Add ADMIN_PASSWORD (10+ characters) and CRON_SECRET (16+ characters) to the environment variables." };
   }
   await new Promise((r) => setTimeout(r, 400)); // slows down password guessing
-  const h = await headers();
-  const who = visitorHash((h.get("x-forwarded-for") ?? "").split(",")[0].trim() || "local", h.get("user-agent") ?? "");
-  const [{ n }] = await sql<{ n: number }[]>`
-    select count(*)::int as n from admin_login_failures where who = ${who} and at > now() - interval '15 minutes'`;
-  if (n >= 8) return { ok: false, message: "Too many wrong passwords. Try again in 15 minutes." };
+  const ip = clientIp(await headers());
+  // Stored as a salted hash, never the IP itself; rows are deleted after 24 hours.
+  const who = hashKey(`admin-login|${ip}`);
+  const locked = { ok: false, message: `Too many wrong passwords. Try again in ${LOCK_MINUTES} minutes.` };
+  if (!(await rateLimit(`admin-login|${ip}`, 30, LOCK_MINUTES * 60))) return locked;
+  const [{ mine, total }] = await sql<{ mine: number; total: number }[]>`
+    select count(*) filter (where who = ${who})::int as mine, count(*)::int as total
+    from admin_login_failures where at > now() - make_interval(mins => ${LOCK_MINUTES})`;
+  if (mine >= MAX_FAILURES_PER_IP) return locked;
+  if (total > MAX_FAILURES_GLOBAL) {
+    console.warn(`admin login: more than ${MAX_FAILURES_GLOBAL} wrong passwords in ${LOCK_MINUTES} minutes; sign-in is paused`);
+    return { ok: false, message: `Sign-in is paused for ${LOCK_MINUTES} minutes after many wrong passwords. Try again later.` };
+  }
   if (!checkPassword(String(form.get("password") ?? ""))) {
     await sql`insert into admin_login_failures (who) values (${who})`;
-    await sql`delete from admin_login_failures where at < now() - interval '1 day'`;
+    await sql`delete from admin_login_failures where at < now() - interval '24 hours'`;
     return { ok: false, message: "That password isn't correct." };
   }
-  const session = createSessionValue();
+  const session = await createAdminSession();
   (await cookies()).set(ADMIN_COOKIE, session.value, {
     httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: session.maxAge,
   });
   redirect("/admin");
 }
 
+/** Signing out ends every admin session (on every device). */
 export async function logoutAction() {
-  (await cookies()).delete(ADMIN_COOKIE);
+  const jar = await cookies();
+  // Only a signed-in admin may end all sessions; anyone else just loses their cookie.
+  if (await verifyAdminSession(jar.get(ADMIN_COOKIE)?.value)) await revokeAllSessions();
+  jar.delete(ADMIN_COOKIE);
   redirect("/admin/login");
 }
 
@@ -61,6 +80,7 @@ export async function addFeedAction(_prev: AdminState, form: FormData): Promise<
   // Check the feed before saving it, so typos are caught immediately.
   let note = "";
   try {
+    const { fetchFeedText } = await loadSync();
     const parsed = parseFeed(await fetchFeedText(url, 7_000)); // stays within the host time limit
     note = ` It currently has ${parsed.items.length} items.`;
   } catch (e) {
@@ -104,6 +124,7 @@ export async function deleteFeedAction(form: FormData) {
 // ── Sync ──
 export async function syncNowAction(): Promise<void> {
   await requireAdmin();
+  const { runSync } = await loadSync();
   const result = await runSync("manual");
   revalidatePath("/admin", "layout");
   redirect(`/admin/imports/${result.runId}`);
@@ -156,6 +177,7 @@ export async function resendConfirmationsAction(): Promise<void> {
 
 export async function sendDigestNowAction(): Promise<void> {
   await requireAdmin();
+  const { runDigest } = await import("@/lib/digest");
   const r = await runDigest();
   redirect(`/admin/subscribers?msg=${encodeURIComponent(`digest: ${r.status}${r.message ? ` — ${r.message}` : ` — sent ${r.sent} of ${r.recipients}`}`)}`);
 }

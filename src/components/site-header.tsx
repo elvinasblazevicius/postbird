@@ -32,7 +32,9 @@ export function SiteHeader() {
           </Link>
         </nav>
 
-        <details className="relative md:hidden">
+        <div className="flex items-center gap-2 md:hidden">
+        <Link href="/alerts" className="rounded-lg bg-highlight px-3 py-2 text-sm font-semibold text-ink">Email alerts</Link>
+        <details className="relative">
           <summary className="list-none rounded-lg border border-rule px-3 py-2 text-sm font-medium text-ink [&::-webkit-details-marker]:hidden">
             Menu
           </summary>
@@ -47,6 +49,7 @@ export function SiteHeader() {
             </Link>
           </nav>
         </details>
+        </div>
       </div>
     </header>
   );

@@ -17,7 +17,7 @@ const siteConfig = {
   tagline: "UN, EU and international organization jobs in one place",
   /** One line describing the site (meta description default). */
   description:
-    "The UN and international organization job aggregator: vacancies from UN agencies, development banks, EU institutions and other international organizations in one place, linked straight to the official application pages.",
+    "The UN and international organization job aggregator: vacancies from UN agencies, EU institutions and other international organizations in one place, each linked to the employer's own website.",
 
   /**
    * Public address of the site, without a trailing slash.
@@ -28,15 +28,32 @@ const siteConfig = {
   url: "https://postbird.nuevanova.com", // move to postbirdjobs.com if the concept test passes
 
   /** Address shown as the sender of alert emails (needs a verified domain in Resend). */
-  emailFrom: "Postbird <alerts@example.com>",
+  emailFrom: "Postbird <alerts@nuevanova.com>",
   /** Public contact address shown in the footer and legal pages. Leave empty to hide. */
-  contactEmail: "",
+  contactEmail: "info@nuevanova.com",
+
+  /**
+   * Who runs the site. Shown in the footer, privacy policy, terms and email
+   * footers (required by Microsoft Advertising, EU privacy law and US anti-spam law).
+   */
+  operator: {
+    name: "Nueva Nova",
+    address: "5830 E 2nd St, Ste 7000 #25426, Casper, Wyoming 82609, United States",
+    /** Law that governs the terms of use. */
+    governingLaw: "the State of Wyoming, United States",
+  },
+
+  /**
+   * The total number of open vacancies is shown on the homepage only once it
+   * reaches this number; below it the site shows a freshness line instead.
+   */
+  showVacancyCountFrom: 1000,
 
   /** Homepage wording. */
   home: {
     headline: "Jobs at the UN, EU and international organizations",
     subheadline:
-      "UN agencies, EU institutions, development banks and more, in one place. Every listing links to the official vacancy. Search in seconds, or let email alerts bring new ones to you.",
+      "UN agencies, EU institutions and other international organizations in one place. Every listing links to the employer's own website.",
   },
 
   /**
@@ -66,11 +83,16 @@ const siteConfig = {
     trialDays: 14,
     /** Shown on /pricing; the first plan is the headline price. */
     plans: [
-      { label: "Monthly", price: "$5", per: "month", note: "" },
-      { label: "3 months", price: "$12", per: "3 months", note: "Save 20%" },
+      { label: "Monthly", price: "$4.99", per: "month", note: "" },
+      { label: "3 months", price: "$11.99", per: "3 months", note: "Save 20%", perMonth: "$4.00" },
     ],
     /** Short version used in sign-up boxes. */
-    priceSummary: "$5/month or $12 for 3 months",
+    priceSummary: "$4.99/month or $11.99 for 3 months",
+    /**
+     * Billing is not switched on yet (concept test). While false, every sign-up
+     * box says plainly that trials open soon and nothing is charged.
+     */
+    trialsOpen: false,
     features: [
       "New vacancies by email, daily or weekly",
       "Filtered by keyword, organization and location",
@@ -89,7 +111,7 @@ const siteConfig = {
     brand: "#1D5BFF",
     accent: "#0F44D6",
     sky: "#38C6FF",
-    candy: "#E8227A",
+    candy: "#C0145F",
     /** Sunshine yellow for the main "Get email alerts" buttons. */
     highlight: "#FFD23F",
     ink: "#0B1B3F",
@@ -100,7 +122,7 @@ const siteConfig = {
    * the site lists vacancies from these organizations but is not run by them.
    */
   disclaimer:
-    "Postbird is an independent job discovery site. It is not affiliated with, endorsed by or acting for the United Nations or any organization listed. Applications are made only on each employer's official website.",
+    "Postbird is an independent job discovery site. It is not affiliated with, endorsed by or acting for the United Nations or any organization listed. Applications are made only on each employer's own website.",
 
   /** Optional social links shown in the footer. Leave empty to hide. */
   social: {

@@ -2,11 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { TrackedLink } from "@/components/tracking";
-import { siteConfig } from "@/lib/site";
+import { EARLY_ACCESS_BUTTON, earlyAccessLine } from "@/lib/early-access-copy";
+import { latestJobs } from "@/lib/jobs";
+import { formatDate, locationLabel, siteConfig } from "@/lib/site";
+
+export const revalidate = 600;
 
 export const metadata: Metadata = {
   title: "Pricing — email alerts for international jobs",
-  description: `Browse every vacancy free. ${siteConfig.premium.name}: new vacancies by email, filtered by keyword, organization and location, with deadline reminders.`,
+  description: `Browsing every vacancy is free. ${siteConfig.premium.name} (launching soon): new vacancies by email, filtered by keyword, organization and location.`,
   alternates: { canonical: "/pricing" },
 };
 
@@ -18,62 +22,124 @@ function Check() {
   );
 }
 
-export default function PricingPage() {
+export default async function PricingPage() {
   const p = siteConfig.premium;
+  const sample = await latestJobs(3).catch(() => []);
+  const faq: [string, React.ReactNode][] = [
+    ["Is anything charged now?", <>No. Email alerts aren&apos;t open yet. Joining early access is free and needs no card.</>],
+    [
+      "What happens when alerts open?",
+      <>You get one email offering the {p.trialDays}-day free trial. Nothing renews automatically: at the end of the trial you choose whether to pay {p.priceSummary}.</>,
+    ],
+    ["What if you don't launch?", <>We&apos;ll tell you, and delete your address within 30 days.</>],
+    ["Can I cancel?", <>Yes, at any time, and every email has a one-click unsubscribe link.</>],
+    [
+      "Where do the listings come from?",
+      <>From public job feeds. Every listing links to the employer&apos;s own website, where you apply. We never charge anyone to apply for a job.</>,
+    ],
+    ["Are you part of the UN?", <>No. {siteConfig.name} is independent and not affiliated with the United Nations, the EU or any employer listed.</>],
+  ];
+
   return (
     <>
       <PageHeader
-        title="Simple plans"
+        title="Pricing"
         crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Pricing" }]}
-        intro={`Every vacancy, search and filter stays free. Pay only if you want the right roles to find you by email.`}
+        intro="Every vacancy, search and filter is free. Paid email alerts, launching soon, bring new matches to your inbox so you don't have to keep checking."
       />
       <div className="mx-auto grid max-w-4xl gap-6 px-4 py-12 sm:px-6 md:grid-cols-2">
         <section className="flex flex-col rounded-2xl border border-rule p-7" aria-labelledby="plan-free">
           <h2 id="plan-free" className="text-2xl font-semibold text-ink">Free</h2>
           <p className="mt-2"><span className="font-display text-4xl font-semibold text-ink">$0</span></p>
           <ul className="mt-6 flex-1 space-y-3 text-ink">
-            {["Browse and search every vacancy", "Filter by organization, country, category and deadline", ...(siteConfig.freeWeeklyEmail ? ["Weekly email with new vacancies"] : [])].map((f) => (
+            {["Browse and search every vacancy", "Filter by organization, country, category and deadline", "Add closing dates to your calendar", ...(siteConfig.freeWeeklyEmail ? ["Weekly email with new vacancies"] : [])].map((f) => (
               <li key={f} className="flex gap-2.5"><Check />{f}</li>
             ))}
           </ul>
-          {siteConfig.freeWeeklyEmail ? (
-            <Link href="/alerts" className="mt-8 rounded-lg border border-rule px-5 py-3 text-center font-semibold text-ink hover:bg-mist">Get the weekly email</Link>
-          ) : (
-            <Link href="/jobs" className="mt-8 rounded-lg border border-rule px-5 py-3 text-center font-semibold text-ink hover:bg-mist">Browse jobs</Link>
-          )}
+          <Link href={siteConfig.freeWeeklyEmail ? "/alerts" : "/jobs"} className="mt-8 rounded-lg border border-rule px-5 py-3 text-center font-semibold text-ink hover:bg-mist">
+            {siteConfig.freeWeeklyEmail ? "Get the weekly email" : "Browse jobs"}
+          </Link>
         </section>
 
-        <section className="flex flex-col rounded-2xl border-2 border-brand bg-candy-soft p-7 shadow-[0_18px_40px_-22px_rgba(29,91,255,0.6)]" aria-labelledby="plan-premium">
-          <h2 id="plan-premium" className="text-2xl font-semibold text-ink">{p.name}</h2>
-          <div className="mt-3 grid grid-cols-2 gap-3">
+        <section className="flex flex-col rounded-2xl border-2 border-brand bg-candy-soft p-7" aria-labelledby="plan-premium">
+          <div className="flex items-center justify-between gap-3">
+            <h2 id="plan-premium" className="text-2xl font-semibold text-ink">{p.name}</h2>
+            <span className="rounded-full bg-paper px-2.5 py-0.5 text-xs font-semibold text-ink">Launching soon</span>
+          </div>
+          <dl className="mt-3 grid grid-cols-2 gap-3">
             {p.plans.map((plan) => (
-              <div key={plan.label} className="rounded-xl border border-rule bg-paper p-3">
-                <div className="flex items-center justify-between gap-2 text-sm text-slate">
+              <div key={plan.label} className={`relative rounded-xl bg-paper p-3 ${plan.note ? "border-2 border-remote" : "border border-rule"}`}>
+                {plan.note ? <span className="absolute -top-2.5 right-2 rounded-full bg-remote px-2 py-0.5 text-xs font-semibold text-white">Best value</span> : null}
+                <dt className="flex items-center justify-between gap-2 text-sm text-slate">
                   <span>{plan.label}</span>
-                  {plan.note ? <span className="rounded-full bg-signal-bg px-2 py-0.5 text-xs font-semibold text-signal">{plan.note}</span> : null}
-                </div>
-                <p className="mt-1">
+                  {plan.note ? <span className="rounded-full bg-remote-bg px-2 py-0.5 text-xs font-semibold text-remote">{plan.note}</span> : null}
+                </dt>
+                <dd className="mt-1">
                   <span className="font-display text-3xl font-semibold text-ink">{plan.price}</span>
-                  <span className="text-sm text-slate"> / {plan.per}</span>
-                </p>
+                  <span className="block text-sm text-slate">{plan.per === "month" ? "per month" : `for ${plan.per}`}</span>
+                  {"perMonth" in plan && plan.perMonth ? <span className="block text-sm font-medium text-remote">= {plan.perMonth} a month</span> : null}
+                </dd>
               </div>
             ))}
-          </div>
-          <p className="mt-3 text-sm text-slate">{p.trialDays}-day free trial. No card needed to start.</p>
+          </dl>
           <ul className="mt-6 flex-1 space-y-3 text-ink">
             {siteConfig.freeWeeklyEmail ? <li className="flex gap-2.5"><Check />Everything in Free</li> : null}
             {p.features.map((f) => (
               <li key={f} className="flex gap-2.5"><Check />{f}</li>
             ))}
           </ul>
-          <TrackedLink href="/pricing/trial" event="premium_cta_click" className="mt-8 rounded-lg bg-brand px-5 py-3 text-center font-semibold text-white hover:bg-accent">
-            Start {p.trialDays}-day free trial
+          <TrackedLink href="/pricing/trial" event="premium_cta_click" source="pricing" className="mt-8 rounded-lg bg-brand px-5 py-3 text-center font-semibold text-white hover:bg-accent">
+            {EARLY_ACCESS_BUTTON}
           </TrackedLink>
+          <p className="mt-3 text-sm text-slate">{earlyAccessLine()}</p>
         </section>
       </div>
-      <p className="mx-auto max-w-4xl px-4 text-sm text-slate sm:px-6">
-        Prices in US dollars. Cancel any time. {siteConfig.name} never charges job seekers to apply for a vacancy.
-      </p>
+
+      <div className="mx-auto grid max-w-4xl gap-8 px-4 sm:px-6 md:grid-cols-2">
+        <section aria-labelledby="why-heading">
+          <h2 id="why-heading" className="text-xl font-semibold text-ink">Why alerts help</h2>
+          <p className="mt-3 leading-relaxed text-ink">
+            Many international vacancies are open for only two to four weeks, and they are spread across dozens of separate career sites. Alerts check them for you and
+            send the new ones that match your searches, so you see a role while there is still time to apply.
+          </p>
+        </section>
+        {sample.length ? (
+          <section aria-labelledby="sample-heading">
+            <h2 id="sample-heading" className="text-xl font-semibold text-ink">What an alert looks like</h2>
+            <div className="mt-3 rounded-xl border border-rule bg-paper p-4 text-sm shadow-sm">
+              <p className="text-xs text-slate">Example built from current listings</p>
+              <p className="mt-1 font-semibold text-ink">New vacancies matching your search</p>
+              <ul className="mt-2 divide-y divide-rule">
+                {sample.map((j) => (
+                  <li key={j.id} className="py-2">
+                    <p className="font-medium text-ink">{j.title}</p>
+                    <p className="text-slate">
+                      {j.org_name ?? "Organization not stated"} · {locationLabel(j)}
+                      {j.deadline ? ` · Closes ${formatDate(j.deadline)}` : ""}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        ) : null}
+      </div>
+
+      <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6" aria-labelledby="faq-heading">
+        <h2 id="faq-heading" className="text-xl font-semibold text-ink">Questions</h2>
+        <dl className="mt-4 divide-y divide-rule border-y border-rule">
+          {faq.map(([q, a]) => (
+            <div key={q} className="py-4">
+              <dt className="font-semibold text-ink">{q}</dt>
+              <dd className="mt-1 leading-relaxed text-ink">{a}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-6 text-sm text-slate">
+          Prices in US dollars. {siteConfig.name} is run by {siteConfig.operator.name}.{" "}
+          <Link href="/terms" className="text-accent underline">Terms</Link> · <Link href="/privacy" className="text-accent underline">Privacy</Link>
+        </p>
+      </section>
     </>
   );
 }

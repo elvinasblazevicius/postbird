@@ -2,7 +2,8 @@
 
 import { headers } from "next/headers";
 import siteConfig from "@site-config";
-import { cleanCampaign, visitorFromHeaders } from "@/lib/analytics";
+import { cleanCampaign, recordEvent, visitorFromHeaders } from "@/lib/analytics";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { confirmSubscriber, signup, unsubscribe, type SignupKind } from "@/lib/subscribers";
 
 export type FormState = { status: "idle" | "success" | "error"; message: string };
@@ -12,17 +13,21 @@ const MESSAGES = {
   email_not_configured: "Thanks, your address is saved. You'll get a confirmation email before we send anything else.",
 } as const;
 
-const trialOpening = () =>
-  `Free trials of ${siteConfig.premium.name.toLowerCase()} start soon, and you're on the list for the ${siteConfig.premium.trialDays}-day trial. Nothing is charged today.`;
+const earlyAccess = () =>
+  `Email alerts aren't open yet: we're checking interest first. When they open you'll get one email offering the ${siteConfig.premium.trialDays}-day free trial. If we decide not to launch, we'll tell you and delete your address. Nothing is charged.`;
 
 const WAITLIST_MESSAGES = {
-  check_email: () => `Thanks! ${trialOpening()} Please confirm your email with the link we just sent.`,
-  email_not_configured: () => `Thanks, your address is saved. ${trialOpening()}`,
+  check_email: () => `You're almost on the early-access list. Please confirm with the link we just emailed you. ${earlyAccess()}`,
+  email_not_configured: () => `You're on the early-access list. ${earlyAccess()}`,
 } as const;
 
 export async function signupAction(_prev: FormState, form: FormData): Promise<FormState> {
   // Honeypot: real visitors never fill this hidden field.
   if (String(form.get("website") ?? "")) return { status: "success", message: MESSAGES.check_email };
+  const h = await headers();
+  if (!(await rateLimit(`signup:${clientIp(h)}`, 8, 3600))) {
+    return { status: "error", message: "Too many sign-ups from this connection. Please try again in an hour." };
+  }
   const isWaitlist = form.get("kind") === "waitlist";
   const kind = (form.get("kind") === "waitlist" ? "waitlist" : "alerts") as SignupKind;
   const prefs: Record<string, string> = {};
@@ -44,7 +49,7 @@ export async function signupAction(_prev: FormState, form: FormData): Promise<Fo
   try {
     const res = await signup({
       attribution,
-      visitor: visitorFromHeaders(await headers()),
+      visitor: visitorFromHeaders(h),
       email: String(form.get("email") ?? ""),
       kind,
       source: String(form.get("source") ?? "").slice(0, 40) || undefined,
@@ -61,10 +66,21 @@ export async function signupAction(_prev: FormState, form: FormData): Promise<Fo
 
 export async function confirmAction(_prev: FormState, form: FormData): Promise<FormState> {
   const t = String(form.get("token") ?? "");
-  const ok = await confirmSubscriber(t);
-  return ok
-    ? { status: "success", message: "Confirmed. Your first email arrives with the next weekly round-up." }
-    : { status: "error", message: "This link has already been used or has expired. If you're not receiving emails, sign up again." };
+  const res = await confirmSubscriber(t);
+  if (!res.ok) return { status: "error", message: "This link has already been used or has expired. If you meant to sign up, please do so again." };
+  if (res.alerts) return { status: "success", message: "Confirmed. Your first email arrives with the next weekly round-up." };
+  return { status: "success", message: `Confirmed: you're on the early-access list. ${earlyAccess()}` };
+}
+
+const PLAN_CHOICES = ["monthly", "three_months", "would_not_pay"] as const;
+
+/** One-click "which plan would you choose?" answer after joining early access (anonymous). */
+export async function planChoiceAction(choice: string, source: string): Promise<boolean> {
+  if (!(PLAN_CHOICES as readonly string[]).includes(choice)) return false;
+  const h = await headers();
+  if (!(await rateLimit(`plan:${clientIp(h)}`, 10, 3600))) return false;
+  await recordEvent({ type: "plan_choice", visitor: visitorFromHeaders(h), props: { plan: choice, source: source.slice(0, 40) } });
+  return true;
 }
 
 export async function unsubscribeAction(_prev: FormState, form: FormData): Promise<FormState> {

@@ -4,6 +4,8 @@ import { useActionState, useEffect } from "react";
 import { confirmAction, signupAction, unsubscribeAction, type FormState } from "@/app/actions";
 import siteConfig from "@site-config";
 import { AttributionField, uetEvent } from "./ads";
+import { EarlyAccessDone } from "./early-access";
+import { EARLY_ACCESS_BUTTON, earlyAccessLine } from "@/lib/early-access-copy";
 
 const initial: FormState = { status: "idle", message: "" };
 
@@ -23,7 +25,7 @@ export function ConfirmForm({ token }: { token: string }) {
     <form action={action}>
       <input type="hidden" name="token" value={token} />
       <button disabled={pending} className="rounded-lg bg-brand px-6 py-3 text-base font-semibold text-white hover:bg-accent disabled:opacity-60">
-        {pending ? "Confirming…" : "Confirm my subscription"}
+        {pending ? "Confirming…" : "Confirm my email"}
       </button>
     </form>
   );
@@ -44,13 +46,13 @@ export function UnsubscribeForm({ token }: { token: string }) {
 
 const field = "w-full rounded-lg border border-rule bg-paper px-4 py-3 text-base text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]";
 
-/** Premium interest form (fake-door test: records interest, no payment). */
+/** Early-access form for paid alerts (concept test: records interest, takes no payment). */
 export function PremiumInterestForm({ source = "pricing", search, remindJobId }: { source?: string; search?: string; remindJobId?: number }) {
   const [state, action, pending] = useActionState(signupAction, initial);
   useEffect(() => {
     if (state.status === "success") uetEvent("trial_signup", { event_category: "premium" });
   }, [state.status]);
-  if (state.status === "success") return <Result state={state} />;
+  if (state.status === "success") return <EarlyAccessDone message={state.message} source={source} />;
   return (
     <form action={action} className="space-y-4">
       <input type="hidden" name="kind" value="waitlist" />
@@ -89,10 +91,10 @@ export function PremiumInterestForm({ source = "pricing", search, remindJobId }:
       </div>
       {state.status === "error" ? <p role="alert" className="text-sm text-[#9b1c1c]">{state.message}</p> : null}
       <button disabled={pending} className="w-full rounded-lg bg-brand px-6 py-3.5 text-base font-semibold text-white hover:bg-accent disabled:opacity-60">
-        {pending ? "Saving…" : "Reserve my free trial"}
+        {pending ? "Saving…" : EARLY_ACCESS_BUTTON}
       </button>
       <p className="text-sm text-slate">
-        {siteConfig.premium.trialDays}-day free trial, then {siteConfig.premium.priceSummary}. No card needed and nothing is charged today.
+        {earlyAccessLine()}
       </p>
     </form>
   );

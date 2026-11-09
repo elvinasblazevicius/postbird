@@ -18,7 +18,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   const label = org.short_name && org.short_name !== org.name ? `${org.name} (${org.short_name})` : org.name;
   return landingMetadata({
     title: `${org.short_name ?? org.name} jobs — ${count} open vacancies`,
-    description: `Open vacancies at ${label}: current job openings, consultancies and internships with locations and application deadlines. Apply on the official website.`,
+    description: `Open vacancies at ${label}: current job openings, consultancies and internships with locations and application deadlines. Apply on the employer's own website.`,
     path: `/organizations/${slug}`,
     count,
     filters: parseFilters(await searchParams),
@@ -42,7 +42,7 @@ export default async function OrganizationPage({ params, searchParams }: Props) 
           <>
             {count === 1 ? "1 open vacancy" : `${count} open vacancies`}
             {org.org_type ? ` at this ${org.org_type === "UN system" ? "UN system organization" : org.org_type.toLowerCase()}` : ""}. Listings link to the
-            organization&apos;s official vacancy pages.
+            organization&apos;s own website.
           </>
         }
       />

@@ -3,7 +3,8 @@
  * browsers), stored in the database and served from /api/org-logo/<slug>.
  * The icon comes from Google's public favicon service for the organization's
  * own website; small or missing icons are ignored and the site shows the
- * organization's initials instead.
+ * organization's initials instead. Organizations with logo_blocked = true
+ * (for example because the organization objected) are never fetched.
  */
 import { sql } from "@/lib/db";
 
@@ -45,7 +46,7 @@ async function fetchIcon(domain: string, timeoutMs: number): Promise<Uint8Array 
 export async function refreshOrgLogos(timeLeftMs: () => number): Promise<number> {
   const orgs = await sql<{ id: number; website: string }[]>`
     select id, website from organizations
-    where website is not null and (
+    where website is not null and not logo_blocked and (
       logo_checked_at is null
       or (logo is null and logo_checked_at < now() - make_interval(days => ${RECHECK_MISSING_DAYS}))
       or logo_checked_at < now() - make_interval(days => ${REFRESH_DAYS}))
@@ -60,7 +61,7 @@ export async function refreshOrgLogos(timeLeftMs: () => number): Promise<number>
     await sql`
       update organizations set logo = coalesce(${icon ? Buffer.from(icon) : null}::bytea, logo),
         logo_type = coalesce(${icon ? "image/png" : null}::text, logo_type), logo_checked_at = now()
-      where id = ${o.id}`;
+      where id = ${o.id} and not logo_blocked`;
   }
   return saved;
 }

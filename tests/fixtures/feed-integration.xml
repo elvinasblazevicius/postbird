@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>Integration test feed (fixture)</title>
+  <!-- {{PUB_DATE}}, {{FUTURE_DATE}} and {{PAST_DATE}} are filled in by tests/integration/db.test.ts relative to today. -->
+  <link>https://example.org/</link>
+  <item>
+    <title>Data Analyst (P-3)</title>
+    <link>https://careers.example-agency.int/jobs/it-1001</link>
+    <guid isPermaLink="false">it-1001</guid>
+    <pubDate>{{PUB_DATE}}</pubDate>
+    <description><![CDATA[<p>Organization: Example Agency</p><p>Duty Station: Geneva, Switzerland</p><p>Closing date: {{FUTURE_DATE}}</p><p>The Data Analyst will build dashboards.</p>]]></description>
+  </item>
+  <item>
+    <title>Programme Officer (P-2)</title>
+    <link>https://careers.example-agency.int/jobs/it-1002</link>
+    <guid isPermaLink="false">it-1002</guid>
+    <pubDate>{{PUB_DATE}}</pubDate>
+    <description><![CDATA[<p>Organization: Example Agency</p><p>Duty Station: Nairobi, Kenya</p><p>Closing date: {{PAST_DATE}}</p><p>The Programme Officer supports field programmes.</p>]]></description>
+  </item>
+  <item>
+    <title>Communications Consultant</title>
+    <link>https://careers.example-agency.int/jobs/it-1003</link>
+    <guid isPermaLink="false">it-1003</guid>
+    <pubDate>{{PUB_DATE}}</pubDate>
+    <description><![CDATA[<p>Organization: Example Agency</p><p>Location: Home-based</p><p>The consultant writes stories about our work.</p>]]></description>
+  </item>
+</channel>
+</rss>

@@ -8,7 +8,7 @@
   --brand: #1d5bff;
   --accent: #0f44d6;
   --sky: #38c6ff;
-  --candy: #e8227a;
+  --candy: #c0145f;
   --highlight: #ffd23f;
   --ink: #0b1b3f;
   --paper: #ffffff;
@@ -221,4 +221,16 @@ a {
   background-color: #f5f8fd;
   background-image: radial-gradient(rgba(29, 91, 255, 0.09) 1px, transparent 1.4px);
   background-size: 16px 16px;
+}
+
+/* Home search on phones: labels stay for screen readers but take no space. */
+@media (max-width: 639px) {
+  #hero-search .hero-main label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
 }

@@ -51,7 +51,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     `DTSTART;VALUE=DATE:${start}`,
     `DTEND;VALUE=DATE:${end}`,
     `SUMMARY:${icsText(title)}`,
-    `DESCRIPTION:${icsText(`Last day to apply. Check the closing time on the official posting.\n${url}`)}`,
+    `DESCRIPTION:${icsText(`Last day to apply. Check the closing time on the employer's own posting.\n${url}`)}`,
     `URL:${url}`,
     "BEGIN:VALARM",
     "TRIGGER:-P2D",

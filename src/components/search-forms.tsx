@@ -93,7 +93,7 @@ function GradeSelect({ facets, filters, idPrefix }: { facets: FacetData; filters
 function RemoteToggle({ checked, id }: { checked?: boolean; id: string }) {
   return (
     <div>
-      <span className="mb-1.5 block text-sm font-medium text-ink" aria-hidden="true">&nbsp;</span>
+      <span className="mb-1.5 hidden text-sm font-medium text-ink sm:block" aria-hidden="true">&nbsp;</span>
       <label htmlFor={id} className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-rule bg-paper px-3 py-2.5 text-[0.95rem] text-ink">
         <input id={id} type="checkbox" name="remote" value="1" defaultChecked={checked} className="h-4 w-4 accent-[var(--accent)]" />
         Remote only
@@ -142,27 +142,26 @@ function MoreToggle() {
 
 const moreIsOpen = (f: JobFilters) => Boolean(f.type || f.posted || f.closing || f.lang || f.exp || f.orgtype);
 
-/** Homepage search: What / Where / Search, then organization, category, grade and remote; the rest under "More filters". */
+/** Homepage search: What / Where / Search; every other filter under "More filters" so jobs stay close to the top. */
 export function HeroSearch({ facets }: { facets: FacetData }) {
   return (
-    <form id="hero-search" action="/jobs" method="get" role="search" className="rounded-2xl bg-paper p-4 shadow-[0_20px_50px_-20px_rgba(11,27,63,0.55)] sm:p-5">
-      <div className="grid gap-3 sm:grid-cols-[1.7fr_1fr_auto] sm:items-end">
-        <div>
+    <form id="hero-search" action="/jobs" method="get" role="search" className="rounded-2xl bg-paper p-3 shadow-[0_20px_50px_-20px_rgba(11,27,63,0.55)] sm:p-5">
+      {/* On phones the labels are visually hidden (still read by screen readers) and Where sits beside the button, to keep jobs near the top. */}
+      <div className="hero-main grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1.7fr_1fr_auto] sm:items-end sm:gap-3">
+        <div className="col-span-2 sm:col-span-1">
           <label htmlFor="hero-q" className="mb-1.5 block text-sm font-medium text-ink">What</label>
           <input id="hero-q" name="q" type="search" placeholder="Job title, skill or keyword" className={fieldCls} autoComplete="off" />
         </div>
         <WhereSelect facets={facets} filters={{}} idPrefix="hero" />
-        <button type="submit" className="rounded-lg bg-brand px-7 py-2.5 text-base font-semibold text-white hover:bg-accent">Search jobs</button>
-      </div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Select idPrefix="hero" name="org" label="Organization" all="Any organization" options={facets.orgs.map((o) => ({ value: o.slug, label: withCount(o.name, o.count) }))} />
-        <Select idPrefix="hero" name="category" label="Category" all="Any category" options={facets.categories.filter((c) => c.count > 0).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) }))} />
-        <GradeSelect facets={facets} filters={{}} idPrefix="hero" />
-        <RemoteToggle id="hero-remote" />
+        <button type="submit" className="rounded-lg bg-brand px-5 py-2.5 text-base font-semibold text-white hover:bg-accent sm:px-7">Search<span className="hidden sm:inline"> jobs</span></button>
       </div>
       <details className="group mt-3">
         <MoreToggle />
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Select idPrefix="hero" name="org" label="Organization" all="Any organization" options={facets.orgs.map((o) => ({ value: o.slug, label: withCount(o.name, o.count) }))} />
+          <Select idPrefix="hero" name="category" label="Category" all="Any category" options={facets.categories.filter((c) => c.count > 0).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) }))} />
+          <GradeSelect facets={facets} filters={{}} idPrefix="hero" />
+          <RemoteToggle id="hero-remote" />
           <MoreFilterFields idPrefix="hero" filters={{}} facets={facets} />
         </div>
       </details>
@@ -174,6 +173,10 @@ export function HeroSearch({ facets }: { facets: FacetData }) {
 /** Filter panel for result pages. Works without JavaScript; submits on change when JS is available. */
 export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, formId = "job-filters" }: { filters: JobFilters; facets: FacetData; action?: string; hidden?: Record<string, string>; formId?: string }) {
   const P = formId;
+  // Grades are only stated in some postings; when few have one, the grade filter moves under "More filters".
+  const graded = (facets.grades ?? []).reduce((n, g) => n + g.count, 0);
+  const all = facets.categories.reduce((n, c) => n + c.count, 0);
+  const gradeUpFront = Boolean(filters.grade) || (all > 0 && graded / all >= 0.3);
   return (
     <form id={formId} action={action} method="get" className="space-y-4" role="search" aria-label="Filter jobs">
       {Object.entries(hidden).map(([k, v]) => (
@@ -191,7 +194,7 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
       {!("category" in hidden) ? (
         <Select idPrefix={P} name="category" label="Category" value={filters.category} all="Any category" options={facets.categories.filter((c) => c.count > 0 || c.slug === filters.category).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) }))} />
       ) : null}
-      <GradeSelect facets={facets} filters={filters} idPrefix={P} />
+      {gradeUpFront ? <GradeSelect facets={facets} filters={filters} idPrefix={P} /> : null}
       {!("remote" in hidden) ? (
         <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-rule px-3 py-2.5 text-[0.95rem] text-ink">
           <input type="checkbox" name="remote" value="1" defaultChecked={!!filters.remote} className="h-4 w-4 accent-[var(--accent)]" />
@@ -201,6 +204,7 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
       <details className="group" open={moreIsOpen(filters)}>
         <MoreToggle />
         <div className="mt-3 space-y-4">
+          {gradeUpFront ? null : <GradeSelect facets={facets} filters={filters} idPrefix={P} />}
           <MoreFilterFields idPrefix={P} filters={filters} facets={facets} />
         </div>
       </details>

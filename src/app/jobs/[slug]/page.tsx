@@ -10,6 +10,7 @@ import { ApplyLink, TrackedLink, TrackOnMount } from "@/components/tracking";
 import { categoryBySlug } from "@/config/categories";
 import { countryByCode } from "@/config/countries";
 import { LISTING_SETTINGS } from "@/config/import";
+import { applyDestination, applyLinkKind } from "@/lib/apply-link";
 import { getJob, similarJobs, type JobDetail } from "@/lib/jobs";
 import { absoluteUrl, categoryName, escapeHtml, jsonLd, deadlineLabel, formatDate, jobPath, locationLabel, NOT_SPECIFIED, parseJobParam, siteConfig } from "@/lib/site";
 
@@ -40,7 +41,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const title = `${job.title}${job.org_name ? ` — ${job.org_name}` : ""}${where !== NOT_SPECIFIED ? `, ${where}` : ""}`;
   const description = job.summary
     ? job.summary.slice(0, 155)
-    : `${job.title}${job.org_name ? ` at ${job.org_name}` : ""}${where !== NOT_SPECIFIED ? ` in ${where}` : ""}.${job.deadline ? ` Apply by ${formatDate(job.deadline)}` : ""} on the official website.`;
+    : `${job.title}${job.org_name ? ` at ${job.org_name}` : ""}${where !== NOT_SPECIFIED ? ` in ${where}` : ""}.${job.deadline ? ` Apply by ${formatDate(job.deadline)}` : ""} on the employer's website.`;
   const indexable = isOpen(job) && !job.is_demo && (hasDescription(job) || LISTING_SETTINGS.indexJobsWithoutDescription);
   return {
     title,
@@ -86,6 +87,18 @@ function jobPostingLd(job: JobDetail) {
   return ld;
 }
 
+/** A short factual paragraph built only from the listing's own details. */
+function aboutSentence(job: JobDetail, where: string): string {
+  const org = job.org_name ?? "An organization";
+  const place = job.is_remote ? (where !== NOT_SPECIFIED ? ` (remote / home-based, ${where})` : " (remote / home-based)") : where !== NOT_SPECIFIED ? ` in ${where}` : "";
+  const parts = [`${org} is recruiting for the position of ${job.title}${place}.`];
+  const kind = [job.job_type ? job.job_type.toLowerCase() : null, job.grade ? `grade ${job.grade}` : null].filter(Boolean).join(", ");
+  const cat = job.category !== "other" ? categoryName(job.category) : null;
+  if (kind || cat) parts.push(`It is ${kind ? `a ${kind} role` : "a role"}${cat ? ` in ${cat}` : ""}.`);
+  if (job.deadline) parts.push(`The published closing date is ${formatDate(job.deadline)}.`);
+  return parts.join(" ");
+}
+
 function Fact({ label, children, muted }: { label: string; children: React.ReactNode; muted?: boolean }) {
   return (
     <div className="grid grid-cols-[9rem_1fr] gap-3 border-b border-rule py-3 last:border-b-0 sm:grid-cols-[11rem_1fr]">
@@ -108,6 +121,15 @@ export default async function JobPage({ params }: Props) {
   const dl = deadlineLabel(job.deadline);
   const category = categoryBySlug(job.category);
   const where = locationLabel(job);
+  const destination = applyDestination(applyLinkKind(job.apply_url));
+  const missing = [
+    !job.org_name && "organization",
+    where === NOT_SPECIFIED && "location",
+    !job.job_type && "job type",
+    !job.grade && "grade",
+    !job.published_at && "posting date",
+    !job.deadline && "closing date",
+  ].filter(Boolean) as string[];
 
   const applyButton = (
     <ApplyLink
@@ -115,7 +137,7 @@ export default async function JobPage({ params }: Props) {
       jobId={job.id}
       className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-3.5 text-base font-semibold text-white hover:bg-accent"
     >
-      Apply on Official Website
+      Apply
       <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true"><path d="M6 3h7v7M13 3 4 12" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
     </ApplyLink>
   );
@@ -143,7 +165,7 @@ export default async function JobPage({ params }: Props) {
             <div className="min-w-0">
               <h1 className="text-[1.9rem] font-semibold leading-tight text-white sm:text-[2.4rem]">{job.title}</h1>
               <p className="mt-2 text-lg text-white">
-                {job.org_slug ? <Link href={`/organizations/${job.org_slug}`} className="hover:underline">{job.org_name}</Link> : <span className="text-white/70">Organization not specified</span>}
+                {job.org_slug ? <Link href={`/organizations/${job.org_slug}`} className="hover:underline">{job.org_name}</Link> : <span className="text-white/70">Organization not stated</span>}
               </p>
               <p className="flex items-center gap-1.5 text-white/80"><Flag code={job.country_code} className="shadow-[0_0_0_1px_rgba(255,255,255,0.35)]" />{where}</p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -173,56 +195,60 @@ export default async function JobPage({ params }: Props) {
           <section aria-labelledby="facts-heading">
             <h2 id="facts-heading" className="text-[1.45rem] font-semibold text-ink">Vacancy details</h2>
             <dl className="mt-3 rounded-xl border border-rule px-5">
-              <Fact label="Organization" muted={!job.org_name}>{job.org_name ?? NOT_SPECIFIED}</Fact>
-              <Fact label="Location" muted={where === NOT_SPECIFIED}>{where}</Fact>
+              {job.org_name ? <Fact label="Organization">{job.org_name}</Fact> : null}
+              {where !== NOT_SPECIFIED ? <Fact label="Location">{where}</Fact> : null}
               {job.location_text && job.location_text !== where ? <Fact label="As listed">{job.location_text}</Fact> : null}
-              <Fact label="Remote / home-based" muted={!job.is_remote}>{job.is_remote ? "Yes" : NOT_SPECIFIED}</Fact>
+              {job.is_remote ? <Fact label="Remote / home-based">Yes</Fact> : null}
               <Fact label="Category">
-                {category && category.slug !== "other" ? <Link href={`/categories/${category.slug}`} className="hover:underline">{category.name}</Link> : "Other"}
+                {category && category.slug !== "other" ? <Link href={`/categories/${category.slug}`} className="text-accent underline">{category.name}</Link> : "Other"}
               </Fact>
-              <Fact label="Job type" muted={!job.job_type}>{job.job_type ?? NOT_SPECIFIED}</Fact>
-              <Fact label="Grade / level" muted={!job.grade}>{job.grade ?? NOT_SPECIFIED}</Fact>
-              <Fact label="Posted" muted={!job.published_at}>{job.published_at ? formatDate(job.published_at) : NOT_SPECIFIED}</Fact>
-              <Fact label="Application deadline" muted={!job.deadline}>
-                {job.deadline ? (
-                  <>
-                    {formatDate(job.deadline)}
-                    {open && dl ? <span className={`ml-2 text-sm ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>({dl.text.toLowerCase()})</span> : null}
-                  </>
-                ) : (
-                  NOT_SPECIFIED
-                )}
-              </Fact>
+              {job.job_type ? <Fact label="Job type">{job.job_type}</Fact> : null}
+              {job.grade ? <Fact label="Grade / level">{job.grade}</Fact> : null}
+              {job.published_at ? <Fact label="Posted">{formatDate(job.published_at)}</Fact> : null}
+              {job.deadline ? (
+                <Fact label="Closing date">
+                  {formatDate(job.deadline)}
+                  <span className="block text-sm text-slate">As published; confirm on the employer&apos;s page.</span>
+                </Fact>
+              ) : null}
               {job.reference ? <Fact label="Vacancy reference">{job.reference}</Fact> : null}
+              {missing.length ? <Fact label="Not stated in the posting" muted>{missing.join(", ").replace(/^./, (c) => c.toUpperCase())}</Fact> : null}
             </dl>
           </section>
 
           <section aria-labelledby="desc-heading" className="mt-10">
-            <h2 id="desc-heading" className="text-[1.45rem] font-semibold text-ink">About the role</h2>
+            <h2 id="desc-heading" className="text-[1.45rem] font-semibold text-ink">About this vacancy</h2>
+            <p className="mt-4 max-w-[68ch] text-[1.0625rem] leading-relaxed text-ink">{aboutSentence(job, where)}</p>
             {job.description_html ? (
               <div className="prose-job mt-4" dangerouslySetInnerHTML={{ __html: job.description_html }} />
             ) : job.summary ? (
               <>
                 <p className="mt-4 max-w-[68ch] text-[1.0625rem] leading-relaxed text-ink">{job.summary}</p>
-                <p className="mt-3 text-slate">The full description, requirements and application instructions are on the official vacancy page.</p>
+                <p className="mt-3 text-slate">The full description, requirements and application instructions are on the employer&apos;s own page.</p>
               </>
             ) : (
-              <p className="mt-4 max-w-[68ch] leading-relaxed text-slate">
-                The description for this vacancy is published on the organization&apos;s website. Open the official posting to read the full terms of reference, requirements and how to apply.
+              <p className="mt-3 max-w-[68ch] leading-relaxed text-slate">
+                The full terms of reference, requirements and how to apply are published on the employer&apos;s own website.
               </p>
             )}
           </section>
 
           <section className="mt-8 rounded-xl border border-rule p-5 text-sm leading-relaxed text-slate" aria-label="Source">
             <p>
-              <span className="font-medium text-ink">Official posting:</span> {job.apply_host}. Last checked {formatDate(job.last_seen_at)}.
+              <span className="font-medium text-ink">Employer&apos;s page:</span> {job.apply_host}. Last checked {formatDate(job.last_seen_at)}.
             </p>
             <p className="mt-1">
-              {siteConfig.name} lists this vacancy for discovery only. Details can change, so confirm them on the official posting. Applications are made only on the employer&apos;s website.
+              {siteConfig.name} lists this vacancy for discovery only. Details can change, so confirm them on the employer&apos;s page. Applications are made only on the employer&apos;s website.
             </p>
           </section>
 
-          {open ? <div className="mt-8 lg:hidden">{applyButton}</div> : null}
+          {open ? (
+            <div className="sticky bottom-0 z-30 -mx-4 mt-8 border-t border-rule bg-paper/95 px-4 py-3 backdrop-blur lg:hidden">
+              {dl ? <p className={`mb-2 text-center text-sm ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>{dl.text}</p> : null}
+              {applyButton}
+              <p className="mt-1.5 text-center text-xs text-slate">Opens {destination}</p>
+            </div>
+          ) : null}
 
           {similar.length ? (
             <section className="mt-14" aria-labelledby="similar-heading">
@@ -236,9 +262,9 @@ export default async function JobPage({ params }: Props) {
           <div className="rounded-xl border border-rule p-5">
             {open ? (
               <>
-                <p className="text-sm text-slate">Deadline</p>
-                <p className="font-display text-2xl font-semibold text-ink">{job.deadline ? formatDate(job.deadline) : NOT_SPECIFIED}</p>
-                {dl ? <p className={`text-sm ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>{dl.text}</p> : null}
+                <p className="text-sm text-slate">Closing date</p>
+                <p className="font-display text-2xl font-semibold text-ink">{job.deadline ? formatDate(job.deadline) : "Not stated"}</p>
+                {dl && /in \d|today|tomorrow/.test(dl.text) ? <p className={`text-sm ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>{dl.text}</p> : null}
                 <div className="mt-4">{applyButton}</div>
                 {job.deadline ? (
                   <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
@@ -251,7 +277,7 @@ export default async function JobPage({ params }: Props) {
                   </div>
                 ) : null}
                 <p className="mt-3 text-xs leading-relaxed text-slate">
-                  Opens {job.apply_host} in a new tab. {siteConfig.name} doesn&apos;t take applications and never charges a fee to apply.
+                  Opens {destination} ({job.apply_host}) in a new tab. {siteConfig.name} doesn&apos;t take applications and never charges a fee to apply.
                 </p>
               </>
             ) : (

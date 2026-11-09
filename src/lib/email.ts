@@ -1,7 +1,8 @@
 /**
  * Email sending through Resend's HTTP API (no SDK needed).
- * Without RESEND_API_KEY nothing is sent: messages are written to the
- * server log instead, so sign-ups still work while you set up email.
+ * Without RESEND_API_KEY nothing is sent (sign-ups still work while you set
+ * up email). Only a one-line notice is logged: never the recipient or body,
+ * which contain personal data and confirmation tokens.
  */
 import siteConfig from "@site-config";
 
@@ -25,7 +26,7 @@ function fromAddress(): string {
 
 export async function sendEmail(msg: OutgoingEmail): Promise<SendResult> {
   if (!isEmailConfigured()) {
-    console.info(`[email:not-sent] RESEND_API_KEY is not set. To: ${msg.to} | Subject: ${msg.subject}\n${msg.text}`);
+    console.info("email not sent: RESEND_API_KEY missing");
     return { ok: false, skipped: true, error: "Email sending is not configured" };
   }
   try {
@@ -46,7 +47,7 @@ export async function sendEmail(msg: OutgoingEmail): Promise<SendResult> {
 export async function sendBatch(msgs: OutgoingEmail[]): Promise<{ sent: number; failed: number; errors: string[] }> {
   const out = { sent: 0, failed: 0, errors: [] as string[] };
   if (!isEmailConfigured()) {
-    for (const m of msgs) await sendEmail(m);
+    if (msgs.length) console.info("email not sent: RESEND_API_KEY missing");
     out.failed = msgs.length;
     out.errors.push("Email sending is not configured (RESEND_API_KEY missing)");
     return out;

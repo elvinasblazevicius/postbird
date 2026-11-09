@@ -5,10 +5,11 @@
  */
 import { createHash } from "node:crypto";
 import { sql } from "@/lib/db";
+import { clientIp } from "@/lib/rate-limit";
 
 export const EVENT_TYPES = [
   "pageview", "job_view", "search", "apply_click", "alert_signup", "waitlist_signup",
-  "alert_confirmed", "premium_cta_click",
+  "alert_confirmed", "premium_cta_click", "plan_choice",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -49,6 +50,5 @@ export function cleanCampaign(c: Record<string, unknown> | null | undefined): Re
 export function visitorFromHeaders(h: Headers): string | null {
   const ua = h.get("user-agent");
   if (isBot(ua)) return null;
-  const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || h.get("x-real-ip") || "0.0.0.0";
-  return visitorHash(ip, ua ?? "");
+  return visitorHash(clientIp(h), ua ?? "");
 }

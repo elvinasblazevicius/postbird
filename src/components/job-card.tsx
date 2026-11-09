@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { JobListItem } from "@/lib/jobs";
 import { Flag } from "./flag";
-import { categoryName, deadlineLabel, formatDate, jobPath, locationLabel, monogram, NOT_SPECIFIED, postedLabel } from "@/lib/site";
+import { categoryName, deadlineLabel, formatDate, jobPath, locationLabel, monogram, NOT_SPECIFIED, postedLabel, relativeDeadline } from "@/lib/site";
 
 export function OrgBadge({ name, short, logo, size = "md" }: { name: string | null; short: string | null; logo?: string | null; size?: "md" | "lg" }) {
   if (logo) {
@@ -43,19 +43,20 @@ function DeadlineStub({ deadline }: { deadline: string | null }) {
   if (!deadline || !label) {
     return (
       <div className="text-right text-sm text-slate">
-        <div className="text-xs">Deadline</div>
+        <div className="text-xs">Closing date</div>
         <div className="mt-0.5">{NOT_SPECIFIED}</div>
       </div>
     );
   }
   const [day, month] = formatDate(deadline).split(" ");
+  const rel = relativeDeadline(deadline);
   return (
     <div className="text-right">
       <div className="text-xs text-slate">Closes</div>
       <div className="font-display text-2xl font-semibold leading-tight text-ink">
         {day} <span className="text-lg font-medium">{month}</span>
       </div>
-      <div className={`text-xs ${label.urgent ? "font-semibold text-signal" : "text-slate"}`}>{label.text}</div>
+      {rel ? <div className={`text-xs ${rel.urgent ? "font-semibold text-signal" : "text-slate"}`}>{rel.text}</div> : null}
     </div>
   );
 }
@@ -98,10 +99,10 @@ export function JobCard({ job, headingLevel = 3 }: { job: JobListItem; headingLe
           {job.deadline ? (
             <>
               Closes {formatDate(job.deadline)}
-              {deadlineLabel(job.deadline)?.urgent ? <strong className="ml-1 text-signal">({deadlineLabel(job.deadline)!.text.toLowerCase()})</strong> : null}
+              {relativeDeadline(job.deadline)?.urgent ? <strong className="ml-1 text-signal">({relativeDeadline(job.deadline)!.text})</strong> : null}
             </>
           ) : (
-            <>Deadline {NOT_SPECIFIED.toLowerCase()}</>
+            <>Closing date {NOT_SPECIFIED.toLowerCase()}</>
           )}
         </span>
         <span className="shrink-0 whitespace-nowrap pl-3 text-sm font-medium text-accent">View details</span>
@@ -134,11 +135,11 @@ export function JobTile({ job }: { job: JobListItem }) {
             <>
               <div className="text-xs text-slate">Closes</div>
               <div className="font-display text-lg font-semibold leading-tight text-ink">{formatDate(job.deadline).replace(/ \d{4}$/, "")}</div>
-              <div className={`text-xs ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>{dl.text}</div>
+              {relativeDeadline(job.deadline) ? <div className={`text-xs ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>{relativeDeadline(job.deadline)!.text}</div> : null}
             </>
           ) : (
             <>
-              <div className="text-xs text-slate">Deadline</div>
+              <div className="text-xs text-slate">Closing date</div>
               <div className="text-sm text-slate">{NOT_SPECIFIED}</div>
             </>
           )}

@@ -10,7 +10,7 @@ import { siteConfig } from "@/lib/site";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Start your free trial of email alerts",
+  title: "Email alerts: early access",
   robots: { index: false, follow: true },
   alternates: { canonical: "/pricing/trial" },
 };
@@ -34,8 +34,8 @@ async function describeSearch(query: string): Promise<string | null> {
 }
 
 /**
- * "Fake door" step: the visitor clicked a trial button. We say plainly that
- * trials haven't started and record their interest (and what they wanted).
+ * Concept-test step: the visitor clicked an email-alert button. We say plainly
+ * that alerts aren't open yet and record their interest (and what they wanted).
  */
 export default async function TrialPage({ searchParams }: Props) {
   const p = siteConfig.premium;
@@ -48,12 +48,13 @@ export default async function TrialPage({ searchParams }: Props) {
   return (
     <>
       <PageHeader
-        title="Free trials start soon"
-        crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Pricing" }, { href: "/pricing/trial", label: "Free trial" }]}
+        title="Email alerts launch soon"
+        crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Pricing" }, { href: "/pricing/trial", label: "Early access" }]}
         intro={
           <>
-            We&apos;re setting up {p.name.toLowerCase()} now and haven&apos;t started trials yet. Leave your email and you&apos;ll be among the
-            first to get the {p.trialDays}-day free trial when it opens. Nothing is charged today.
+            {p.name} isn&apos;t open yet: we&apos;re checking whether enough people want it before we build billing. Join early access and
+            you&apos;ll get one email offering the {p.trialDays}-day free trial when it opens. If we decide not to launch, we&apos;ll tell you
+            and delete your address. No card, nothing charged now.
           </>
         }
       />
@@ -64,10 +65,16 @@ export default async function TrialPage({ searchParams }: Props) {
           </p>
         ) : null}
         {remindJob ? (
-          <p className="mb-6 rounded-xl border border-rule bg-candy-soft p-4 text-ink">
-            <span className="font-semibold">Deadline reminder for:</span> {remindJob.title}
-            {remindJob.org_name ? ` (${remindJob.org_name})` : ""}
-          </p>
+          <div className="mb-6 rounded-xl border border-rule bg-candy-soft p-4 text-ink">
+            <p>
+              <span className="font-semibold">Deadline reminder for:</span> {remindJob.title}
+              {remindJob.org_name ? ` (${remindJob.org_name})` : ""}
+            </p>
+            <p className="mt-2 text-[0.95rem]">
+              Email reminders are part of {p.name.toLowerCase()}, so we can&apos;t send this one yet. To be sure you don&apos;t miss it,{" "}
+              <a href={`/api/calendar/${remindJob.id}`} rel="nofollow" className="font-semibold text-accent underline">add the deadline to your calendar</a>.
+            </p>
+          </div>
         ) : null}
         <PremiumInterestForm source={search ? "search-alert" : remindJob ? "deadline-reminder" : "pricing"} search={search ?? undefined} remindJobId={remindJob ? remindJob.id : undefined} />
       </div>

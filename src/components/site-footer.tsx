@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { siteConfig } from "@/lib/site";
+import { CookieSettingsLink } from "./ads";
 import { BrandMark } from "./brand-mark";
 
 export function SiteFooter() {
@@ -13,6 +14,12 @@ export function SiteFooter() {
             <span className="font-display text-lg font-semibold">{siteConfig.name}</span>
           </Link>
           <p className="mt-4 max-w-md text-sm leading-relaxed text-slate">{siteConfig.disclaimer}</p>
+          <p className="mt-3 max-w-md text-sm leading-relaxed text-slate">
+            {siteConfig.name} is run by {siteConfig.operator.name}, {siteConfig.operator.address}.
+            {siteConfig.contactEmail ? (
+              <> Contact: <a href={`mailto:${siteConfig.contactEmail}`} className="text-accent underline">{siteConfig.contactEmail}</a></>
+            ) : null}
+          </p>
         </div>
         <nav aria-label="Browse" className="text-sm">
           <h2 className="font-sans text-sm font-semibold text-ink">Browse</h2>
@@ -35,12 +42,13 @@ export function SiteFooter() {
             {siteConfig.contactEmail ? (
               <li><a href={`mailto:${siteConfig.contactEmail}`} className="hover:text-ink">Contact</a></li>
             ) : null}
+            <li><CookieSettingsLink className="hover:text-ink" /></li>
           </ul>
         </nav>
       </div>
       <div className="border-t border-rule">
         <p className="mx-auto max-w-6xl px-4 py-5 text-xs text-slate sm:px-6">
-          © {year} {siteConfig.name}. Vacancy details belong to the organizations that publish them; always check the official posting before applying.
+          © {year} {siteConfig.name}. Vacancy details belong to the organizations that publish them; always check the employer&apos;s own posting before applying.
         </p>
       </div>
     </footer>

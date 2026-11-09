@@ -8,6 +8,8 @@ import type { RawItem } from "./parse";
 import { normalizeItem, ItemSkipped, type ContentPolicy, type NormalizedJob } from "./extract";
 import { parseFeed, FeedParseError } from "./parse";
 import { refreshOrgLogos } from "./logos";
+import { cleanupRateLimits } from "@/lib/rate-limit";
+import { purgeStaleSubscribers } from "@/lib/subscribers";
 import { canonicalizeUrl, isAggregatorUrl } from "./url";
 import { knownOrgByHost } from "./extract";
 
@@ -26,7 +28,11 @@ export type SyncResult = {
   itemsFailed: number;
   expired: number;
   message: string | null;
+  /** One entry per feed that was read (no feed addresses: they can contain access tokens). */
+  feeds: FeedReport[];
 };
+
+export type FeedReport = { id: number; name: string; status: "ok" | "error" | "not_reached"; items: number; error: string | null };
 
 type FeedRow = {
   id: number;
@@ -61,14 +67,27 @@ const USER_AGENT = "Postbird-FeedSync/1.0 (job feed importer)";
  * How long one sync may run. The scheduled import runs from GitHub Actions
  * (no limit). When triggered through the website ("Sync now" or the cron
  * URL) it must finish within the host's request limit: 10 s on Netlify's
- * free plan, 300 s on Vercel. Unfinished items are picked up next time.
+ * free plan. Unfinished items are picked up next time.
  */
 function timeBudgetMs(trigger: SyncTrigger): number {
   if (trigger === "cli") return Number.POSITIVE_INFINITY; // GitHub Actions / command line
   const fromEnv = Number(process.env.SYNC_TIME_BUDGET_MS);
   if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
-  return process.env.VERCEL ? 240_000 : 7_500; // Netlify free plan: 10 s per request
+  return process.env.VERCEL ? 240_000 : 7_500; // Netlify free plan: 10 s per request, minus start-up time
 }
+
+/**
+ * Part of a website-triggered run's budget kept back for the work after the
+ * feeds: expiring listings, saving the item log, closing the run and
+ * releasing the lock. Feeds and items stop this long before the budget ends.
+ */
+export const CLEANUP_RESERVE_MS = 2_500;
+
+/** Website-triggered runs hold the lock briefly, so a run the host kills mid-way blocks the next one for at most a minute. */
+const LOCK_MINUTES = { cli: 20, website: 1 } as const;
+
+/** Runs still "running" after this long were stopped by the host (time limit) and are marked as failed. */
+const STALE_RUN_MINUTES = 30;
 
 // ── Feeds from environment variables ─────────────────────────
 
@@ -101,9 +120,11 @@ export async function ensureEnvFeeds(): Promise<number> {
 
 // ── Locking ──────────────────────────────────────────────────
 
+/** Takes the named lock for `minutes` (fractions allowed) unless someone else holds it. */
 export async function acquireLock(name: string, holder: string, minutes: number): Promise<boolean> {
+  const seconds = Math.max(1, Math.round(minutes * 60));
   const rows = await sql`
-    update locks set locked_until = now() + make_interval(mins => ${minutes}), holder = ${holder}
+    update locks set locked_until = now() + make_interval(secs => ${seconds}), holder = ${holder}
     where name = ${name} and (locked_until is null or locked_until < now())
     returning name`;
   return rows.length === 1;
@@ -114,6 +135,38 @@ export async function releaseLock(name: string, holder: string): Promise<void> {
 }
 
 // ── Fetching ─────────────────────────────────────────────────
+
+export const MAX_FEED_BYTES = 15_000_000;
+
+class FeedTooLarge extends Error {
+  constructor() {
+    super(`Feed is larger than ${Math.round(MAX_FEED_BYTES / 1_000_000)} MB and was skipped.`);
+  }
+}
+
+/** Reads a response body as UTF-8, giving up as soon as it passes `maxBytes` (nothing beyond that is downloaded). */
+async function readCapped(res: Response, maxBytes: number): Promise<string> {
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await res.body?.cancel().catch(() => {});
+    throw new FeedTooLarge();
+  }
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new FeedTooLarge();
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks, total).toString("utf8");
+}
 
 export async function fetchFeedText(url: string, timeoutMs: number = IMPORT_SETTINGS.fetchTimeoutMs): Promise<string> {
   const ctrl = new AbortController();
@@ -136,9 +189,7 @@ export async function fetchFeedText(url: string, timeoutMs: number = IMPORT_SETT
         res.status === 429 ? " The feed is rate-limiting requests; it will be retried at the next sync." : "";
       throw new Error(`HTTP ${res.status} ${res.statusText}.${hint}`);
     }
-    const text = await res.text();
-    if (text.length > 15_000_000) throw new Error("Feed is larger than 15 MB and was skipped.");
-    return text;
+    return await readCapped(res, MAX_FEED_BYTES);
   } catch (e) {
     if ((e as Error).name === "AbortError") throw new Error(`Timed out after ${Math.round(limit / 1000)} s.`);
     throw e;
@@ -180,19 +231,29 @@ function statusFor(deadline: string | null, today: string): "active" | "expired"
 
 export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
   const started = Date.now();
+  const isCli = trigger === "cli";
   const budget = timeBudgetMs(trigger);
-  const outOfTime = () => Date.now() - started > budget;
+  // Feeds and items stop early enough to leave time for the clean-up below.
+  const workBudget = Number.isFinite(budget) ? Math.max(1_000, budget - CLEANUP_RESERVE_MS) : budget;
+  const outOfTime = () => Date.now() - started > workBudget;
   let stoppedEarly = false;
   const holder = `${trigger}-${started}-${Math.random().toString(36).slice(2, 8)}`;
+
+  // Runs the host stopped mid-way (time limit) never reached their final update.
+  await sql`
+    update sync_runs set status = 'failed', finished_at = coalesce(finished_at, now()),
+      message = concat_ws(' ', message, 'The run did not finish (it was most likely stopped by the host''s time limit).')
+    where status = 'running' and started_at < now() - make_interval(mins => ${STALE_RUN_MINUTES})`;
+
   const [run] = await sql<{ id: number }[]>`insert into sync_runs (trigger) values (${trigger}) returning id`;
   const runId = Number(run.id);
 
   const result: SyncResult = {
     runId, status: "success", feedsTotal: 0, feedsFailed: 0, itemsSeen: 0, created: 0, updated: 0,
-    unchanged: 0, duplicates: 0, itemsFailed: 0, expired: 0, message: null,
+    unchanged: 0, duplicates: 0, itemsFailed: 0, expired: 0, message: null, feeds: [],
   };
 
-  if (!(await acquireLock("sync", holder, 20))) {
+  if (!(await acquireLock("sync", holder, isCli ? LOCK_MINUTES.cli : LOCK_MINUTES.website))) {
     result.status = "skipped";
     result.message = "Another sync is already running; this one was skipped.";
     await sql`update sync_runs set status = 'skipped', finished_at = now(), message = ${result.message} where id = ${runId}`;
@@ -211,13 +272,14 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
     const today = new Date().toISOString().slice(0, 10);
 
     for (const feed of feeds) {
+      const feedId = Number(feed.id);
       if (outOfTime()) {
         stoppedEarly = true;
+        result.feeds.push({ id: feedId, name: feed.name, status: "not_reached", items: 0, error: null });
         continue;
       }
-      const feedId = Number(feed.id);
       try {
-        const body = await fetchFeedText(feed.url, Number.isFinite(budget) ? budget - (Date.now() - started) - 500 : undefined);
+        const body = await fetchFeedText(feed.url, Number.isFinite(workBudget) ? workBudget - (Date.now() - started) : undefined);
         const parsed = parseFeed(body);
         if (isSuspendedInoreaderFeed(parsed.items)) {
           throw new Error("Inoreader has suspended this feed: exporting RSS needs an active Inoreader Pro plan. Nothing was imported or removed.");
@@ -365,18 +427,21 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
         await sql`
           update feeds set last_synced_at = now(), last_status = 'ok', last_error = null, last_item_count = ${items.length}, updated_at = now()
           where id = ${feedId}`;
+        result.feeds.push({ id: feedId, name: feed.name, status: "ok", items: items.length, error: null });
       } catch (e) {
         result.feedsFailed++;
         const msg = e instanceof FeedParseError ? e.message : `Could not read the feed: ${(e as Error).message}`;
+        result.feeds.push({ id: feedId, name: feed.name, status: "error", items: 0, error: msg.slice(0, 500) });
         logs.push({ feed_id: feedId, job_id: null, outcome: "feed_error", title: feed.name, url: feed.url.replace(/([?&](?:token|key|apikey|access_token)=)[^&]+/gi, "$1…"), message: msg.slice(0, 500) });
         await sql`update feeds set last_synced_at = now(), last_status = 'error', last_error = ${msg.slice(0, 1000)}, updated_at = now() where id = ${feedId}`;
       }
     }
 
-    // Organization icons (a few per run, only with time to spare)
-    if (!outOfTime()) {
+    // Organization icons (a few per run). Only in the scheduled import: website-
+    // triggered runs keep their few seconds for feeds and the clean-up.
+    if (isCli) {
       try {
-        await refreshOrgLogos(() => budget - (Date.now() - started));
+        await refreshOrgLogos(() => Number.POSITIVE_INFINITY);
       } catch (e) {
         notes.push(`Organization icons were not updated: ${(e as Error).message}`);
       }
@@ -395,14 +460,9 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
         and last_seen_at < now() - make_interval(days => ${IMPORT_SETTINGS.hideUndatedAfterDays})
       returning id`;
     result.expired = expired.length + archived.length;
-    await sql`
-      delete from jobs
-      where status in ('expired', 'archived')
-        and greatest(coalesce(deadline::timestamptz, last_seen_at), updated_at) < now() - make_interval(days => ${IMPORT_SETTINGS.deleteClosedAfterDays})`;
-    await sql`delete from sync_items where created_at < now() - make_interval(days => ${IMPORT_SETTINGS.keepImportLogsDays})`;
-    await sql`delete from sync_runs where started_at < now() - make_interval(days => ${IMPORT_SETTINGS.keepImportLogsDays * 3})`;
-    await sql`delete from events where created_at < now() - make_interval(days => ${IMPORT_SETTINGS.keepAnalyticsDays})`;
-    await sql`delete from organizations o where not exists (select 1 from jobs j where j.organization_id = o.id)`;
+    // Retention clean-up only in the scheduled import (every 2 hours), never
+    // inside the website's 10-second limit.
+    if (isCli) await retentionCleanup();
   } catch (e) {
     result.status = "failed";
     notes.push(`Sync stopped: ${(e as Error).message}`);
@@ -431,6 +491,23 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
     await releaseLock("sync", holder);
   }
   return result;
+}
+
+/** Deletes old listings, logs, analytics and unused organizations. */
+async function retentionCleanup(): Promise<void> {
+  await sql`
+    delete from jobs
+    where status in ('expired', 'archived')
+      and greatest(coalesce(deadline::timestamptz, last_seen_at), updated_at) < now() - make_interval(days => ${IMPORT_SETTINGS.deleteClosedAfterDays})`;
+  await sql`delete from sync_items where created_at < now() - make_interval(days => ${IMPORT_SETTINGS.keepImportLogsDays})`;
+  await sql`delete from sync_runs where started_at < now() - make_interval(days => ${IMPORT_SETTINGS.keepImportLogsDays * 3})`;
+  await sql`delete from events where created_at < now() - make_interval(days => ${IMPORT_SETTINGS.keepAnalyticsDays})`;
+  // Organizations whose icon was blocked are kept, so the block survives while they have no listings.
+  await sql`delete from organizations o where not o.logo_blocked and not exists (select 1 from jobs j where j.organization_id = o.id)`;
+  // Hashed abuse-protection keys are kept at most 24 hours.
+  await cleanupRateLimits();
+  // Privacy policy: unconfirmed sign-ups and unsubscribed addresses go after 30 days.
+  await purgeStaleSubscribers();
 }
 
 /** Exposed for tests. */
