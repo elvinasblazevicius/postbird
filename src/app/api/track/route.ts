@@ -5,7 +5,7 @@ import { cleanTrackedPath } from "./clean-path";
 export const dynamic = "force-dynamic";
 
 // Events the browser may send. Sign-ups are recorded on the server, not here.
-const CLIENT_EVENTS: EventType[] = ["pageview", "job_view", "search", "apply_click", "premium_cta_click"];
+const CLIENT_EVENTS: EventType[] = ["pageview", "job_view", "search", "apply_click", "premium_cta_click", "book_click"];
 
 /** Per visitor IP: at most this many events per window. */
 const EVENTS_PER_WINDOW = 120;
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
           .map((k) => [k, typeof body.props![k] === "string" ? (body.props![k] as string).slice(0, 120) : typeof body.props![k] === "number" || typeof body.props![k] === "boolean" ? body.props![k] : null]),
       );
     }
-    if (type === "premium_cta_click" && typeof body.props.source === "string") props = { source: body.props.source.slice(0, 40) };
+    if ((type === "premium_cta_click" || type === "book_click") && typeof body.props.source === "string") props = { source: body.props.source.slice(0, 40) };
     if (type === "pageview") {
       const campaign = cleanCampaign(body.props.campaign as Record<string, unknown> | undefined);
       props = campaign ? { campaign } : null;

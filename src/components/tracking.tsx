@@ -79,9 +79,9 @@ export function ApplyLink({ href, jobId, className, children }: { href: string; 
 }
 
 /** A link that records a named click (used for the Premium trial button). */
-export function TrackedLink({ href, event, source, className, children }: { href: string; event: string; source?: string; className?: string; children: React.ReactNode }) {
+export function TrackedLink({ href, event, source, className, target, rel, children }: { href: string; event: string; source?: string; className?: string; target?: string; rel?: string; children: React.ReactNode }) {
   return (
-    <a href={href} className={className} onClick={() => track({ type: event, props: source ? { source } : undefined })}>
+    <a href={href} className={className} target={target} rel={rel} onClick={() => track({ type: event, props: source ? { source } : undefined })}>
       {children}
     </a>
   );

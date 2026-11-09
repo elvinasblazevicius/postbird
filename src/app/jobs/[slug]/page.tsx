@@ -251,7 +251,7 @@ export default async function JobPage({ params }: Props) {
             </div>
           ) : null}
 
-          {open && isEuInstitution(job.org_type) ? <EpsoBook className="mt-10" /> : null}
+          {open && isEuInstitution(job.org_type) ? <EpsoBook className="mt-10" source="job-page" /> : null}
 
           {similar.length ? (
             <section className="mt-14" aria-labelledby="similar-heading">

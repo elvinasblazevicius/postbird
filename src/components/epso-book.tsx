@@ -1,3 +1,5 @@
+import { TrackedLink } from "./tracking";
+
 /**
  * The owner's EPSO workbook, shown only where it is relevant: EU institution
  * organization pages and job pages of EU institutions. The link is a
@@ -16,7 +18,7 @@ export function isEuInstitution(orgType: string | null | undefined) {
   return orgType === "EU institution";
 }
 
-export function EpsoBook({ className = "" }: { className?: string }) {
+export function EpsoBook({ className = "", source }: { className?: string; source: string }) {
   return (
     <aside aria-label="EPSO test preparation" className={`flex gap-4 rounded-xl border border-rule bg-paper p-4 ${className}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -24,7 +26,7 @@ export function EpsoBook({ className = "" }: { className?: string }) {
       <div className="min-w-0">
         <p className="text-sm font-medium text-slate">Preparing for EPSO tests?</p>
         <p className="mt-0.5 font-semibold leading-snug text-ink">
-          <a href={EPSO_BOOK.url} target="_blank" rel="sponsored noopener" className="text-accent underline">{EPSO_BOOK.title}</a>
+          <TrackedLink href={EPSO_BOOK.url} event="book_click" source={source} target="_blank" rel="sponsored noopener" className="text-accent underline">{EPSO_BOOK.title}</TrackedLink>
           <span className="font-normal text-slate"> by {EPSO_BOOK.author}, on Amazon</span>
         </p>
         <p className="mt-1 text-sm leading-relaxed text-slate">{EPSO_BOOK.blurb}</p>

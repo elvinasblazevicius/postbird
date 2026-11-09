@@ -48,7 +48,7 @@ export default async function OrganizationPage({ params, searchParams }: Props) 
         }
       />
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-        {isEuInstitution(org.org_type) ? <EpsoBook className="mb-6 max-w-2xl" /> : null}
+        {isEuInstitution(org.org_type) ? <EpsoBook className="mb-6 max-w-2xl" source="org-page" /> : null}
         <JobsBrowser filters={filters} fixed={{ org: slug }} base={`/organizations/${slug}`} />
       </div>
     </>

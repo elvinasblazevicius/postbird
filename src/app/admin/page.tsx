@@ -39,13 +39,14 @@ export default async function AdminHome({ searchParams }: Props) {
     sql<{ total: number; active: number; erroring: number }[]>`
       select count(*)::int as total, count(*) filter (where is_active)::int as active,
              count(*) filter (where is_active and last_status = 'error')::int as erroring from feeds`,
-    sql<{ visitors: number; pageviews: number; job_views: number; searches: number; apply: number; cta: number; alert_signups: number; waitlist_signups: number; confirmed: number }[]>`
+    sql<{ visitors: number; pageviews: number; job_views: number; searches: number; apply: number; cta: number; book: number; alert_signups: number; waitlist_signups: number; confirmed: number }[]>`
       select count(distinct visitor) filter (where type = 'pageview')::int as visitors,
              count(*) filter (where type = 'pageview')::int as pageviews,
              count(*) filter (where type = 'job_view')::int as job_views,
              count(*) filter (where type = 'search')::int as searches,
              count(*) filter (where type = 'apply_click')::int as apply,
              count(*) filter (where type = 'premium_cta_click')::int as cta,
+             count(*) filter (where type = 'book_click')::int as book,
              count(*) filter (where type = 'alert_signup')::int as alert_signups,
              count(*) filter (where type = 'waitlist_signup')::int as waitlist_signups,
              count(*) filter (where type = 'alert_confirmed')::int as confirmed
@@ -209,7 +210,10 @@ export default async function AdminHome({ searchParams }: Props) {
         <Stat label="Email-alert interest" value={ev.cta} hint={`button clicks; ${ev.waitlist_signups} left an email (${rate(ev.waitlist_signups, ev.cta)})`} />
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <Stat label="Alert sign-ups" value={ev.alert_signups} hint={`${ev.confirmed} confirmations; ${rate(ev.alert_signups, ev.visitors)} of visitors signed up`} />
+        <div className="grid gap-4">
+          <Stat label="Alert sign-ups" value={ev.alert_signups} hint={`${ev.confirmed} confirmations; ${rate(ev.alert_signups, ev.visitors)} of visitors signed up`} />
+          <Stat label="EPSO book clicks" value={ev.book} hint="Clicks on the book box (EU institution pages). Sales show in your KDP reports." />
+        </div>
         <Card>
           <div className="text-sm text-slate">Daily visitors</div>
           <div className="mt-3 flex h-24 items-end gap-[2px]" role="img" aria-label="Daily visitors chart">
