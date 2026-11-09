@@ -42,7 +42,10 @@ export const accountUrl = (manageToken: string) => absoluteUrl(`/account?t=${man
 export async function sendAccountLink(email: string): Promise<boolean> {
   const [row] = await sql<{ manage_token: string; unsubscribe_token: string }[]>`
     select manage_token, unsubscribe_token from subscribers where email = ${email}`;
-  if (!row) return true; // nothing to send; callers reply the same either way
+  if (!row) {
+    console.info("account link: no subscriber with that address"); // the address itself is never logged
+    return true; // nothing to send; callers reply the same either way
+  }
   const oneClick = absoluteUrl(`/api/unsubscribe?token=${row.unsubscribe_token}`);
   const res = await sendEmail({
     to: email,

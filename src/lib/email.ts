@@ -36,9 +36,15 @@ export async function sendEmail(msg: OutgoingEmail): Promise<SendResult> {
       body: JSON.stringify({ from: fromAddress(), to: [msg.to], subject: msg.subject, html: msg.html, text: msg.text, headers: msg.headers }),
     });
     const data = (await res.json().catch(() => ({}))) as { id?: string; message?: string };
-    if (!res.ok) return { ok: false, error: data.message || `Resend returned HTTP ${res.status}` };
+    if (!res.ok) {
+      const error = data.message || `Resend returned HTTP ${res.status}`;
+      // Status and Resend's reason only: never the recipient or the body.
+      console.warn(`email not sent: Resend ${res.status}: ${error}`);
+      return { ok: false, error };
+    }
     return { ok: true, id: data.id };
   } catch (e) {
+    console.warn(`email not sent: ${(e as Error).message}`);
     return { ok: false, error: (e as Error).message };
   }
 }
