@@ -37,7 +37,9 @@ const siteConfig = {
    * footers (required by Microsoft Advertising, EU privacy law and US anti-spam law).
    */
   operator: {
-    name: "Nueva Nova",
+    name: "Nueva Nova LLC",
+    /** Shown on the terms and privacy pages next to the name. */
+    legalForm: "a Wyoming limited liability company",
     address: "5830 E 2nd St, Ste 7000 #25426, Casper, Wyoming 82609, United States",
     /** Law that governs the terms of use. */
     governingLaw: "the State of Wyoming, United States",

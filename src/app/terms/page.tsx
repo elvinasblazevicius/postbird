@@ -15,7 +15,7 @@ export default function TermsPage() {
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-12 text-[1.02rem] leading-relaxed text-ink sm:px-6">
         <p className="text-sm text-slate">Last updated 9 November 2026</p>
         <p>
-          {siteConfig.name} is run by {op.name}, {op.address}
+          {siteConfig.name} is run by {op.name}, {op.legalForm}, {op.address}
           {mail ? <> (<a className="text-accent underline" href={`mailto:${mail}`}>{mail}</a>)</> : null}. By using the site you agree to these terms.
         </p>
         <p>{siteConfig.disclaimer}</p>

@@ -30,7 +30,7 @@ export default function PrivacyPage() {
 
         <H2>Who we are</H2>
         <p>
-          {siteConfig.name} is run by {op.name}, {op.address}. {op.name} is the data controller. Contact: {mailLink}.
+          {siteConfig.name} is run by {op.name}, {op.legalForm}, {op.address}. {op.name} is the data controller. Contact: {mailLink}.
         </p>
 
         <H2>Browsing the site</H2>
