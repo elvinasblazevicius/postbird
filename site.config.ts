@@ -25,7 +25,7 @@ const siteConfig = {
    * free Vercel address automatically (or NEXT_PUBLIC_SITE_URL
    * if you set it in Vercel's environment variables).
    */
-  url: "https://venerable-marzipan-e0e78e.netlify.app", // change to your own domain when you buy it
+  url: "https://postbird.nuevanova.com", // move to postbirdjobs.com if the concept test passes
 
   /** Address shown as the sender of alert emails (needs a verified domain in Resend). */
   emailFrom: "Postbird <alerts@example.com>",
