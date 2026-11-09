@@ -84,11 +84,11 @@ const siteConfig = {
     /** Shown on /pricing; the first plan is the headline price. */
     plans: [
       // Monthly is priced higher on purpose: the 3-month plan brings more money in up front, which is what pays for ads.
-      { label: "Monthly", price: "$6.99", per: "month", note: "" },
-      { label: "3 months", price: "$11.99", per: "3 months", note: "Save 42%", perMonth: "$4.00" },
+      { label: "Monthly", price: "$9.99", per: "month", note: "" },
+      { label: "3 months", price: "$19.99", per: "3 months", note: "Save 33%", perMonth: "$6.66" },
     ],
     /** Short version used in sign-up boxes. */
-    priceSummary: "$6.99/month or $11.99 for 3 months",
+    priceSummary: "$9.99/month or $19.99 for 3 months",
     /**
      * Billing is not switched on yet (concept test). While false, every sign-up
      * box says plainly that trials open soon and nothing is charged.
