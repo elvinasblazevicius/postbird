@@ -11,7 +11,7 @@ import { confirmDeadline, planPeriod, planPrice } from "@/lib/billing/notices";
 import { cancelSubscriptionNow, getCustomer, getSubscription, WEBHOOK_PADDLE_TIMEOUT_MS } from "@/lib/billing/paddle";
 import { alertKey } from "@/lib/digest";
 import {
-  CONFIRM_FIRST_DONE, CONFIRM_WITHIN_DAYS, NO_TRIAL_CONSENT, NO_TRIAL_RENEWAL_ACK, TRIAL_CONSENT, TRIAL_RENEWAL_ACK, UNCONFIRMED_CANCEL_DAYS,
+  CONFIRM_FIRST_DONE, CONFIRM_WITHIN_DAYS, NO_TRIAL_RENEWAL_ACK, TRIAL_RENEWAL_ACK, UNCONFIRMED_CANCEL_DAYS,
 } from "@/lib/early-access-copy";
 import { paidConfirmationEmail } from "@/lib/email-templates";
 import { employersPhrase, homeCopy } from "@/lib/eu-claim";
@@ -57,12 +57,10 @@ describe("confirmation email for a trial started at an unconfirmed address", () 
 });
 
 describe("checkout consent copy", () => {
-  it("has a renewal checkbox for each kind of checkout, and the consent lines are unchanged", () => {
-    expect(TRIAL_RENEWAL_ACK).toBe("I understand my plan renews automatically after the trial until I cancel.");
-    expect(NO_TRIAL_RENEWAL_ACK).toBe("I understand my plan renews automatically until I cancel.");
+  it("has a renewal checkbox for each kind of checkout whose label is the consent (no separate consent sentence)", () => {
+    expect(TRIAL_RENEWAL_ACK).toBe("I agree that my plan renews automatically after the trial until I cancel.");
+    expect(NO_TRIAL_RENEWAL_ACK).toBe("I agree that my plan renews automatically until I cancel.");
     expect(NO_TRIAL_RENEWAL_ACK).not.toMatch(/trial/i);
-    expect(TRIAL_CONSENT).toMatch(/as described above\.$/);
-    expect(NO_TRIAL_CONSENT).toMatch(/as described above\.$/);
   });
 });
 

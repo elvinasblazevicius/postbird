@@ -92,18 +92,44 @@ const PADDLE_TIMEOUT_MS = 8000;
  */
 export const WEBHOOK_PADDLE_TIMEOUT_MS = 2500;
 
-/** Options for one API call: timeoutMs (default 8 seconds; WEBHOOK_PADDLE_TIMEOUT_MS on the webhook path). */
-export type PaddleCallOptions = { timeoutMs?: number };
+/**
+ * Time limits for Paddle calls made while a visitor waits (server actions: the continue page's
+ * checkout, "Manage billing" and "Cancel plan"): each call at most USER_PADDLE_CALL_MS, and all the calls
+ * of one action together at most USER_PADDLE_TOTAL_MS, so the page answers well inside the host's
+ * 10-second limit (Netlify) instead of being cut off. See userPaddleBudget().
+ */
+export const USER_PADDLE_CALL_MS = 3000;
+export const USER_PADDLE_TOTAL_MS = 7000;
+
+/**
+ * Options for one API call: timeoutMs (default 8 seconds; WEBHOOK_PADDLE_TIMEOUT_MS on the webhook
+ * path), and deadline (epoch ms): a time budget shared by several calls. Each call then gets the
+ * smaller of timeoutMs and the time left, and one made after the deadline fails at once.
+ */
+export type PaddleCallOptions = { timeoutMs?: number; deadline?: number };
+
+/** One shared budget for the Paddle calls of a server action: pass the same object to every call. */
+export function userPaddleBudget(now = Date.now()): Required<PaddleCallOptions> {
+  return { timeoutMs: USER_PADDLE_CALL_MS, deadline: now + USER_PADDLE_TOTAL_MS };
+}
+
+/** The time limit for the next call under these options (ms); 0 when the budget is spent. Pure, so it is unit-tested. */
+export function callTimeoutMs(opts: PaddleCallOptions = {}, now = Date.now()): number {
+  const limit = opts.timeoutMs ?? PADDLE_TIMEOUT_MS;
+  return opts.deadline === undefined ? limit : Math.max(0, Math.min(limit, opts.deadline - now));
+}
 
 /** Calls the Paddle API. Errors carry only the status and Paddle's error code, never the key. */
-async function paddleFetch<T>(path: string, init: { method?: string; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
+async function paddleFetch<T>(path: string, init: { method?: string; body?: unknown } & PaddleCallOptions = {}): Promise<T> {
   const key = process.env.PADDLE_API_KEY;
   if (!key) throw new Error("PADDLE_API_KEY is not set");
+  const timeoutMs = callTimeoutMs(init);
+  if (timeoutMs <= 0) throw new Error("Paddle didn't answer in time (time budget used up)");
   const res = await fetch(`${paddleApiBase()}${path}`, {
     method: init.method ?? "GET",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", Accept: "application/json" },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
-    signal: AbortSignal.timeout(init.timeoutMs ?? PADDLE_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
     cache: "no-store",
   });
   const data = (await res.json().catch(() => null)) as { data?: T; error?: { code?: string } } | null;
@@ -119,15 +145,29 @@ const PADDLE_ID = (prefix: string) => new RegExp(`^${prefix}_[a-z\\d]{26}$`);
  * Returns the cancel/manage link for the subscription when there is one,
  * otherwise the portal overview. Needs the customer_portal_session.write permission.
  */
-export async function createPortalSession(customerId: string, subscriptionId?: string | null): Promise<string> {
+export async function createPortalSession(customerId: string, subscriptionId?: string | null, opts: PaddleCallOptions = {}): Promise<string> {
   if (!PADDLE_ID("ctm").test(customerId)) throw new Error("Invalid Paddle customer id");
   const subs = subscriptionId && PADDLE_ID("sub").test(subscriptionId) ? [subscriptionId] : [];
   const session = await paddleFetch<{
     urls: { general: { overview: string }; subscriptions: { id: string; view_subscription?: string; cancel_subscription?: string }[] };
-  }>(`/customers/${customerId}/portal-sessions`, { method: "POST", body: { subscription_ids: subs } });
+  }>(`/customers/${customerId}/portal-sessions`, { method: "POST", body: { subscription_ids: subs }, ...opts });
   // The overview lists the subscription with "cancel" and "update payment method"
   // buttons, so it serves both "manage billing" and "cancel".
   return session.urls.general.overview;
+}
+
+/**
+ * "Cancel plan": a portal session for this subscription, returning Paddle's cancel deep link
+ * (urls.subscriptions[].cancel_subscription), or the overview when Paddle gives none. Same
+ * permission and checks as createPortalSession.
+ */
+export async function createCancelSession(customerId: string, subscriptionId: string, opts: PaddleCallOptions = {}): Promise<string> {
+  if (!PADDLE_ID("ctm").test(customerId)) throw new Error("Invalid Paddle customer id");
+  if (!PADDLE_ID("sub").test(subscriptionId)) throw new Error("Invalid Paddle subscription id");
+  const session = await paddleFetch<{
+    urls: { general: { overview: string }; subscriptions: { id: string; cancel_subscription?: string }[] };
+  }>(`/customers/${customerId}/portal-sessions`, { method: "POST", body: { subscription_ids: [subscriptionId] }, ...opts });
+  return session.urls.subscriptions.find((s) => s.id === subscriptionId)?.cancel_subscription ?? session.urls.general.overview;
 }
 
 /** Subscription fields this site reads (a subset of Paddle's subscription entity). */
@@ -148,7 +188,7 @@ export type PaddleSubscription = {
 /** Fetches a subscription (needs the subscription.read permission). */
 export async function getSubscription(subscriptionId: string, opts: PaddleCallOptions = {}): Promise<PaddleSubscription> {
   if (!PADDLE_ID("sub").test(subscriptionId)) throw new Error("Invalid Paddle subscription id");
-  return paddleFetch<PaddleSubscription>(`/subscriptions/${subscriptionId}`, { timeoutMs: opts.timeoutMs });
+  return paddleFetch<PaddleSubscription>(`/subscriptions/${subscriptionId}`, { ...opts });
 }
 
 /**
@@ -159,7 +199,7 @@ export async function getSubscription(subscriptionId: string, opts: PaddleCallOp
  */
 export async function cancelSubscriptionNow(subscriptionId: string, opts: PaddleCallOptions = {}): Promise<void> {
   if (!PADDLE_ID("sub").test(subscriptionId)) throw new Error("Invalid Paddle subscription id");
-  await paddleFetch<{ id: string }>(`/subscriptions/${subscriptionId}/cancel`, { method: "POST", body: { effective_from: "immediately" }, timeoutMs: opts.timeoutMs });
+  await paddleFetch<{ id: string }>(`/subscriptions/${subscriptionId}/cancel`, { method: "POST", body: { effective_from: "immediately" }, ...opts });
 }
 
 /** Customer fields this site reads (a subset of Paddle's customer entity). */
@@ -168,7 +208,7 @@ export type PaddleCustomer = { id: string; email: string; status?: string };
 /** Fetches a customer (needs the customer.read permission). The id goes in the path; never an email address. */
 export async function getCustomer(customerId: string, opts: PaddleCallOptions = {}): Promise<PaddleCustomer> {
   if (!PADDLE_ID("ctm").test(customerId)) throw new Error("Invalid Paddle customer id");
-  return paddleFetch<PaddleCustomer>(`/customers/${customerId}`, { timeoutMs: opts.timeoutMs });
+  return paddleFetch<PaddleCustomer>(`/customers/${customerId}`, { ...opts });
 }
 
 export const isPaddleCustomerId = (id: unknown): id is string => typeof id === "string" && PADDLE_ID("ctm").test(id);
@@ -234,9 +274,9 @@ export type PaddlePrice = {
 };
 
 /** Fetches a catalog price (needs the price.read permission). */
-export async function getPrice(priceId: string): Promise<PaddlePrice> {
+export async function getPrice(priceId: string, opts: PaddleCallOptions = {}): Promise<PaddlePrice> {
   if (!PADDLE_ID("pri").test(priceId)) throw new Error("Invalid Paddle price id");
-  return paddleFetch<PaddlePrice>(`/prices/${priceId}`);
+  return paddleFetch<PaddlePrice>(`/prices/${priceId}`, { ...opts });
 }
 
 /**
@@ -284,12 +324,13 @@ export function noTrialTransactionBody(price: PaddlePrice, customData: { ref: st
  * Creates the transaction a returning customer pays through: the chosen plan,
  * charged straight away. Returns its id (txn_…), which Paddle.js opens with
  * Checkout.open({ transactionId }). Needs price.read and transaction.write.
- * Throws when PADDLE_API_KEY is missing or Paddle refuses: the caller must
- * then show an error, never fall back to the catalog price (which has a trial).
+ * Throws when PADDLE_API_KEY is missing, Paddle refuses or the time budget
+ * (opts) runs out: the caller must then show an error, never fall back to the
+ * catalog price (which has a trial).
  */
-export async function createNoTrialTransaction(priceId: string, customData: { ref: string }): Promise<string> {
-  const price = await getPrice(priceId);
-  const txn = await paddleFetch<{ id: string }>("/transactions", { method: "POST", body: noTrialTransactionBody(price, customData) });
+export async function createNoTrialTransaction(priceId: string, customData: { ref: string }, opts: PaddleCallOptions = {}): Promise<string> {
+  const price = await getPrice(priceId, opts);
+  const txn = await paddleFetch<{ id: string }>("/transactions", { method: "POST", body: noTrialTransactionBody(price, customData), ...opts });
   if (!PADDLE_ID("txn").test(txn?.id ?? "")) throw new Error("Paddle returned no transaction id");
   return txn.id;
 }

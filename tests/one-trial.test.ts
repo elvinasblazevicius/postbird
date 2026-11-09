@@ -7,11 +7,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import siteConfig from "@site-config";
 import { CHECK_INBOX, checkoutReply } from "@/lib/billing/checkout-links";
-import { billingSelfCheck, cancelSubscriptionNow, createNoTrialTransaction, getCustomer, noTrialPrice, noTrialTransactionBody, type PaddlePrice } from "@/lib/billing/paddle";
+import {
+  billingSelfCheck, callTimeoutMs, cancelSubscriptionNow, createNoTrialTransaction, createPortalSession, getCustomer, noTrialPrice, noTrialTransactionBody,
+  USER_PADDLE_CALL_MS, USER_PADDLE_TOTAL_MS, userPaddleBudget, type PaddlePrice,
+} from "@/lib/billing/paddle";
 import { hadTrialBefore, welcomeTrialEnd } from "@/lib/billing/subscriptions";
 import { canonicalTrialEmail, trialMarker } from "@/lib/billing/trial-markers";
 import { secretFingerprint, sharedSecret } from "@/lib/server-secret";
-import { NO_TRIAL_CONSENT, noTrialButton, noTrialLine, ONE_TRIAL_RULE, RENEWING, TAX_LINE, TRIAL_CONSENT, trialButton } from "@/lib/early-access-copy";
+import { noTrialButton, noTrialLine, ONE_TRIAL_RULE, RENEWING, TAX_LINE, trialButton } from "@/lib/early-access-copy";
 import { accountLinkEmail, checkoutLinkEmail, welcomeEmail } from "@/lib/email-templates";
 
 /** A confirmed address that never had a plan. */
@@ -228,6 +231,62 @@ describe("createNoTrialTransaction (Paddle API mocked)", () => {
   });
 });
 
+describe("time limits for Paddle calls a visitor waits for (fetch mocked)", () => {
+  let signals: AbortSignal[] = [];
+  let hang = false;
+
+  beforeEach(() => {
+    signals = [];
+    hang = false;
+    process.env.PADDLE_API_KEY = "pdl_sdbx_apikey_test_0123456789";
+    vi.stubGlobal("fetch", async (url: string | URL, init?: RequestInit) => {
+      signals.push(init!.signal!);
+      // A Paddle that never answers: only the time limit ends the call, as with the real fetch.
+      if (hang) return new Promise((_, reject) => init!.signal!.addEventListener("abort", () => reject(init!.signal!.reason)));
+      if (String(url).includes("/prices/")) return Response.json({ data: CATALOG });
+      if (String(url).endsWith("/portal-sessions")) return Response.json({ data: { urls: { general: { overview: "https://customer-portal.paddle.com/x" }, subscriptions: [] } } });
+      return Response.json({ data: { id: "txn_01hv8wptq8987qeep44cyrewp9" } });
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.PADDLE_API_KEY;
+  });
+
+  it("each call gets the smaller of its own limit and what is left of the shared budget", () => {
+    const now = 1_000_000;
+    expect(USER_PADDLE_CALL_MS).toBeLessThanOrEqual(3000);
+    expect(USER_PADDLE_TOTAL_MS).toBeLessThanOrEqual(7000);
+    expect(userPaddleBudget(now)).toEqual({ timeoutMs: USER_PADDLE_CALL_MS, deadline: now + USER_PADDLE_TOTAL_MS });
+    expect(callTimeoutMs({}, now)).toBe(8000); // the daily job's default
+    expect(callTimeoutMs({ timeoutMs: 2500 }, now)).toBe(2500); // the webhook's
+    const budget = userPaddleBudget(now);
+    expect(callTimeoutMs(budget, now)).toBe(USER_PADDLE_CALL_MS);
+    expect(callTimeoutMs(budget, now + USER_PADDLE_TOTAL_MS - 1200)).toBe(1200);
+    expect(callTimeoutMs(budget, now + USER_PADDLE_TOTAL_MS + 1)).toBe(0);
+  });
+
+  it("a spent budget fails at once, without calling Paddle", async () => {
+    const spent = { timeoutMs: USER_PADDLE_CALL_MS, deadline: Date.now() - 1 };
+    await expect(createNoTrialTransaction(CATALOG.id, { ref: "r".repeat(32) }, spent)).rejects.toThrow(/time budget/);
+    await expect(createPortalSession("ctm_01hv6y1jedq4p1n0yqn5ba3kd4", null, spent)).rejects.toThrow(/time budget/);
+    expect(signals).toHaveLength(0);
+  });
+
+  it("both calls of a no-trial checkout share one budget, and a Paddle that doesn't answer is given up on", async () => {
+    expect(await createNoTrialTransaction(CATALOG.id, { ref: "r".repeat(32) }, userPaddleBudget())).toMatch(/^txn_/);
+    expect(signals).toHaveLength(2);
+    expect(signals.every((sig) => sig instanceof AbortSignal && !sig.aborted)).toBe(true);
+
+    hang = true;
+    const t0 = Date.now();
+    const err = await createNoTrialTransaction(CATALOG.id, { ref: "r".repeat(32) }, { timeoutMs: 1000, deadline: Date.now() + 120 }).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(Date.now() - t0).toBeLessThan(800); // the budget (120 ms), not the per-call limit (1 s)
+    expect(signals.at(-1)!.aborted).toBe(true);
+  });
+});
+
 describe("copy and emails for someone who has had a trial", () => {
   const [m, q] = siteConfig.premium.plans;
 
@@ -238,9 +297,6 @@ describe("copy and emails for someone who has had a trial", () => {
     expect(noTrialButton).not.toMatch(/trial/i);
     expect(trialButton).toMatch(/trial/i);
     expect(ONE_TRIAL_RULE).toBe("One free trial per email address, counting forms like name+tag@ and dotted Gmail addresses as the same address. If you've had a trial before, your plan starts and is charged straight away.");
-    expect(TRIAL_CONSENT).toBe("By starting the trial you agree to automatic renewal as described above.");
-    expect(NO_TRIAL_CONSENT).toBe("By continuing you agree to automatic renewal as described above.");
-    expect(NO_TRIAL_CONSENT).not.toMatch(/trial/i);
   });
 
   it("the welcome mentions a trial only while the subscription is trialing", () => {
@@ -352,7 +408,7 @@ describe("emails that lead to a checkout or to billing", () => {
     expect(accountLinkEmail(links).subject).toBe(`Your ${siteConfig.name} account link`);
     const cancel = accountLinkEmail({ ...links, purpose: "cancel" });
     expect(cancel.subject).toBe(`Your link to cancel your ${siteConfig.name} plan`);
-    expect(cancel.text).toContain("Cancel or manage billing");
+    expect(cancel.text).toContain("Cancel plan");
     const already = accountLinkEmail({ ...links, purpose: "already" });
     expect(already.subject).toBe(`You already have ${siteConfig.name} daily alerts`);
     expect(already.text).toContain(links.accountUrl);

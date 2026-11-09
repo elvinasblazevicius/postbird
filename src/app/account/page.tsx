@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AccountUnsubscribe, AddSearchForm, FrequencyForm, PortalButton, RemoveSearchButton, RestartPlanButton } from "@/components/account-forms";
+import { AccountUnsubscribe, AddSearchForm, CancelPlanButton, FrequencyForm, PortalButton, RemoveSearchButton, RestartPlanButton } from "@/components/account-forms";
 import { ALL_CATEGORIES } from "@/config/categories";
 import { COUNTRIES } from "@/config/countries";
 import { GRADE_GROUPS, LANGUAGES, REGIONS } from "@/config/regions";
 import { findByManageToken, type Account } from "@/lib/account";
 import { BILLING_LIVE } from "@/lib/billing/live";
-import { hadTrialBefore } from "@/lib/billing/subscriptions";
+import { hadTrialBefore, LIVE_STATUSES } from "@/lib/billing/subscriptions";
 import { trialUsedElsewhere } from "@/lib/billing/trial-markers";
 import { planDescription } from "@/lib/early-access-copy";
 import { EXPERIENCE_BANDS, JOB_TYPES, organizationFacets } from "@/lib/jobs";
@@ -38,7 +38,7 @@ function planLines(a: Account): string[] {
   } else if (a.billing_status === "active" && a.current_period_end) {
     lines.push(a.cancel_at ? `Canceled: your plan stays on until ${formatDate(a.cancel_at)} and won't renew.` : `Renews on ${formatDate(a.current_period_end)}.`);
   } else if (a.billing_status === "past_due") {
-    lines.push("Your last payment didn't go through, so alerts are on hold. Update your card under “Cancel or manage billing” to restart them.");
+    lines.push("Your last payment didn't go through, so alerts are on hold. Update your card under “Manage billing” to restart them.");
   } else if (a.billing_status === "paused") {
     lines.push("Your plan is paused, so alerts are on hold.");
   } else if (a.billing_status === "canceled") {
@@ -66,7 +66,7 @@ export default async function AccountPage({ searchParams }: Props) {
   // One free trial per email address: only an address that never had a plan is offered it.
   const hadPlan = hadTrialBefore(acct, await trialUsedElsewhere(acct.email, acct.id));
   const alertsOn = acct.billing_status === "trialing" || acct.billing_status === "active";
-  const paying = ["trialing", "active", "past_due", "paused"].includes(acct.billing_status);
+  const paying = LIVE_STATUSES.includes(acct.billing_status);
   const limit = searchLimit(acct.billing_status);
   // Billing (Paddle's portal) once there is a Paddle customer or subscription; the customer is checked against this address before it opens.
   const billing = Boolean(acct.paddle_customer_id || acct.paddle_subscription_id);
@@ -98,7 +98,9 @@ export default async function AccountPage({ searchParams }: Props) {
           </p>
         ) : null}
         <div className="mt-5 flex flex-wrap items-center gap-3">
+          {/* Cancel goes straight to Paddle's cancel page; "Manage billing" opens the overview (card, invoices). */}
           {billing ? <PortalButton t={acct.manage_token} /> : null}
+          {paying && acct.paddle_subscription_id && !acct.cancel_at ? <CancelPlanButton t={acct.manage_token} /> : null}
           {!paying && BILLING_LIVE ? (
             hadPlan ? (
               <RestartPlanButton t={acct.manage_token} />
@@ -108,7 +110,7 @@ export default async function AccountPage({ searchParams }: Props) {
           ) : null}
         </div>
         {billing ? (
-          <p className="mt-3 text-sm text-slate">Billing is handled by Paddle, our reseller: update your card, see invoices or cancel there.</p>
+          <p className="mt-3 text-sm text-slate">Billing is handled by Paddle, our reseller: cancel, update your card or see invoices there.</p>
         ) : null}
       </section>
 

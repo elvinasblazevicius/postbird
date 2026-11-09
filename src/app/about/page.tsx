@@ -3,6 +3,7 @@ import { sharedTitle, shareMetadata } from "@/lib/share-metadata";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { ORG_TYPES } from "@/config/regions";
+import { COVERAGE_CAVEAT } from "@/lib/coverage";
 import { organizationFacets } from "@/lib/jobs";
 import { siteConfig } from "@/lib/site";
 
@@ -45,6 +46,7 @@ export default async function AboutPage() {
             {siteConfig.name} collects vacancies from public job feeds every 2 hours. New openings are added automatically, each one is linked to the
             employer&apos;s own website, and vacancies are hidden once their published closing date has passed.
           </p>
+          <p className="mt-3">{COVERAGE_CAVEAT}</p>
         </section>
         <section>
           <h2 className="text-2xl font-semibold leading-tight">What we show</h2>

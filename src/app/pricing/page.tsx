@@ -3,7 +3,7 @@ import { sharedTitle, shareMetadata } from "@/lib/share-metadata";
 import Link from "next/link";
 import { AlertExample } from "@/components/alert-example";
 import { CoverageLine } from "@/components/coverage-line";
-import { coverage, oneEmailLine } from "@/lib/coverage";
+import { coverage, COVERAGE_CAVEAT, oneEmailLine } from "@/lib/coverage";
 import { PageHeader } from "@/components/page-header";
 import { TrackedLink } from "@/components/tracking";
 import { BILLING_LIVE } from "@/lib/billing/live";
@@ -39,11 +39,11 @@ export default async function PricingPage() {
     ? [
         [
           "How does the free trial work?",
-          <>We&apos;ll email you a link to confirm your address; your alerts start once you confirm. You pay $0 for {p.trialDays} days, and a card is needed to start. If you don&apos;t cancel before your trial ends (we show the date before you start and email you about 3 days ahead), the plan you chose starts automatically. {ONE_TRIAL_RULE}</>,
+          <>Your {p.trialDays} days start today. We&apos;ll email you a link to confirm your address; your alerts start once you confirm. You pay $0 during the trial, and a card is needed to start. If you don&apos;t cancel before your trial ends (we show the date before you start and email you about 3 days ahead), the plan you chose starts automatically. {ONE_TRIAL_RULE}</>,
         ],
         [
           "How do I cancel?",
-          <>Every alert email links to your account, where &quot;Cancel or manage billing&quot; opens Paddle&apos;s page to cancel. Lost the email? <Link href="/account/login" className="text-accent underline">Get your account link</Link>. You keep alerts until the end of the period you paid for.</>,
+          <>Every alert email links to your account, where &quot;Cancel plan&quot; opens Paddle&apos;s page to cancel. Lost the email? <Link href="/account/login" className="text-accent underline">Get your account link</Link>. You keep alerts until the end of the period you paid for.</>,
         ],
         [
           "Who handles the payment?",
@@ -89,6 +89,7 @@ export default async function PricingPage() {
       "Where do the listings come from?",
       <>From public job feeds. Every listing links to the employer&apos;s own website, where you apply. We never charge anyone to apply for a job.</>,
     ],
+    ["Do you list every vacancy?", <>No. {COVERAGE_CAVEAT}</>],
     ["Are you part of the UN?", <>No. {siteConfig.name} is independent and not affiliated with the United Nations, the EU or any employer listed.</>],
   ];
 

@@ -55,8 +55,7 @@ export default async function OrganizationPage({ params, searchParams }: Props) 
         intro={
           <>
             {count === 1 ? "1 open vacancy" : `${count} open vacancies`}
-            {org.org_type ? ` at this ${org.org_type === "UN system" ? "UN system organization" : org.org_type.replace(/^[A-Z][a-z]/, (c) => c.toLowerCase())}` : ""}. Listings link to the
-            organization&apos;s own website.
+            {org.org_type ? ` at this ${org.org_type === "UN system" ? "UN system organization" : org.org_type.replace(/^[A-Z][a-z]/, (c) => c.toLowerCase())}` : ""}.
           </>
         }
         note={nonAffiliationLine(siteConfig.name, orgInText(org.name, org.short_name))}

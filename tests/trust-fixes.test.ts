@@ -73,7 +73,7 @@ describe("customer-facing copy", () => {
   });
 
   it("the public trial form says the address must be confirmed, and that there is one trial per address", () => {
-    expect(TRIAL_CONFIRM_NOTE).toBe("We'll email you a link to confirm your address; your alerts start once you confirm. One free trial per email address.");
+    expect(TRIAL_CONFIRM_NOTE).toBe("Your 14 days start today. We'll email you a link to confirm your address; your alerts start once you confirm. One free trial per email address.");
   });
 });
 

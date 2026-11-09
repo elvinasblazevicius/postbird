@@ -3,6 +3,7 @@
 /** Forms on the account page (/account) and "Email me my account link" (/account/login). */
 import { useActionState } from "react";
 import type { FormState } from "@/app/actions";
+import { cancelPlanAction } from "@/app/cancel-actions";
 import {
   accountLinkAction, accountUnsubscribeAction, addSearchAction, frequencyAction, portalAction, removeSearchAction, restartPlanAction, resubscribeAction,
 } from "@/app/billing-actions";
@@ -160,7 +161,19 @@ export function PortalButton({ t }: { t: string }) {
   return (
     <form action={action}>
       <input type="hidden" name="t" value={t} />
-      <button disabled={pending} className={primary}>{pending ? "Opening billing…" : "Cancel or manage billing"}</button>
+      <button disabled={pending} className={secondary}>{pending ? "Opening billing…" : "Manage billing"}</button>
+      <Message state={state} />
+    </form>
+  );
+}
+
+/** "Cancel plan": opens Paddle's cancel page for the subscription directly (src/app/cancel-actions.ts). */
+export function CancelPlanButton({ t }: { t: string }) {
+  const [state, action, pending] = useActionState(cancelPlanAction, initial);
+  return (
+    <form action={action}>
+      <input type="hidden" name="t" value={t} />
+      <button disabled={pending} className={secondary}>{pending ? "Opening Paddle…" : "Cancel plan"}</button>
       <Message state={state} />
     </form>
   );
@@ -186,7 +199,7 @@ export function AccountUnsubscribe({ t, unsubscribed, paying }: { t: string; uns
       {unsubscribed ? (
         <p className="mb-3 text-[0.95rem] text-slate">You&apos;re unsubscribed: we don&apos;t send you any emails.{paying ? " Your plan is still running; cancel it under billing if you no longer want it." : ""}</p>
       ) : (
-        <p className="mb-3 text-[0.95rem] text-slate">Stops every email from us.{paying ? " It doesn't cancel your plan: use \"Cancel or manage billing\" for that." : ""}</p>
+        <p className="mb-3 text-[0.95rem] text-slate">Stops every email from us.{paying ? " It doesn't cancel your plan: use \"Cancel plan\" for that." : ""}</p>
       )}
       <button disabled={pending} className={secondary}>{pending ? "Saving…" : unsubscribed ? "Turn emails back on" : "Unsubscribe from all emails"}</button>
       <Message state={state} />
@@ -196,7 +209,7 @@ export function AccountUnsubscribe({ t, unsubscribed, paying }: { t: string; uns
 
 /**
  * "Email me my account link" (/account/login). `intent: "cancel"` is the same request worded for
- * cancelling: the email (worded for it too) links to the account page, where "Cancel or manage billing" cancels.
+ * cancelling: the email (worded for it too) links to the account page, where "Cancel plan" cancels.
  */
 export function AccountLinkForm({ intent = "manage" }: { intent?: "manage" | "cancel" }) {
   const [state, action, pending] = useActionState(accountLinkAction, initial);

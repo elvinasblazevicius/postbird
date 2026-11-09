@@ -2,7 +2,11 @@
 
 import { useEffect } from "react";
 
-/** Submits the filter form when a select or checkbox changes (text fields still use the button/Enter). */
+/**
+ * Submits the filter form when a select or checkbox changes, or a field marked data-autosubmit
+ * (the type-ahead pickers, src/components/multi-combobox.tsx) says its choice changed. Text fields
+ * still use the button/Enter.
+ */
 export function AutoSubmit({ formId, onChange: submitOnChange = true }: { formId: string; onChange?: boolean }) {
   useEffect(() => {
     const form = document.getElementById(formId) as HTMLFormElement | null;
@@ -10,7 +14,7 @@ export function AutoSubmit({ formId, onChange: submitOnChange = true }: { formId
     const onChange = (e: Event) => {
       const t = e.target as HTMLElement;
       if (!submitOnChange) return;
-      if (t instanceof HTMLSelectElement || (t instanceof HTMLInputElement && t.type === "checkbox")) form.requestSubmit();
+      if (t instanceof HTMLSelectElement || (t instanceof HTMLInputElement && t.type === "checkbox") || t.dataset?.autosubmit === "true") form.requestSubmit();
     };
     // Drop empty fields so shared URLs stay short and readable.
     const onSubmit = () => {

@@ -164,7 +164,7 @@ export function FreeWeeklyForm({ source = "alerts-page", search, watch }: { sour
       <button disabled={pending} className="w-full rounded-lg bg-brand px-6 py-3.5 text-base font-semibold text-white hover:bg-accent disabled:opacity-60">
         {pending ? "Saving…" : "Get the free weekly email"}
       </button>
-      <p className="text-sm text-slate">Free, no card and no account. We&apos;ll email you once to confirm. Unsubscribe with one click.</p>
+      <p className="text-sm text-slate">Free, no card and no account. We&apos;ll email you once to confirm. Unsubscribe with one click. Each email may include one short line about our paid daily alerts.</p>
       <PrivacyNote />
     </form>
   );

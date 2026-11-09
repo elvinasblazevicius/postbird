@@ -13,7 +13,7 @@ import { accountUrl, findByManageToken, sendAccountLink } from "@/lib/account";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { checkoutReply, continueCheckout, createCheckoutLink, sendCheckoutLink, type CheckoutState } from "@/lib/billing/checkout-links";
 import { planRenewal } from "@/lib/billing/notices";
-import { createPortalSession, isPaddleApiConfigured } from "@/lib/billing/paddle";
+import { createPortalSession, isPaddleApiConfigured, userPaddleBudget } from "@/lib/billing/paddle";
 import { checkoutAccountToken, LIVE_STATUSES, startCheckout, verifiedCustomerFor, type BillingTarget, type CheckoutPlan } from "@/lib/billing/subscriptions";
 import { sql } from "@/lib/db";
 import { clientIp, rateLimit, safeRateLimit } from "@/lib/rate-limit";
@@ -213,7 +213,7 @@ export async function accountUnsubscribeAction(_prev: FormState, form: FormData)
     // Unsubscribing stops alerts, not payments: say so when the plan still charges.
     const renewal = planRenewal(acct);
     if (renewal?.chargesAhead) {
-      return { status: "success", message: `You're unsubscribed from alerts. ${renewal.sentence} To stop payments, cancel the plan under “Cancel or manage billing”.` };
+      return { status: "success", message: `You're unsubscribed from alerts. ${renewal.sentence} To stop payments, use “Cancel plan”.` };
     }
     return { status: "success", message: "You're unsubscribed. We won't email you again." };
   });
@@ -245,12 +245,14 @@ async function openPortal(target: BillingTarget): Promise<FormState> {
   if (limit === "limited") return { status: "error", message: "Too many attempts. Please try again later." };
   let url: string;
   try {
-    const customerId = await verifiedCustomerFor(target);
+    // One time budget for every Paddle call below (at most ~3 s each, 7 s in all): the visitor is waiting.
+    const budget = userPaddleBudget();
+    const customerId = await verifiedCustomerFor(target, budget);
     if (!customerId) {
       const mail = siteConfig.contactEmail;
       return { status: "error", message: `We couldn't open billing for this address. Please email us${mail ? ` at ${mail}` : ""} and we'll help.` };
     }
-    url = await createPortalSession(customerId, target.paddle_subscription_id);
+    url = await createPortalSession(customerId, target.paddle_subscription_id, budget);
   } catch (e) {
     console.error("portal session failed", (e as Error).message);
     return { status: "error", message: "We couldn't open billing just now. Please try again in a minute." };
@@ -258,7 +260,7 @@ async function openPortal(target: BillingTarget): Promise<FormState> {
   redirect(url); // outside try: redirect() works by throwing
 }
 
-/** "Cancel or manage billing": sends the customer to a fresh Paddle customer portal session. */
+/** "Manage billing": sends the customer to a fresh Paddle customer portal session (its overview). "Cancel plan" is ./cancel-actions.ts. */
 export async function portalAction(_prev: FormState, form: FormData): Promise<FormState> {
   const acct = await orError("portal", accountFrom(form));
   if (acct === "error") return { status: "error", message: SERVER_ERROR };

@@ -52,17 +52,22 @@ export function joinNames(names: string[]): string {
 }
 
 /**
- * "One email instead of checking IOM, WHO, UNESCO and 117 other career sites." from the coverage
- * (three names, then the number of the others); a plain line without numbers when the coverage
- * isn't shown (fewer than COVERAGE_MIN_ORGS organizations).
+ * "One email with the new vacancies we find from IOM, WHO, UNESCO and 117 other organizations, so
+ * you check fewer career sites." from the coverage (three names, then the number of the others); a
+ * plain line without numbers when the coverage isn't shown (fewer than COVERAGE_MIN_ORGS
+ * organizations). It never says every vacancy: our sources may not carry all of an employer's posts.
  */
 export function oneEmailLine(c: Coverage | null): string {
-  if (!c || !c.names.length) return "One email instead of checking each employer's career site.";
+  const tail = "so you check fewer career sites.";
+  if (!c || !c.names.length) return `One email with the new vacancies we find, ${tail}`;
   const names = c.names.slice(0, 3);
   const others = c.count - names.length;
-  if (others < 1) return `One email instead of checking the career sites of ${joinNames(names)}.`;
-  return `One email instead of checking ${names.join(", ")} and ${others.toLocaleString("en-US")} other career ${others === 1 ? "site" : "sites"}.`;
+  if (others < 1) return `One email with the new vacancies we find from ${joinNames(names)}, ${tail}`;
+  return `One email with the new vacancies we find from ${names.join(", ")} and ${others.toLocaleString("en-US")} other ${others === 1 ? "organization" : "organizations"}, ${tail}`;
 }
+
+/** What the site doesn't promise (the pricing FAQ and /about): our sources may not carry every vacancy of an employer. */
+export const COVERAGE_CAVEAT = "We list the vacancies our sources publish, which may not be all of an organization's vacancies. For a specific employer, also check its own careers site.";
 
 /** Shared by everything in one render (the pricing page asks twice). */
 export const coverage = cache(async (): Promise<Coverage | null> => {

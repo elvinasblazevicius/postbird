@@ -56,7 +56,7 @@ export default async function AlertsPage({ searchParams }: Props) {
         <PageHeader
           title="Free weekly job email"
           crumbs={[{ href: "/", label: "Home" }, { href: "/alerts", label: "Weekly email" }]}
-          intro="Every Monday, the past week's new vacancies that match your search, each linked to the employer's own website. Free, with no card and no account. If nothing new matches, we don't send anything that week."
+          intro="Every Monday, the past week's new vacancies that match your search. Free, with no card and no account. If nothing new matches, we don't send anything that week."
         />
         <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1.2fr_1fr] lg:gap-12">
           <section className="max-w-xl" aria-labelledby="free-h">
@@ -65,7 +65,7 @@ export default async function AlertsPage({ searchParams }: Props) {
               <FreeWeeklyForm
                 source={search ? "search-weekly" : "alerts-page"}
                 search={search ?? undefined}
-                watch={<WatchFields search={search} searchLabel={searchLabel} hint="Leave these empty to get the week's newest vacancies. The weekly email follows one search; you can change it later." />}
+                watch={<WatchFields search={search} searchLabel={searchLabel} resetHref="/alerts#alert-signup" hint="Leave these empty to get the week's newest vacancies. The weekly email follows one search; you can change it later." />}
               />
             </div>
           </section>
@@ -109,7 +109,7 @@ export default async function AlertsPage({ searchParams }: Props) {
       <div className="mx-auto grid max-w-6xl gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[1.2fr_1fr]">
         <div className="max-w-xl">
           <div id="alert-signup" className="scroll-mt-24">
-            <PremiumInterestForm source="alerts-page" search={search ?? undefined} watch={<WatchFields search={search} searchLabel={searchLabel} />} />
+            <PremiumInterestForm source="alerts-page" search={search ?? undefined} watch={<WatchFields search={search} searchLabel={searchLabel} resetHref="/alerts#alert-signup" />} />
           </div>
         </div>
         <div className="rounded-2xl border border-rule bg-candy-soft p-6">

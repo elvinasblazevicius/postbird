@@ -80,12 +80,38 @@ describe.skipIf(!TEST_DB)("several values per filter, and typos (database)", () 
     expect(await titles({ q: "procurment" })).toEqual(["Procurement Specialist"]);
   });
 
-  it("suggests the closest word for a misspelt search", async () => {
-    if (!trgm) return;
+  it("suggests the closest word for a misspelt search (with or without pg_trgm: computed in the app)", async () => {
+    jobs.resetSuggestionVocabulary();
     expect(await jobs.searchSuggestion("finanse")).toEqual({ q: "finance", words: ["finance"] });
     expect(await jobs.searchSuggestion("procurment kenya")).toEqual({ q: "procurement kenya", words: ["procurement"] });
     expect(await jobs.searchSuggestion("finance")).toBeNull();
     expect(await jobs.searchSuggestion("qqqqqqq")).toBeNull();
     expect(await jobs.searchSuggestion(undefined)).toBeNull();
+  });
+
+  it("keeps the words in memory: a listing added since shows up only once the cache is renewed", async () => {
+    jobs.resetSuggestionVocabulary();
+    expect(await jobs.searchSuggestion("hydrologst")).toBeNull();
+    const future = new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10);
+    await sql`
+      insert into jobs (slug, title, country_code, location_text, category, apply_url, apply_host, url_hash, deadline)
+      values ('job-hydro', 'Hydrologist', 'KE', 'Nairobi, Kenya', 'environment', 'https://example.org/hydro', 'example.org', 'hash-hydro', ${future})`;
+    try {
+      expect(await jobs.searchSuggestion("hydrologst")).toBeNull(); // still the cached words
+      jobs.resetSuggestionVocabulary();
+      expect(await jobs.searchSuggestion("hydrologst")).toEqual({ q: "hydrologist", words: ["hydrologist"] });
+    } finally {
+      await sql`delete from jobs where slug = 'job-hydro'`;
+      jobs.resetSuggestionVocabulary();
+    }
+  });
+
+  it("computes the same similarity as pg_trgm", async () => {
+    if (!trgm) return; // nothing to compare with
+    const pairs = [["finanse", "finance"], ["procurment", "procurement"], ["economist", "economics"], ["logistcs", "logistics"], ["abc", "xyz"], ["programme", "program"], ["officer", "office"], ["a1b2c3", "a1b2c4"]];
+    for (const [a, b] of pairs) {
+      const [{ s }] = await sql`select pb_similarity(${a}, ${b})::float8 as s`;
+      expect(jobs.trigramSimilarity(jobs.wordTrigrams(a), jobs.wordTrigrams(b))).toBeCloseTo(s, 5);
+    }
   });
 });

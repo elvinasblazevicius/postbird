@@ -10,7 +10,12 @@
  * lock also works through Supabase's transaction pooler, where a session-level
  * lock would not. Migration files must therefore not use statements that
  * can't run inside a transaction (CREATE INDEX CONCURRENTLY, VACUUM, ...);
- * 001–009 don't.
+ * none does.
+ *
+ * Time limits: a statement_timeout set on the database role (README, "Database
+ * time limits") would also cut off a migration that takes longer (an index on a
+ * large table) or waits for the lock. Each transaction therefore turns it off for
+ * itself first (SET LOCAL, which also works through the transaction pooler).
  */
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -19,18 +24,23 @@ import { getSql } from "../src/lib/db";
 /** Advisory lock key for migrations (any constant bigint; only this script uses it). */
 const MIGRATION_LOCK = 4_812_309_117;
 
+/** First statement of every migration transaction: no server-side statement time limit (for this transaction only). */
+const NO_STATEMENT_TIMEOUT = "select set_config('statement_timeout', '0', true)";
+
 async function main() {
   // No client-side query time limit: building an index on a large table may take a while.
   const sql = getSql({ queryTimeout: 0 });
   const dir = path.join(process.cwd(), "db", "migrations");
   const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
   await sql.begin(async (tx) => {
+    await tx.unsafe(NO_STATEMENT_TIMEOUT);
     await tx`select pg_advisory_xact_lock(${MIGRATION_LOCK})`;
     await tx.unsafe("create table if not exists schema_migrations (name text primary key, applied_at timestamptz not null default now())");
   });
   for (const f of files) {
     const name = f.replace(/\.sql$/, "");
     const applied = await sql.begin(async (tx) => {
+      await tx.unsafe(NO_STATEMENT_TIMEOUT);
       await tx`select pg_advisory_xact_lock(${MIGRATION_LOCK})`;
       // Checked under the lock: another migrator may have applied it while this one waited.
       const [done] = await tx`select 1 from schema_migrations where name = ${name}`;

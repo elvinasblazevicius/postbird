@@ -157,22 +157,40 @@ a {
   position: relative;
 }
 
-/* Homepage hero: the dot-matrix world map (public/world-dots.svg), faint, on the deep-blue field. */
-.hero-dots {
-  width: 760px;
-  right: -260px;
-  top: -10px;
+/*
+ * Homepage hero: the postmark again, as a faint cancellation across the deep-blue field (a double
+ * ring with wavy lines running out of it, white at a few per cent, so the white text keeps its
+ * contrast), and an airmail edge (red and white diagonal stripes) along the bottom. No motion.
+ */
+.hero-cancel {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  color: #ffffff;
+  width: 560px;
+  right: -230px;
+  top: -24px;
   opacity: 0.07;
-  -webkit-mask-image: radial-gradient(ellipse 70% 70% at 60% 45%, #000 40%, transparent 85%);
-  mask-image: radial-gradient(ellipse 70% 70% at 60% 45%, #000 40%, transparent 85%);
+  transform: rotate(-7deg);
+  /* The waves fade out before they reach the headline and the search fields. */
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 50%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 50%);
 }
 @media (min-width: 1024px) {
-  .hero-dots {
-    width: 1040px;
-    right: -180px;
-    top: 0;
+  .hero-cancel {
+    width: 860px;
+    right: -120px;
+    top: -10px;
     opacity: 0.09;
   }
+}
+.airmail-edge {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 6px;
+  pointer-events: none;
+  background: repeating-linear-gradient(-45deg, var(--candy) 0 10px, transparent 10px 16px, #ffffff 16px 26px, transparent 26px 32px);
+  opacity: 0.85;
 }
 
 /* Inner page headers: quiet paper band with a hairline, like an institution's
@@ -252,8 +270,9 @@ a {
     font-variant-numeric: lining-nums tabular-nums;
     white-space: nowrap;
   }
+  /* A little smaller than the top line: it sits where the ring curves in, so it must not touch it. */
   .postmark-bottom {
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
     font-weight: 600;
     white-space: nowrap;
   }
@@ -278,6 +297,48 @@ a {
   }
   .postmark-lg .postmark-bottom {
     font-size: 0.8125rem;
+  }
+  /*
+   * The stamp chip in list rows (StampChip in src/components/job-card.tsx): the same double ring
+   * and ink as the round stamp, stretched to a short oval around one line. Never below 12px.
+   */
+  .postmark-chip {
+    position: relative;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3em;
+    padding: 0.2rem 0.6rem 0.15rem;
+    border: 1.5px solid currentColor;
+    border-radius: 9999px;
+    color: var(--postmark);
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+    transform: rotate(-2deg);
+  }
+  .postmark-chip::before {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border: 1px solid currentColor;
+    border-radius: inherit;
+    opacity: 0.45;
+    pointer-events: none;
+  }
+  .postmark-chip.postmark-urgent {
+    color: var(--signal);
+  }
+  .postmark-chip-date {
+    font-family: var(--font-serif);
+    font-size: 0.875rem;
+    font-weight: 600;
+    font-variant-numeric: lining-nums tabular-nums;
+  }
+  .postmark-chip-left {
+    display: inline-flex;
+    gap: 0.3em;
+    font-weight: 600;
   }
   .postmark-waves {
     width: 2.75rem;

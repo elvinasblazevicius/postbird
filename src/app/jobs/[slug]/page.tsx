@@ -13,15 +13,15 @@ import { countryByCode } from "@/config/countries";
 import { LISTING_SETTINGS } from "@/config/import";
 import { applyLinkKind } from "@/lib/apply-link";
 import { displayGrade, isLocalOnly, payScaleFor } from "@/lib/grades";
-import { ORG_TYPES } from "@/config/regions";
+import { ORG_TYPES, regionOf } from "@/config/regions";
 import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
-import { moreInCategory, organizationPostingMix, POSTING_MIX_DAYS, searchJobs, type JobDetail } from "@/lib/jobs";
+import { moreInCategory, organizationPostingMix, POSTING_MIX_DAYS, searchJobs, type JobDetail, type JobListItem } from "@/lib/jobs";
 import { usuallyPosts } from "@/lib/org-profile";
 import { orgInText } from "@/lib/org-names";
 import { applyTarget } from "@/lib/recruitment-system";
 import { extraLocation } from "@/lib/place-text";
 import { titleLanguage } from "@/lib/title-language";
-import { absoluteUrl, categoryName, escapeHtml, jsonLd, deadlineLabel, formatDate, jobPath, locationLabel, NOT_SPECIFIED, siteConfig } from "@/lib/site";
+import { absoluteUrl, categoryName, daysUntil, escapeHtml, jsonLd, deadlineLabel, formatDate, jobPath, locationLabel, NOT_SPECIFIED, siteConfig } from "@/lib/site";
 import { isJobOpen as isOpen, loadJob } from "./job-data";
 
 export const dynamic = "force-dynamic";
@@ -132,6 +132,27 @@ function Languages({ job }: { job: JobDetail }) {
   );
 }
 
+/**
+ * "More in Kenya" (or "More in Africa") for a vacancy page without a description whose category has
+ * nothing else: other open vacancies in the same country, else the same world region, leaving out
+ * this vacancy and those already shown from its organization. Null when there are none.
+ */
+async function nearbyJobs(job: JobDetail, shown: JobListItem[]): Promise<{ place: string; href: string; jobs: JobListItem[] } | null> {
+  const skip = new Set([job.id, ...shown.map((j) => j.id)]);
+  const pick = (items: JobListItem[]) => items.filter((j) => !skip.has(j.id)).slice(0, 4);
+  const country = countryByCode(job.country_code);
+  if (country) {
+    const jobs = pick((await searchJobs({ country: [country.slug] }, 8)).items);
+    if (jobs.length) return { place: country.name, href: `/locations/${country.slug}`, jobs };
+  }
+  const region = regionOf(job.country_code);
+  if (region) {
+    const jobs = pick((await searchJobs({ region: [region.slug] }, 8)).items);
+    if (jobs.length) return { place: region.name, href: `/locations/${region.slug}`, jobs };
+  }
+  return null;
+}
+
 /** One known detail of the vacancy, shown as a row (At a glance), a cell (the facts strip) or inline (a thin page's header). */
 type Detail = { label: string; node: React.ReactNode };
 
@@ -145,15 +166,24 @@ export default async function JobPage({ params }: Props) {
   if (!isOpen(job)) notFound();
 
   const description = hasDescription(job);
-  const [more, orgOpen, mix] = await Promise.all([
+  const empty = { items: [] as JobListItem[], total: 0 };
+  const [more, orgJobs, mix] = await Promise.all([
     moreInCategory(job).catch(() => []),
-    // How many open vacancies the organization has (this one included), for "4 other open vacancies at IOM".
-    job.org_slug ? searchJobs({ org: [job.org_slug] }, 1).then((r) => r.total).catch(() => 0) : Promise.resolve(0),
+    // The organization's newest open vacancies (this one included) and how many it has, for "4 other open vacancies at IOM"
+    // and, on a page without a description, the cards of up to 3 others.
+    job.org_slug ? searchJobs({ org: [job.org_slug] }, 4).catch(() => empty) : Promise.resolve(empty),
     // What the organization usually posts, for pages without a description (src/lib/org-profile.ts).
     !description && job.org_slug ? organizationPostingMix(job.org_slug).catch(() => null) : Promise.resolve(null),
   ]);
+  const orgOpen = orgJobs.total;
+  const orgOthers = orgJobs.items.filter((j) => j.id !== job.id).slice(0, 3);
+  // A page without a description and nothing more in its category: other vacancies in the same country, else the same region.
+  const nearby = !description && !more.length ? await nearbyJobs(job, orgOthers).catch(() => null) : null;
   const ld = jobPostingLd(job);
   const dl = deadlineLabel(job.deadline);
+  // "Closes in 75 days" (never the date again: the stamp beside it shows it).
+  const left = daysUntil(job.deadline);
+  const closesIn = left === null || left < 0 ? null : left === 0 ? "Closes today" : left === 1 ? "Closes tomorrow" : `Closes in ${left} days`;
   const category = categoryBySlug(job.category);
   const where = locationLabel(job);
   const grade = displayGrade(job);
@@ -207,11 +237,12 @@ export default async function JobPage({ params }: Props) {
     <div>
       <div className="flex items-center gap-4">
         <ClosingPostmark deadline={job.deadline} size="lg" waves />
-        <div className="min-w-0 text-sm leading-snug">
-          <p className="font-medium text-ink">{formatDate(job.deadline)}</p>
-          {dl && !dl.urgent && /in \d/.test(dl.text) ? <p className="text-slate">{dl.text}</p> : null}
-          <a href={`/api/calendar/${job.id}`} className="mt-1.5 inline-block font-medium text-accent underline underline-offset-2" rel="nofollow">Add to calendar</a>
-        </div>
+        {/* The stamp already shows the date: beside it, only how long is left and the calendar link. */}
+        <p className="min-w-0 text-sm leading-snug">
+          {closesIn ? <span className={`font-medium ${dl?.urgent ? "text-signal" : "text-ink"}`}>{closesIn}</span> : null}
+          {closesIn ? <span aria-hidden="true" className="text-slate">{" · "}</span> : null}
+          <a href={`/api/calendar/${job.id}`} className="inline-block font-medium text-accent underline underline-offset-2" rel="nofollow">Add to calendar</a>
+        </p>
       </div>
       <p className="mt-3 text-xs leading-relaxed text-slate">
         Check the time zone in the posting: deadlines are often set in the duty station&apos;s or headquarters&apos; local time.
@@ -266,28 +297,177 @@ export default async function JobPage({ params }: Props) {
   ] as (Detail | null)[]).filter((d): d is Detail => d !== null);
   // A page without a description and with three details or fewer: they go in the header, under the title, instead of a short list of their own.
   const thin = !description && details.length <= 3;
-  const employerBlock = typePage || usually ? (
-    <section aria-labelledby="employer-heading" className="mt-6">
-      <h2 id="employer-heading" className="text-[1.15rem] font-semibold leading-tight text-ink">About {orgRef ?? job.org_name ?? "the employer"}</h2>
-      <dl className="mt-2 space-y-2 text-[0.95rem]">
-        {typePage ? (
-          <div className="flex flex-wrap gap-x-2">
-            <dt className="text-slate">Employer type</dt>
-            <dd><Link href={typePage.path} className="text-accent underline">{typePage.label}</Link></dd>
-          </div>
-        ) : null}
-        {usually ? (
-          <div className="flex flex-wrap gap-x-2">
-            <dt className="text-slate">Usually posts</dt>
-            <dd className="text-ink">
-              {usually.charAt(0).toUpperCase() + usually.slice(1)}
-              <span className="block text-xs text-slate">From its listings of the past {Math.round(POSTING_MIX_DAYS / 30)} months</span>
-            </dd>
-          </div>
-        ) : null}
-      </dl>
-    </section>
+
+  const crumbs = (
+    <Breadcrumbs
+      back={{ href: "/jobs", label: "Jobs" }}
+      items={[
+        { href: "/", label: "Home" },
+        { href: "/jobs", label: "Jobs" },
+        ...(job.org_slug ? [{ href: `/organizations/${job.org_slug}`, label: job.org_short ?? job.org_name ?? "Organization" }] : []),
+        { href: canonical, label: job.title.length > 48 ? job.title.slice(0, 46) + "…" : job.title },
+      ]}
+    />
+  );
+  const tags = job.is_demo || job.is_remote ? (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {job.is_demo ? <Tag tone="demo">Demo data — not a real vacancy</Tag> : null}
+      {job.is_remote ? <Tag tone="remote">Remote / home-based</Tag> : null}
+    </div>
   ) : null;
+  const tools = (
+    <div className="mt-4 flex flex-wrap items-center gap-2">
+      <SaveButton job={{ id: job.id, path: canonical, title: job.title, org: job.org_name }} />
+      <ShareButton url={absoluteUrl(canonical)} title={job.title} />
+    </div>
+  );
+  const place = where !== NOT_SPECIFIED ? (
+    <>
+      {/* Inline, so the published extra ("with frequent travel to the region") wraps as text on phones. */}
+      <Flag code={job.country_code} className="mr-1.5 align-[-0.1em] shadow-[0_0_0_1px_rgba(14,31,61,0.15)]" />
+      {where}
+      {publishedPlace ? <span className="text-sm"> ({publishedPlace})</span> : null}
+    </>
+  ) : null;
+  const alertLink = (
+    <p className="flex items-start gap-2 text-sm">
+      <svg viewBox="0 0 16 16" className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true"><path d="M8 2a4 4 0 0 0-4 4v2.5L2.5 11h11L12 8.5V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
+      {siteConfig.freeWeeklyEmail ? (
+        <Link href={alertHref} className="font-medium text-accent underline-offset-2 hover:underline">
+          Get new {categoryPhrase(job.category)}vacancies in a free weekly email
+        </Link>
+      ) : (
+        <TrackedLink href={alertHref} event="premium_cta_click" source="job-similar" className="font-medium text-accent underline-offset-2 hover:underline">
+          Get new {categoryPhrase(job.category)}vacancies by email
+        </TrackedLink>
+      )}
+    </p>
+  );
+  const updated = <>Listing last updated from our source {formatDate(job.last_seen_at)}.</>;
+  const stickyApply = (
+    <div className="sticky bottom-0 z-30 -mx-4 flex items-center gap-3 border-t border-rule bg-paper/95 px-4 py-3 backdrop-blur lg:hidden">
+      {dl ? <p className={`shrink-0 text-sm ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>{dl.text}</p> : null}
+      <div className="min-w-0 flex-1">{applyButton}</div>
+    </div>
+  );
+
+  if (!description) {
+    // ── No description: one centred column. Header (with the employer type folded into its meta), the
+    // key facts, the Apply card, then the employer's other vacancies and more in the category. ──
+    const sectionHeading = "text-[1.3rem] font-semibold leading-tight text-ink";
+    return (
+      <>
+        {ld ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(ld) }} /> : null}
+        <TrackOnMount event={{ type: "job_view", jobId: job.id }} />
+
+        <div className="brand-band">
+          <div className="mx-auto max-w-3xl px-4 pb-8 pt-7 sm:px-6">
+            {crumbs}
+            <div className="mt-5 flex gap-4">
+              <OrgBadge name={job.org_name} short={job.org_short} size="lg" />
+              <div className="min-w-0">
+                <h1 lang={lang?.code} className="text-[1.75rem] font-semibold leading-tight text-ink sm:text-[2.3rem]">{job.title}</h1>
+                <p className="mt-2 text-lg text-ink">
+                  {job.org_slug ? <Link href={`/organizations/${job.org_slug}`} className="text-accent hover:underline">{job.org_name}</Link> : <span className="text-slate">Organization not in our source</span>}
+                  {typePage ? (
+                    <span className="text-[0.95rem] text-slate">
+                      <span aria-hidden="true">{" · "}</span>
+                      <span className="sr-only">, </span>
+                      <Link href={typePage.path} className="text-slate underline decoration-rule underline-offset-2 hover:text-accent">{typePage.label}</Link>
+                    </span>
+                  ) : null}
+                </p>
+                {place ? <p className="mt-1 text-slate">{place}</p> : null}
+                {thin && details.length ? (
+                  <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[0.95rem]">
+                    {details.map((d) => (
+                      <div key={d.label} className="flex flex-wrap gap-x-1.5">
+                        <dt className="text-slate">{d.label}</dt>
+                        <dd className="text-ink">{d.node}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : null}
+                {tags}
+                {tools}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+          {!thin ? (
+            <section aria-labelledby="facts-heading">
+              <h2 id="facts-heading" className={sectionHeading}>Key facts</h2>
+              <dl className="mt-3 divide-y divide-rule border-y border-rule">
+                {details.map((d) => <GlanceRow key={d.label} label={d.label}>{d.node}</GlanceRow>)}
+              </dl>
+            </section>
+          ) : (
+            <h2 id="facts-heading" className="sr-only">Vacancy details</h2>
+          )}
+
+          <section aria-label="Closing date and how to apply" className={`${thin ? "" : "mt-8"} rounded-xl border border-rule bg-paper p-5`}>
+            {deadlineBlock}
+            <div className="mt-4">{applyButton}</div>
+            {applyNotes}
+            <p className="mt-3 text-sm text-slate">
+              Full details are on the{" "}
+              <a href={job.apply_url} target="_blank" rel="nofollow noopener noreferrer" className="text-accent underline">
+                employer&apos;s page<span className="sr-only"> (opens in a new tab)</span>
+              </a>
+              .
+            </p>
+            <p className="mt-3 border-t border-rule pt-3 text-xs leading-relaxed text-slate">{updated}</p>
+          </section>
+
+          {usually ? (
+            <section aria-labelledby="employer-heading" className="mt-8">
+              <h2 id="employer-heading" className={sectionHeading}>About {orgRef ?? job.org_name ?? "the employer"}</h2>
+              <p className="mt-2 text-[0.95rem] text-ink">
+                Usually posts {usually}.
+                <span className="block text-xs text-slate">From its listings of the past {Math.round(POSTING_MIX_DAYS / 30)} months</span>
+              </p>
+            </section>
+          ) : null}
+
+          {isEuInstitution(job.org_type) ? <EpsoBook className="mt-10" source="job-page" /> : null}
+
+          {orgOthers.length ? (
+            <section className="mt-10" aria-labelledby="org-more-heading">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <h2 id="org-more-heading" className={sectionHeading}>More at {orgRef ?? job.org_name}</h2>
+                {otherAtOrg > orgOthers.length && job.org_slug ? (
+                  <Link href={`/organizations/${job.org_slug}`} className="text-[0.95rem] font-medium text-accent underline-offset-2 hover:underline">
+                    All {otherAtOrg.toLocaleString("en-US")} others
+                  </Link>
+                ) : null}
+              </div>
+              <div className="mt-3"><JobList jobs={orgOthers} /></div>
+            </section>
+          ) : null}
+
+          {more.length && category ? (
+            <section className="mt-10" aria-labelledby="more-heading">
+              <h2 id="more-heading" className={sectionHeading}>More in {category.name}</h2>
+              <div className="mt-3"><JobList jobs={more} /></div>
+            </section>
+          ) : nearby ? (
+            <section className="mt-10" aria-labelledby="more-heading">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <h2 id="more-heading" className={sectionHeading}>More in {nearby.place}</h2>
+                <Link href={nearby.href} className="text-[0.95rem] font-medium text-accent underline-offset-2 hover:underline">All in {nearby.place}</Link>
+              </div>
+              <div className="mt-3"><JobList jobs={nearby.jobs} /></div>
+            </section>
+          ) : null}
+
+          {/* No sticky Apply bar here: the Apply card is right under the header. */}
+          <div className="mt-8">{alertLink}</div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -296,15 +476,7 @@ export default async function JobPage({ params }: Props) {
 
       <div className="brand-band">
         <div className="mx-auto max-w-6xl px-4 pb-8 pt-7 sm:px-6">
-          <Breadcrumbs
-            back={{ href: "/jobs", label: "Jobs" }}
-            items={[
-              { href: "/", label: "Home" },
-              { href: "/jobs", label: "Jobs" },
-              ...(job.org_slug ? [{ href: `/organizations/${job.org_slug}`, label: job.org_short ?? job.org_name ?? "Organization" }] : []),
-              { href: canonical, label: job.title.length > 48 ? job.title.slice(0, 46) + "…" : job.title },
-            ]}
-          />
+          {crumbs}
           <div className="mt-5 flex gap-4">
             <OrgBadge name={job.org_name} short={job.org_short} size="lg" />
             <div className="min-w-0">
@@ -312,34 +484,9 @@ export default async function JobPage({ params }: Props) {
               <p className="mt-2 text-lg text-ink">
                 {job.org_slug ? <Link href={`/organizations/${job.org_slug}`} className="text-accent hover:underline">{job.org_name}</Link> : <span className="text-slate">Organization not in our source</span>}
               </p>
-              {where !== NOT_SPECIFIED ? (
-                <p className="mt-1 text-slate">
-                  {/* Inline, so the published extra ("with frequent travel to the region") wraps as text on phones. */}
-                  <Flag code={job.country_code} className="mr-1.5 align-[-0.1em] shadow-[0_0_0_1px_rgba(14,31,61,0.15)]" />
-                  {where}
-                  {publishedPlace ? <span className="text-sm"> ({publishedPlace})</span> : null}
-                </p>
-              ) : null}
-              {thin && details.length ? (
-                <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[0.95rem]">
-                  {details.map((d) => (
-                    <div key={d.label} className="flex flex-wrap gap-x-1.5">
-                      <dt className="text-slate">{d.label}</dt>
-                      <dd className="text-ink">{d.node}</dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : null}
-              {job.is_demo || job.is_remote ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {job.is_demo ? <Tag tone="demo">Demo data — not a real vacancy</Tag> : null}
-                  {job.is_remote ? <Tag tone="remote">Remote / home-based</Tag> : null}
-                </div>
-              ) : null}
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <SaveButton job={{ id: job.id, path: canonical, title: job.title, org: job.org_name }} />
-                <ShareButton url={absoluteUrl(canonical)} title={job.title} />
-              </div>
+              {place ? <p className="mt-1 text-slate">{place}</p> : null}
+              {tags}
+              {tools}
             </div>
           </div>
         </div>
@@ -347,63 +494,40 @@ export default async function JobPage({ params }: Props) {
 
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_21rem] lg:gap-12">
         <div className="min-w-0">
-          {description ? (
-            <section aria-labelledby="facts-heading">
-              <h2 id="facts-heading" className="sr-only">Vacancy details</h2>
-              <dl className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-xl border border-rule px-4 py-4 sm:grid-cols-3 sm:px-5">
-                {job.deadline ? <Fact label="Closing date" className="lg:hidden">{formatDate(job.deadline)}</Fact> : null}
-                {details.map((d) => <Fact key={d.label} label={d.label}>{d.node}</Fact>)}
-              </dl>
-              {whoCanApply ? (
-                <p className="mt-3 rounded-xl bg-mist px-4 py-3 text-[0.95rem] text-ink">
-                  <span className="font-semibold">Who can apply:</span> {whoCanApply}{" "}
-                  <Link href="/grades" className="text-accent underline">About grades and contract types</Link>
-                </p>
-              ) : null}
-              {detailsLine}
-            </section>
-          ) : thin ? (
-            <section aria-labelledby="facts-heading">
-              <h2 id="facts-heading" className="sr-only">Vacancy details</h2>
-              {detailsLine}
-              {employerBlock}
-            </section>
-          ) : (
-            <section aria-labelledby="facts-heading">
-              <h2 id="facts-heading" className="text-[1.45rem] font-semibold leading-tight text-ink">At a glance</h2>
-              <dl className="mt-3 divide-y divide-rule border-y border-rule">
-                {job.deadline ? <GlanceRow label="Closing date" className="lg:hidden">{formatDate(job.deadline)}</GlanceRow> : null}
-                {details.map((d) => <GlanceRow key={d.label} label={d.label}>{d.node}</GlanceRow>)}
-              </dl>
-              {detailsLine}
-              {employerBlock}
-            </section>
-          )}
+          <section aria-labelledby="facts-heading">
+            <h2 id="facts-heading" className="sr-only">Vacancy details</h2>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-xl border border-rule px-4 py-4 sm:grid-cols-3 sm:px-5">
+              {job.deadline ? <Fact label="Closing date" className="lg:hidden">{formatDate(job.deadline)}</Fact> : null}
+              {details.map((d) => <Fact key={d.label} label={d.label}>{d.node}</Fact>)}
+            </dl>
+            {whoCanApply ? (
+              <p className="mt-3 rounded-xl bg-mist px-4 py-3 text-[0.95rem] text-ink">
+                <span className="font-semibold">Who can apply:</span> {whoCanApply}{" "}
+                <Link href="/grades" className="text-accent underline">About grades and contract types</Link>
+              </p>
+            ) : null}
+            {detailsLine}
+          </section>
 
-          {description ? (
-            <section aria-labelledby="desc-heading" className="mt-8">
-              <h2 id="desc-heading" className="text-[1.45rem] font-semibold leading-tight text-ink">About this vacancy</h2>
-              {job.description_html ? (
-                <div className="prose-job mt-4" dangerouslySetInnerHTML={{ __html: job.description_html }} />
-              ) : (
-                <>
-                  <p className="mt-4 max-w-[68ch] text-[1.0625rem] leading-relaxed text-ink">{job.summary}</p>
-                  <p className="mt-3 text-slate">The full description, requirements and application instructions are on the employer&apos;s own page.</p>
-                </>
-              )}
-            </section>
-          ) : null}
+          <section aria-labelledby="desc-heading" className="mt-8">
+            <h2 id="desc-heading" className="text-[1.45rem] font-semibold leading-tight text-ink">About this vacancy</h2>
+            {job.description_html ? (
+              <div className="prose-job mt-4" dangerouslySetInnerHTML={{ __html: job.description_html }} />
+            ) : (
+              <>
+                <p className="mt-4 max-w-[68ch] text-[1.0625rem] leading-relaxed text-ink">{job.summary}</p>
+                <p className="mt-3 text-slate">The full description, requirements and application instructions are on the employer&apos;s own page.</p>
+              </>
+            )}
+          </section>
 
           <div className="mt-8 rounded-xl border border-rule p-4 lg:hidden">
             {deadlineBlock}
             <div className="mt-4 border-t border-rule pt-1 [&>p:first-child]:mt-3">{applyNotes}</div>
-            <p className="mt-3 text-xs text-slate">Listing last updated from our source {formatDate(job.last_seen_at)}.</p>
+            <p className="mt-3 text-xs text-slate">{updated}</p>
           </div>
 
-          <div className="sticky bottom-0 z-30 -mx-4 flex items-center gap-3 border-t border-rule bg-paper/95 px-4 py-3 backdrop-blur lg:hidden">
-            {dl ? <p className={`shrink-0 text-sm ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>{dl.text}</p> : null}
-            <div className="min-w-0 flex-1">{applyButton}</div>
-          </div>
+          {stickyApply}
 
           {isEuInstitution(job.org_type) ? <EpsoBook className="mt-10" source="job-page" /> : null}
 
@@ -423,22 +547,9 @@ export default async function JobPage({ params }: Props) {
             {deadlineBlock}
             <div className="mt-4">{applyButton}</div>
             {applyNotes}
-            <p className="mt-3 border-t border-rule pt-3 text-xs leading-relaxed text-slate">
-              Listing last updated from our source {formatDate(job.last_seen_at)}.
-            </p>
+            <p className="mt-3 border-t border-rule pt-3 text-xs leading-relaxed text-slate">{updated}</p>
           </div>
-          <p className="flex items-start gap-2 px-1 text-sm">
-            <svg viewBox="0 0 16 16" className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true"><path d="M8 2a4 4 0 0 0-4 4v2.5L2.5 11h11L12 8.5V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
-            {siteConfig.freeWeeklyEmail ? (
-              <Link href={alertHref} className="font-medium text-accent underline-offset-2 hover:underline">
-                Get new {categoryPhrase(job.category)}vacancies in a free weekly email
-              </Link>
-            ) : (
-              <TrackedLink href={alertHref} event="premium_cta_click" source="job-similar" className="font-medium text-accent underline-offset-2 hover:underline">
-                Get new {categoryPhrase(job.category)}vacancies by email
-              </TrackedLink>
-            )}
-          </p>
+          <div className="px-1">{alertLink}</div>
         </aside>
       </div>
     </>

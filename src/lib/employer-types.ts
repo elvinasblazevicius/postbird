@@ -24,7 +24,7 @@ export const EMPLOYER_TYPE_PAGES: EmployerTypePage[] = [
     title: "UN jobs",
     label: "UN system",
     metaTitle: "UN jobs: vacancies at UN agencies, funds and programmes",
-    intro: "Vacancies at UN agencies, funds and programmes. Each one links to the agency's own careers site, where you apply.",
+    intro: "Vacancies at UN agencies, funds and programmes.",
     alertNoun: "UN",
   },
   {
@@ -33,7 +33,7 @@ export const EMPLOYER_TYPE_PAGES: EmployerTypePage[] = [
     title: "EU jobs",
     label: "EU institutions",
     metaTitle: "EU jobs: vacancies at EU institutions and agencies",
-    intro: "Vacancies at EU institutions and agencies. Each one links to the institution's own careers page, where you apply.",
+    intro: "Vacancies at EU institutions and agencies.",
     alertNoun: "EU",
   },
   {
@@ -42,7 +42,7 @@ export const EMPLOYER_TYPE_PAGES: EmployerTypePage[] = [
     title: "Development bank jobs",
     label: "Development banks",
     metaTitle: "Development bank jobs: vacancies at development banks and IFIs",
-    intro: "Vacancies at development banks and other international financial institutions. Each one links to the employer's own careers site, where you apply.",
+    intro: "Vacancies at development banks and other international financial institutions.",
     alertNoun: "development bank",
   },
   {
@@ -51,7 +51,7 @@ export const EMPLOYER_TYPE_PAGES: EmployerTypePage[] = [
     title: "NGO jobs",
     label: "NGOs",
     metaTitle: "NGO jobs: vacancies at international NGOs",
-    intro: "Vacancies at international non-governmental organizations. Each one links to the NGO's own careers site, where you apply.",
+    intro: "Vacancies at international non-governmental organizations.",
     alertNoun: "NGO",
   },
   {
@@ -60,7 +60,7 @@ export const EMPLOYER_TYPE_PAGES: EmployerTypePage[] = [
     title: "Jobs at other international organizations",
     label: "Other international organizations",
     metaTitle: "Jobs at other international organizations, outside the UN and EU",
-    intro: "Vacancies at international and intergovernmental organizations outside the UN system and the EU. Each one links to the organization's own careers site, where you apply.",
+    intro: "Vacancies at international and intergovernmental organizations outside the UN system and the EU.",
     alertNoun: "international organization",
   },
 ];

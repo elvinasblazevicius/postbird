@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ALL_CATEGORIES } from "@/config/categories";
 import { IMPORT_SETTINGS } from "@/config/import";
+import { isBillingFlagKind } from "@/lib/billing/statuses";
 import { ADMIN_COOKIE, checkPassword, createAdminSession, isAdminConfigured, revokeAllSessions, verifyAdminSession } from "@/lib/admin-auth";
 import { sql, transaction, type Db } from "@/lib/db";
 import { batchKey, isEmailConfigured, sendBatch, sendEmail, type OutgoingEmail } from "@/lib/email";
@@ -277,7 +278,7 @@ export async function resolveBillingFlagAction(form: FormData): Promise<void> {
   await requireAdmin();
   const subscriptionId = String(form.get("subscription_id") ?? "").slice(0, 100);
   const kind = String(form.get("kind") ?? "");
-  if (/^sub_[a-z\d]{26}$/.test(subscriptionId) && ["trial_blocked", "customer_mismatch", "customer_unverified", "duplicate_subscription", "trial_unconfirmed"].includes(kind)) {
+  if (/^sub_[a-z\d]{26}$/.test(subscriptionId) && isBillingFlagKind(kind)) {
     await sql`update billing_flags set resolved_at = now(), updated_at = now() where subscription_id = ${subscriptionId} and kind = ${kind} and resolved_at is null`;
   }
   revalidatePath("/admin");

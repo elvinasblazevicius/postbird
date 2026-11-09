@@ -66,6 +66,9 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
   const sent: Sent[] = [];
   const paddleCalls: PaddleCall[] = [];
   let paddleDown = false;
+  /** Paddle answers after this long; paddleHangs: it never answers (only the time limit ends the call). */
+  let paddleDelayMs = 0;
+  let paddleHangs = false;
   let eventSeq = 0;
 
   const subEvent = (type: string, data: Record<string, unknown>, occurredAt = new Date().toISOString()) => ({
@@ -113,6 +116,8 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
       if (u.startsWith("https://sandbox-api.paddle.com/")) {
         paddleCalls.push({ method, url: u, body: init?.body ? JSON.parse(String(init.body)) : null });
         expect((init?.headers as Record<string, string>).Authorization).toBe(`Bearer ${API_KEY}`);
+        if (paddleHangs) await new Promise((_, reject) => init!.signal!.addEventListener("abort", () => reject(init!.signal!.reason)));
+        if (paddleDelayMs) await new Promise((r) => setTimeout(r, paddleDelayMs));
         if (paddleDown) return Response.json({ error: { code: "internal_error" } }, { status: 500 });
         const price = u.match(/\/prices\/(pri_\w+)$/)?.[1];
         if (method === "GET" && (price === PRICE_MONTHLY || price === PRICE_QUARTERLY)) return Response.json({ data: catalogPrice(price) });
@@ -148,6 +153,8 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
     paddleCalls.length = 0;
     afterTasks.length = 0;
     paddleDown = false;
+    paddleDelayMs = 0;
+    paddleHangs = false;
   });
 
   it("a new address keeps the trial checkout and Paddle's API isn't called", async () => {
@@ -261,6 +268,61 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
     await sql`update checkout_links set expires_at = now() - interval '1 minute' where used_at is null`;
     expect(await links.findCheckoutLink(token)).toBeNull();
     expect(await links.continueCheckout(token, "monthly")).toMatchObject({ ok: false, used: true });
+  });
+
+  describe("pressing the continue button", () => {
+    const hashOf = async (token: string) => (await import("node:crypto")).createHash("sha256").update(token).digest("hex");
+    let id: number;
+    beforeAll(async () => {
+      [{ id }] = await sql`
+        insert into subscribers (email, status, confirmed_at, billing_status, paddle_subscription_id, trial_ends_at, canceled_at, unsubscribe_token)
+        values ('double@example.org', 'confirmed', '2026-09-20', 'canceled', 'sub_01hv8x29kz0t586xy6zn1a7d0a', '2026-10-15', '2026-10-10', ${tok("double")})
+        returning id::int as id`;
+    });
+    /** Over 5 minutes ago: an earlier checkout no longer counts as open. */
+    const closeOpenCheckouts = () => sql`update paddle_checkouts set created_at = now() - interval '6 minutes' where subscriber_id = ${id}`;
+
+    it("twice at once (a double click) prepares one checkout and one Paddle transaction; the link is used only then", async () => {
+      const token = await links.createCheckoutLink(id, { plan: "monthly", search: null });
+      paddleDelayMs = 150;
+      const results = await Promise.all([links.continueCheckout(token, "monthly"), links.continueCheckout(token, "monthly")]);
+      expect(results.filter((r) => r.ok)).toHaveLength(1);
+      expect(results.find((r) => !r.ok)).toEqual({ ok: false, error: links.LINK_BUSY });
+      expect(paddleCalls.filter((c) => c.method === "POST")).toHaveLength(1);
+      expect((await sql`select count(*)::int as n from paddle_checkouts where subscriber_id = ${id}`)[0].n).toBe(1);
+      const [link] = await sql`select used_at, claim, claimed_at from checkout_links where token_hash = ${await hashOf(token)}`;
+      expect(link.used_at).not.toBeNull();
+      expect(link).toMatchObject({ claim: null, claimed_at: null });
+      expect(await links.continueCheckout(token, "monthly")).toEqual({ ok: false, error: links.LINK_USED, used: true });
+      await closeOpenCheckouts();
+    });
+
+    it("a press whose request died holds the link only for its lease", async () => {
+      const token = await links.createCheckoutLink(id, { plan: "monthly", search: null });
+      await sql`update checkout_links set claim = 'died', claimed_at = now() where token_hash = ${await hashOf(token)}`;
+      expect(await links.continueCheckout(token, "monthly")).toEqual({ ok: false, error: links.LINK_BUSY });
+      expect(paddleCalls).toHaveLength(0);
+      expect(await links.findCheckoutLink(token)).not.toBeNull(); // the page still opens
+      await sql`update checkout_links set claimed_at = now() - make_interval(secs => ${links.LINK_CLAIM_SECONDS + 1}) where token_hash = ${await hashOf(token)}`;
+      expect(await links.continueCheckout(token, "monthly")).toMatchObject({ ok: true, trial: false, transactionId: TXN });
+      await closeOpenCheckouts();
+    });
+
+    it("a Paddle that doesn't answer is given up on within the time limit, and the link stays usable", async () => {
+      const token = await links.createCheckoutLink(id, { plan: "monthly", search: null });
+      paddleHangs = true;
+      const t0 = Date.now();
+      expect(await links.continueCheckout(token, "monthly")).toEqual({ ok: false, error: billing.CHECKOUT_UNAVAILABLE });
+      const took = Date.now() - t0;
+      expect(took).toBeGreaterThanOrEqual(paddle.USER_PADDLE_CALL_MS - 100);
+      expect(took).toBeLessThan(paddle.USER_PADDLE_CALL_MS + 1500);
+      expect(paddleCalls).toHaveLength(1); // the price read; no transaction
+      const [link] = await sql`select used_at, claim from checkout_links where token_hash = ${await hashOf(token)}`;
+      expect(link).toEqual({ used_at: null, claim: null });
+      paddleHangs = false;
+      expect(await links.continueCheckout(token, "monthly")).toMatchObject({ ok: true, transactionId: TXN });
+      await closeOpenCheckouts();
+    }, 10_000);
   });
 
   it("the form gives the same reply for a running plan and a past one; the emails differ", async () => {
@@ -409,7 +471,7 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
     expect(paddleCalls).toHaveLength(0);
     const m = sent.find((x) => x.to === "paying@example.org")!;
     expect(m.subject).toBe("Your link to cancel your Postbird plan");
-    expect(m.text).toContain("Cancel or manage billing");
+    expect(m.text).toContain("Cancel plan");
     expect(m.text).toMatch(/\/account\?t=[0-9a-f]{64}/);
     // A malformed token isn't looked up.
     expect(await actions.unsubscribeCancelLinkAction({ status: "idle", message: "" }, form({ token: "bad\u0000token-xxxxxxxxxxxxxx" })))

@@ -192,7 +192,7 @@ export function accountLinkEmail(opts: { accountUrl: string; unsubscribeUrl: str
   const copy = purpose === "cancel"
     ? {
         subject: `Your link to cancel your ${siteConfig.name} plan`,
-        lead: `Here is the link to your ${siteConfig.name} account. To cancel your plan, open it and choose “Cancel or manage billing”: Paddle, our reseller, shows the cancel option there. You keep alerts until the end of the period you've paid for and aren't charged again.`,
+        lead: `Here is the link to your ${siteConfig.name} account. To cancel your plan, open it and choose “Cancel plan”: it opens the cancel page of Paddle, our reseller. You keep alerts until the end of the period you've paid for and aren't charged again.`,
         button: "Open my account to cancel",
       }
     : purpose === "already"
@@ -203,7 +203,7 @@ export function accountLinkEmail(opts: { accountUrl: string; unsubscribeUrl: str
         }
       : {
           subject: `Your ${siteConfig.name} account link`,
-          lead: `Here is the link to your ${siteConfig.name} account, where you can change your saved searches, choose daily or weekly emails and, if you have a plan, cancel it or manage billing (“Cancel or manage billing”).`,
+          lead: `Here is the link to your ${siteConfig.name} account, where you can change your saved searches, choose daily or weekly emails and, if you have a plan, cancel it (“Cancel plan”) or manage billing.`,
           button: "Open my account",
         };
   const html = layout(
@@ -388,7 +388,7 @@ export function paidConfirmationEmail(opts: {
   const notYou = opts.trialEndsAt
     ? "Didn't start this? Ignore this email and nothing will be charged."
     : "Didn't start this? Cancel the plan from your account, or reply to this email and we'll help.";
-  const cancelLine = "To cancel now, open your account and choose \u201cCancel or manage billing\u201d.";
+  const cancelLine = "To cancel now, open your account and choose \u201cCancel plan\u201d.";
   const html = layout(
     subject,
     `<p style="font-size:16px;line-height:1.6;margin:0 0 16px">${esc(intro)}</p>

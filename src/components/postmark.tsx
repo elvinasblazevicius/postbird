@@ -35,19 +35,25 @@ export function Postmark({ top, main, bottom, urgent = false, size = "sm", waves
 }
 
 /**
- * A closing date as a postmark: "Closes / 12 Nov", with the year under it when it isn't this year,
- * or "in 3 days" (and the closing-soon red) when it is close. Null without a published closing date.
+ * The words of a closing-date postmark: "Closes / 12 Nov", with the year under it when it isn't
+ * this year, or "in 3 days" (and the closing-soon red) when it is close. The large stamp (and the
+ * share image, src/lib/og.tsx) always shows the year. Null without a published closing date.
  */
-export function ClosingPostmark({ deadline, size = "sm", waves = false, className = "" }: { deadline: string | null; size?: "sm" | "lg"; waves?: boolean; className?: string }) {
+export function closingStamp(deadline: string | null, size: "sm" | "lg" = "sm"): { top: string; main: string; bottom: string | null; urgent: boolean } | null {
   if (!deadline) return null;
   const rel = relativeDeadline(deadline);
   const urgent = Boolean(rel?.urgent);
   const short = formatShortDate(deadline);
-  // "12 Jan 2027" → "12 Jan" with "2027" on its own line; a close date needs no year. The large
-  // stamp always shows the year.
+  // "12 Jan 2027" → "12 Jan" with "2027" on its own line; a close date needs no year.
   const m = short.match(/^(\d{1,2} \w{3})(?: (\d{4}))?$/);
   const dayMonth = m ? m[1] : short;
   const year = size === "lg" ? deadline.slice(0, 4) : (m?.[2] ?? null);
-  const bottom = rel && urgent ? rel.text : year;
-  return <Postmark top="Closes" main={dayMonth} bottom={bottom} urgent={urgent} size={size} waves={waves} className={className} />;
+  return { top: "Closes", main: dayMonth, bottom: rel && urgent ? rel.text : year, urgent };
+}
+
+/** A closing date as a postmark (see closingStamp). Null without a published closing date. */
+export function ClosingPostmark({ deadline, size = "sm", waves = false, className = "" }: { deadline: string | null; size?: "sm" | "lg"; waves?: boolean; className?: string }) {
+  const stamp = closingStamp(deadline, size);
+  if (!stamp) return null;
+  return <Postmark top={stamp.top} main={stamp.main} bottom={stamp.bottom} urgent={stamp.urgent} size={size} waves={waves} className={className} />;
 }

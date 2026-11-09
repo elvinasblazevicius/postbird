@@ -317,6 +317,63 @@ describe.skipIf(!TEST_DB)("billing safety (database)", () => {
       await sql`delete from subscribers where email = 'cancel-later@example.org'`;
     });
 
+    it("a failed cancel whose trial then turned into a paid plan is canceled at once, and the flag says to refund", async () => {
+      const subId = "sub_01hv8x29kz0t586xy6zn1a7u12";
+      const r = await trial("converted@example.org", { endsInDays: 1, sub: subId });
+      paddleDown = true;
+      expect((await billing.runBillingSafety() as { unconfirmed: unknown }).unconfirmed).toEqual({ canceled: 0, failed: 1 });
+      const detail = async () => (await sql`select detail, cancel_done_at from billing_flags where subscription_id = ${subId}`)[0];
+      expect((await detail()).detail).toBe(billing.cancelFailedDetail("trial_unconfirmed", "Paddle API returned HTTP 500 (internal_error)"));
+      expect((await detail()).detail).toMatch(/before the trial ends/);
+
+      // The trial ended before the next run (Paddle's event made it active): step 1 no longer sees
+      // it, step 2 retries it. Paddle still down: the flag now says a payment may have been taken.
+      await sql`update subscribers set billing_status = 'active', trial_ends_at = now() - interval '1 hour' where id = ${r.id}`;
+      paddleCalls.length = 0;
+      expect(await billing.runBillingSafety()).toMatchObject({ unconfirmed: { canceled: 0, failed: 0 }, cancelRetries: { canceled: 0, failed: 1 } });
+      expect(paddleCalls[0]).toBe(`POST /subscriptions/${subId}/cancel`);
+      expect((await detail()).detail).toMatch(/^Cancel in Paddle failed .*a payment may already have been taken.*refund/);
+
+      // Paddle answers: canceled at once; the flag says to refund the payment.
+      paddleDown = false;
+      paddleCalls.length = 0;
+      expect(await billing.runBillingSafety()).toMatchObject({ cancelRetries: { canceled: 1, failed: 0 } });
+      expect(paddleCalls).toEqual([`POST /subscriptions/${subId}/cancel`]);
+      const done = await detail();
+      expect(done.detail).toBe(billing.UNCONFIRMED_DETAIL.convertedDone);
+      expect(done.cancel_done_at).not.toBeNull();
+      // Done: not tried again.
+      paddleCalls.length = 0;
+      expect(await billing.runBillingSafety()).toMatchObject({ cancelRetries: { canceled: 0, failed: 0 } });
+      expect(paddleCalls).toEqual([]);
+      await sql`delete from subscribers where id = ${r.id}`;
+    });
+
+    it("a failed cancel is not retried once the owner confirmed the address, or once the subscription stopped running", async () => {
+      const confirmedSub = "sub_01hv8x29kz0t586xy6zn1a7u13", endedSub = "sub_01hv8x29kz0t586xy6zn1a7u14";
+      const a = await trial("confirmed-late@example.org", { endsInDays: 1, sub: confirmedSub });
+      const b = await trial("ended-early@example.org", { endsInDays: 1, sub: endedSub });
+      paddleDown = true;
+      expect((await billing.runBillingSafety() as { unconfirmed: unknown }).unconfirmed).toEqual({ canceled: 0, failed: 2 });
+      paddleDown = false;
+      // The owner confirmed one (the plan is theirs now); the other ended in Paddle after its trial.
+      await sql`update subscribers set status = 'confirmed', confirmed_at = now(), billing_status = 'active' where id = ${a.id}`;
+      await sql`update subscribers set billing_status = 'canceled', trial_ends_at = now() - interval '1 hour' where id = ${b.id}`;
+      paddleCalls.length = 0;
+      expect(await billing.runBillingSafety()).toMatchObject({ unconfirmed: { canceled: 0, failed: 0 }, cancelRetries: { canceled: 0, failed: 0 } });
+      expect(paddleCalls).toEqual([]);
+      const flags = await sql`select subscription_id, detail, resolved_at is not null as resolved from billing_flags where subscription_id in (${confirmedSub}, ${endedSub}) order by subscription_id`;
+      expect(flags).toEqual([
+        { subscription_id: confirmedSub, detail: billing.UNCONFIRMED_DETAIL.confirmed, resolved: true },
+        { subscription_id: endedSub, detail: billing.UNCONFIRMED_DETAIL.ended, resolved: false },
+      ]);
+      const [{ updated_at }] = await sql`select updated_at from billing_flags where subscription_id = ${endedSub}`;
+      await billing.runBillingSafety();
+      expect((await sql`select updated_at from billing_flags where subscription_id = ${endedSub}`)[0].updated_at).toEqual(updated_at);
+      await sql`delete from subscribers where id in (${a.id}, ${b.id})`;
+      await sql`delete from billing_flags where subscription_id in (${confirmedSub}, ${endedSub})`;
+    });
+
     it("gets the confirmation email again on day 3 and day 10 of the trial, once each, with its own key", async () => {
       // Day 3.5 of the trial; the first email went out when the trial started.
       const r = await trial("resend@example.org", { endsInDays: 10.5, sub: "sub_01hv8x29kz0t586xy6zn1a7u21", confirmSentDaysAgo: 3.5 });
@@ -567,7 +624,10 @@ describe.skipIf(!TEST_DB)("billing safety (database)", () => {
       const heartbeat = await import("@/lib/heartbeat");
       const { GET: health } = await import("@/app/api/health/route");
       await sql`delete from settings where key in (${heartbeat.DAILY_JOB_KEY}, ${heartbeat.BILLING_SAFETY_KEY})`;
-      expect((await (await health()).json()).dailyJobFresh).toBe(false);
+      // No run yet: 503 for a plain status monitor, with the same JSON.
+      const before = await health();
+      expect(before.status).toBe(503);
+      expect(await before.json()).toMatchObject({ ok: true, dailyJobFresh: false });
       expect(await heartbeat.readDailyJob()).toEqual({ at: null, billing: null });
 
       process.env.CRON_SECRET = "test-cron-secret-0123456789abcdef";
@@ -582,12 +642,16 @@ describe.skipIf(!TEST_DB)("billing safety (database)", () => {
       const job = await heartbeat.readDailyJob();
       expect(heartbeat.dailyJobFresh(job.at)).toBe(true);
       expect(job.billing).toMatchObject({ unconfirmed: { canceled: 0, failed: 0 } });
-      const body = await (await health()).json();
+      const fresh = await health();
+      expect(fresh.status).toBe(200);
+      const body = await fresh.json();
       expect(body.dailyJobFresh).toBe(true);
       expect(JSON.stringify(body)).not.toMatch(/unconfirmed|cancel/);
-      // Over 26 hours without a run: stale.
+      // Over 26 hours without a run: stale, 503.
       await sql`update settings set value = ${new Date(Date.now() - 27 * 3600_000).toISOString()} where key = ${heartbeat.DAILY_JOB_KEY}`;
-      expect((await (await health()).json()).dailyJobFresh).toBe(false);
+      const stale = await health();
+      expect(stale.status).toBe(503);
+      expect((await stale.json()).dailyJobFresh).toBe(false);
     });
   });
 

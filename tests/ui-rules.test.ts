@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import siteConfig from "@site-config";
 import { displayGrade, GENERAL_SERVICE_TITLE_SQL, gradeGroupOf, isLocalOnly, isLocalOnlyTitle, LOCAL_ONLY_TITLE_SQL, NATIONAL_OFFICER_TITLE_SQL, PROFESSIONAL_TITLE_SQL, titleGradeGroup } from "@/lib/grades";
-import { planDescription, trialLine, RENEWS } from "@/lib/early-access-copy";
+import { planDescription, TRIAL_TERMS, RENEWS } from "@/lib/early-access-copy";
 import { welcomeEmail } from "@/lib/email-templates";
 import { searchFromSignupForm } from "@/lib/saved-searches";
 import { foldText, interpretQuery, orgNamesForTerm, searchTerms } from "@/lib/search-intent";
@@ -148,6 +148,16 @@ describe("title language", () => {
     expect(titleLanguage("مسؤول برامج")?.code).toBe("ar");
   });
 
+  it("recognises survey and technical titles, using accents as extra evidence", () => {
+    expect(titleLanguage("Enumerador/a – Encuesta de hogares")?.code).toBe("es");
+    expect(titleLanguage("Técnico/a de Protección")?.code).toBe("es");
+    expect(titleLanguage("Chargé(e) des enquêtes")?.code).toBe("fr");
+    // One word shared by Spanish and Portuguese, with an accent both use: still unclear.
+    expect(titleLanguage("Técnico")).toBeNull();
+    // An English word wins over accents.
+    expect(titleLanguage("Técnico Officer")).toBeNull();
+  });
+
   it("leaves English and unclear titles alone", () => {
     for (const t of ["Programme Officer", "Data Officer", "Senior Programme Manager", "Oficial de Programa", "Consultant national", "Associate Expert"]) {
       expect(titleLanguage(t), t).toBeNull();
@@ -181,8 +191,8 @@ describe("dates and paid-alert copy", () => {
     expect(formatShortDate("2027-01-15", now)).toBe("15 Jan 2027");
   });
 
-  it("puts the renewal in the trial line", () => {
-    expect(trialLine()).toContain(`Your plan ${RENEWS} until you cancel`);
+  it("puts the renewal in the trial terms", () => {
+    expect(TRIAL_TERMS).toContain(`Your plan ${RENEWS} until you cancel`);
   });
 
   it("spells out the charge and links the refund policy in the welcome email", () => {

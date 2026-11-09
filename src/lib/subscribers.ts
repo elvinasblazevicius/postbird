@@ -8,6 +8,7 @@ import { takeDailyQuota } from "@/lib/rate-limit";
 import { replaceWithWeeklySearch } from "@/lib/saved-searches";
 import { storeMarkerFingerprint, writeTrialMarkers } from "@/lib/billing/trial-markers";
 import { sharedSecret } from "@/lib/server-secret";
+import { ALERT_STATUSES, LIVE_STATUSES } from "@/lib/billing/statuses";
 import type { BillingStatus, PlanInterval } from "@/lib/billing/subscriptions";
 
 export type SignupKind = "alerts" | "waitlist";
@@ -171,8 +172,8 @@ export async function confirmSubscriber(t: unknown): Promise<ConfirmResult> {
     from prev
     where subscribers.id = prev.id
     returning subscribers.id::int as id, premium_waitlist, wants_alerts, weekly_email,
-              billing_status in ('trialing', 'active') as paid_plan,
-              billing_status in ('trialing', 'active', 'past_due', 'paused') as plan_live,
+              billing_status = any(${ALERT_STATUSES}) as paid_plan,
+              billing_status = any(${LIVE_STATUSES}) as plan_live,
               -- Only a trial the daily job canceled: one canceled in Paddle by someone also leaves unconfirmed_trial_sub set.
               (billing_status = 'canceled' and coalesce(subscribers.paddle_subscription_id = subscribers.unconfirmed_trial_sub, false)
                and exists (select 1 from billing_flags f where f.subscription_id = subscribers.paddle_subscription_id and f.kind = 'trial_unconfirmed')) as trial_canceled,

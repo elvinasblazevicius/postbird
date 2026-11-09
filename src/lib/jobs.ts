@@ -559,37 +559,95 @@ const CATEGORY_VOCABULARY = [...new Set(ALL_CATEGORIES.flatMap((c) => [c.name, .
   .filter((w) => w.length >= TYPO_MIN_LENGTH))];
 
 /**
+ * pg_trgm's trigrams of one word of letters and digits: the word padded with two spaces in front
+ * and one behind, every run of three characters, each once. Pure, so it is unit-tested.
+ */
+export function wordTrigrams(word: string): Set<string> {
+  const padded = `  ${word.toLowerCase()} `;
+  const out = new Set<string>();
+  for (let i = 0; i + 3 <= padded.length; i++) out.add(padded.slice(i, i + 3));
+  return out;
+}
+
+/**
+ * pg_trgm's similarity() of two trigram sets: shared trigrams over all distinct trigrams (0 to 1).
+ * For words of letters and digits it is exactly what the database computes. Pure, so it is unit-tested.
+ */
+export function trigramSimilarity(a: Set<string>, b: Set<string>): number {
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  for (const t of a) if (b.has(t)) shared++;
+  return shared / (a.size + b.size - shared);
+}
+
+/** The words "Did you mean …?" corrects towards, with their trigrams. */
+type Vocabulary = { words: Set<string>; trigrams: { word: string; grams: Set<string> }[] };
+
+/** How long one server instance keeps the vocabulary before reading it again (new listings add words). */
+export const SUGGESTION_VOCABULARY_TTL_MS = 10 * 60_000;
+let vocabulary: { at: number; value: Promise<Vocabulary> } | null = null;
+
+/**
+ * The words of every open listing's title plus the category vocabulary (TYPO_MIN_LENGTH - 1 letters
+ * or more), read with ONE query and kept in memory for SUGGESTION_VOCABULARY_TTL_MS per server
+ * instance, so a search that finds nothing costs no scan of the open listings. Calls at the same
+ * moment share one read; a failed read isn't kept.
+ */
+function suggestionVocabulary(now = Date.now()): Promise<Vocabulary> {
+  if (vocabulary && now - vocabulary.at < SUGGESTION_VOCABULARY_TTL_MS) return vocabulary.value;
+  const value = (async () => {
+    const rows = await transaction(async (tx) => await tx<{ w: string }[]>`
+      select distinct w from (
+        select regexp_split_to_table(pb_fold(j.title), '[^a-z0-9]+') as w from jobs j where ${isOpen()}
+      ) x where length(w) >= ${TYPO_MIN_LENGTH - 1}`);
+    const words = new Set([...rows.map((r) => r.w), ...CATEGORY_VOCABULARY.filter((w) => w.length >= TYPO_MIN_LENGTH - 1)]);
+    return { words, trigrams: [...words].map((word) => ({ word, grams: wordTrigrams(word) })) };
+  })();
+  const entry = { at: now, value };
+  vocabulary = entry;
+  value.catch(() => { if (vocabulary === entry) vocabulary = null; });
+  return value;
+}
+
+/** Forgets the cached vocabulary (tests, after changing the listings). */
+export function resetSuggestionVocabulary(): void {
+  vocabulary = null;
+}
+
+/**
  * "Did you mean …?" for a search that matched nothing exactly: each word of the search (of
  * TYPO_MIN_LENGTH letters or more) that is not a word of any open listing's title or of the
- * category vocabulary is replaced by the closest such word (pg_trgm similarity). Returns the
- * corrected search, or null when nothing close was found (or the database has no pg_trgm).
+ * category vocabulary is replaced by the closest such word (pg_trgm's similarity, computed here
+ * over the cached vocabulary; ties go to the alphabetically first word). Returns the corrected
+ * search, or null when nothing close was found.
  */
 export async function searchSuggestion(q: string | undefined): Promise<{ q: string; words: string[] } | null> {
   const text = q ? interpretQuery(q).text : null;
   if (!q || !text) return null;
   const terms = [...new Set(searchWords(text).map(foldText).filter((t) => t.length >= TYPO_MIN_LENGTH && /^[a-z0-9]+$/.test(t)))];
   if (!terms.length) return null;
-  const rows = await transaction(async (tx) => await tx<{ term: string; known: boolean; best: string | null }[]>`
-    with vocab as materialized (
-      select distinct w from (
-        select regexp_split_to_table(pb_fold(j.title), '[^a-z0-9]+') as w from jobs j where ${isOpen()}
-        union all select unnest(${CATEGORY_VOCABULARY}::text[])
-      ) x where length(w) >= ${TYPO_MIN_LENGTH - 1}
-    )
-    select t.term,
-           exists (select 1 from vocab v where v.w = t.term) as known,
-           (select v.w from vocab v where pb_similarity(v.w, t.term) >= ${TYPO_SUGGEST_SIMILARITY}
-             order by pb_similarity(v.w, t.term) desc, v.w limit 1) as best
-    from unnest(${terms}::text[]) as t(term)`);
+  const vocab = await suggestionVocabulary();
   let out = q;
   const words: string[] = [];
-  for (const r of rows) {
-    if (r.known || !r.best || r.best === r.term) continue;
-    const re = new RegExp(`(^|[^\\p{L}\\p{N}])${r.term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^\\p{L}\\p{N}])`, "giu");
-    const next = out.replace(re, `$1${r.best}`);
+  for (const term of terms) {
+    if (vocab.words.has(term)) continue;
+    const grams = wordTrigrams(term);
+    let best: string | null = null;
+    let bestScore = 0;
+    for (const v of vocab.trigrams) {
+      const score = trigramSimilarity(grams, v.grams);
+      if (score < TYPO_SUGGEST_SIMILARITY) continue;
+      if (score > bestScore || (score === bestScore && best !== null && v.word < best)) {
+        best = v.word;
+        bestScore = score;
+      }
+    }
+    if (!best || best === term) continue;
+    const re = new RegExp(`(^|[^\\p{L}\\p{N}])${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^\\p{L}\\p{N}])`, "giu");
+    const next = out.replace(re, `$1${best}`);
     if (next !== out) {
       out = next;
-      words.push(r.best);
+      words.push(best);
     }
   }
   return words.length ? { q: out, words } : null;

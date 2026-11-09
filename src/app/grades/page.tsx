@@ -7,6 +7,13 @@ import { PAY_SOURCES } from "@/lib/grades";
 const TITLE = "UN and international job grades explained";
 const DESCRIPTION = "A plain-English guide to P, D, G and NO grades, service contracts, consultancies, internships, UN Volunteers and EU staff categories.";
 
+/**
+ * Built at deploy without the database, so the header and footer list only the employer types that
+ * always have vacancies; rendered again at most hourly after that, with the real counts (employerNav
+ * in src/components/site-header.tsx).
+ */
+export const revalidate = 3600;
+
 export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,

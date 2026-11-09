@@ -12,6 +12,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { recordEvent } from "@/lib/analytics";
+import { ALERT_STATUSES, BILLING_FLAG_KINDS, LIVE_STATUSES, type BillingFlagKind, type BillingStatus } from "@/lib/billing/statuses";
 import { PADDLE_PRICE_MONTHLY, PADDLE_PRICE_QUARTERLY } from "@/lib/billing/live";
 import {
   cancelSubscriptionNow, getCustomer, getSubscription, isPaddleApiConfigured, isPaddleCustomerId, WEBHOOK_PADDLE_TIMEOUT_MS,
@@ -26,13 +27,10 @@ import { addSavedSearch } from "@/lib/saved-searches";
 import { normalizeEmail } from "@/lib/subscribers";
 
 export type CheckoutPlan = "monthly" | "quarterly";
-export type BillingStatus = "none" | "trialing" | "active" | "past_due" | "paused" | "canceled";
 export type PlanInterval = "month" | "quarter";
 
-/** Statuses that receive alerts. */
-export const ALERT_STATUSES: BillingStatus[] = ["trialing", "active"];
-/** Statuses where a Paddle subscription still exists (not yet canceled). */
-export const LIVE_STATUSES: BillingStatus[] = ["trialing", "active", "past_due", "paused"];
+// Defined once in ./statuses (no imports there, so saved-searches.ts etc. can use them without a cycle).
+export { ALERT_STATUSES, BILLING_FLAG_KINDS, LIVE_STATUSES, type BillingFlagKind, type BillingStatus };
 
 const newToken = () => randomBytes(24).toString("base64url");
 
@@ -431,7 +429,6 @@ async function checkCustomer(sub: PaddleSubscription): Promise<CustomerCheck | n
   return { subscriberId: target.subscriberId, customerId, ...(await verifyCustomerEmail(customerId, row.email, { timeoutMs: WEBHOOK_PADDLE_TIMEOUT_MS })) };
 }
 
-export type BillingFlagKind = "trial_blocked" | "customer_mismatch" | "customer_unverified" | "duplicate_subscription" | "trial_unconfirmed";
 /**
  * Flags whose subscription is canceled in Paddle at once:
  *  trial_blocked           a free trial this address may not have (one per email address);
@@ -466,15 +463,45 @@ export const CANCEL_DETAIL: Record<CancelKind, { pending: string; done: string }
 };
 
 /**
+ * What a trial_unconfirmed flag says once the trial has ended without the cancel going through
+ * (the subscription is active, past due or paused: Paddle may have taken the first payment), and
+ * when the daily job stops retrying it.
+ */
+export const UNCONFIRMED_DETAIL = {
+  /** Canceled after the trial had ended. */
+  convertedDone: "Canceled in Paddle at once: the address was never confirmed, but the trial had already ended, so a payment may have been taken. Refund it in full in Paddle (Transactions → this subscription). No email was sent about it.",
+  /** The owner confirmed the address before the cancel went through: the plan is theirs and keeps running. */
+  confirmed: "Not canceled: the address was confirmed before the cancel went through, so the plan keeps running. Nothing to do.",
+  /** The subscription stopped running (or the address has another one) before the cancel went through. */
+  ended: "No longer retried: this subscription stopped running here (ended in Paddle, or replaced) before the cancel went through. If Paddle took a payment for it (Transactions → this subscription), refund it: the address was never confirmed.",
+} as const;
+
+/** The flag text after a cancel that failed: what is at stake, and that the daily job tries again. */
+export function cancelFailedDetail(kind: CancelKind, message: string, converted = false): string {
+  const failed = `Cancel in Paddle failed (${message}).`;
+  if (kind === "trial_unconfirmed" && converted) {
+    return `${failed} The address was never confirmed and the trial has ended, so a payment may already have been taken. The daily job tries again while the address stays unconfirmed; you can also cancel it by hand in Paddle. Then refund the payment in Paddle (Transactions → this subscription).`.slice(0, 500);
+  }
+  if (kind === "trial_unconfirmed") {
+    return `${failed} The daily job tries again while the address stays unconfirmed; to be sure nothing is charged, you can also cancel it by hand in Paddle before the trial ends. Alerts stay off.`.slice(0, 500);
+  }
+  return `${failed} The daily job tries again; you can also cancel this subscription by hand in Paddle. Alerts stay off.`.slice(0, 500);
+}
+
+/**
  * Cancels a flagged subscription in Paddle at once and records the outcome on
  * its flag (cancel_done_at). A failed cancel is retried by the daily job, so a
  * flagged plan can never quietly turn into a payment. Never throws.
+ * converted (trial_unconfirmed only): the trial already ended, so the flag says a payment may
+ * have been taken and must be refunded.
  */
-export async function cancelFlaggedSubscription(subscriptionId: string, kind: CancelKind, opts: PaddleCallOptions = {}): Promise<boolean> {
+export async function cancelFlaggedSubscription(subscriptionId: string, kind: CancelKind, opts: PaddleCallOptions & { converted?: boolean } = {}): Promise<boolean> {
+  const { converted = false, ...callOpts } = opts;
+  const doneDetail = kind === "trial_unconfirmed" && converted ? UNCONFIRMED_DETAIL.convertedDone : CANCEL_DETAIL[kind].done;
   const done = async () => {
     // first: Paddle confirmed this cancel just now (not an earlier try), so the note below goes out once.
     const [row] = await sql<{ first: boolean; subscriber_id: number | null }[]>`
-      update billing_flags f set detail = ${CANCEL_DETAIL[kind].done}, cancel_done_at = coalesce(f.cancel_done_at, now()), updated_at = now()
+      update billing_flags f set detail = ${doneDetail}, cancel_done_at = coalesce(f.cancel_done_at, now()), updated_at = now()
       from (select subscription_id, kind, cancel_done_at as before from billing_flags
             where subscription_id = ${subscriptionId} and kind = ${kind} for update) p
       where f.subscription_id = p.subscription_id and f.kind = p.kind
@@ -485,16 +512,16 @@ export async function cancelFlaggedSubscription(subscriptionId: string, kind: Ca
   };
   try {
     if (!isPaddleApiConfigured()) throw new Error("PADDLE_API_KEY is not set");
-    await cancelSubscriptionNow(subscriptionId, opts);
+    await cancelSubscriptionNow(subscriptionId, callOpts);
     return await done();
   } catch (e) {
     const msg = (e as Error).message;
     // Already canceled (by hand, or by an earlier try whose answer was lost): nothing left to do.
-    const status = isPaddleApiConfigured() ? await getSubscription(subscriptionId, opts).then((x) => x.status, () => null) : null;
+    const status = isPaddleApiConfigured() ? await getSubscription(subscriptionId, callOpts).then((x) => x.status, () => null) : null;
     if (status === "canceled") return done().catch(() => false);
     console.error(`paddle: flagged subscription (${kind}) not canceled`, msg);
     await sql`
-      update billing_flags set detail = ${`Cancel in Paddle failed (${msg}). The daily job tries again; you can also cancel this subscription by hand in Paddle. Alerts stay off.`.slice(0, 500)}, updated_at = now()
+      update billing_flags set detail = ${cancelFailedDetail(kind, msg, converted)}, updated_at = now()
       where subscription_id = ${subscriptionId} and kind = ${kind}`.catch(() => {});
     return false;
   }
@@ -663,7 +690,7 @@ async function writeSubscription(tx: Tx, sub: PaddleSubscription, b: BillingFiel
     where s.id = prev.id
       and (prev.paddle_subscription_id is distinct from ${sub.id} or s.billing_event_at is null or s.billing_event_at <= ${occurredAt})
       and (prev.paddle_subscription_id is null or prev.paddle_subscription_id = ${sub.id}
-           or prev.billing_status not in ('trialing', 'active', 'past_due', 'paused'))
+           or prev.billing_status <> all(${LIVE_STATUSES}))
     returning prev.paddle_subscription_id as prev_sub, prev.billing_status as prev_status, prev.welcome as prev_welcome,
               s.email, s.status, s.manage_token, s.unsubscribe_token, s.confirm_token, s.attribution, s.trial_ends_at, s.plan_interval`;
   return row ?? null;
@@ -784,17 +811,40 @@ export async function runBillingSafety(limit = 200): Promise<BillingSafetyResult
     if (await cancelFlaggedSubscription(r.sub, "trial_unconfirmed")) unconfirmed.canceled++;
     else unconfirmed.failed++;
   }
+  const triedNow = ending.map((r) => r.sub);
 
-  // 2. Cancels that didn't go through when the webhook asked for them.
+  // 2. Cancels that didn't go through earlier: asked for by the webhook (blocked trials, second
+  // subscriptions), or an unconfirmed trial's cancel that failed (step 1 only looks at trials still
+  // in their trial). The latter is retried while the address stays unconfirmed and the
+  // subscription still runs, in any running status: a trial that turned into a paid plan
+  // meanwhile is canceled at once, and its flag says the payment must be refunded.
   const cancelRetries = { canceled: 0, failed: 0 };
-  const pending = await sql<{ subscription_id: string; kind: CancelKind }[]>`
-    select subscription_id, kind from billing_flags
-    where kind in ('trial_blocked', 'duplicate_subscription') and resolved_at is null and cancel_done_at is null
+  const pending = await sql<{ subscription_id: string; kind: CancelKind; converted: boolean }[]>`
+    select f.subscription_id, f.kind, false as converted, f.updated_at from billing_flags f
+    where f.kind in ('trial_blocked', 'duplicate_subscription') and f.resolved_at is null and f.cancel_done_at is null
+    union all
+    select f.subscription_id, f.kind, s.billing_status <> 'trialing' as converted, f.updated_at
+    from billing_flags f join subscribers s on s.paddle_subscription_id = f.subscription_id
+    where f.kind = 'trial_unconfirmed' and f.resolved_at is null and f.cancel_done_at is null
+      and awaiting_confirmation(s) and s.billing_status = any(${LIVE_STATUSES})
+      and f.subscription_id <> all(${triedNow}::text[])
     order by updated_at limit ${limit}`;
   for (const f of pending) {
-    if (await cancelFlaggedSubscription(f.subscription_id, f.kind)) cancelRetries.canceled++;
+    if (await cancelFlaggedSubscription(f.subscription_id, f.kind, { converted: f.converted })) cancelRetries.canceled++;
     else cancelRetries.failed++;
   }
+  // Unconfirmed-trial cancels that are no longer retried say why: the owner confirmed the address
+  // (nothing to do), or the subscription stopped running here first (check for a payment to refund).
+  await sql`
+    update billing_flags f set
+      detail = case when s.id is not null and not awaiting_confirmation(s) then ${UNCONFIRMED_DETAIL.confirmed} else ${UNCONFIRMED_DETAIL.ended} end,
+      resolved_at = case when s.id is not null and not awaiting_confirmation(s) then now() else null end,
+      updated_at = now()
+    from billing_flags f0 left join subscribers s on s.paddle_subscription_id = f0.subscription_id
+    where f.subscription_id = f0.subscription_id and f.kind = f0.kind
+      and f.kind = 'trial_unconfirmed' and f.resolved_at is null and f.cancel_done_at is null
+      and not (s.id is not null and awaiting_confirmation(s) and s.billing_status = any(${LIVE_STATUSES}))
+      and f.detail is distinct from (case when s.id is not null and not awaiting_confirmation(s) then ${UNCONFIRMED_DETAIL.confirmed} else ${UNCONFIRMED_DETAIL.ended} end)`;
 
   // 3. Customers not checked yet.
   const customers = { verified: 0, mismatch: 0, unverified: 0 };
@@ -842,16 +892,17 @@ export type BillingTarget = {
  * (or not linked because Paddle couldn't be asked) is checked now: through the
  * subscription when no customer is stored. null when there is none, it can't
  * be checked, or it belongs to someone else (then it is unlinked and flagged).
+ * opts: the Paddle time limits (a visitor is waiting: userPaddleBudget()).
  */
-export async function verifiedCustomerFor(s: BillingTarget): Promise<string | null> {
+export async function verifiedCustomerFor(s: BillingTarget, opts: PaddleCallOptions = {}): Promise<string | null> {
   if (s.paddle_customer_id && s.paddle_customer_verified_at) return s.paddle_customer_id;
   if (!isPaddleApiConfigured()) return null;
   let customerId = s.paddle_customer_id;
   if (!customerId && s.paddle_subscription_id && SUB_ID_RE.test(s.paddle_subscription_id)) {
-    customerId = await getSubscription(s.paddle_subscription_id).then((x) => x.customer_id, () => null);
+    customerId = await getSubscription(s.paddle_subscription_id, opts).then((x) => x.customer_id, () => null);
   }
   if (!isPaddleCustomerId(customerId)) return null;
-  const v = await verifyCustomerEmail(customerId, s.email);
+  const v = await verifyCustomerEmail(customerId, s.email, opts);
   if (v.status === "verified") {
     await sql`update subscribers set paddle_customer_id = ${customerId}, paddle_customer_verified_at = now() where id = ${s.id}`;
     if (s.paddle_subscription_id) {

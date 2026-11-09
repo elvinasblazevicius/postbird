@@ -12,8 +12,8 @@ import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { checkoutDoneAction, continueCheckoutAction, startCheckoutAction, type CheckoutState } from "@/app/billing-actions";
 import { PADDLE_CLIENT_TOKEN, PADDLE_ENV, PADDLE_PRICE_MONTHLY, PADDLE_PRICE_QUARTERLY } from "@/lib/billing/live";
 import {
-  CONFIRM_FIRST_DONE, NO_TRIAL_CONSENT, NO_TRIAL_RENEWAL_ACK, noTrialButton, noTrialLine, planOptions, RENEWING, RENEWS, TAX_LINE, TRIAL_CONSENT,
-  TRIAL_CONFIRM_NOTE, TRIAL_RENEWAL_ACK, trialButton, trialLine,
+  CARD_STATEMENT_LINE, CONFIRM_FIRST_DONE, NO_TRIAL_RENEWAL_ACK, noTrialButton, noTrialLine, planOptions, RENEWING, RENEWS, TAX_LINE,
+  TRIAL_CONFIRM_NOTE, TRIAL_RENEWAL_ACK, TRIAL_TERMS, trialButton, trialSummary,
 } from "@/lib/early-access-copy";
 import { AttributionField, consentRegion, uetEvent } from "./ads";
 
@@ -203,27 +203,57 @@ function PlanChoice({ dark, compact, plan, setPlan, locked = false }: { dark: bo
 }
 
 /**
- * The terms, the consent line right under them, the required "renews automatically" checkbox
- * (the browser won't submit the form without it; the button stays enabled), then the button.
+ * The terms, then the required "renews automatically" checkbox (the browser won't submit the form
+ * without it; the button stays enabled; its label is the consent), then the button. With a trial:
+ * one summary line ("$0 today · trial ends … · then … until you cancel"), the renewal and
+ * cancellation facts in view, and the smaller print (tax, address confirmation, one trial per
+ * address, card statement) in a "Details" disclosure.
  * `confirmNote`: the public trial form, where the address still has to be confirmed (TRIAL_CONFIRM_NOTE).
  */
 function TermsAndButton({ dark, trial, plan, trialEnds, busy, label, type = "submit", onClick, confirmNote = false }: {
   dark: boolean; trial: boolean; plan: "monthly" | "quarterly"; trialEnds: string | null; busy: boolean; label: string; type?: "submit" | "button"; onClick?: () => void; confirmNote?: boolean;
 }) {
-  // Never the trial terms for an address that has had a trial before.
-  const bold = trial ? RENEWS : RENEWING;
-  const [before, after = ""] = (trial ? trialLine(plan, trialEnds) : noTrialLine(plan)).split(bold);
   const ackId = useId();
+  const muted = dark ? "text-white/85" : "text-slate";
+  const strong = dark ? "text-white" : "text-ink";
+  const links = (
+    <>
+      <Link href="/terms#subscriptions" className="underline">Subscription terms</Link> ·{" "}
+      <Link href="/privacy" className="underline">Privacy</Link> ·{" "}
+      <Link href="/refunds" className="underline">Refunds</Link>
+    </>
+  );
+  // Bold "renews automatically" / "renewing automatically" wherever the terms say it.
+  const bolded = (text: string, bold: string) => {
+    const [before, after = ""] = text.split(bold);
+    return <>{before}<strong className={strong}>{bold}</strong>{after}</>;
+  };
   return (
     <>
       {/* The terms come before the button, so they are read before starting. */}
-      <p className={`mt-3 text-sm ${dark ? "text-white/85" : "text-slate"}`} aria-live="polite">
-        {before}<strong className={dark ? "text-white" : "text-ink"}>{bold}</strong>{after} {TAX_LINE}{" "}
-        <Link href="/terms#subscriptions" className="underline">Subscription terms</Link> ·{" "}
-        <Link href="/privacy" className="underline">Privacy</Link>
-      </p>
-      <p className={`mt-2 text-xs ${dark ? "text-white/75" : "text-slate"}`}>{trial ? TRIAL_CONSENT : NO_TRIAL_CONSENT}</p>
-      {trial && confirmNote ? <p className={`mt-2 text-xs ${dark ? "text-white/75" : "text-slate"}`}>{TRIAL_CONFIRM_NOTE}</p> : null}
+      {trial ? (
+        <>
+          <p className={`mt-3 text-[0.95rem] font-semibold ${strong}`} aria-live="polite">{trialSummary(plan, trialEnds)}</p>
+          <p className={`mt-1 text-sm ${muted}`}>
+            {bolded(TRIAL_TERMS, RENEWS)} {links}
+          </p>
+        </>
+      ) : (
+        <p className={`mt-3 text-sm ${muted}`} aria-live="polite">
+          {bolded(noTrialLine(plan), RENEWING)} {links}
+        </p>
+      )}
+      <details className={`group/details mt-2 text-xs ${dark ? "text-white/80" : "text-slate"}`}>
+        <summary className={`inline-flex cursor-pointer list-none items-center gap-1 py-1 font-medium underline-offset-2 hover:underline [&::-webkit-details-marker]:hidden ${dark ? "text-white" : "text-accent"}`}>
+          Details
+          <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 transition-transform group-open/details:rotate-180" aria-hidden="true"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+        </summary>
+        <ul className="mt-1 list-disc space-y-1 pl-4">
+          <li>{TAX_LINE}</li>
+          {trial && confirmNote ? <li>{TRIAL_CONFIRM_NOTE}</li> : null}
+          <li>{CARD_STATEMENT_LINE}</li>
+        </ul>
+      </details>
       <div className="mt-3 flex items-start gap-2">
         <input
           id={ackId}

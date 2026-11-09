@@ -84,32 +84,34 @@ export function closingChip(deadline: string | null): { date: string; left: stri
   return { date: `Closes ${formatShortDate(deadline)}`, left, urgent: n <= LISTING_SETTINGS.closingSoonDays };
 }
 
-/** The chip's words: "Closes 12 Nov · 3 days" (read as "Closes 12 Nov, 3 days left"). */
-function ChipText({ chip }: { chip: NonNullable<ReturnType<typeof closingChip>> }) {
+/**
+ * The closing date in a list row as a small inline postmark: the big stamp's ring (a double ring
+ * in the postmark ink, see .postmark-chip in globals.css) around "Closes 12 Nov · 3 days", red
+ * only when it closes within a week. Read as "Closes 12 Nov, 3 days left".
+ */
+function StampChip({ chip }: { chip: NonNullable<ReturnType<typeof closingChip>> }) {
+  const [, label, date] = chip.date.match(/^(Closes) (.*)$/) ?? [null, "", chip.date];
   return (
-    <>
-      {chip.date}
+    <span className={`postmark-chip ${chip.urgent ? "postmark-urgent" : ""}`}>
+      {label ? <span className="postmark-chip-label">{label}</span> : null}
+      <span className="postmark-chip-date">{date}</span>
       {chip.left ? (
-        <>
-          <span aria-hidden="true">{" · "}</span>
+        <span className="postmark-chip-left">
+          <span aria-hidden="true">·</span>
           <span className="sr-only">, </span>
           {chip.left}
           {/^\d/.test(chip.left) ? <span className="sr-only"> left</span> : null}
-        </>
+        </span>
       ) : null}
-    </>
+    </span>
   );
 }
 
-/** Closing date at the right of a list row: a compact chip, red only when it closes within a week. */
+/** Closing date at the right of a list row: the stamp chip, or a quiet note when the source gives none. */
 function DateChip({ deadline }: { deadline: string | null }) {
   const chip = closingChip(deadline);
   if (!chip) return <span className="whitespace-nowrap text-xs text-slate">Closing date not listed</span>;
-  return (
-    <span className={`inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-[0.8rem] font-medium ${chip.urgent ? "bg-signal-bg text-signal" : "bg-mist text-slate"}`}>
-      <ChipText chip={chip} />
-    </span>
-  );
+  return <StampChip chip={chip} />;
 }
 
 /** "New" for a listing posted in the last 48 hours, "3d ago" up to 30 days, nothing after that. */
@@ -193,11 +195,12 @@ export function JobCard({ job, headingLevel = 3, stamp = false }: { job: JobList
               {i < meta.length - 1 ? " " : null}
             </Fragment>
           ))}
-          {/* Phones: the closing date ends the meta line, so the title keeps the row's full width. Glued to the last detail by a no-break space. */}
+          {/* Phones: the closing date ends the meta line, so the title keeps the row's full width. It wraps to its own line when it doesn't fit. */}
           {!stamp && chip ? (
             <span className="sm:hidden">
-              <span aria-hidden="true">{"\u00a0·"}</span><span className="sr-only">, </span>{" "}
-              <span className={`whitespace-nowrap ${chip.urgent ? "font-medium text-signal" : ""}`}><ChipText chip={chip} /></span>
+              {/* The stamp's own ring separates it from the details, so no "·" before it. */}
+              <span className="sr-only">, </span>{" "}
+              <StampChip chip={chip} />
             </span>
           ) : null}
         </p>

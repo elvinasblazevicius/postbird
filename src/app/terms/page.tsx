@@ -6,6 +6,13 @@ import { BILLING_LIVE } from "@/lib/billing/live";
 import { ONE_TRIAL_RULE, UNCONFIRMED_CANCEL_DAYS } from "@/lib/early-access-copy";
 import { siteConfig } from "@/lib/site";
 
+/**
+ * Built at deploy without the database, so the header and footer list only the employer types that
+ * always have vacancies; rendered again at most hourly after that, with the real counts (employerNav
+ * in src/components/site-header.tsx).
+ */
+export const revalidate = 3600;
+
 export const metadata: Metadata = { title: "Terms", alternates: { canonical: "/terms" } };
 
 export default function TermsPage() {
@@ -52,7 +59,7 @@ export default function TermsPage() {
         </p>
         <p>
           We may suspend or close access, including a subscription, that breaks these terms. If we do, we&apos;ll tell you why by email. If we close a paid plan
-          for a breach, we refund the unused part of the period, unless the law allows otherwise.
+          for a breach, we refund the unused part of the period.
         </p>
 
         {siteConfig.freeWeeklyEmail ? (
@@ -97,7 +104,7 @@ export default function TermsPage() {
             <h3 id="cancel" className="scroll-mt-24 pt-1 text-lg font-semibold">Cancelling</h3>
             <p>
               Cancel any time: open your account (the link is in every alert email, or{" "}
-              <a className="text-accent underline" href="/account/login">get your account link by email</a>) and choose &quot;Cancel or manage billing&quot;. You can also
+              <a className="text-accent underline" href="/account/login">get your account link by email</a>) and choose &quot;Cancel plan&quot;. You can also
               cancel from the link in Paddle&apos;s receipt email
               {mail ? <>, or email us at <a className="text-accent underline" href={`mailto:${mail}`}>{mail}</a> and we&apos;ll cancel it for you</> : null}. Your alerts continue until the end of the period you have paid for, and you are not charged again.
               Unsubscribing from our emails does not cancel your plan.

@@ -4,6 +4,7 @@ import { FILTER_GRADE_GROUPS, gradeGroupOf, gradeText } from "@/lib/grades";
 import { derivedFilters, JOB_TYPES, jobsUrl, type JobFilters } from "@/lib/jobs";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { AutoSubmit } from "./auto-submit";
+import { MultiCombobox, type ComboGroup } from "./multi-combobox";
 
 export type FacetData = {
   orgs: { slug: string; name: string; count: number }[];
@@ -58,12 +59,17 @@ const withCount = (name: string, count: number) => `${name} (${count})`;
 /** The chosen places as "where" values: "region-africa", "kenya". */
 const chosenPlaces = (f: JobFilters) => [...(f.region ?? []).map((r) => `region-${r}`), ...(f.country ?? [])];
 
-/** Regions first, then countries. Options without jobs are left out, except the ones chosen. */
-function placeGroups(facets: FacetData, filters: JobFilters): Group[] {
+/** Regions first, then countries, with their counts (the type-ahead picker). Options without jobs are left out, except the ones chosen. */
+function placeChoices(facets: FacetData, filters: JobFilters): ComboGroup[] {
   return [
-    { label: "Regions", options: facets.regions.filter((r) => r.count > 0 || filters.region?.includes(r.slug)).map((r) => ({ value: `region-${r.slug}`, label: withCount(r.name, r.count) })) },
-    { label: "Countries", options: facets.countries.filter((c) => c.count > 0 || filters.country?.includes(c.slug)).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) })) },
+    { label: "Regions", options: facets.regions.filter((r) => r.count > 0 || filters.region?.includes(r.slug)).map((r) => ({ value: `region-${r.slug}`, name: r.name, count: r.count })) },
+    { label: "Countries", options: facets.countries.filter((c) => c.count > 0 || filters.country?.includes(c.slug)).map((c) => ({ value: c.slug, name: c.name, count: c.count })) },
   ];
+}
+
+/** The same as native select groups: "Kenya (12)". */
+function placeGroups(facets: FacetData, filters: JobFilters): Group[] {
+  return placeChoices(facets, filters).map((g) => ({ label: g.label, options: g.options.map((o) => ({ value: o.value, label: withCount(o.name, o.count ?? 0) })) }));
 }
 
 /** One "Where" field (the homepage search): world regions first, then countries. */
@@ -137,12 +143,17 @@ function RepeatSelect({ name, label, idPrefix, chosen, groups, anyLabel, chooseL
 
 /**
  * "Where" for result pages and alerts, with room for several places (a listing in any of them
- * matches): one select per chosen place, and "Add another place" under them.
+ * matches): a type-ahead picker with chips (regions listed above countries); without JavaScript,
+ * one select per chosen place and "Add another place" under them.
  */
 export function WhereFields({ facets, filters, idPrefix, label = "Where", name = "where" }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string; name?: string }) {
+  const chosen = chosenPlaces(filters);
   return (
-    <RepeatSelect name={name} label={label} idPrefix={idPrefix} chosen={chosenPlaces(filters)} groups={placeGroups(facets, filters)} max={MAX_PLACES}
-      anyLabel="Anywhere" chooseLabel="Choose a place" addLabel="Add another place" addHint="Jobs in any of the places you choose" removeLabel="Remove this place" itemNoun="place" />
+    <MultiCombobox name={name} label={label} idPrefix={idPrefix} groups={placeChoices(facets, filters)} chosen={chosen} max={MAX_PLACES}
+      placeholder="Anywhere: type a place" itemNoun="place" itemsNoun="places" anyHint="Jobs in any of the places you choose">
+      <RepeatSelect name={name} label={label} idPrefix={idPrefix} chosen={chosen} groups={placeGroups(facets, filters)} max={MAX_PLACES}
+        anyLabel="Anywhere" chooseLabel="Choose a place" addLabel="Add another place" addHint="Jobs in any of the places you choose" removeLabel="Remove this place" itemNoun="place" />
+    </MultiCombobox>
   );
 }
 
@@ -152,10 +163,14 @@ export function WhereFields({ facets, filters, idPrefix, label = "Where", name =
  */
 export function OrgFields({ facets, filters, idPrefix, name = "org", counts = true }: { facets: FacetData; filters: JobFilters; idPrefix: string; name?: string; counts?: boolean }) {
   const chosen = filters.org ?? [];
-  const options = facets.orgs.filter((o) => o.count > 0 || chosen.includes(o.slug)).map((o) => ({ value: o.slug, label: counts ? withCount(o.name, o.count) : o.name }));
+  const orgs = facets.orgs.filter((o) => o.count > 0 || chosen.includes(o.slug));
+  const options = orgs.map((o) => ({ value: o.slug, label: counts ? withCount(o.name, o.count) : o.name }));
   return (
-    <RepeatSelect name={name} label="Organization" idPrefix={idPrefix} chosen={chosen} groups={[{ label: "", options }]} max={MAX_ORGS}
-      anyLabel="Any organization" chooseLabel="Choose an organization" addLabel="Add another organization" addHint="Jobs at any of the organizations you choose" removeLabel="Remove this organization" itemNoun="organization" />
+    <MultiCombobox name={name} label="Organization" idPrefix={idPrefix} groups={[{ label: "", options: orgs.map((o) => ({ value: o.slug, name: o.name, count: counts ? o.count : undefined })) }]}
+      chosen={chosen} max={MAX_ORGS} placeholder="Any organization: type a name" itemNoun="organization" itemsNoun="organizations" anyHint="Jobs at any of the organizations you choose">
+      <RepeatSelect name={name} label="Organization" idPrefix={idPrefix} chosen={chosen} groups={[{ label: "", options }]} max={MAX_ORGS}
+        anyLabel="Any organization" chooseLabel="Choose an organization" addLabel="Add another organization" addHint="Jobs at any of the organizations you choose" removeLabel="Remove this organization" itemNoun="organization" />
+    </MultiCombobox>
   );
 }
 
@@ -414,7 +429,7 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
  * sign-up form (no form of their own, so nothing typed is lost). The server turns them into the
  * saved search (searchFromSignupForm in src/lib/saved-searches.ts).
  */
-export function WatchFieldset({ facets, filters, hint }: { facets: FacetData; filters: JobFilters; hint?: string }) {
+export function WatchFieldset({ facets, filters, hint }: { facets: FacetData; filters: JobFilters; hint?: React.ReactNode }) {
   return (
     <fieldset className="space-y-4">
       <legend className="text-lg font-semibold text-ink">

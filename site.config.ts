@@ -55,7 +55,7 @@ const siteConfig = {
   home: {
     headline: "Jobs at the UN, EU and international organizations",
     subheadline:
-      "UN agencies, EU institutions and other international organizations in one place. Every listing links to the employer's own website or application form.",
+      "Search the open vacancies we find at UN agencies, EU institutions and other international organizations, with the closing date whenever the employer publishes one.",
     /**
      * Used instead of the lines above (and of `tagline` on the homepage) while no EU institution
      * has an open vacancy on the site, so the site never promises EU jobs it doesn't list.
@@ -63,7 +63,7 @@ const siteConfig = {
     withoutEu: {
       headline: "Jobs at the UN and international organizations",
       subheadline:
-        "UN agencies and other international organizations in one place. Every listing links to the employer's own website or application form.",
+        "Search the open vacancies we find at UN agencies and other international organizations, with the closing date whenever the employer publishes one.",
       tagline: "UN and international organization jobs in one place",
       /** Also the default meta and share description on every page (see src/lib/eu-claim.ts). */
       description: "Independent job search for UN and international organization vacancies, each linked to the employer's own website.",
@@ -117,7 +117,7 @@ const siteConfig = {
      */
     features: [
       "A reminder of matching vacancies that close in the next 3 days",
-      "Up to 5 searches, each with full filters, such as leaving out local-only posts",
+      "Up to 5 searches instead of one, with the same filters",
       "New matches every day, up to 6 days before the weekly email",
     ],
   },

@@ -15,18 +15,23 @@ const NAV = [
   { href: "/pricing", label: "Pricing" },
 ];
 
-/** The employer-type pages (also in the footer). */
-export const EMPLOYER_NAV = EMPLOYER_TYPE_PAGES.map((p) => ({ href: p.path, label: p.label }));
+/**
+ * The employer types shown when the counts can't be checked: while the site is being built (static
+ * pages are built without the database; they are rendered again within the hour, see `revalidate`
+ * on those pages) or when the count can't be read. Only the broad types that always have vacancies
+ * here: never EU institutions or development banks, which can have none.
+ */
+export const UNCHECKED_EMPLOYER_NAV = EMPLOYER_TYPE_PAGES.filter((p) => p.orgtype === "un" || p.orgtype === "ngo" || p.orgtype === "io").map((p) => ({ href: p.path, label: p.label }));
 
 /**
  * The employer-type pages that have open vacancies, for the menus and the footer (a page with none
- * stays reachable from /organizations and its own address). All of them while the site is being
- * built (static pages are built without the database) or when the count can't be read.
+ * stays reachable from /organizations and its own address); UNCHECKED_EMPLOYER_NAV when the counts
+ * can't be read.
  */
 export async function employerNav(): Promise<NavItem[]> {
-  if (process.env.NEXT_PHASE === "phase-production-build") return EMPLOYER_NAV;
+  if (process.env.NEXT_PHASE === "phase-production-build") return UNCHECKED_EMPLOYER_NAV;
   const counts = await employerTypeCounts().catch(() => null);
-  if (!counts) return EMPLOYER_NAV;
+  if (!counts) return UNCHECKED_EMPLOYER_NAV;
   return EMPLOYER_TYPE_PAGES.filter((p) => (counts.get(ORG_TYPES.find((o) => o.value === p.orgtype)?.type ?? "") ?? 0) > 0).map((p) => ({ href: p.path, label: p.label }));
 }
 

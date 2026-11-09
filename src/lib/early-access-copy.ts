@@ -36,17 +36,23 @@ export const EMAIL_TAX_NOTE = "(VAT or sales tax included or added, depending on
 export const RENEWS = "renews automatically";
 
 /**
- * The terms shown right above the trial button, for the plan that is selected:
- * "Card required. $0 today. Your free trial ends on 23 Nov 2026; then $19.99 every 3 months.
- * Your plan renews automatically until you cancel. Cancel any time before the trial ends and you pay nothing."
+ * The one summary line above the trial checkbox, for the plan that is selected:
+ * "$0 today · trial ends 23 November 2026 · then $19.99 every 3 months until you cancel".
  * `trialEnds` is a formatted date, or null before the browser has worked it out.
  */
-export function trialLine(plan: "monthly" | "quarterly" = "quarterly", trialEnds: string | null = null) {
+export function trialSummary(plan: "monthly" | "quarterly" = "quarterly", trialEnds: string | null = null) {
   const [m, q] = plans();
-  const price = plan === "monthly" ? `${m.price} a month` : `${q.price} every ${q.per}`;
-  const when = trialEnds ? `Your free trial ends on ${trialEnds}` : `Your free trial lasts ${siteConfig.premium.trialDays} days`;
-  return `Card required. $0 today. ${when}; then ${price}. Your plan ${RENEWS} until you cancel. Cancel any time before the trial ends and you pay nothing.`;
+  const price = plan === "monthly" ? `${m.price} every ${m.per}` : `${q.price} every ${q.per}`;
+  const when = trialEnds ? `trial ends ${trialEnds}` : `${siteConfig.premium.trialDays}-day free trial`;
+  return `$0 today · ${when} · then ${price} until you cancel`;
 }
+
+/**
+ * Under the summary, always visible (the facts the law wants in view before a trial starts): the
+ * card, the automatic renewal and how not to pay. Tax, address confirmation and the one-trial
+ * rule fold into a "Details" disclosure.
+ */
+export const TRIAL_TERMS = `Card required. Your plan ${RENEWS} until you cancel. Cancel any time before the trial ends and you pay nothing.`;
 
 /**
  * A trial started from the public form at an address nobody has confirmed is canceled once it
@@ -68,17 +74,15 @@ export const ONE_TRIAL_RULE = "One free trial per email address, counting forms 
  * proven yet (the trial page and the pricing FAQ say the same). Not on the emailed continue page:
  * opening that link already confirmed the address.
  */
-export const TRIAL_CONFIRM_NOTE = "We'll email you a link to confirm your address; your alerts start once you confirm. One free trial per email address.";
+export const TRIAL_CONFIRM_NOTE = `Your ${siteConfig.premium.trialDays} days start today. We'll email you a link to confirm your address; your alerts start once you confirm. One free trial per email address.`;
 
-/** Right under the trial terms, above the button that starts a trial. */
-export const TRIAL_CONSENT = "By starting the trial you agree to automatic renewal as described above.";
-/** Right under the terms, above the button that starts a plan without a trial. */
-export const NO_TRIAL_CONSENT = "By continuing you agree to automatic renewal as described above.";
-
-/** The checkbox that must be ticked before a trial checkout opens. */
-export const TRIAL_RENEWAL_ACK = "I understand my plan renews automatically after the trial until I cancel.";
+/**
+ * The checkbox that must be ticked before a trial checkout opens. It states the consent itself, so
+ * no separate "By starting the trial you agree…" sentence repeats it.
+ */
+export const TRIAL_RENEWAL_ACK = "I agree that my plan renews automatically after the trial until I cancel.";
 /** The same checkbox before a plan without a trial. */
-export const NO_TRIAL_RENEWAL_ACK = "I understand my plan renews automatically until I cancel.";
+export const NO_TRIAL_RENEWAL_ACK = "I agree that my plan renews automatically until I cancel.";
 
 /** The words the no-trial line sets in bold. */
 export const RENEWING = "renewing automatically";

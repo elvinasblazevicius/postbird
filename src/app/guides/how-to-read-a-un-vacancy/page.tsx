@@ -10,6 +10,13 @@ const TITLE = "How to read a UN vacancy";
 const DESCRIPTION =
   "What the parts of a UN or international organization vacancy usually mean: grade, contract type, duty station, closing date and time zone, who can apply, required and desirable qualifications, languages and how to apply.";
 
+/**
+ * Built at deploy without the database, so the header and footer list only the employer types that
+ * always have vacancies; rendered again at most hourly after that, with the real counts (employerNav
+ * in src/components/site-header.tsx).
+ */
+export const revalidate = 3600;
+
 export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,

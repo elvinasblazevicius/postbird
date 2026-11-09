@@ -5,6 +5,13 @@ import { RefundPolicyText } from "@/components/refund-policy";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { siteConfig } from "@/lib/site";
 
+/**
+ * Built at deploy without the database, so the header and footer list only the employer types that
+ * always have vacancies; rendered again at most hourly after that, with the real counts (employerNav
+ * in src/components/site-header.tsx).
+ */
+export const revalidate = 3600;
+
 export const metadata: Metadata = {
   title: "Refunds",
   description: `${siteConfig.name} refund policy for email alerts: a full refund of any charge if you ask within 14 days.`,

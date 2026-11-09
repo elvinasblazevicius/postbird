@@ -54,3 +54,35 @@ export function usuallyPosts(mix: { types: Count[]; grades: Count[] }): string |
   const parts = [types.length ? `${andList(types)} contracts` : null, gradePart.length ? andList(gradePart) : null].filter(Boolean);
   return parts.length ? parts.join("; ") : null;
 }
+
+/** "IT", "WASH" stay as they are; other category names start lower-case inside a sentence. */
+const inSentence = (name: string) => (/^[A-Z]{2,5}\b/.test(name) ? name : `${name.charAt(0).toLowerCase()}${name.slice(1)}`);
+
+/** "health, IT and logistics"; with a comma before the last "and" when a name has its own ("finance, and procurement and logistics"). */
+const fieldList = (names: string[]) =>
+  names.length > 2 && names.some((n) => / and /.test(n)) ? `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}` : andList(names);
+
+/**
+ * The page-specific intro line of an employer-type page, from its open listings: "The largest
+ * fields right now are programme management, health and logistics. Usually fixed-term contracts;
+ * Professional grades." Null with fewer than USUAL_MIN_LISTINGS listings. Pure, so it is unit-tested.
+ */
+export function postingProfile(f: {
+  categories: { slug: string; name: string; count: number }[];
+  types: { job_type: string; count: number }[];
+  grades: { grade: string; count: number }[];
+}): string | null {
+  const total = f.categories.reduce((n, c) => n + c.count, 0);
+  if (total < USUAL_MIN_LISTINGS) return null;
+  const top = f.categories
+    .filter((c) => c.slug !== "other" && c.count > 0)
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .slice(0, 3)
+    .map((c) => inSentence(c.name));
+  const usually = usuallyPosts({ types: f.types.map((t) => ({ k: t.job_type, n: t.count })), grades: f.grades.map((g) => ({ k: g.grade, n: g.count })) });
+  const parts = [
+    top.length > 1 ? `The largest fields right now are ${fieldList(top)}.` : top.length ? `The largest field right now is ${top[0]}.` : null,
+    usually ? `Usually ${usually}.` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(" ") : null;
+}

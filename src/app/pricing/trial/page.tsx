@@ -83,7 +83,7 @@ export default async function TrialPage({ searchParams }: Props) {
             source={search ? "search-alert" : remindJob ? "deadline-reminder" : "pricing"}
             search={search ?? undefined}
             remindJobId={remindJob ? remindJob.id : undefined}
-            watch={<WatchFields search={search} searchLabel={searchLabel} />}
+            watch={<WatchFields search={search} searchLabel={searchLabel} resetHref={`/pricing/trial${remindJob ? `?remind=${remindJob.id}` : ""}#alert-signup`} />}
           />
         </div>
         {siteConfig.freeWeeklyEmail ? (

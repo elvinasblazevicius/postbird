@@ -5,6 +5,7 @@
  */
 import { categoryBySlug } from "@/config/categories";
 import { ORG_TYPES } from "@/config/regions";
+import { isLiveStatus } from "@/lib/billing/statuses";
 import { sql, type Db } from "@/lib/db";
 import { orList, placeNames, STATED_DETAIL } from "@/lib/filter-labels";
 import { gradeLabel } from "@/lib/grades";
@@ -14,12 +15,12 @@ export const MAX_SAVED_SEARCHES = 5;
 /** Saved searches without a plan: the one the free weekly email uses. */
 export const FREE_SAVED_SEARCHES = 1;
 
-/** Billing statuses that still have a plan (and so up to MAX_SAVED_SEARCHES). Same rule as the database trigger (migration 008). */
-const PLAN_STATUSES = ["trialing", "active", "past_due", "paused"];
-
-/** How many saved searches a subscriber with this billing status may keep. */
+/**
+ * How many saved searches a subscriber with this billing status may keep: up to MAX_SAVED_SEARCHES
+ * with a plan (LIVE_STATUSES; same rule as the database trigger, migration 008).
+ */
 export function searchLimit(billingStatus: string): number {
-  return PLAN_STATUSES.includes(billingStatus) ? MAX_SAVED_SEARCHES : FREE_SAVED_SEARCHES;
+  return isLiveStatus(billingStatus) ? MAX_SAVED_SEARCHES : FREE_SAVED_SEARCHES;
 }
 
 /** Same character rule as the sign-up forms (a URL-encoded query string). */

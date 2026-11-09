@@ -11,15 +11,21 @@
  *    matching vacancies that close in the next 3 days ("Closing soon", each
  *    listed once per subscriber). The free weekly email never has that section.
  * Both are safe to run more often than needed (they skip what was already sent).
+ *  - runDailyJob(): the daily job (billing safety checks, plan emails, then the two above), each
+ *    task on its own so one failure doesn't stop the rest.
  */
 import { createHash } from "node:crypto";
 import siteConfig from "@site-config";
 import { continueUrl, weeklyCheckoutLinks } from "@/lib/billing/checkout-links";
 import { BILLING_LIVE } from "@/lib/billing/live";
-import { hadTrialBefore, type PlanHistory } from "@/lib/billing/subscriptions";
+import { runPlanEmails, type PlanEmailsResult } from "@/lib/billing/notices";
+import { ALERT_STATUSES, LIVE_STATUSES } from "@/lib/billing/statuses";
+import { hadTrialBefore, runBillingSafety, type BillingSafetyResult, type PlanHistory } from "@/lib/billing/subscriptions";
 import { trialUsedElsewhereIds } from "@/lib/billing/trial-markers";
 import { sql, transaction } from "@/lib/db";
 import { batchKey, isEmailConfigured, sendBatch, type OutgoingEmail } from "@/lib/email";
+import { recordDailyJob } from "@/lib/heartbeat";
+import { recordOpsEvent } from "@/lib/ops-events";
 import { alertEmail, CLOSING_SOON_DAYS, CLOSING_SOON_MAX, weeklyEmail, type AlertGroup } from "@/lib/email-templates";
 import { acquireLock, releaseLock } from "@/lib/feeds/sync";
 import { closingSoonForAlert, filtersFromQuery, jobsUrl, searchJobs, type JobListItem } from "@/lib/jobs";
@@ -54,8 +60,6 @@ export const WEEKLY_LAST_START_DAY = 3;
 const WEEKLY_JOBS_PER_SEARCH = 10;
 /** The weekly email covers vacancies first seen in this many days before the week's first run. */
 const WEEK_HOURS = 7 * 24;
-/** Plan statuses: these subscribers get paid alerts (or none while on hold), never the free weekly email. */
-const PLAN_STATUSES = ["trialing", "active", "past_due", "paused"];
 
 export type DigestResult = {
   status: "sent" | "skipped" | "failed";
@@ -133,7 +137,8 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
         select id, search, label, last_sent_at from saved_searches where subscriber_id = s.id order by created_at, id limit 1
       ) ss on true
       where s.status = 'confirmed' and s.weekly_email
-        and s.billing_status <> all(${PLAN_STATUSES})
+        -- With a plan (LIVE_STATUSES): paid alerts (or none while on hold), never the free weekly email.
+        and s.billing_status <> all(${LIVE_STATUSES})
         and (s.last_digest_at is null or s.last_digest_at < ${weekStart(at)})
       order by s.id`;
 
@@ -150,7 +155,7 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
       // Current links and status at send time: anyone who unsubscribed or started a plan meanwhile is skipped.
       const current = await sql<(PlanHistory & { id: number; email: string; manage_token: string; unsubscribe_token: string })[]>`
         select id::int as id, email, manage_token, unsubscribe_token, confirmed_at, paddle_subscription_id, billing_status, trial_ends_at, canceled_at, unconfirmed_trial_sub from subscribers
-        where id = any(${pending.map((o) => o.row.id)}) and status = 'confirmed' and weekly_email and billing_status <> all(${PLAN_STATUSES})`;
+        where id = any(${pending.map((o) => o.row.id)}) and status = 'confirmed' and weekly_email and billing_status <> all(${LIVE_STATUSES})`;
       const byId = new Map(current.map((c) => [c.id, c]));
       const chunk = pending.filter((o) => byId.has(o.row.id));
       if (!chunk.length) return;
@@ -205,15 +210,30 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
         r.last_digest_at ? new Date(r.last_digest_at).getTime() : 0,
         r.last_sent_at ? new Date(r.last_sent_at).getTime() : 0,
       ));
-      const filters = filtersFromQuery(r.search);
-      const key = `${r.search}|${since.getTime()}`;
-      if (!cache.has(key)) {
-        cache.set(key, searchJobs({ ...filters, page: undefined, posted: undefined, sort: "newest", firstSeenAfter: since, firstSeenUntil: until, excludeDemo: true }, WEEKLY_JOBS_PER_SEARCH));
+      let filters: ReturnType<typeof filtersFromQuery>, res: { items: JobListItem[]; total: number }, label: string;
+      try {
+        filters = filtersFromQuery(r.search);
+        const key = `${r.search}|${since.getTime()}`;
+        if (!cache.has(key)) {
+          const p = searchJobs({ ...filters, page: undefined, posted: undefined, sort: "newest", firstSeenAfter: since, firstSeenUntil: until, excludeDemo: true }, WEEKLY_JOBS_PER_SEARCH);
+          p.catch(() => {}); // awaited below (and by later subscribers with the same search)
+          cache.set(key, p);
+        }
+        res = await cache.get(key)!;
+        if (res.total === 0) { empty++; continue; }
+        if (!labels.has(r.search)) {
+          const l = r.search ? describeSearch(r.search) : Promise.resolve(null);
+          l.catch(() => {});
+          labels.set(r.search, l);
+        }
+        label = r.search ? (r.label || (await labels.get(r.search)!) || "Your search") : "All new vacancies";
+      } catch (e) {
+        // This subscriber's search failed: not sent and still due (the week stays open for the
+        // next run); everyone else's email goes out as usual.
+        failed++;
+        errors.push(`Search lookup failed: ${(e as Error).message}`);
+        continue;
       }
-      const res = await cache.get(key)!;
-      if (res.total === 0) { empty++; continue; }
-      if (!labels.has(r.search)) labels.set(r.search, r.search ? describeSearch(r.search) : Promise.resolve(null));
-      const label = r.search ? (r.label || (await labels.get(r.search)!) || "Your search") : "All new vacancies";
       outbox.push({
         row: r,
         group: {
@@ -241,7 +261,10 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
   }
 }
 
-/** Runs fn over items, at most `limit` at a time; resolves once all are done (rejects on the first failure). */
+/**
+ * Runs fn over items, at most `limit` at a time; resolves once all are done (rejects on the first
+ * failure, so callers that must go on past a failed item catch inside fn).
+ */
 export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out = new Array<R>(items.length);
   let next = 0;
@@ -327,7 +350,7 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
     const due = await sql<DueRow[]>`
       select s.id::int as id, s.email, s.frequency, s.plan_started_at
       from subscribers s
-      where s.status = 'confirmed' and s.billing_status in ('trialing', 'active')
+      where s.status = 'confirmed' and s.billing_status = any(${ALERT_STATUSES})
         and exists (select 1 from saved_searches ss where ss.subscriber_id = s.id)
         and (coalesce((select max(ss.last_sent_at) from saved_searches ss where ss.subscriber_id = s.id), '-infinity'::timestamptz)
                <= ${now}::timestamptz - make_interval(hours => case when s.frequency = 'daily' then ${MIN_HOURS_BETWEEN.daily}::int else ${MIN_HOURS_BETWEEN.weekly}::int end)
@@ -351,7 +374,7 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
       // Current links and status at send time.
       const current = await sql<(PlanHistory & { id: number; email: string; manage_token: string; unsubscribe_token: string })[]>`
         select id::int as id, email, manage_token, unsubscribe_token, paddle_subscription_id, billing_status, trial_ends_at, canceled_at from subscribers
-        where id = any(${pending.map((o) => o.sub.id)}) and status = 'confirmed' and billing_status in ('trialing', 'active')`;
+        where id = any(${pending.map((o) => o.sub.id)}) and status = 'confirmed' and billing_status = any(${ALERT_STATUSES})`;
       const byId = new Map(current.map((c) => [c.id, c]));
       const chunk = pending.filter((o) => byId.has(o.sub.id));
       if (!chunk.length) return;
@@ -421,29 +444,41 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
       return { s, l: { key: `${s.search}|${since.getTime()}`, search: s.search, since } };
     });
 
+    /** A subscriber whose lookup failed: not sent and still due (the next run tries again); everyone else goes ahead. */
+    const lookupFailed = (e: unknown) => {
+      failed++;
+      errors.push(`Search lookup failed: ${(e as Error)?.message ?? String(e)}`);
+    };
+
     // In slices of 100 subscribers (one email batch each): run the slice's searches, then build its emails.
     for (let i = 0; i < due.length; i += 100) {
       const slice = due.slice(i, i + 100).map((sub) => ({ sub, items: windowsFor(sub) }));
       const todo = new Map<string, Lookup>();
       for (const x of slice) for (const { l } of x.items) if (!cache.has(l.key)) todo.set(l.key, l);
-      await mapLimit([...todo.values()], ALERT_SEARCH_CONCURRENCY, (l) => lookup(l));
+      // A failed search is reported below, for each subscriber who has it.
+      await mapLimit([...todo.values()], ALERT_SEARCH_CONCURRENCY, async (l) => { try { await lookup(l); } catch { /* reported below */ } });
 
       const built: { sub: DueRow; groups: AlertGroup[] }[] = [];
       for (const { sub, items } of slice) {
-        const groups: AlertGroup[] = [];
-        for (const { s, l } of items) {
-          const res = await lookup(l);
-          if (res.total === 0) continue;
-          // "See all" opens the search on the site, limited to the last day or week (close to, not exactly, the email's window).
-          const posted = sub.frequency === "daily" ? "1" : "7";
-          groups.push({
-            label: s.label || "All new vacancies",
-            url: absoluteUrl(jobsUrl({ ...filtersFromQuery(s.search), page: undefined, sort: undefined, posted })) + "&utm_source=alert&utm_medium=email",
-            jobs: res.items,
-            total: res.total,
-          });
+        try {
+          const groups: AlertGroup[] = [];
+          for (const { s, l } of items) {
+            const res = await lookup(l);
+            if (res.total === 0) continue;
+            // "See all" opens the search on the site, limited to the last day or week (close to, not exactly, the email's window).
+            const posted = sub.frequency === "daily" ? "1" : "7";
+            groups.push({
+              label: s.label || "All new vacancies",
+              url: absoluteUrl(jobsUrl({ ...filtersFromQuery(s.search), page: undefined, sort: undefined, posted })) + "&utm_source=alert&utm_medium=email",
+              jobs: res.items,
+              total: res.total,
+            });
+          }
+          built.push({ sub, groups });
+        } catch (e) {
+          // Not sent with only some of its searches: that would move every search's window on.
+          lookupFailed(e);
         }
-        built.push({ sub, groups });
       }
       // Closing soon: one query per subscriber (it depends on what they were already sent), at
       // most ALERT_SEARCH_CONCURRENCY at a time. Listings already among the new matches are left out.
@@ -453,10 +488,12 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
         days: CLOSING_SOON_DAYS,
         limit: CLOSING_SOON_MAX,
         excludeIds: groups.flatMap((g) => g.jobs.map((j) => j.id)),
-      }));
+      }).catch((e: unknown) => ({ error: e })));
       built.forEach(({ sub, groups }, k) => {
-        if (groups.length === 0 && closing[k].length === 0) { empty++; return; }
-        outbox.push({ sub, groups, closing: closing[k], key: alertKey(sub.id, searches.filter((x) => x.subscriber_id === sub.id)) });
+        const c = closing[k];
+        if (!Array.isArray(c)) { lookupFailed(c.error); return; }
+        if (groups.length === 0 && c.length === 0) { empty++; return; }
+        outbox.push({ sub, groups, closing: c, key: alertKey(sub.id, searches.filter((x) => x.subscriber_id === sub.id)) });
       });
       await flush();
     }
@@ -466,4 +503,67 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
   } finally {
     await releaseLock("digest", holder);
   }
+}
+
+// ── The daily job ────────────────────────────────────────────
+
+type Failed = { failed: string };
+
+export type DailyJobResult = {
+  billing: BillingSafetyResult | Failed;
+  planEmails: PlanEmailsResult | Failed;
+  digest: DigestResult | Failed;
+  alerts: AlertsResult | Failed;
+  /** One line per task that failed (threw, or sent nothing because everything failed); empty for a good run. */
+  failed: string[];
+};
+
+/**
+ * The daily job (scripts/digest.ts in GitHub Actions, or /api/cron/digest): the billing safety
+ * checks first (nothing there depends on email), then the plan emails (trial reminders and
+ * confirmation emails are time-critical), the free weekly email (skips itself when this week's was
+ * already sent) and the paid alerts. Each task runs on its own: one that throws is recorded on
+ * Admin → Overview (Errors to look at) and the next one still runs. Only a run where nothing failed
+ * stores the heartbeat (src/lib/heartbeat.ts); the callers fail the run when `failed` isn't empty.
+ */
+export async function runDailyJob(): Promise<DailyJobResult> {
+  const failed: string[] = [];
+  const task = async <T>(name: string, fn: () => Promise<T>): Promise<T | Failed> => {
+    try {
+      return await fn();
+    } catch (e) {
+      const message = (e as Error)?.message ?? String(e);
+      console.error(`${name} failed`, e);
+      failed.push(`${name} failed: ${message}`);
+      await recordOpsEvent("emails", `${name} failed: ${message}`);
+      return { failed: message };
+    }
+  };
+
+  const billing = await task("Billing safety checks", () => runBillingSafety());
+  if ("unconfirmed" in billing) {
+    const failedCancels = billing.unconfirmed.failed + billing.cancelRetries.failed;
+    if (failedCancels) await recordOpsEvent("emails", `${failedCancels} subscription(s) could not be canceled in Paddle; see Admin → Overview → Billing flags.`);
+  }
+  const planEmails = await task("Plan emails", () => runPlanEmails());
+  const digest = await task("Weekly email", () => runDigest());
+  // A run that sent nothing because everything failed is shown on Admin → Overview too.
+  if ("status" in digest && digest.status === "failed") {
+    failed.push(`Weekly email failed: ${digest.message ?? "no details"}`);
+    await recordOpsEvent("emails", `Weekly email failed: ${digest.message ?? "no details"}`);
+  }
+  const alerts = await task("Alerts", () => runAlerts());
+  if ("status" in alerts && alerts.status === "failed") {
+    failed.push(`Alerts failed: ${alerts.message ?? "no details"}`);
+    await recordOpsEvent("emails", `Alerts failed: ${alerts.message ?? "no details"}`);
+  }
+
+  // Only a good run counts as the day's run (Admin → Overview, /api/health).
+  if (!failed.length && !("failed" in billing)) {
+    await recordDailyJob(billing).catch(async (e: Error) => {
+      failed.push(`Heartbeat not stored: ${e.message}`);
+      await recordOpsEvent("emails", `Daily job heartbeat not stored: ${e.message}`);
+    });
+  }
+  return { billing, planEmails, digest, alerts, failed };
 }

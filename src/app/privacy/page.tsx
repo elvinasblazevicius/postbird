@@ -3,6 +3,13 @@ import { PageHeader } from "@/components/page-header";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { siteConfig } from "@/lib/site";
 
+/**
+ * Built at deploy without the database, so the header and footer list only the employer types that
+ * always have vacancies; rendered again at most hourly after that, with the real counts (employerNav
+ * in src/components/site-header.tsx).
+ */
+export const revalidate = 3600;
+
 export const metadata: Metadata = {
   title: "Privacy",
   description: `What ${siteConfig.name} collects, why, who processes it and your rights.`,
@@ -43,7 +50,7 @@ export default function PrivacyPage() {
         <p>
           To learn which listings and pages are useful, we count page views, vacancy views, searches, clicks on Apply links, clicks on the email-alert (free trial or
           early access) buttons and clicks on the book link described below, as well as sign-ups and the answer to the optional &quot;which plan would you choose?&quot;
-          question. We don&apos;t set cookies for this and we never store your IP address. Each visit is counted with a pseudonymous code made from your IP address and
+          question. We don&apos;t set cookies for this. Our own visit counts never store your IP address (our host, Netlify, processes it to serve the site and keeps it briefly in its logs). Each visit is counted with a pseudonymous code made from your IP address and
           browser type, combined with the date and a secret key, so visits on different days can&apos;t be linked together. Search terms, the page address (without
           personal links), the campaign tags of the link you arrived from and the name of the website that linked to us (only its domain, never the full address)
           are recorded with the count. If you sign up, that day&apos;s pseudonymous code is kept with the sign-up count for up to 13
@@ -116,14 +123,15 @@ export default function PrivacyPage() {
           third-party store-picker that sends you on to the bookshop you choose. books2read and the shops have their own privacy policies. We only count the click,
           as described above.
         </p>
+        {BILLING_LIVE ? <H2 id="payments">Payments</H2> : null}
         {BILLING_LIVE ? (
           <p>
-            <strong>Payments.</strong> Subscriptions are sold by Paddle.com, our merchant of record, which collects your payment details, billing address and tax
+            Subscriptions are sold by Paddle.com, our merchant of record, which collects your payment details, billing address and tax
             information under its own <a className="text-accent underline" href="https://www.paddle.com/legal/privacy" rel="noopener">privacy notice</a>. We never see or
             store your card details. Paddle tells us your email address, country, plan, subscription status and dates, and its customer and subscription IDs, which
             we use to send your alerts and let you manage your subscription. Paddle&apos;s checkout script (Paddle.js) is loaded from Paddle&apos;s servers only
             once you use a checkout form, so that the secure checkout opens without a wait: where we ask first about cookies (see above), when you click into
-            the email field or start the checkout; in the United States also when you point at the form. Once loaded, Paddle.js sets Cloudflare&apos;s <code>__cf_bm</code>
+            the email field or start the checkout; in the United States also when you point at the form. Once loaded, Paddle.js sets Cloudflare&apos;s <code>__cf_bm</code>{" "}
             cookie on paddle.com (bot protection). On live checkouts Paddle.js may also load Paddle
             Retain (formerly ProfitWell, part of Paddle), which Paddle uses for payment recovery and subscription analytics under Paddle&apos;s privacy notice.
           </p>

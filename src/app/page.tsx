@@ -5,13 +5,15 @@ import { JobGrid, OrgBadge } from "@/components/job-card";
 import { Flag } from "@/components/flag";
 import { HeroSearch } from "@/components/search-forms";
 import { TrackedLink } from "@/components/tracking";
-import { WeekInReviewStrip } from "@/components/week-in-review";
+import { Postmark } from "@/components/postmark";
+import { WEEK_IN_REVIEW_MIN, WeekInReviewStrip } from "@/components/week-in-review";
 import { BILLING_LIVE } from "@/lib/billing/live";
+import { jobsUrl, type WeekInReview } from "@/lib/jobs";
 import { closingSoonJobs, categoryFacets, countryFacets, experienceFacets, gradeFacets, jobTypeFacets, languageFacets, latestJobs, organizationFacets, orgTypeFacets, regionFacets, siteStats, weekInReview } from "@/lib/jobs";
 import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
 import { euListingsOpen, homeCopy } from "@/lib/eu-claim";
 import { shareMetadata } from "@/lib/share-metadata";
-import { absoluteUrl, jsonLd, siteConfig } from "@/lib/site";
+import { absoluteUrl, formatShortDate, jsonLd, siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +27,68 @@ export async function generateMetadata(): Promise<Metadata> {
     alternates: { canonical: "/" },
     ...shareMetadata(title, description),
   };
+}
+
+/**
+ * The hero's background: a postmark's cancellation (a double ring with wavy lines running out of
+ * it, like the closing-date stamps), drawn in white and shown at a few per cent (.hero-cancel).
+ */
+function HeroCancellation() {
+  const waves = [0, 1, 2, 3, 4, 5].map((i) => 96 + i * 26);
+  return (
+    <svg viewBox="0 0 640 360" className="hero-cancel" aria-hidden="true" focusable="false">
+      <g fill="none" stroke="currentColor" strokeLinecap="round">
+        {waves.map((y) => (
+          <path key={y} strokeWidth="5" d={`M0 ${y}${"c13 -10 27 -10 40 0s27 10 40 0".repeat(9)}`} />
+        ))}
+        <circle cx="520" cy="166" r="104" strokeWidth="7" fill="#10264f" />
+        <circle cx="520" cy="166" r="90" strokeWidth="3" />
+      </g>
+    </svg>
+  );
+}
+
+/**
+ * Phones only: the week's count and the busiest duty stations in one compact module (on wider
+ * screens they are the full "This week in international jobs" strip and the duty-station row).
+ * The count shows only from WEEK_IN_REVIEW_MIN new vacancies, like the strip.
+ */
+function PhoneWeekAndPlaces({ week, countries }: { week: WeekInReview; countries: { slug: string; code: string; name: string; count: number }[] }) {
+  const showWeek = week.total >= WEEK_IN_REVIEW_MIN;
+  if (!showWeek && !countries.length) return null;
+  return (
+    <section className="mx-4 mt-8 rounded-xl border border-rule bg-paper p-4 sm:hidden" aria-labelledby="week-phone-heading">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id="week-phone-heading" className="text-[1.2rem] font-semibold leading-tight text-ink">{showWeek ? "This week" : "Duty stations"}</h2>
+          {showWeek ? (
+            <Link href={jobsUrl({ posted: "7" })} className="group mt-2 block text-ink">
+              <span className="font-display text-[1.75rem] font-semibold leading-none group-hover:text-accent">{week.total.toLocaleString("en-US")}</span>{" "}
+              <span className="text-[0.95rem] text-slate group-hover:underline">new vacancies in the past 7 days</span>
+            </Link>
+          ) : null}
+        </div>
+        {showWeek ? <Postmark top="Week to" main={formatShortDate(new Date())} /> : null}
+      </div>
+      {countries.length ? (
+        <div className={showWeek ? "mt-4 border-t border-rule pt-3" : "mt-3"}>
+          {showWeek ? <h3 className="font-sans text-sm font-medium text-slate">Busiest duty stations</h3> : null}
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {countries.slice(0, 4).map((c) => (
+              <li key={c.slug}>
+                <Link href={`/locations/${c.slug}`} className="inline-flex items-center gap-1.5 rounded-lg border border-rule px-2.5 py-1.5 text-sm font-semibold text-ink hover:border-accent hover:text-accent">
+                  <Flag code={c.code} className="shadow-[0_0_0_1px_rgba(14,27,44,0.15)]" />
+                  {c.name}
+                  <span className="font-normal text-slate">{c.count}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <Link href="/locations" className="mt-2 inline-block py-1 text-sm font-medium text-accent underline underline-offset-4">All locations</Link>
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 /** What is true of every listing (see the comment above the facts strip below). */
@@ -76,8 +140,7 @@ export default async function HomePage() {
 
       {/* Hero */}
       <section className="bg-candy-hero relative overflow-hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/world-dots.svg" alt="" aria-hidden="true" className="world-dots hero-dots" />
+        <HeroCancellation />
         <div className="relative mx-auto max-w-6xl px-4 pb-5 pt-5 sm:px-6 sm:pb-12 sm:pt-16">
           <div className="max-w-3xl">
             <h1 className="max-w-[20ch] text-[1.7rem] font-semibold leading-[1.1] text-white sm:text-[3.5rem]">{copy.headline}</h1>
@@ -117,8 +180,8 @@ export default async function HomePage() {
             </span>
             <Link href="/alerts" className="font-semibold text-highlight underline decoration-highlight/50 underline-offset-4 hover:decoration-highlight">Get new ones by email</Link>
           </p>
-          <p className="mt-3 text-xs text-white/75 sm:text-sm">{siteConfig.name} is independent and not affiliated with the United Nations, the EU or any employer listed.</p>
         </div>
+        <div aria-hidden="true" className="airmail-edge" />
       </section>
 
       {/* Latest */}
@@ -155,10 +218,11 @@ export default async function HomePage() {
           <div className="mt-5"><JobGrid jobs={closingSoon} stamp /></div>
         </section>
       ) : null}
-      {/* The week's numbers after the vacancies themselves, on every screen size. */}
-      <WeekInReviewStrip week={week} className="sm:pt-12" />
+      {/* The week's numbers after the vacancies themselves. Phones get one compact module with the duty stations instead. */}
+      <WeekInReviewStrip week={week} className="hidden sm:block sm:pt-12" />
+      <PhoneWeekAndPlaces week={week} countries={countries} />
       {countries.length ? (
-        <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6" aria-label="Browse by duty station">
+        <section className="mx-auto hidden max-w-6xl px-4 pt-12 sm:block sm:px-6" aria-label="Browse by duty station">
           <div className="space-y-3">
             {countries.length ? (
               <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
@@ -206,8 +270,19 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Browse */}
-      <section className="mx-auto mt-14 grid max-w-6xl gap-12 px-4 sm:px-6 lg:grid-cols-2" aria-label="Browse">
+      {/* Browse. Phones: two links instead of the two long lists. */}
+      <nav aria-label="Browse organizations and categories" className="mx-auto mt-10 grid max-w-6xl grid-cols-2 gap-3 px-4 sm:hidden">
+        {[
+          { href: "/organizations", label: "Browse by organization", count: orgs.length },
+          { href: "/categories", label: "Browse by category", count: categories.filter((c) => c.count > 0).length },
+        ].map((l) => (
+          <Link key={l.href} href={l.href} className="flex flex-col justify-between gap-2 rounded-xl border border-rule bg-paper px-4 py-3.5 font-semibold leading-snug text-ink hover:border-accent hover:text-accent">
+            {l.label}
+            {l.count ? <span className="text-sm font-normal text-slate">{l.count.toLocaleString("en-US")} with open jobs</span> : null}
+          </Link>
+        ))}
+      </nav>
+      <section className="mx-auto mt-14 hidden max-w-6xl gap-12 px-4 sm:grid sm:px-6 lg:grid-cols-2" aria-label="Browse">
         <div>
           <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
             <h2 className="text-[1.6rem] font-semibold leading-tight text-ink">Browse by organization</h2>

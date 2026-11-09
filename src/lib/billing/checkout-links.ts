@@ -12,13 +12,13 @@
  */
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { sendAccountLink } from "@/lib/account";
-import { createNoTrialTransaction, isPaddleApiConfigured } from "@/lib/billing/paddle";
+import { createNoTrialTransaction, isPaddleApiConfigured, userPaddleBudget } from "@/lib/billing/paddle";
 import {
   CHECKOUT_ALREADY_OPEN, CHECKOUT_UNAVAILABLE, hadTrialBefore, LIVE_STATUSES, OPEN_CHECKOUT_MINUTES, priceIdFor, TOKEN_RE,
   type CheckoutPlan, type PlanHistory, type StartCheckoutResult,
 } from "@/lib/billing/subscriptions";
 import { trialUsedElsewhere } from "@/lib/billing/trial-markers";
-import { sql } from "@/lib/db";
+import { sql, transaction } from "@/lib/db";
 import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { checkoutLinkEmail } from "@/lib/email-templates";
 import { takeDailyQuota } from "@/lib/rate-limit";
@@ -150,50 +150,90 @@ export type ContinueResult =
   | { ok: false; error: string; used?: boolean };
 
 export const LINK_USED = "This link has already been used or has expired. Start again from the free trial page and we'll email you a new one.";
+/** Shown to a second press of the button while the first is still preparing the checkout. */
+export const LINK_BUSY = "Your checkout is being prepared. If it doesn't open, try again in a minute.";
 
 /**
- * The continue page's button: uses the link up, then prepares the checkout with
- * the address's terms. If a returning customer's no-trial transaction can't be
- * created, the link is given back and the trial is never offered instead. The
- * link reached the mailbox, so paying confirms the address (address_proven).
+ * How long one press of the continue button holds its link while preparing the checkout: a second
+ * press meanwhile (a double click) prepares nothing, and a press whose request died gives the link
+ * back after this. Far longer than the Paddle calls may take (USER_PADDLE_TOTAL_MS).
+ */
+export const LINK_CLAIM_SECONDS = 30;
+
+/**
+ * The continue page's button: claims the link (with a lease), prepares the checkout with the
+ * address's terms, and only then uses the link up, together with the checkout record, in one
+ * transaction and only under its own claim. So a double click can't prepare two checkouts (or two
+ * Paddle transactions), and a press that fails or dies leaves the link usable. If a returning
+ * customer's no-trial transaction can't be created, the trial is never offered instead. The link
+ * reached the mailbox, so paying confirms the address (address_proven).
  */
 export async function continueCheckout(token: unknown, plan: CheckoutPlan): Promise<ContinueResult> {
   if (typeof token !== "string" || !TOKEN_RE.test(token)) return { ok: false, error: LINK_USED, used: true };
   const hash = hashToken(token);
+  const claim = newToken();
   const [link] = await sql<{ subscriber_id: number; search: string | null; visitor: string | null }[]>`
-    update checkout_links set used_at = now()
+    update checkout_links set claim = ${claim}, claimed_at = now()
     where token_hash = ${hash} and used_at is null and expires_at > now()
+      and (claimed_at is null or claimed_at < now() - make_interval(secs => ${LINK_CLAIM_SECONDS}))
     returning subscriber_id::int as subscriber_id, search, visitor`;
-  if (!link) return { ok: false, error: LINK_USED, used: true };
-  const giveBack = () => sql`update checkout_links set used_at = null where token_hash = ${hash}`.catch(() => {});
-  const st = await stateOf(link.subscriber_id);
-  if (!st) return { ok: false, error: LINK_USED, used: true };
-  if (st.state === "live") return { ok: false, error: "This address already has daily alerts. Open your account from the link in any of our emails." };
-
-  // A recent checkout may still be open or being paid (two would be two charges): the link is given back.
-  const [open] = await sql`
-    select 1 from paddle_checkouts
-    where subscriber_id = ${link.subscriber_id} and subscription_id is null
-      and created_at > now() - make_interval(mins => ${OPEN_CHECKOUT_MINUTES}) limit 1`;
-  if (open) {
-    await giveBack();
-    return { ok: false, error: CHECKOUT_ALREADY_OPEN };
+  if (!link) {
+    // Still unused: another press is preparing its checkout right now.
+    const [busy] = await sql`select 1 from checkout_links where token_hash = ${hash} and used_at is null and expires_at > now()`;
+    return busy ? { ok: false, error: LINK_BUSY } : { ok: false, error: LINK_USED, used: true };
   }
-
-  const ref = newToken();
-  let transactionId: string | null = null;
-  if (st.state === "returning") {
-    try {
-      if (!isPaddleApiConfigured()) throw new Error("PADDLE_API_KEY is not set");
-      transactionId = await createNoTrialTransaction(priceIdFor(plan), { ref });
-    } catch (e) {
-      console.error("no-trial checkout failed", (e as Error).message);
-      await giveBack();
-      return { ok: false, error: CHECKOUT_UNAVAILABLE };
+  const release = () => sql`update checkout_links set claim = null, claimed_at = null where token_hash = ${hash} and claim = ${claim}`.catch(() => {});
+  /** Uses the link up under this claim, and records the checkout (if any) in the same transaction. False if the claim was lost. */
+  const consumeLink = (checkout?: { ref: string; trialAllowed: boolean }) => transaction(async (tx) => {
+    const [used] = await tx`
+      update checkout_links set used_at = now(), claim = null, claimed_at = null
+      where token_hash = ${hash} and claim = ${claim} and used_at is null returning 1 as ok`;
+    if (!used) return false;
+    if (checkout) {
+      await tx`
+        insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor, trial_allowed, address_proven)
+        values (${checkout.ref}, ${link.subscriber_id}, ${plan}, ${link.search}, true, ${link.visitor}, ${checkout.trialAllowed}, true)`;
     }
+    return true;
+  });
+
+  try {
+    const st = await stateOf(link.subscriber_id);
+    if (!st) return { ok: false, error: LINK_USED, used: true };
+    if (st.state === "live") {
+      await consumeLink();
+      return { ok: false, error: "This address already has daily alerts. Open your account from the link in any of our emails." };
+    }
+
+    // A recent checkout may still be open or being paid (two would be two charges): the link stays usable.
+    const [open] = await sql`
+      select 1 from paddle_checkouts
+      where subscriber_id = ${link.subscriber_id} and subscription_id is null
+        and created_at > now() - make_interval(mins => ${OPEN_CHECKOUT_MINUTES}) limit 1`;
+    if (open) {
+      await release();
+      return { ok: false, error: CHECKOUT_ALREADY_OPEN };
+    }
+
+    const ref = newToken();
+    let transactionId: string | null = null;
+    if (st.state === "returning") {
+      try {
+        if (!isPaddleApiConfigured()) throw new Error("PADDLE_API_KEY is not set");
+        // A visitor is waiting: at most ~3 s per Paddle call and 7 s in all.
+        transactionId = await createNoTrialTransaction(priceIdFor(plan), { ref }, userPaddleBudget());
+      } catch (e) {
+        console.error("no-trial checkout failed", (e as Error).message);
+        await release();
+        return { ok: false, error: CHECKOUT_UNAVAILABLE };
+      }
+    }
+    // Lost the claim (this press took longer than its lease and another one took over): that one
+    // opens the checkout. A Paddle transaction made here stays an unpaid draft.
+    if (!(await consumeLink({ ref, trialAllowed: transactionId === null }))) return { ok: false, error: LINK_BUSY };
+    return { ok: true, ref, email: st.email, trial: transactionId === null, transactionId };
+  } catch (e) {
+    await release();
+    throw e;
   }
-  await sql`
-    insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor, trial_allowed, address_proven)
-    values (${ref}, ${link.subscriber_id}, ${plan}, ${link.search}, true, ${link.visitor}, ${transactionId === null}, true)`;
-  return { ok: true, ref, email: st.email, trial: transactionId === null, transactionId };
 }

@@ -3,6 +3,13 @@ import Link from "next/link";
 import { AccountLinkForm } from "@/components/account-forms";
 import siteConfig from "@site-config";
 
+/**
+ * Built at deploy without the database, so the header and footer list only the employer types that
+ * always have vacancies; rendered again at most hourly after that, with the real counts (employerNav
+ * in src/components/site-header.tsx).
+ */
+export const revalidate = 3600;
+
 export const metadata: Metadata = { title: "Manage or cancel your subscription", robots: { index: false, follow: false } };
 
 /**
@@ -32,7 +39,7 @@ export default function AccountLoginPage() {
       <section aria-labelledby="cancel-h" className="mt-6 rounded-xl border border-rule p-5 sm:p-6">
         <h2 id="cancel-h" className="text-xl font-semibold text-ink">Cancel my plan</h2>
         <p className="mb-4 mt-1 text-[0.95rem] text-slate">
-          We&apos;ll email you the link to your account. Open it and choose &quot;Cancel or manage billing&quot;: Paddle, our reseller, shows the cancel option there. You
+          We&apos;ll email you the link to your account. Open it and choose &quot;Cancel plan&quot;: it opens the cancel page of Paddle, our reseller. You
           keep alerts until the end of the period you&apos;ve paid for and aren&apos;t charged again.
         </p>
         <AccountLinkForm intent="cancel" />

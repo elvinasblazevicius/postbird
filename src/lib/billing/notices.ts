@@ -204,7 +204,7 @@ export async function runConfirmationRetries(limit = 200): Promise<{ sent: numbe
              s.trial_ends_at - make_interval(days => ${trialDays}) as trial_start
       from subscribers s
       where s.confirm_token is not null and awaiting_confirmation(s)
-        and s.paddle_subscription_id is not null and s.billing_status in ('trialing', 'active', 'past_due', 'paused')
+        and s.paddle_subscription_id is not null and s.billing_status = any(${LIVE_STATUSES})
         and not exists (select 1 from billing_flags f where f.subscription_id = s.paddle_subscription_id and f.kind = 'trial_unconfirmed' and f.cancel_done_at is not null)
     ), picked as (
       select s.id, d.send_day from subscribers s join due d on d.id = s.id
@@ -355,7 +355,7 @@ export async function notifyWaitlist(limit = 300): Promise<WaitlistNoticeResult>
 
 export type PlanEmailsResult = { welcome: { sent: number; failed: number }; confirmations: { sent: number; failed: number }; trialReminders: { sent: number; failed: number } } | { skipped: string };
 
-/** Run by the daily email job after the alerts: welcome retries, confirmation retries and trial reminders. */
+/** Run by the daily job (runDailyJob) right after the billing safety checks: welcome retries, confirmation retries and trial reminders. */
 export async function runPlanEmails(): Promise<PlanEmailsResult> {
   if (!isEmailConfigured()) return { skipped: "Email sending is not configured (RESEND_API_KEY missing)." };
   const welcome = await runWelcomeRetries();
