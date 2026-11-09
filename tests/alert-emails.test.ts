@@ -4,7 +4,7 @@
  * HTML and hides everything after the cut, including the unsubscribe link.
  */
 import { describe, expect, it } from "vitest";
-import { alertEmail, capGroups, MAX_JOBS_PER_EMAIL, weeklyEmail, type AlertGroup } from "@/lib/email-templates";
+import { alertEmail, capGroups, CLOSING_SOON_MAX, MAX_JOBS_PER_EMAIL, weeklyEmail, type AlertGroup } from "@/lib/email-templates";
 import type { JobListItem } from "@/lib/jobs";
 
 const LONG = "Senior Programme Management Officer for Monitoring, Evaluation, Accountability and Learning (MEAL) in Humanitarian Coordination & Resilience Programmes <Regional Hub>, with travel to field locations across the Sahel";
@@ -58,11 +58,44 @@ describe("alert emails", () => {
     expect(email.subject).toBe("2500 new vacancies match your searches");
   });
 
-  it("a maximal paid alert (5 searches × 20 long rows) stays under 90 KB of HTML, with the unsubscribe link", () => {
-    const email = alertEmail({ groups: [0, 1, 2, 3, 4].map((k) => group(20, k * 100)), frequency: "daily", ...links });
+  it("a maximal paid alert (5 searches × 20 long rows and a full closing-soon section) stays under 90 KB of HTML, with the unsubscribe link", () => {
+    const closing = Array.from({ length: CLOSING_SOON_MAX }, (_, i) => job(900 + i, { deadline: "2026-11-10" }));
+    const email = alertEmail({ groups: [0, 1, 2, 3, 4].map((k) => group(20, k * 100)), closing, frequency: "daily", ...links });
     const bytes = Buffer.byteLength(email.html, "utf8");
     expect(bytes).toBeLessThan(90 * 1024);
     expect(email.html).toContain(links.unsubscribeUrl);
+    expect(email.html).toContain("Closing in the next 3 days");
+    // Still 50 listed in all: the 10 closing soon, and 40 new matches.
+    expect((email.text.match(/\/jobs\/senior-programme/g) ?? []).length).toBe(MAX_JOBS_PER_EMAIL);
+    expect((email.html.match(/utm_content=closing/g) ?? []).length).toBe(CLOSING_SOON_MAX);
+  });
+
+  it("closing soon: listed after the new matches with the closing date, kept within the 50 cap, at most 10", () => {
+    const closing = Array.from({ length: 12 }, (_, i) => job(700 + i, { title: `Closing role ${i}`, deadline: "2026-11-11" }));
+    const email = alertEmail({ groups: [group(20, 0, 20), group(20, 100, 20), group(20, 200, 20)], closing, frequency: "daily", ...links });
+    expect(email.subject).toBe("60 new vacancies match your searches");
+    // 10 closing soon leave 40 for new matches: the first two searches list 20 each, the third none (it keeps See all).
+    expect(email.text).toContain("#119\n");
+    expect(email.text).not.toContain("#200\n");
+    expect(email.text.indexOf("Closing in the next 3 days")).toBeGreaterThan(email.text.indexOf("#119\n"));
+    expect(email.text).toContain("Closing role 0\nUnited Nations Office for the Coordination of Humanitarian Affairs & Partners · Ouagadougou, Burkina Faso · P-4 · Closes 11 Nov 2026");
+    expect(email.text).toContain("Closing role 9\n");
+    expect(email.text).not.toContain("Closing role 10");
+    expect((email.text.match(/\/jobs\//g) ?? []).length).toBe(MAX_JOBS_PER_EMAIL);
+    // Without closing-soon jobs the email is unchanged.
+    const plain = alertEmail({ groups: [group(2, 0, 2)], frequency: "daily", ...links });
+    expect(plain.html).not.toContain("Closing in the next");
+  });
+
+  it("an email with only closing-soon vacancies says so in the subject and heading", () => {
+    const one = alertEmail({ groups: [], closing: [job(1, { title: "Data Officer" })], frequency: "daily", ...links });
+    expect(one.subject).toBe("1 vacancy you follow closes soon");
+    const three = alertEmail({ groups: [], closing: [job(1), job(2), job(3)], frequency: "weekly", ...links });
+    expect(three.subject).toBe("3 vacancies you follow close soon");
+    expect(three.html).toContain("Vacancies closing soon");
+    expect(three.text).toContain("Nothing new matches your saved searches this week");
+    expect(three.html).not.toContain("New vacancies for your saved searches");
+    expect(three.html).toContain(links.unsubscribeUrl);
   });
 
   it("shows compact rows: title link, then organization · location · grade · closing date (only what is known)", () => {

@@ -142,6 +142,9 @@ export default function PrivacyPage() {
               {siteConfig.freeWeeklyEmail ? ", unless you have also signed up for the free weekly email and are still subscribed to it (then we keep your address and searches for that email)" : ""}.
             </li>
           ) : null}
+          {BILLING_LIVE ? (
+            <li>Which vacancies your alerts listed as closing soon (so each is listed once): 60 days, or until your address is deleted.</li>
+          ) : null}
           <li>
             {BILLING_LIVE
               ? "Early-access list: we email you once to say alerts are open, and delete your address 30 days later unless you start a trial."

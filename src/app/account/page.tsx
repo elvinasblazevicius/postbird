@@ -168,7 +168,7 @@ export default async function AccountPage({ searchParams }: Props) {
       {paying ? (
         <section className={`${card} mt-6`} aria-labelledby="freq-h">
           <h2 id="freq-h" className="text-lg font-semibold text-ink">How often</h2>
-          <p className="mb-3 mt-1 text-[0.95rem] text-slate">One email with all your matches, every day or once a week. No email when nothing new matches.</p>
+          <p className="mb-3 mt-1 text-[0.95rem] text-slate">One email with all your matches, every day or once a week, with matching vacancies that close in the next 3 days. No email when there is nothing new and nothing closing.</p>
           <FrequencyForm t={acct.manage_token} current={acct.frequency} />
         </section>
       ) : null}

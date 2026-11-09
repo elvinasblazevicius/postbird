@@ -7,7 +7,9 @@
  *    they chose none). Nothing is sent to someone with no new matches.
  *    Subscribers with a plan never get it; they get runAlerts() instead.
  *  - runAlerts(): paid email alerts, one email per subscriber with the new
- *    matches for each of their saved searches, daily or weekly.
+ *    matches for each of their saved searches, daily or weekly, and the
+ *    matching vacancies that close in the next 3 days ("Closing soon", each
+ *    listed once per subscriber). The free weekly email never has that section.
  * Both are safe to run more often than needed (they skip what was already sent).
  */
 import siteConfig from "@site-config";
@@ -15,9 +17,9 @@ import { hadTrialBefore, type PlanHistory } from "@/lib/billing/subscriptions";
 import { trialUsedElsewhereIds } from "@/lib/billing/trial-markers";
 import { sql } from "@/lib/db";
 import { batchKey, isEmailConfigured, sendBatch, type OutgoingEmail } from "@/lib/email";
-import { alertEmail, weeklyEmail, type AlertGroup } from "@/lib/email-templates";
+import { alertEmail, CLOSING_SOON_DAYS, CLOSING_SOON_MAX, weeklyEmail, type AlertGroup } from "@/lib/email-templates";
 import { acquireLock, releaseLock } from "@/lib/feeds/sync";
-import { filtersFromQuery, jobsUrl, searchJobs, type JobListItem } from "@/lib/jobs";
+import { closingSoonForAlert, filtersFromQuery, jobsUrl, searchJobs, type JobListItem } from "@/lib/jobs";
 import { describeSearch } from "@/lib/saved-searches";
 import { absoluteUrl } from "@/lib/site";
 
@@ -273,7 +275,13 @@ type SearchRow = { id: number; subscriber_id: number; search: string; label: str
  * trialing/active) who are due by their frequency. For each saved search it
  * looks for open vacancies first seen after the search's last_sent_at (or the
  * last 24 hours / 7 days for a new search) and up to the start of this run.
- * Subscribers with no new matches get nothing and stay due. After a
+ * Each email also lists, under "Closing in the next 3 days", up to 10 open
+ * vacancies that match any of the subscriber's searches (any posting date)
+ * and close between today and 3 days ahead (UTC), soonest first, leaving out
+ * the ones already among the email's new matches. A vacancy is listed there
+ * at most once per subscriber (alert_closing_sent, recorded once Resend
+ * accepted the email). Subscribers with neither new matches nor closing-soon
+ * vacancies get nothing and stay due. After a
  * successful send every search of that subscriber gets last_sent_at = the
  * run's start time, so nothing is sent twice and nothing falls between runs.
  * The account and unsubscribe links are read just before each batch is sent,
@@ -307,7 +315,7 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
 
     let sent = 0, failed = 0, empty = 0;
     const errors: string[] = [];
-    const outbox: { sub: DueRow; groups: AlertGroup[] }[] = [];
+    const outbox: { sub: DueRow; groups: AlertGroup[]; closing: JobListItem[] }[] = [];
 
     const flush = async () => {
       if (!outbox.length) return;
@@ -325,7 +333,7 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
         const oneClick = absoluteUrl(`/api/unsubscribe?token=${c.unsubscribe_token}`);
         return {
           to: c.email,
-          ...alertEmail({ groups: o.groups, frequency: o.sub.frequency, accountUrl: absoluteUrl(`/account?t=${c.manage_token}`), unsubscribeUrl }),
+          ...alertEmail({ groups: o.groups, closing: o.closing, frequency: o.sub.frequency, accountUrl: absoluteUrl(`/account?t=${c.manage_token}`), unsubscribeUrl }),
           headers: { "List-Unsubscribe": `<${oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
           idempotencyKey: `alert:${o.sub.id}:${now.toISOString()}`,
         };
@@ -341,6 +349,15 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
       const done = chunk.filter((_, j) => res.delivered[j]);
       if (done.length) {
         await sql`update saved_searches set last_sent_at = ${now} where subscriber_id = any(${done.map((o) => o.sub.id)})`;
+        // The closing-soon vacancies these emails listed are never listed again for the same subscriber.
+        const listed = done.flatMap((o) => o.closing.map((j) => [o.sub.id, Number(j.id)] as const));
+        if (listed.length) {
+          await sql`
+            insert into alert_closing_sent (subscriber_id, job_id)
+            select t.s, t.j from unnest(${listed.map((x) => x[0])}::bigint[], ${listed.map((x) => x[1])}::bigint[]) as t(s, j)
+            where exists (select 1 from jobs where id = t.j) and exists (select 1 from subscribers where id = t.s)
+            on conflict do nothing`;
+        }
       }
     };
 
@@ -374,6 +391,7 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
       for (const x of slice) for (const { l } of x.items) if (!cache.has(l.key)) todo.set(l.key, l);
       await mapLimit([...todo.values()], ALERT_SEARCH_CONCURRENCY, (l) => lookup(l));
 
+      const built: { sub: DueRow; groups: AlertGroup[] }[] = [];
       for (const { sub, items } of slice) {
         const groups: AlertGroup[] = [];
         for (const { s, l } of items) {
@@ -388,9 +406,21 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
             total: res.total,
           });
         }
-        if (groups.length === 0) { empty++; continue; }
-        outbox.push({ sub, groups });
+        built.push({ sub, groups });
       }
+      // Closing soon: one query per subscriber (it depends on what they were already sent), at
+      // most ALERT_SEARCH_CONCURRENCY at a time. Listings already among the new matches are left out.
+      const closing = await mapLimit(built, ALERT_SEARCH_CONCURRENCY, ({ sub, groups }) => closingSoonForAlert({
+        searches: searches.filter((x) => x.subscriber_id === sub.id).map((x) => x.search),
+        subscriberId: sub.id,
+        days: CLOSING_SOON_DAYS,
+        limit: CLOSING_SOON_MAX,
+        excludeIds: groups.flatMap((g) => g.jobs.map((j) => j.id)),
+      }));
+      built.forEach(({ sub, groups }, k) => {
+        if (groups.length === 0 && closing[k].length === 0) { empty++; return; }
+        outbox.push({ sub, groups, closing: closing[k] });
+      });
       await flush();
     }
 

@@ -67,7 +67,7 @@ export default async function PricingPage() {
         ],
         [
           "What do paid alerts add?",
-          <>New matches every day instead of once a week, so you see a vacancy up to 6 days sooner, and up to 5 searches instead of one, each with the same full filters. While you have a paid plan you get your alerts instead of the weekly email, not both.</>,
+          <>New matches every day instead of once a week, so you see a vacancy up to 6 days sooner, and up to 5 searches instead of one, each with the same full filters. Each alert also lists matching vacancies that close in the next 3 days, once each, so a deadline doesn&apos;t slip past you. While you have a paid plan you get your alerts instead of the weekly email, not both.</>,
         ],
       ]
     : [];
@@ -76,7 +76,7 @@ export default async function PricingPage() {
     ...billingFaq,
     [
       siteConfig.freeWeeklyEmail ? "Will daily alerts email me every day?" : "Will I get an email every day?",
-      <>Only when there is something new. If none of your searches has a new match, we don&apos;t send an email that day.</>,
+      <>Only when there is something to tell you: a new match, or a matching vacancy that closes in the next 3 days. If there is neither, we don&apos;t send an email that day.</>,
     ],
     [
       "Where do the listings come from?",

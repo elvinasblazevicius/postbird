@@ -523,6 +523,8 @@ async function retentionCleanup(): Promise<void> {
   await purgeStaleSubscribers();
   // Errors marked as dealt with on Admin → Overview.
   await purgeOpsEvents();
+  // Which vacancies paid alerts already listed as closing soon: all of them have closed long before.
+  await sql`delete from alert_closing_sent where sent_at < now() - interval '60 days'`;
 }
 
 /** Exposed for tests. */

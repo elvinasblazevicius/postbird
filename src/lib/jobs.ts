@@ -425,6 +425,34 @@ export async function searchJobs(input: JobFilters, pageSize: number = LISTING_S
   return { ...res, page, pageSize, pages: Math.max(1, Math.ceil(res.total / pageSize)), sort, matchMode };
 }
 
+/**
+ * The "Closing in the next N days" section of a paid alert: open listings (never demo ones) that
+ * match ANY of the subscriber's saved searches, with the alerts' own matching (each search as
+ * searchJobs reads it, all words, any posting date), whose published closing date is between today
+ * (UTC) and `days` days ahead, inclusive. Listings without a closing date never qualify. Leaves out
+ * what this subscriber already had in the section (alert_closing_sent) and `excludeIds` (the
+ * listings already in the email's new matches). Soonest closing first, at most `limit`.
+ */
+export async function closingSoonForAlert(opts: { searches: string[]; subscriberId: number; days: number; limit: number; excludeIds?: number[] }): Promise<JobListItem[]> {
+  if (!opts.searches.length || opts.limit <= 0) return [];
+  const matches = [...new Set(opts.searches)].map((s) => {
+    const f = withSearchIntent({ ...filtersFromQuery(s), page: undefined, posted: undefined, sort: undefined });
+    return Object.values(filterConditions(f, "all")).reduce<Frag>((w, c) => sql`${w} and ${c}`, sql`true`);
+  });
+  const anyMatch = matches.reduce((a, b) => sql`${a} or ${b}`);
+  const exclude = (opts.excludeIds ?? []).map(Number);
+  return transaction(async (tx) => await tx<JobListItem[]>`
+    select ${listColumns()}
+    from jobs j left join organizations o on o.id = j.organization_id
+    where ${isOpen()} and not j.is_demo
+      and j.deadline is not null and j.deadline <= (now() at time zone 'utc')::date + ${opts.days}::int
+      and (${anyMatch})
+      and not exists (select 1 from alert_closing_sent acs where acs.subscriber_id = ${opts.subscriberId} and acs.job_id = j.id)
+      ${exclude.length ? sql`and j.id <> all(${exclude}::bigint[])` : sql``}
+    order by j.deadline asc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc
+    limit ${opts.limit}`);
+}
+
 /** Words of the category names and keywords: always offered as "Did you mean …?" even when no open title has them. */
 const CATEGORY_VOCABULARY = [...new Set(ALL_CATEGORIES.flatMap((c) => [c.name, ...c.keywords])
   .flatMap((s) => foldText(s.replace(/\*/g, "")).split(/[^a-z0-9]+/))

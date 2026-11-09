@@ -98,11 +98,14 @@ const siteConfig = {
     priceSummary: "$9.99/month or $19.99 for 3 months",
     /**
      * What the paid plan adds, and only that: the free weekly email (one search) has the same
-     * filters, closing dates and links. The first line assumes freeWeeklyEmail is on.
+     * filters, closing dates and links. The first line assumes freeWeeklyEmail is on. The last
+     * line is the "Closing in the next 3 days" section of paid alerts (CLOSING_SOON_DAYS in
+     * src/lib/email-templates.ts).
      */
     features: [
       "New matches every day, up to 6 days before the weekly email",
       "Up to 5 searches, each with full filters",
+      "A reminder of matching vacancies that close in the next 3 days",
     ],
   },
 

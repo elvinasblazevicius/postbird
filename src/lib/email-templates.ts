@@ -53,6 +53,11 @@ export type AlertGroup = { label: string; url: string; jobs: JobListItem[]; tota
  */
 export const MAX_JOBS_PER_EMAIL = 50;
 
+/** Paid alerts' "Closing in the next 3 days": closing dates from today (UTC) up to this many days ahead, inclusive. */
+export const CLOSING_SOON_DAYS = 3;
+/** At most this many vacancies in that section; they count towards MAX_JOBS_PER_EMAIL. */
+export const CLOSING_SOON_MAX = 10;
+
 /**
  * Keeps at most `max` listed vacancies across the groups, in order: later searches get fewer
  * (possibly none). Each group keeps its total, so its "See all N" link still shows.
@@ -166,13 +171,13 @@ export function welcomeEmail(opts: { accountUrl: string; unsubscribeUrl: string;
   const html = layout(
     subject,
     `<h1 style="font-family:Georgia,serif;font-size:24px;line-height:1.3;margin:0 0 12px">Welcome to ${esc(siteConfig.premium.name.toLowerCase())}</h1>
-     <p style="font-size:16px;line-height:1.6;margin:0 0 12px">We'll email you new vacancies that match your saved searches. Your first alert arrives with the next round of new listings.</p>
+     <p style="font-size:16px;line-height:1.6;margin:0 0 12px">We'll email you new vacancies that match your saved searches, and remind you of matching vacancies that close in the next ${CLOSING_SOON_DAYS} days. Your first alert arrives with the next round of new listings.</p>
      <p style="font-size:15px;line-height:1.6;margin:0 0 20px;color:#566476">${esc(billing)} ${refundHtml}</p>
      <p style="margin:0 0 20px">${button(opts.accountUrl, "Open my account")}</p>
      <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">On your account page you can add up to 5 saved searches, choose daily or weekly emails, and manage billing. Keep this email: the button is your private link.</p>`,
     accountFooter(opts.accountUrl, opts.unsubscribeUrl),
   );
-  const text = `Welcome to ${siteConfig.premium.name.toLowerCase()} on ${siteConfig.name}.\n\nWe'll email you new vacancies that match your saved searches.\n\n${billing} Refund policy: ${refundsUrl}\n\nYour account (keep this link private): ${opts.accountUrl}\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
+  const text = `Welcome to ${siteConfig.premium.name.toLowerCase()} on ${siteConfig.name}.\n\nWe'll email you new vacancies that match your saved searches, and remind you of matching vacancies that close in the next ${CLOSING_SOON_DAYS} days.\n\n${billing} Refund policy: ${refundsUrl}\n\nYour account (keep this link private): ${opts.accountUrl}\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
   return { subject, html, text };
 }
 
@@ -234,13 +239,25 @@ export function checkoutLinkEmail(opts: { continueUrl: string; hours: number }) 
 }
 
 /**
- * One email per subscriber with the new matches for each saved search (the caller lists up to
- * 20 per search). At most MAX_JOBS_PER_EMAIL are listed in all; every search keeps its "See all".
+ * One paid-alert email per subscriber: the new matches for each saved search (the caller lists
+ * up to 20 per search), then "Closing in the next 3 days" (`closing`, soonest first, at most
+ * CLOSING_SOON_MAX). At most MAX_JOBS_PER_EMAIL are listed in all: the closing-soon rows are
+ * kept and the new matches get the rest; every search keeps its "See all". Either part may be
+ * empty, not both.
  */
-export function alertEmail(opts: { groups: AlertGroup[]; frequency: "daily" | "weekly"; accountUrl: string; unsubscribeUrl: string }) {
-  const groups = capGroups(opts.groups);
+export function alertEmail(opts: { groups: AlertGroup[]; closing?: JobListItem[]; frequency: "daily" | "weekly"; accountUrl: string; unsubscribeUrl: string }) {
+  const closing = (opts.closing ?? []).slice(0, Math.min(CLOSING_SOON_MAX, MAX_JOBS_PER_EMAIL));
+  const groups = capGroups(opts.groups, MAX_JOBS_PER_EMAIL - closing.length);
   const total = groups.reduce((n, g) => n + g.total, 0);
-  const subject = `${total} new ${total === 1 ? "vacancy matches" : "vacancies match"} your ${groups.length === 1 ? "search" : "searches"}`;
+  const subject = groups.length
+    ? `${total} new ${total === 1 ? "vacancy matches" : "vacancies match"} your ${groups.length === 1 ? "search" : "searches"}`
+    : `${closing.length} ${closing.length === 1 ? "vacancy you follow closes" : "vacancies you follow close"} soon`;
+  const closingHead = `Closing in the next ${CLOSING_SOON_DAYS} days`;
+  const closingNote = "Open vacancies that match your saved searches. Each one is listed here once.";
+  const closingHtml = closing.length
+    ? `<h2 style="font-size:16px;margin:28px 0 4px;color:#0e1b2c">${esc(closingHead)}</h2><p style="font-size:13px;color:#566476;margin:0 0 4px">${esc(closingNote)}</p>${jobRowsHtml(closing, "?utm_source=alert&utm_medium=email&utm_content=closing")}`
+    : "";
+  const closingText = closing.length ? `${closingHead}\n${closingNote}\n\n${jobRowsText(closing)}` : "";
   const sections = groups
     .map((g) => {
       const more = g.total > g.jobs.length
@@ -250,20 +267,26 @@ export function alertEmail(opts: { groups: AlertGroup[]; frequency: "daily" | "w
     })
     .join("");
   const when = opts.frequency === "daily" ? "since yesterday's email" : "since last week's email";
+  // An email with no new matches is only the closing-soon reminder.
+  const intro = groups.length
+    ? { h1: "New vacancies for your saved searches", lead: `New on ${siteConfig.name} ${when} (or since you saved the search). Apply on each employer's own website.` }
+    : { h1: "Vacancies closing soon", lead: `Nothing new matches your saved searches ${opts.frequency === "daily" ? "today" : "this week"}, but these matching vacancies close soon. Apply on each employer's own website.` };
   const html = layout(
     subject,
-    `<h1 style="font-family:Georgia,serif;font-size:24px;line-height:1.3;margin:0 0 6px">New vacancies for your saved searches</h1>
-     <p style="font-size:15px;color:#566476;margin:0">New on ${esc(siteConfig.name)} ${when} (or since you saved the search). Apply on each employer's own website.</p>
-     ${sections}`,
+    `<h1 style="font-family:Georgia,serif;font-size:24px;line-height:1.3;margin:0 0 6px">${esc(intro.h1)}</h1>
+     <p style="font-size:15px;color:#566476;margin:0">${esc(intro.lead)}</p>
+     ${sections}${closingHtml}`,
     accountFooter(opts.accountUrl, opts.unsubscribeUrl),
   );
   const text =
-    `New vacancies for your saved searches on ${siteConfig.name}\n\n` +
-    groups
-      .map((g) => `${g.label} (${g.total} new)\n\n` +
+    `${intro.h1} on ${siteConfig.name}\n` +
+    (groups.length ? "\n" : `${intro.lead}\n\n`) +
+    [
+      ...groups.map((g) => `${g.label} (${g.total} new)\n\n` +
         jobRowsText(g.jobs) +
-        (g.total > g.jobs.length ? `${g.jobs.length ? "\n\n" : ""}See all ${g.total}: ${g.url}` : ""))
-      .join("\n\n---\n\n") +
+        (g.total > g.jobs.length ? `${g.jobs.length ? "\n\n" : ""}See all ${g.total}: ${g.url}` : "")),
+      ...(closingText ? [closingText] : []),
+    ].join("\n\n---\n\n") +
     `\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
   return { subject, html, text };
 }
