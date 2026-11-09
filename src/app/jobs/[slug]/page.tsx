@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { cache } from "react";
 import { AlertSignup } from "@/components/alert-signup";
+import { EpsoBook, isEuInstitution } from "@/components/epso-book";
 import { JobList, OrgBadge, Tag } from "@/components/job-card";
 import { Breadcrumbs } from "@/components/page-header";
 import { ApplyLink, TrackedLink, TrackOnMount } from "@/components/tracking";
@@ -249,6 +250,8 @@ export default async function JobPage({ params }: Props) {
               <p className="mt-1.5 text-center text-xs text-slate">Opens {destination}</p>
             </div>
           ) : null}
+
+          {open && isEuInstitution(job.org_type) ? <EpsoBook className="mt-10" /> : null}
 
           {similar.length ? (
             <section className="mt-14" aria-labelledby="similar-heading">

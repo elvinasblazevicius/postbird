@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { JobsBrowser } from "@/components/jobs-browser";
 import { OrgBadge } from "@/components/job-card";
+import { EpsoBook, isEuInstitution } from "@/components/epso-book";
 import { PageHeader } from "@/components/page-header";
 import { getOrganization, parseFilters } from "@/lib/jobs";
 import { countFor, landingMetadata } from "@/lib/landing";
@@ -47,6 +48,7 @@ export default async function OrganizationPage({ params, searchParams }: Props) 
         }
       />
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        {isEuInstitution(org.org_type) ? <EpsoBook className="mb-6 max-w-2xl" /> : null}
         <JobsBrowser filters={filters} fixed={{ org: slug }} base={`/organizations/${slug}`} />
       </div>
     </>
