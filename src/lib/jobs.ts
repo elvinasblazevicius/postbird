@@ -66,6 +66,10 @@ export type JobFilters = {
   closing?: "7" | "30";
   sort?: "newest" | "deadline" | "relevance";
   page?: number;
+  /** Email alerts only (never read from the URL): first seen after / up to these times, and no demo listings. */
+  firstSeenAfter?: Date;
+  firstSeenUntil?: Date;
+  excludeDemo?: boolean;
 };
 
 type SP = Record<string, string | string[] | undefined>;
@@ -196,6 +200,9 @@ function whereFor(f: JobFilters) {
   if (f.type) w = sql`${w} and j.job_type = ${f.type}`;
   if (f.posted) w = sql`${w} and coalesce(j.published_at, j.first_seen_at) >= now() - make_interval(days => ${Number(f.posted)})`;
   if (f.closing) w = sql`${w} and j.deadline is not null and j.deadline <= (now() at time zone 'utc')::date + ${Number(f.closing)}::int`;
+  if (f.firstSeenAfter) w = sql`${w} and j.first_seen_at > ${f.firstSeenAfter}`;
+  if (f.firstSeenUntil) w = sql`${w} and j.first_seen_at <= ${f.firstSeenUntil}`;
+  if (f.excludeDemo) w = sql`${w} and not j.is_demo`;
   return w;
 }
 

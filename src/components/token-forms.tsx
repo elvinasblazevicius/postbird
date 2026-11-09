@@ -6,6 +6,8 @@ import siteConfig from "@site-config";
 import { AttributionField, uetEvent } from "./ads";
 import { EarlyAccessDone } from "./early-access";
 import { EARLY_ACCESS_BUTTON, earlyAccessLine } from "@/lib/early-access-copy";
+import { BILLING_LIVE } from "@/lib/billing/live";
+import { TrialCheckoutForm } from "./paddle-checkout";
 
 const initial: FormState = { status: "idle", message: "" };
 
@@ -46,8 +48,17 @@ export function UnsubscribeForm({ token }: { token: string }) {
 
 const field = "w-full rounded-lg border border-rule bg-paper px-4 py-3 text-base text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]";
 
-/** Early-access form for paid alerts (concept test: records interest, takes no payment). */
+/**
+ * Paid-alerts form on /pricing/trial. While billing is off: the early-access
+ * form of the concept test (records interest, takes no payment). Once billing
+ * is live: plan, email and the Paddle checkout for the free trial.
+ */
 export function PremiumInterestForm({ source = "pricing", search, remindJobId }: { source?: string; search?: string; remindJobId?: number }) {
+  if (BILLING_LIVE) return <TrialCheckoutForm source={source} search={search} />;
+  return <EarlyAccessForm source={source} search={search} remindJobId={remindJobId} />;
+}
+
+function EarlyAccessForm({ source = "pricing", search, remindJobId }: { source?: string; search?: string; remindJobId?: number }) {
   const [state, action, pending] = useActionState(signupAction, initial);
   useEffect(() => {
     if (state.status === "success") uetEvent("trial_signup", { event_category: "premium" });

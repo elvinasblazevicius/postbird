@@ -290,6 +290,7 @@ describe.skipIf(!TEST_DB)("database integration", () => {
       await sql`truncate events`;
       expect((await send({ type: "pageview", path: "/alerts/confirm?token=secret" })).status).toBe(204);
       expect((await send({ type: "pageview", path: "/admin/subscribers" })).status).toBe(204);
+      expect((await send({ type: "pageview", path: `/account?t=${"a".repeat(64)}` })).status).toBe(204);
       expect((await send({ type: "pageview", path: "/jobs?q=data&utm_source=bing&msclkid=abc&email=a@b.c" })).status).toBe(204);
       const rows = await sql`select path from events`;
       expect(rows.map((r: { path: string }) => r.path)).toEqual(["/jobs?utm_source=bing&msclkid=abc"]);

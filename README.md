@@ -13,7 +13,7 @@ For a low-cost test, the whole thing runs on free plans; the only purchase is a 
 | Service | What for | Cost |
 |---|---|---|
 | **Netlify** (recommended for the test) | Hosting, with a free `*.netlify.app` address | Free. Commercial use is allowed. 300 credits a month: each deploy costs 15, and traffic uses the rest (about 10–15 GB of pages). If credits run out, the site pauses until next month; you are never billed automatically. Functions are limited to 10 seconds, which is why imports run in GitHub Actions. |
-| **GitHub** | Stores the code; runs the import every 2 hours and the weekly email | Free. Keep the repository **private**: GitHub switches off schedules in *public* repos after 60 days without commits. About 600 of the 2,000 free Actions minutes per month. |
+| **GitHub** | Stores the code; runs the import every 2 hours and the daily emails | Free. Keep the repository **private**: GitHub switches off schedules in *public* repos after 60 days without commits. About 600 of the 2,000 free Actions minutes per month. |
 | **Supabase** | Database | Free plan: 500 MB, which holds tens of thousands of jobs. Free projects pause after a week of inactivity; the 2-hourly import keeps it busy. |
 | **Domain** | Your address; needed for email | A .com is about $11/year at Cloudflare Registrar, which sells at cost and renews at the same price (Porkbun: about $11.81). Avoid $1–2 first-year endings like .xyz: they renew at $15+ and hurt email delivery and trust. |
 | **Resend** | Confirmation and weekly emails | Free: 3,000 emails/month, **100 per day**. Emails only reach subscribers once your domain is verified. |
@@ -47,14 +47,14 @@ Create a **private** repository and upload this folder, without `node_modules` o
    - `NEXT_PUBLIC_SITE_URL`: `https://<your-site>.netlify.app` for now; change it when you add your domain.
 3. Click **Deploy**. Your site is live at `https://<your-site>.netlify.app`.
 
-### Step 4 — Scheduled import and weekly email (GitHub Actions)
+### Step 4 — Scheduled import and emails (GitHub Actions)
 In GitHub, open **Settings → Secrets and variables → Actions → New repository secret** and add:
 - `DATABASE_URL`: the same value as on Netlify.
 - `SITE_URL`: your site address (no trailing slash). It's used for links in emails.
 - `INOREADER_FEED_URLS`: optional, the same as on Netlify.
 - `RESEND_API_KEY` and `EMAIL_FROM`: once email is set up (Step 6).
 
-Then go to **Actions → Scheduled jobs → Run workflow**, choose `sync` and click Run to check it works. After that it imports every 2 hours and sends the digest on Mondays by itself. It runs directly against the database, so there's no time limit.
+Then go to **Actions → Scheduled jobs → Run workflow**, choose `sync` and click Run to check it works. After that it imports every 2 hours and sends the emails once a day (06:23 UTC) by itself: paid alerts to each subscriber at their chosen frequency, and the weekly digest (Mondays) when `freeWeeklyEmail` is on. It runs directly against the database, so there's no time limit.
 
 ### Step 5 — First check
 Open `https://<your-site>.netlify.app/admin`, sign in, and look at **Import history**. You can also click **Sync now**. On Netlify a sync started from the website reads feeds for about 5 seconds and finishes within about 7.5 seconds (it keeps time back to close the run and release its lock), so it stays within the 10-second limit; organization icons and old-data clean-up are left to the scheduled run, which also imports the rest. If the host ever cuts a run off, its lock expires after a minute and the run is marked as failed after 30 minutes.
@@ -148,19 +148,55 @@ Every results page has an **Email me jobs like these** button, and every job wit
 - **Listings:** search, remove or restore listings, and fix a category.
 - **Subscribers:** counts, latest sign-ups with their alert preferences, send confirmations, send the digest now, CSV export.
 
-Analytics are first-party and cookieless. No IP addresses are stored; visitors are counted with a hash that changes daily. Bots are filtered out. Admin and alert-link pages (`/admin`, `/alerts/confirm`, `/alerts/unsubscribe`) are never recorded, and stored page addresses keep only `utm_*` and `msclkid` parameters.
+Analytics are first-party and cookieless. No IP addresses are stored; visitors are counted with a hash that changes daily. Bots are filtered out. Admin, alert-link and account pages (`/admin`, `/alerts/confirm`, `/alerts/unsubscribe`, `/account`) are never recorded, and stored page addresses keep only `utm_*` and `msclkid` parameters.
 
 ---
 
-## 6. Paid email alerts (fake-door test)
+## 6. Paid email alerts (Paddle Billing)
 
-Browsing, search and filters are free. **Email alerts are the paid product: $5/month or $12 for 3 months, after a 14-day free trial with no card.** Billing isn't switched on yet. Every "Start free trial" button records the person's email and alert preferences, then tells them plainly that trials start soon and nothing is charged today. Nobody is billed.
+Browsing, search and filters are free. **Email alerts are the paid product**, sold through [Paddle Billing](https://www.paddle.com/billing) (merchant of record: Paddle sells to the customer and handles VAT/sales tax, so no company in a Stripe country is needed). Plans, prices and trial length shown on the site come from `site.config.ts` (`premium`); the amounts actually charged come from the prices you create in Paddle, so keep the two the same.
 
-To read the test, compare **trial clicks** and **waitlist sign-ups** per visitor in **Admin → Overview**, including per ad campaign. Change prices, trial length and features in `site.config.ts` (`premium`).
+### Two modes, one switch
 
-`freeWeeklyEmail` in `site.config.ts` switches the model. With `false` (the current setting), all alerts are paid. With `true`, everyone gets a free Monday email and the paid plan is the upgrade. The weekly digest only goes to free subscribers, or to paying ones (`plan = 'premium'`), to match.
+- **Billing off** (any of the three `NEXT_PUBLIC_PADDLE_*` values below empty, e.g. today on the live site): the early-access "fake door". Every "Start free trial" button records the person's email and alert preferences and tells them plainly that alerts aren't open and nothing is charged.
+- **Billing on** (all three set): the same buttons show the plan choice (3 months preselected), the email field and **"Start 14-day free trial"**, then open Paddle's checkout. The card is taken at sign-up, nothing is charged for 14 days, then the plan renews automatically unless cancelled.
 
-When demand is proven, the database already has `billing_customers`, `billing_subscriptions` and `saved_searches` ready for Stripe. Stripe doesn't accept businesses based in Vietnam, though, so you'd need a company in a Stripe-supported country, or a merchant of record such as Lemon Squeezy or Paddle.
+After checkout Paddle notifies the site (`/api/paddle/webhook`). The subscriber gets a welcome email with the link to **their account page** (`/account?t=…`, private, never indexed or tracked): plan and status, trial end or renewal date, up to 5 saved searches, daily or weekly emails, "Manage billing or cancel" (opens Paddle's customer portal), and unsubscribe. Lost the link? `/account/login` emails it again.
+
+Alerts go out with the daily scheduled run (see Step 4): for each subscriber in trial or paying, every saved search is run for open vacancies first seen since that search's last email, and the matches are sent as one email. Daily subscribers get at most one email a day, weekly ones one a week, and nobody gets an empty email. Paying subscribers never get the free weekly digest.
+
+**Admin → Overview** shows trials, paying subscribers, cancellations and an MRR estimate. Once billing is on, the concept-test verdict counts ad visitors who **started a trial** instead of joining early access. (Ad visitors from before the switch still count in the denominator.)
+
+### Paddle setup (sandbox first)
+
+Do everything in a **sandbox** account first ([sandbox-login.paddle.com](https://sandbox-login.paddle.com/signup)); nothing real is charged there and the test card is `4242 4242 4242 4242` (any future expiry, any CVC). Then repeat in the live account.
+
+1. **Product:** Paddle → Catalog → Products → New product. Name `Postbird email alerts`, tax category *Standard digital goods* (or *SaaS*).
+2. **Two prices** on that product (Catalog → product → New price), both in USD:
+   - **$9.99**, billing period **every 1 month**, **trial period 14 days**, trial requires a payment method (card) — no trial price, so the trial is free.
+   - **$19.99**, billing period **every 3 months**, **trial period 14 days**, trial requires a payment method — no trial price.
+
+   Copy both price IDs (`pri_…`). If you later change a price in `site.config.ts`, create a new Paddle price with the same amount and update the env var: Paddle charges what its price says, not what the site shows.
+3. **Default payment link:** Paddle → Checkout → Checkout configuration → Default payment link: `https://postbird.nuevanova.com/account/pay`. Paddle uses it for card updates and unpaid renewals; checkout fails with "Something went wrong" until it is set.
+4. **Client-side token:** Paddle → My account → Settings → Authentication → Client-side tokens → New client-side token (`test_…` in sandbox, `live_…` in live). It is public; it goes in `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`.
+5. **API key:** Paddle → My account → Settings → Authentication → API keys → New API key, with only these permissions: **Customer portal session: write** and **Subscription: read**. It goes in `PADDLE_API_KEY` (secret; never in a `NEXT_PUBLIC_` variable).
+6. **Webhook:** Paddle → Events → Notifications → New destination. Type *Webhook*, URL `https://postbird.nuevanova.com/api/paddle/webhook`, usage *Platform* (add *Simulation* too if you want to try the webhook simulator), events: `subscription.created`, `subscription.updated`, `subscription.activated`, `subscription.trialing`, `subscription.past_due`, `subscription.paused`, `subscription.resumed`, `subscription.canceled`, `transaction.completed`. Copy the destination's secret key (`pdl_ntfset_…`) into `PADDLE_WEBHOOK_SECRET`.
+7. **Environment variables** on Netlify (Site configuration → Environment variables), then redeploy (the `NEXT_PUBLIC_` values are built into the pages):
+   ```
+   NEXT_PUBLIC_PADDLE_ENV=sandbox            # "production" for the live account
+   NEXT_PUBLIC_PADDLE_CLIENT_TOKEN=test_…
+   NEXT_PUBLIC_PADDLE_PRICE_MONTHLY=pri_…    # the $9.99 / month price
+   NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY=pri_…  # the $19.99 / 3 months price
+   PADDLE_API_KEY=pdl_sdbx_apikey_…
+   PADDLE_WEBHOOK_SECRET=pdl_ntfset_…
+   ```
+   Run `npm run db:migrate` (or the scheduled workflow's `setup` task) before or right after deploying, so the billing tables exist.
+8. **Test:** start a trial with the test card, check that the account link appears (or arrives by email), that **Admin → Overview** shows one trial, that "Manage billing or cancel" opens Paddle's portal, and that cancelling there shows on the account page. Paddle's delivery log is under Events → Notifications.
+9. **Going live:** in the live account, add `postbird.nuevanova.com` under **Paddle → My account → Settings → Website approval** (live checkouts only open on approved domains; Paddle reviews it), finish the account verification, then repeat steps 1–7 with live values and `NEXT_PUBLIC_PADDLE_ENV=production`.
+
+To switch billing off again, empty `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` and redeploy: the forms go back to early access. Existing subscriptions keep running in Paddle and their webhooks are still processed.
+
+`freeWeeklyEmail` in `site.config.ts` switches the model. With `false` (the current setting), all alerts are paid. With `true`, everyone gets a free Monday email and the paid plan is the upgrade.
 
 ---
 

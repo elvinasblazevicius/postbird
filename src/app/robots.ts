@@ -12,7 +12,7 @@ export default function robots(): MetadataRoute.Robots {
   return {
     // Organization icons under /api/org-logo/ appear on indexed pages, so they stay crawlable;
     // the longer "allow" rule wins over "/api/" for crawlers that follow RFC 9309.
-    rules: [{ userAgent: "*", allow: ["/", "/api/org-logo/"], disallow: ["/admin", "/api/", "/alerts/confirm", "/alerts/unsubscribe"] }],
+    rules: [{ userAgent: "*", allow: ["/", "/api/org-logo/"], disallow: ["/admin", "/api/", "/alerts/confirm", "/alerts/unsubscribe", "/account"] }],
     sitemap: absoluteUrl("/sitemap.xml"),
   };
 }

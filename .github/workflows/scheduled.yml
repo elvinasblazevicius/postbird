@@ -1,4 +1,4 @@
-# Runs the vacancy import every 2 hours and the weekly email every Monday,
+# Runs the vacancy import every 2 hours and the emails once a day,
 # directly against the database (no website time limits, works on any host).
 #
 # Repository secrets needed (Settings → Secrets and variables → Actions):
@@ -12,7 +12,11 @@ name: Scheduled jobs
 on:
   schedule:
     - cron: "17 */2 * * *"   # import feeds every 2 hours (UTC)
-    - cron: "23 6 * * 1"     # weekly digest, Mondays 06:23 UTC
+    # Emails, daily 06:23 UTC: paid alerts (each subscriber's daily or weekly
+    # choice is enforced in the code, so weekly subscribers get one email a
+    # week) and the weekly digest, which sends at most once per ISO week, so
+    # it still goes out on Mondays.
+    - cron: "23 6 * * *"
   workflow_dispatch:
     inputs:
       task:
@@ -42,7 +46,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Run task
         env:
-          TASK: ${{ github.event.schedule == '23 6 * * 1' && 'digest' || inputs.task || 'sync' }}
+          TASK: ${{ github.event.schedule == '23 6 * * *' && 'digest' || inputs.task || 'sync' }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           NEXT_PUBLIC_SITE_URL: ${{ secrets.SITE_URL }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}

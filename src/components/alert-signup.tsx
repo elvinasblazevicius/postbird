@@ -6,6 +6,8 @@ import siteConfig from "@site-config";
 import { AttributionField, uetEvent } from "./ads";
 import { EarlyAccessDone } from "./early-access";
 import { EARLY_ACCESS_BUTTON, earlyAccessLine } from "@/lib/early-access-copy";
+import { BILLING_LIVE } from "@/lib/billing/live";
+import { TrialCheckoutForm } from "./paddle-checkout";
 
 const initial: FormState = { status: "idle", message: "" };
 
@@ -13,8 +15,14 @@ const initial: FormState = { status: "idle", message: "" };
  * Email alert sign-up (double opt-in). When alerts are paid
  * (siteConfig.freeWeeklyEmail = false) it is the early-access sign-up of the
  * concept test: it says plainly that alerts aren't open and nothing is charged.
+ * Once billing is live (BILLING_LIVE) paid alerts start a real free trial instead.
  */
 export function AlertSignup({ source, tone = "light" }: { source: string; tone?: "light" | "dark" }) {
+  if (BILLING_LIVE && !siteConfig.freeWeeklyEmail) return <TrialCheckoutForm source={source} tone={tone} compact />;
+  return <EarlyAccessSignup source={source} tone={tone} />;
+}
+
+function EarlyAccessSignup({ source, tone = "light" }: { source: string; tone?: "light" | "dark" }) {
   const [state, action, pending] = useActionState(signupAction, initial);
   const dark = tone === "dark";
   const paid = !siteConfig.freeWeeklyEmail;

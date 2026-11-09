@@ -118,11 +118,18 @@ export async function confirmSubscriber(t: string): Promise<ConfirmResult> {
  * addresses are deleted after 30 days. Run by the scheduled job.
  */
 export async function purgeStaleSubscribers(): Promise<number> {
+  // Never deletes someone with a running Paddle subscription (they still pay,
+  // even if they unsubscribed from the emails) or one canceled in the last 30 days.
   const rows = await sql`
     delete from subscribers
     where coalesce(confirm_sent_at, created_at) < now() - interval '30 days'
       and (status = 'pending' or (status = 'unsubscribed' and unsubscribed_at < now() - interval '30 days'))
+      and billing_status in ('none', 'canceled')
+      and (canceled_at is null or canceled_at < now() - interval '30 days')
     returning id`;
+  // Checkout references are only needed until Paddle's webhooks arrive; webhook ids for a year (late retries).
+  await sql`delete from paddle_checkouts where created_at < now() - interval '30 days'`;
+  await sql`delete from paddle_events where received_at < now() - interval '365 days'`;
   return rows.length;
 }
 

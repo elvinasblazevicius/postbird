@@ -57,10 +57,10 @@ const siteConfig = {
   },
 
   /**
-   * Premium plan shown on /pricing. Billing is NOT switched on yet: the
-   * "Start free trial" button records interest (a "fake door" test) and
-   * tells visitors honestly that Premium opens soon. Change the price
-   * here to test different price points.
+   * Paid email alerts shown on /pricing. Real billing (Paddle) switches on when
+   * the Paddle env vars are set (src/lib/billing/live.ts); until then the
+   * sign-up boxes collect early-access emails and say nothing is charged.
+   * Prices here must match the Paddle prices; plans[0] is monthly, plans[1] 3 months.
    */
   /**
    * Email alerts. false = alerts are part of the paid plan (every sign-up box
@@ -89,11 +89,6 @@ const siteConfig = {
     ],
     /** Short version used in sign-up boxes. */
     priceSummary: "$9.99/month or $19.99 for 3 months",
-    /**
-     * Billing is not switched on yet (concept test). While false, every sign-up
-     * box says plainly that trials open soon and nothing is charged.
-     */
-    trialsOpen: false,
     features: [
       "New matching vacancies by email, daily or weekly",
       "Up to 5 saved searches by keyword, organization, place or grade",

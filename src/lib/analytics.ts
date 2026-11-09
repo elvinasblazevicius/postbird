@@ -10,6 +10,8 @@ import { clientIp } from "@/lib/rate-limit";
 export const EVENT_TYPES = [
   "pageview", "job_view", "search", "apply_click", "alert_signup", "waitlist_signup",
   "alert_confirmed", "premium_cta_click", "plan_choice",
+  // Paid alerts (recorded by the Paddle webhook, with the subscriber's first-touch campaign in props.campaign).
+  "trial_started", "subscription_canceled",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 

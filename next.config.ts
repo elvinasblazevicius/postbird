@@ -25,21 +25,43 @@ const isDev = process.env.NODE_ENV === "development";
  * inline font/style tags.
  * If "Microsoft Clarity" is switched on in the UET tag settings, add
  * https://*.clarity.ms to script-src, img-src and connect-src.
+ *
+ * Paddle Billing (paid alerts; allowed in sandbox and production so the
+ * switch needs no config change). Hosts taken from Paddle's docs and from
+ * Paddle.js v2 itself (cdn.paddle.com/paddle/v2/paddle.js):
+ *  - script: Paddle.js from cdn.paddle.com; on live accounts Paddle.js also
+ *    loads Paddle Retain (public.profitwell.com), which reports to
+ *    www2.profitwell.com.
+ *  - style/img: checkout button CSS and images from cdn.paddle.com or
+ *    sandbox-cdn.paddle.com.
+ *  - frame: the overlay checkout iframe (buy.paddle.com /
+ *    sandbox-buy.paddle.com) and its error page on the CDN. Card-network and
+ *    wallet frames are nested inside Paddle's frame, under Paddle's own policy.
+ *  - connect: price and transaction previews from api.paddle.com /
+ *    sandbox-api.paddle.com.
+ *  - form-action: "Manage billing" redirects to the customer portal; without
+ *    JavaScript that is a form submission redirect, which form-action covers.
  */
 const UET = "https://bat.bing.com https://bat.bing.net";
+const PADDLE_CDN = "https://cdn.paddle.com https://sandbox-cdn.paddle.com";
+const PADDLE_SCRIPT = "https://cdn.paddle.com https://public.profitwell.com";
+const PADDLE_FRAME = `https://buy.paddle.com https://sandbox-buy.paddle.com ${PADDLE_CDN}`;
+const PADDLE_CONNECT = "https://api.paddle.com https://sandbox-api.paddle.com https://www2.profitwell.com";
+const PADDLE_PORTAL = "https://customer-portal.paddle.com https://sandbox-customer-portal.paddle.com";
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' ${UET}${isDev ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data: blob: ${UET}`,
+  `script-src 'self' 'unsafe-inline' ${UET} ${PADDLE_SCRIPT}${isDev ? " 'unsafe-eval'" : ""}`,
+  `style-src 'self' 'unsafe-inline' ${PADDLE_CDN}`,
+  `img-src 'self' data: blob: ${UET} ${PADDLE_CDN}`,
   "font-src 'self' data:",
-  `connect-src 'self' ${UET}${isDev ? " ws: wss:" : ""}`,
+  `connect-src 'self' ${UET} ${PADDLE_CONNECT}${isDev ? " ws: wss:" : ""}`,
+  `frame-src ${PADDLE_FRAME}`,
   "worker-src 'self' blob:",
   "manifest-src 'self'",
   "media-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
-  "form-action 'self'",
+  `form-action 'self' ${PADDLE_PORTAL}`,
   "frame-ancestors 'self'",
 ].join("; ");
 
@@ -50,7 +72,8 @@ const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
+  // Paddle's checkout iframe asks for the Payment Request API (allow="payment") for Apple Pay / Google Pay.
+  { key: "Permissions-Policy", value: 'camera=(), microphone=(), geolocation=(), payment=(self "https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=()' },
 ];
 
 const nextConfig: NextConfig = {
@@ -78,6 +101,8 @@ const nextConfig: NextConfig = {
     return [
       { source: "/:path*", headers: securityHeaders },
       { source: "/admin/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+      { source: "/account", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+      { source: "/account/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
     ];
   },
 };

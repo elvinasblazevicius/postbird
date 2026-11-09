@@ -3,6 +3,8 @@ import Link from "next/link";
 import { categoryName } from "@/lib/site";
 import { sql } from "@/lib/db";
 import { isEmailConfigured } from "@/lib/email";
+import { BILLING_LIVE, PADDLE_ENV } from "@/lib/billing/live";
+import { planPriceNumber } from "@/lib/early-access-copy";
 import { syncNowAction } from "./actions";
 import { requireAdmin } from "./guard";
 import { AdminShell, Card, fmtDateTime, olderThanHours, Stat, StatusPill, Table } from "./ui";
@@ -78,7 +80,7 @@ export default async function AdminHome({ searchParams }: Props) {
       group by referrer order by visitors desc limit 10`,
   ]);
 
-  const [campaigns, [ct], [adConfirmed], planChoices] = await Promise.all([
+  const [campaigns, [ct], [adConfirmed], planChoices, [bill], [adTrials]] = await Promise.all([
     campaignStats(days),
     // Concept test: each paid-ad visitor (Microsoft click id, or utm_medium=cpc) counted once,
     // "converted" if that same visitor later joined early access the same day (the visitor code changes daily).
@@ -100,18 +102,39 @@ export default async function AdminHome({ searchParams }: Props) {
         and (attribution ? 'msclkid' or lower(attribution->>'utm_medium') in ('cpc', 'ppc', 'paid'))`,
     sql<{ plan: string; n: number }[]>`
       select props->>'plan' as plan, count(*)::int as n from events where type = 'plan_choice' group by 1`,
+    // Paid alerts (Paddle). Before migration 004 these columns don't exist yet, so fall back to zeros.
+    sql<{ trialing: number; active: number; past_due: number; canceled: number; active_month: number; active_quarter: number; canceled_30: number }[]>`
+      select count(*) filter (where billing_status = 'trialing')::int as trialing,
+             count(*) filter (where billing_status = 'active')::int as active,
+             count(*) filter (where billing_status in ('past_due', 'paused'))::int as past_due,
+             count(*) filter (where billing_status = 'canceled')::int as canceled,
+             count(*) filter (where billing_status = 'active' and plan_interval = 'month')::int as active_month,
+             count(*) filter (where billing_status = 'active' and plan_interval = 'quarter')::int as active_quarter,
+             count(*) filter (where billing_status = 'canceled' and canceled_at >= now() - interval '30 days')::int as canceled_30
+      from subscribers`.catch(() => [{ trialing: 0, active: 0, past_due: 0, canceled: 0, active_month: 0, active_quarter: 0, canceled_30: 0 }]),
+    // Concept test once billing is live: trials started by visitors who came from paid ads
+    // (the subscriber's first-touch campaign is stored on the trial_started event).
+    sql<{ n: number }[]>`
+      select count(*)::int as n from events
+      where type = 'trial_started'
+        and (props->'campaign' ? 'msclkid' or lower(props->'campaign'->>'utm_medium') in ('cpc', 'ppc', 'paid'))`,
   ]);
+  // Monthly recurring revenue estimate: paying subscribers only (not trials), 3-month plans counted at a third. Before Paddle's fees and taxes.
+  const mrr = bill.active_month * planPriceNumber("month") + (bill.active_quarter * planPriceNumber("quarter")) / 3;
+  const money = (x: number) => `$${x.toFixed(2)}`;
   const planCount = (k: string) => planChoices.find((p) => p.plan === k)?.n ?? 0;
   const test = siteConfig.conceptTest;
   const adVisitors = ct.visitors;
-  const adSignups = ct.converted;
+  // While billing is off, a conversion is joining early access; once it is live, starting a free trial.
+  const adSignups = BILLING_LIVE ? adTrials.n : ct.converted;
+  const converted = BILLING_LIVE ? "started a free trial" : "joined early access";
   const adRate = adVisitors ? adSignups / adVisitors : 0;
   const pct = (x: number) => `${(x * 100).toFixed(1).replace(/\.0$/, "")}%`;
   const verdict =
     adVisitors < test.minVisitors
       ? { tone: "bg-mist text-ink", title: "Collecting data", text: `${adVisitors} of ${test.minVisitors} ad visitors so far. Current rate ${pct(adRate)}; no verdict yet.` }
       : adRate >= test.successRate
-        ? { tone: "bg-remote-bg text-remote", title: "Passed", text: `${pct(adRate)} of ${adVisitors} ad visitors joined early access (target ${pct(test.successRate)}). Worth building real billing.` }
+        ? { tone: "bg-remote-bg text-remote", title: "Passed", text: `${pct(adRate)} of ${adVisitors} ad visitors ${converted} (target ${pct(test.successRate)}).${BILLING_LIVE ? "" : " Worth building real billing."}` }
         : adRate < test.failRate
           ? { tone: "bg-[#fde8e8] text-[#9b1c1c]", title: "Failed", text: `${pct(adRate)} of ${adVisitors} ad visitors (below ${pct(test.failRate)}). People don't want to pay for alerts at this price or with this message.` }
           : { tone: "bg-signal-bg text-signal", title: "Unclear", text: `${pct(adRate)} of ${adVisitors} ad visitors, between ${pct(test.failRate)} and ${pct(test.successRate)}. Try a different ad message or price before deciding.` };
@@ -151,6 +174,14 @@ export default async function AdminHome({ searchParams }: Props) {
         <Stat label="Feeds" value={`${feeds.active}/${feeds.total}`} hint={lastOk ? `Last import ${fmtDateTime(lastOk.started_at)}` : "Never imported"} />
       </div>
 
+      <h2 className="mt-10 text-xl font-semibold text-ink">Paid alerts {BILLING_LIVE ? `(Paddle ${PADDLE_ENV})` : "(billing not switched on)"}</h2>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="In free trial" value={bill.trialing} hint="card on file, not charged yet" />
+        <Stat label="Paying" value={bill.active} hint={`${bill.active_month} monthly, ${bill.active_quarter} on 3 months${bill.past_due ? `; ${bill.past_due} payment overdue or paused` : ""}`} />
+        <Stat label="Canceled" value={bill.canceled} hint={`${bill.canceled_30} in the last 30 days`} />
+        <Stat label="MRR estimate" value={money(mrr)} hint="paying only; 3-month plans ÷ 3; before Paddle fees and tax" />
+      </div>
+
       <div className="mt-10 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-ink">Is the site useful? Last {days} days</h2>
         <div className="flex gap-1 text-sm">
@@ -164,6 +195,7 @@ export default async function AdminHome({ searchParams }: Props) {
         <div className="mt-1 text-sm">{verdict.text}</div>
         <div className="mt-1 text-xs opacity-80">
           Rule set before launch: pass at {pct(test.successRate)} or more, fail below {pct(test.failRate)}, from at least {test.minVisitors} visitors arriving from paid ads. Change it in site.config.ts.
+          {BILLING_LIVE ? " Billing is live, so a conversion is a free trial started by an ad visitor (card required)." : " A conversion is joining early access."}
         </div>
         <div className="mt-2 text-sm">
           Ad sign-ups that confirmed their email: {adConfirmed.n}. &quot;Which plan would you choose?&quot; (all sign-ups): {planCount("monthly")} monthly,{" "}

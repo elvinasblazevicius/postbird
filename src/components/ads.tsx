@@ -7,7 +7,7 @@
  *  - in the EEA, UK and Switzerland (or when the country is unknown) nothing is
  *    stored on the device and Microsoft's script is not loaded until the
  *    visitor clicks "Allow"; elsewhere visitors can opt out any time
- *  - never runs on /alerts/* (confirm/unsubscribe links carry personal tokens) or /admin
+ *  - never runs on /alerts/* (confirm/unsubscribe links carry personal tokens), /account (private link) or /admin
  *  - "Cookie settings" in the footer reopens the choice
  */
 import { usePathname } from "next/navigation";
@@ -30,7 +30,7 @@ declare global {
 
 /** Pages where no tracking of any kind runs. */
 export function isPrivatePath(path: string) {
-  return path.startsWith("/alerts/") || path === "/alerts/confirm" || path.startsWith("/admin");
+  return path.startsWith("/alerts/") || path === "/alerts/confirm" || path.startsWith("/admin") || path === "/account" || path.startsWith("/account/");
 }
 
 function local(): Storage | null {
