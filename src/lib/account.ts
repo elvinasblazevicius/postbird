@@ -10,6 +10,8 @@ export type Account = {
   id: number;
   email: string;
   status: "pending" | "confirmed" | "unsubscribed";
+  /** Signed up (and confirmed) for the free weekly email; only sent while there is no plan. */
+  weekly_email: boolean;
   frequency: "daily" | "weekly";
   billing_status: BillingStatus;
   plan_interval: PlanInterval | null;
@@ -31,7 +33,7 @@ export function isManageToken(t: unknown): t is string {
 export async function findByManageToken(t: unknown): Promise<Account | null> {
   if (!isManageToken(t)) return null;
   const [row] = await sql<Account[]>`
-    select id::int as id, email, status, frequency, billing_status, plan_interval, trial_ends_at, current_period_end, cancel_at, canceled_at,
+    select id::int as id, email, status, weekly_email, frequency, billing_status, plan_interval, trial_ends_at, current_period_end, cancel_at, canceled_at,
            paddle_customer_id, paddle_subscription_id, unsubscribe_token, manage_token
     from subscribers where manage_token = ${t}`;
   return row ?? null;

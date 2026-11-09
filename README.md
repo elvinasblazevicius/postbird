@@ -30,7 +30,7 @@ Vercel also works (`vercel.json` is included), but its free plan is for non-comm
 
 ### Step 1 — Database (Supabase)
 1. Create a project at supabase.com. Choose a region near your visitors (e.g. Frankfurt) and save the database password.
-2. Open **SQL Editor → New query**. Paste the whole of `db/migrations/001_init.sql`, then click **Run**. Do the same with `002_employer_links_and_logos.sql`, `003_security.sql`, `004_billing.sql`, `005_reminders_retention.sql`, `006_events_created_at.sql` and `007_accent_insensitive_search.sql`, in that order. All are safe to run again, and GitHub Actions also applies any missing ones on every push to `main` (the *Deploy migrations* workflow) and before every scheduled run (Step 4).
+2. Open **SQL Editor → New query**. Paste the whole of `db/migrations/001_init.sql`, then click **Run**. Do the same with `002_employer_links_and_logos.sql`, `003_security.sql`, `004_billing.sql`, `005_reminders_retention.sql`, `006_events_created_at.sql`, `007_accent_insensitive_search.sql` and `008_free_weekly_email.sql`, in that order. All are safe to run again, and GitHub Actions also applies any missing ones on every push to `main` (the *Deploy migrations* workflow) and before every scheduled run (Step 4).
 3. Click **Connect** at the top and copy the **Transaction pooler** connection string (port **6543**). Replace `[YOUR-PASSWORD]` with your password. This is your `DATABASE_URL`.
 
 ### Step 2 — Code (GitHub)
@@ -53,8 +53,9 @@ In GitHub, open **Settings → Secrets and variables → Actions → New reposit
 - `SITE_URL`: your site address (no trailing slash). It's used for links in emails.
 - `INOREADER_FEED_URLS`: optional, the same as on Netlify.
 - `RESEND_API_KEY` and `EMAIL_FROM`: once email is set up (Step 6).
+- `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`, `NEXT_PUBLIC_PADDLE_PRICE_MONTHLY` and `NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY`: once billing is live (section 6), the same values as on Netlify. The weekly email reads them to offer the free trial; without them it offers early access instead.
 
-Then go to **Actions → Scheduled jobs → Run workflow**, choose `sync` and click Run to check it works. After that it imports every 2 hours and sends the emails once a day (06:23 UTC) by itself: paid alerts to each subscriber at their chosen frequency, the plan emails (a reminder about 3 days before a free trial ends, and any welcome or confirmation email that failed to send earlier), and the weekly digest (Mondays) when `freeWeeklyEmail` is on. It runs directly against the database, so there's no time limit.
+Then go to **Actions → Scheduled jobs → Run workflow**, choose `sync` and click Run to check it works. After that it imports every 2 hours and sends the emails once a day (06:23 UTC) by itself: paid alerts to each subscriber at their chosen frequency, the plan emails (a reminder about 3 days before a free trial ends, and any welcome or confirmation email that failed to send earlier), and, on Mondays, the free weekly email when `freeWeeklyEmail` is on (only the first run of the week on a Monday starts it; a run later in the week only retries a Monday run that failed, so it never goes out on another day by itself). It runs directly against the database, so there's no time limit.
 
 ### Step 5 — First check
 Open `https://<your-site>.netlify.app/admin`, sign in, and look at **Import history**. You can also click **Sync now**. On Netlify a sync started from the website reads feeds for about 5 seconds and finishes within about 7.5 seconds (it keeps time back to close the run and release its lock), so it stays within the 10-second limit; organization icons and old-data clean-up are left to the scheduled run, which also imports the rest. If the host ever cuts a run off, its lock expires after a minute and the run is marked as failed after 30 minutes.
@@ -110,7 +111,7 @@ When an organization's website is known (built-in list, or a link in the posting
 
 Regions follow the usual UN regional split; move countries between regions in `src/config/regions.ts`. Region pages (e.g. `/locations/africa`) are built automatically.
 
-Every results page has an **Email me jobs like these** button, and every job with a deadline has **Add to calendar** (a free .ics download with a reminder two days before) and **Remind me**. "Email me jobs like these" and "Remind me" lead to the free-trial sign-up and save the search or job with the sign-up, so you can see which features people want.
+Every results page has a **Get new matches for this search in a free weekly email** link (with "daily alerts (paid plan)" next to it), and every job with a deadline has **Add to calendar** (a free .ics download with a reminder two days before) and **Remind me**. The weekly-email link opens `/alerts` with the search filled in; the daily-alerts link and "Remind me" lead to the free-trial sign-up and save the search or job with the sign-up, so you can see which features people want.
 
 ---
 
@@ -146,7 +147,7 @@ Every results page has an **Email me jobs like these** button, and every job wit
 - **Feeds:** add, edit, switch off or remove feeds; run a sync now.
 - **Import history:** every run, with new, updated, duplicate, failed and skipped items and feed errors.
 - **Listings:** search, remove or restore listings, and fix a category.
-- **Subscribers:** counts, latest sign-ups with their alert preferences, send confirmations, send the digest now, CSV export.
+- **Subscribers:** counts, latest sign-ups with their alert preferences, send confirmations, send this week's free weekly email now (any day; still at most one per subscriber per week), CSV export.
 
 Analytics are first-party and cookieless. No IP addresses are stored; visitors are counted with a hash that changes daily. Bots are filtered out. Admin, alert-link and account pages (`/admin`, `/alerts/confirm`, `/alerts/unsubscribe`, `/account`) are never recorded, and stored page addresses keep only `utm_*` and `msclkid` parameters.
 
@@ -167,7 +168,7 @@ Unsubscribing (the email link, the one-click button in Gmail/Outlook, or the acc
 
 **Early-access list:** when billing goes live, **Admin → Subscribers → Email the early-access list** sends each confirmed early-access member who isn't on a plan the one promised email (alerts are open, the free trial, an unsubscribe link). Their address is deleted 30 days later unless they start a trial. Canceled plans are deleted 30 days after the cancellation (Paddle keeps the payment records), and checkout references, which link a daily visitor code to a subscriber, after 30 days.
 
-Alerts go out with the daily scheduled run (see Step 4): for each subscriber in trial or paying, every saved search is run for open vacancies first seen since that search's last email, and the matches are sent as one email. Daily subscribers get at most one email a day, weekly ones one a week, and nobody gets an empty email. Paying subscribers never get the free weekly digest.
+Alerts go out with the daily scheduled run (see Step 4): for each subscriber in trial or paying, every saved search is run for open vacancies first seen since that search's last email, and the matches are sent as one email. Daily subscribers get at most one email a day, weekly ones one a week, and nobody gets an empty email. Subscribers with a plan (trial, active, payment overdue or paused) never get the free weekly email.
 
 **Admin → Overview** shows trials, paying subscribers, cancellations and an MRR estimate. Once billing is on, the concept-test verdict counts ad visitors who **started a trial** instead of joining early access. (Ad visitors from before the switch still count in the denominator.)
 
@@ -200,7 +201,7 @@ Do everything in a **sandbox** account first ([sandbox-login.paddle.com](https:/
 
 To switch billing off again, empty `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` and redeploy: the forms go back to early access. Existing subscriptions keep running in Paddle and their webhooks are still processed.
 
-`freeWeeklyEmail` in `site.config.ts` switches the model. With `false` (the current setting), all alerts are paid. With `true`, everyone gets a free Monday email and the paid plan is the upgrade.
+`freeWeeklyEmail` in `site.config.ts` switches the model. With `true` (the current setting), anyone can sign up on `/alerts` for a free Monday email (double opt-in, no card, no account): the past week's new vacancies for the one search they choose (keywords, organization, location), or the week's newest if they choose none, at most 10 listed with "See all", and nothing in a week without new matches. The paid plan is the upgrade: daily (or weekly) alerts for up to 5 searches. Free subscribers keep one saved search (the database enforces 1 without a plan and 5 with one); they can change it from the account link in each email or by signing up again. If a paid plan ends, the address gets the free weekly email only if it had signed up for it. With `false`, all alerts are paid.
 
 ---
 

@@ -38,7 +38,10 @@ export async function signupAction(_prev: FormState, form: FormData): Promise<Fo
   }
   // A saved search (the /jobs query string) or a job to be reminded about, when the trial was started from one.
   const search = String(form.get("search") ?? "");
-  if (search && search.length <= 400 && /^[\w%=&+.,~-]*$/.test(search)) prefs.search = search;
+  const validSearch = search.length <= 400 && /^[\w%=&+.,~-]*$/.test(search);
+  if (search && validSearch) prefs.search = search;
+  // The free weekly email follows the search chosen here ("" = the week's newest vacancies).
+  const weeklySearch = kind === "alerts" && siteConfig.freeWeeklyEmail ? (validSearch ? search : "") : null;
   const remind = String(form.get("remind_job") ?? "");
   if (/^\d{1,12}$/.test(remind)) prefs.remind_job = remind;
   let attribution: Record<string, string> | null = null;
@@ -56,6 +59,7 @@ export async function signupAction(_prev: FormState, form: FormData): Promise<Fo
       source: String(form.get("source") ?? "").slice(0, 40) || undefined,
       note: String(form.get("note") ?? "") || undefined,
       preferences: prefs,
+      weeklySearch,
     });
     if (!res.ok) return { status: "error", message: res.error };
     return { status: "success", message: isWaitlist ? WAITLIST_MESSAGES[res.state]() : MESSAGES[res.state] };
@@ -71,7 +75,9 @@ export async function confirmAction(_prev: FormState, form: FormData): Promise<F
   if (!res.ok) return { status: "error", message: "This link has already been used or has expired. If you meant to sign up, please do so again." };
   // A plan started at checkout with an address that was already on our list (see applySubscription).
   if (res.paidPlan) return { status: "success", message: "Confirmed. Your alerts start with the next daily run, and we'll email you the link to your account page." };
-  if (res.alerts) return { status: "success", message: "Confirmed. Your first email arrives with the next weekly round-up." };
+  if (res.weekly || res.alerts) {
+    return { status: "success", message: "Confirmed. Your weekly email comes on Mondays, and only when there are new vacancies that match your search." };
+  }
   return { status: "success", message: `Confirmed: you're on the early-access list. ${earlyAccess()}` };
 }
 

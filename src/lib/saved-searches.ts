@@ -1,6 +1,7 @@
 /**
- * Saved searches for paid email alerts. A saved search is the query string of
- * a /jobs URL (e.g. "q=data&region=africa"); "" means every new vacancy.
+ * Saved searches for email alerts. A saved search is the query string of a
+ * /jobs URL (e.g. "q=data&region=africa"); "" means every new vacancy.
+ * Paid alerts use up to MAX_SAVED_SEARCHES; the free weekly email uses one.
  */
 import { categoryBySlug } from "@/config/categories";
 import { countryBySlug } from "@/config/countries";
@@ -9,6 +10,16 @@ import { sql, type Db } from "@/lib/db";
 import { getOrganization, jobsUrl, parseFilters } from "@/lib/jobs";
 
 export const MAX_SAVED_SEARCHES = 5;
+/** Saved searches without a plan: the one the free weekly email uses. */
+export const FREE_SAVED_SEARCHES = 1;
+
+/** Billing statuses that still have a plan (and so up to MAX_SAVED_SEARCHES). Same rule as the database trigger (migration 008). */
+const PLAN_STATUSES = ["trialing", "active", "past_due", "paused"];
+
+/** How many saved searches a subscriber with this billing status may keep. */
+export function searchLimit(billingStatus: string): number {
+  return PLAN_STATUSES.includes(billingStatus) ? MAX_SAVED_SEARCHES : FREE_SAVED_SEARCHES;
+}
 
 /** Same character rule as the sign-up forms (a URL-encoded query string). */
 const SEARCH_RE = /^[\w%=&+.,~-]*$/;
@@ -125,7 +136,8 @@ export type AddSearchResult = { ok: true; added: boolean } | { ok: false; error:
 
 /**
  * Adds a saved search (already normalized). Adding one that exists is not an
- * error. The 5-per-subscriber limit is enforced by the database as well.
+ * error. The limit (5 with a plan, 1 without) is enforced by the database
+ * (trigger saved_searches_limit, migration 008).
  * db: a transaction to run in (the Paddle webhook), otherwise the pool.
  */
 export async function addSavedSearch(subscriberId: number, search: string, db: Db = sql): Promise<AddSearchResult> {
@@ -139,9 +151,28 @@ export async function addSavedSearch(subscriberId: number, search: string, db: D
       on conflict (subscriber_id, search) do nothing returning id`;
     return { ok: true, added: rows.length === 1 };
   } catch (e) {
-    if ((e as { code?: string }).code === "P0001") return { ok: false, error: `You can save up to ${MAX_SAVED_SEARCHES} searches. Remove one first.` };
+    const err = e as { code?: string; hint?: string };
+    if (err.code === "P0001") {
+      return {
+        ok: false,
+        error: err.hint === "saved_searches_free_limit"
+          ? `The free weekly email uses one search. Remove it to choose another, or start daily alerts for up to ${MAX_SAVED_SEARCHES} searches.`
+          : `You can save up to ${MAX_SAVED_SEARCHES} searches. Remove one first.`,
+      };
+    }
     throw e;
   }
+}
+
+/**
+ * The free weekly email's search: makes `search` the subscriber's only saved
+ * search (keeping its last_sent_at when it was already saved). Used when a
+ * free sign-up is confirmed. Run it inside a transaction.
+ */
+export async function replaceWithWeeklySearch(subscriberId: number, search: string, db: Db): Promise<void> {
+  await db`delete from saved_searches where subscriber_id = ${subscriberId} and search <> ${search}`;
+  const res = await addSavedSearch(subscriberId, search, db);
+  if (!res.ok) throw new Error(res.error);
 }
 
 export async function removeSavedSearch(subscriberId: number, id: number): Promise<boolean> {

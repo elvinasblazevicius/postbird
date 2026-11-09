@@ -5,7 +5,7 @@ import { categoryFacets, countryFacets, organizationFacets, regionFacets } from 
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
 import { countFor } from "@/lib/landing";
-import { absoluteUrl, jobPath } from "@/lib/site";
+import { absoluteUrl, jobPath, siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
@@ -39,8 +39,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: absoluteUrl("/organizations"), changeFrequency: "daily", priority: 0.6 },
     { url: absoluteUrl("/categories"), changeFrequency: "daily", priority: 0.6 },
     { url: absoluteUrl("/locations"), changeFrequency: "daily", priority: 0.5 },
-    // Once billing is live /alerts redirects to the trial page.
-    ...(BILLING_LIVE ? [] : [{ url: absoluteUrl("/alerts"), changeFrequency: "monthly" as const, priority: 0.4 }]),
+    // /alerts is the free weekly email; without it, once billing is live, /alerts redirects to the trial page.
+    ...(BILLING_LIVE && !siteConfig.freeWeeklyEmail ? [] : [{ url: absoluteUrl("/alerts"), changeFrequency: "monthly" as const, priority: 0.4 }]),
     { url: absoluteUrl("/grades"), changeFrequency: "yearly", priority: 0.3 },
     { url: absoluteUrl("/pricing"), changeFrequency: "monthly", priority: 0.3 },
     { url: absoluteUrl("/about"), changeFrequency: "monthly", priority: 0.3 },

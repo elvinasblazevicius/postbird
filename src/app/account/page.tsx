@@ -8,7 +8,7 @@ import { findByManageToken, type Account } from "@/lib/account";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { planDescription } from "@/lib/early-access-copy";
 import { JOB_TYPES } from "@/lib/jobs";
-import { listSavedSearches, MAX_SAVED_SEARCHES } from "@/lib/saved-searches";
+import { listSavedSearches, MAX_SAVED_SEARCHES, searchLimit } from "@/lib/saved-searches";
 import { formatDate, siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +61,9 @@ export default async function AccountPage({ searchParams }: Props) {
   const searches = await listSavedSearches(acct.id);
   const alertsOn = acct.billing_status === "trialing" || acct.billing_status === "active";
   const paying = ["trialing", "active", "past_due", "paused"].includes(acct.billing_status);
+  const limit = searchLimit(acct.billing_status);
+  // The free weekly email goes only to confirmed addresses without a plan.
+  const weekly = siteConfig.freeWeeklyEmail && !paying && acct.weekly_email && acct.status === "confirmed";
   const where = [
     { label: "Regions", options: REGIONS.map((r) => ({ value: `region-${r.slug}`, label: r.name })) },
     { label: "Countries", options: [...COUNTRIES].sort((a, b) => a.name.localeCompare(b.name)).map((c) => ({ value: c.slug, label: c.name })) },
@@ -81,6 +84,11 @@ export default async function AccountPage({ searchParams }: Props) {
           <dd className="font-semibold text-ink">{STATUS_TEXT[acct.billing_status]}</dd>
         </dl>
         {planLines(acct).map((l) => <p key={l} className="mt-3 text-[0.95rem] text-ink">{l}</p>)}
+        {weekly ? (
+          <p className="mt-3 text-[0.95rem] text-ink">
+            You get the free weekly email on Mondays. A plan adds daily alerts and up to {MAX_SAVED_SEARCHES} searches, sent instead of the weekly email.
+          </p>
+        ) : null}
         <div className="mt-5 flex flex-wrap items-center gap-3">
           {acct.paddle_customer_id ? <PortalButton t={acct.manage_token} /> : null}
           {(acct.billing_status === "none" || acct.billing_status === "canceled") && BILLING_LIVE ? (
@@ -97,8 +105,22 @@ export default async function AccountPage({ searchParams }: Props) {
       <section className={`${card} mt-6`} aria-labelledby="searches-h">
         <h2 id="searches-h" className="text-lg font-semibold text-ink">Saved searches</h2>
         <p className="mt-1 text-[0.95rem] text-slate">
-          Each alert lists the new vacancies matching these searches. Up to {MAX_SAVED_SEARCHES} searches.
-          {alertsOn ? "" : " Alerts are sent only while your plan is in trial or active."}
+          {paying ? (
+            <>
+              Each alert lists the new vacancies matching these searches. Up to {MAX_SAVED_SEARCHES} searches.
+              {alertsOn ? "" : " Alerts are sent only while your plan is in trial or active."}
+            </>
+          ) : weekly ? (
+            <>
+              Your free weekly email lists the past week&apos;s new matches for one search{searches.length > 1 ? " (the first one below)" : ""}. To follow a different
+              search, remove this one and add another.
+            </>
+          ) : (
+            <>
+              Without a plan you can keep one saved search.
+              {siteConfig.freeWeeklyEmail ? <> <Link href="/alerts" className="text-accent underline">Sign up for the free weekly email</Link> to get its new matches on Mondays.</> : null}
+            </>
+          )}
         </p>
         {searches.length ? (
           <ul className="mt-4 divide-y divide-rule border-y border-rule">
@@ -113,9 +135,11 @@ export default async function AccountPage({ searchParams }: Props) {
             ))}
           </ul>
         ) : (
-          <p className="mt-4 rounded-lg bg-signal-bg p-3 text-[0.95rem] text-ink">You have no saved searches, so no alerts are sent. Add one below.</p>
+          <p className="mt-4 rounded-lg bg-signal-bg p-3 text-[0.95rem] text-ink">
+            {weekly ? "You have no saved search, so your weekly email lists the week's newest vacancies. Add one below to narrow it." : "You have no saved searches, so no alerts are sent. Add one below."}
+          </p>
         )}
-        {searches.length < MAX_SAVED_SEARCHES ? (
+        {searches.length < limit ? (
           <div className="mt-6">
             <h3 className="mb-3 font-semibold text-ink">Add a search</h3>
             <AddSearchForm
@@ -129,11 +153,13 @@ export default async function AccountPage({ searchParams }: Props) {
         ) : null}
       </section>
 
-      <section className={`${card} mt-6`} aria-labelledby="freq-h">
-        <h2 id="freq-h" className="text-lg font-semibold text-ink">How often</h2>
-        <p className="mb-3 mt-1 text-[0.95rem] text-slate">One email with all your matches, every day or once a week. No email when nothing new matches.</p>
-        <FrequencyForm t={acct.manage_token} current={acct.frequency} />
-      </section>
+      {paying ? (
+        <section className={`${card} mt-6`} aria-labelledby="freq-h">
+          <h2 id="freq-h" className="text-lg font-semibold text-ink">How often</h2>
+          <p className="mb-3 mt-1 text-[0.95rem] text-slate">One email with all your matches, every day or once a week. No email when nothing new matches.</p>
+          <FrequencyForm t={acct.manage_token} current={acct.frequency} />
+        </section>
+      ) : null}
 
       <section className={`${card} mt-6`} aria-labelledby="unsub-h">
         <h2 id="unsub-h" className="text-lg font-semibold text-ink">Emails</h2>

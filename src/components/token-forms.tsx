@@ -115,3 +115,37 @@ function EarlyAccessForm({ source = "pricing", search, remindJobId, watch }: { s
     </form>
   );
 }
+
+/**
+ * The free weekly email sign-up on /alerts: ONE form with the optional "What should we watch for?"
+ * fields (`watch`, rendered on the server). Their answers become the one saved search the weekly
+ * email follows ("" = the week's newest vacancies), stored when the address is confirmed.
+ */
+export function FreeWeeklyForm({ source = "alerts-page", search, watch }: { source?: string; search?: string; watch?: React.ReactNode }) {
+  const [state, action, pending] = useActionState(alertSignupAction, initial);
+  useEffect(() => {
+    if (state.status === "success") uetEvent("subscribe", { event_category: "alerts", event_label: source });
+  }, [state.status, source]);
+  if (state.status === "success") return <Result state={state} />;
+  return (
+    <form action={action} className="space-y-4">
+      <input type="hidden" name="kind" value="alerts" />
+      <input type="hidden" name="source" value={source} />
+      {search ? <input type="hidden" name="search" value={search} /> : null}
+      <AttributionField />
+      <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
+        <label>Leave empty<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label>
+      </div>
+      {watch ? <div className="pb-2">{watch}</div> : null}
+      <div>
+        <label htmlFor="fw-email" className="mb-1.5 block text-sm font-medium text-ink">Email address</label>
+        <input id="fw-email" name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} />
+      </div>
+      {state.status === "error" ? <p role="alert" className="text-sm text-[#9b1c1c]">{state.message}</p> : null}
+      <button disabled={pending} className="w-full rounded-lg bg-brand px-6 py-3.5 text-base font-semibold text-white hover:bg-accent disabled:opacity-60">
+        {pending ? "Saving…" : "Get the free weekly email"}
+      </button>
+      <p className="text-sm text-slate">Free, no card and no account. We&apos;ll email you once to confirm. Unsubscribe with one click.</p>
+    </form>
+  );
+}

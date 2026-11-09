@@ -1,10 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { sql } from "@/lib/db";
+import { sql, transaction } from "@/lib/db";
 import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { confirmationEmail } from "@/lib/email-templates";
 import { absoluteUrl } from "@/lib/site";
 import { recordEvent } from "@/lib/analytics";
 import { hashKey } from "@/lib/rate-limit";
+import { replaceWithWeeklySearch } from "@/lib/saved-searches";
 import type { BillingStatus, PlanInterval } from "@/lib/billing/subscriptions";
 
 export type SignupKind = "alerts" | "waitlist";
@@ -30,14 +31,19 @@ type SubRow = { id: number; status: string; confirm_token: string | null; confir
  * pending and applied when the owner clicks the confirmation link, so nobody
  * can change someone else's subscription. The reply is the same either way,
  * so the form can't be used to find out who is subscribed.
+ *
+ * weeklySearch: a sign-up for the free weekly email, with the saved search it
+ * should follow ("" = the week's newest vacancies). It is kept in
+ * pending_changes and becomes the subscriber's saved search on confirmation.
  */
-export async function signup(opts: { email: string; kind: SignupKind; source?: string; note?: string; preferences?: Record<string, string>; attribution?: Record<string, string> | null; visitor?: string | null }): Promise<SignupResult> {
+export async function signup(opts: { email: string; kind: SignupKind; source?: string; note?: string; preferences?: Record<string, string>; weeklySearch?: string | null; attribution?: Record<string, string> | null; visitor?: string | null }): Promise<SignupResult> {
   const email = normalizeEmail(opts.email);
   if (!email) return { ok: false, error: "Enter a valid email address." };
   const isWaitlist = opts.kind === "waitlist";
   const note = opts.note?.trim().slice(0, 500) || null;
   const prefs = opts.preferences && Object.keys(opts.preferences).length ? opts.preferences : null;
   const attribution = opts.attribution ?? null;
+  const weeklySearch = !isWaitlist && typeof opts.weeklySearch === "string" ? opts.weeklySearch : null;
 
   await recordEvent({ type: isWaitlist ? "waitlist_signup" : "alert_signup", visitor: opts.visitor ?? null, props: { source: opts.source ?? null, ...(attribution ? { campaign: attribution } : {}) } });
 
@@ -55,7 +61,8 @@ export async function signup(opts: { email: string; kind: SignupKind; source?: s
           'premium_waitlist', coalesce((pending_changes->>'premium_waitlist')::boolean, false) or ${change.premium_waitlist},
           'note', coalesce(${note}::text, pending_changes->>'note'),
           'preferences', coalesce(pending_changes->'preferences', '{}'::jsonb) || ${sql.json(change.preferences)}
-        ),
+        ) || case when ${weeklySearch}::text is null then coalesce(pending_changes, '{}'::jsonb) - array['wants_alerts', 'premium_waitlist', 'note', 'preferences']
+                  else jsonb_build_object('weekly_search', ${weeklySearch}::text) end,
         attribution = coalesce(attribution, ${attribution ? sql.json(attribution) : null})
       where id = ${existing.id}`;
     // Don't send more than one confirmation email every 5 minutes (protects against abuse).
@@ -66,9 +73,10 @@ export async function signup(opts: { email: string; kind: SignupKind; source?: s
 
   const confirmToken = token();
   const [row] = await sql<{ id: number }[]>`
-    insert into subscribers (email, status, wants_alerts, premium_waitlist, waitlist_note, preferences, confirm_token, unsubscribe_token, source, waitlist_joined_at, attribution)
+    insert into subscribers (email, status, wants_alerts, premium_waitlist, waitlist_note, preferences, confirm_token, unsubscribe_token, source, waitlist_joined_at, attribution, pending_changes)
     values (${email}, 'pending', ${!isWaitlist}, ${isWaitlist}, ${note}, ${sql.json(prefs ?? {})}, ${confirmToken}, ${token()}, ${opts.source ?? null},
-            ${isWaitlist ? new Date() : null}, ${attribution ? sql.json(attribution) : null})
+            ${isWaitlist ? new Date() : null}, ${attribution ? sql.json(attribution) : null},
+            ${weeklySearch === null ? null : sql.json({ weekly_search: weeklySearch })})
     on conflict (email) do nothing
     returning id`;
   if (!row) return { ok: true, state: isEmailConfigured() ? "check_email" : "email_not_configured" }; // created at the same moment by another request
@@ -111,12 +119,21 @@ export async function findByConfirmToken(t: string) {
   return (await sql<{ id: number; email: string; status: string }[]>`select id, email, status from subscribers where confirm_token = ${t}`)[0] ?? null;
 }
 
-/** Confirms the address and applies any changes that were waiting for confirmation. */
-export type ConfirmResult = { ok: false } | { ok: true; waitlist: boolean; alerts: boolean; paidPlan: boolean };
+/**
+ * Confirms the address and applies any changes that were waiting for
+ * confirmation. A confirmed free weekly sign-up (pending_changes.weekly_search)
+ * switches the weekly email on and, unless the address has a plan, makes that
+ * search its one saved search.
+ */
+export type ConfirmResult = { ok: false } | { ok: true; waitlist: boolean; alerts: boolean; weekly: boolean; paidPlan: boolean };
 
 export async function confirmSubscriber(t: string): Promise<ConfirmResult> {
   if (!t || t.length > 100) return { ok: false };
-  const rows = await sql<{ id: number; premium_waitlist: boolean; wants_alerts: boolean; paid_plan: boolean }[]>`
+  const rows = await transaction(async (tx) => {
+    const updated = await tx<{ id: number; premium_waitlist: boolean; wants_alerts: boolean; weekly_email: boolean; paid_plan: boolean; plan_live: boolean; weekly_search: string | null }[]>`
+    with prev as (
+      select id, status as prev_status, pending_changes as prev_changes from subscribers where confirm_token = ${t} for update
+    )
     update subscribers set
       wants_alerts = case when status = 'unsubscribed' then coalesce((pending_changes->>'wants_alerts')::boolean, wants_alerts)
                           else wants_alerts or coalesce((pending_changes->>'wants_alerts')::boolean, false) end,
@@ -125,23 +142,35 @@ export async function confirmSubscriber(t: string): Promise<ConfirmResult> {
       waitlist_joined_at = case when coalesce((pending_changes->>'premium_waitlist')::boolean, false) and waitlist_joined_at is null then now() else waitlist_joined_at end,
       waitlist_note = coalesce(pending_changes->>'note', waitlist_note),
       preferences = preferences || coalesce(pending_changes->'preferences', '{}'::jsonb),
+      weekly_email = case when status = 'unsubscribed' then coalesce(pending_changes ? 'weekly_search', false)
+                          else weekly_email or coalesce(pending_changes ? 'weekly_search', false) end,
       pending_changes = null,
       status = 'confirmed',
       confirmed_at = coalesce(confirmed_at, now()),
       unsubscribed_at = null,
       confirm_token = null
-    where confirm_token = ${t}
-    returning id, premium_waitlist, wants_alerts, billing_status in ('trialing', 'active') as paid_plan`;
+    from prev
+    where subscribers.id = prev.id
+    returning subscribers.id::int as id, premium_waitlist, wants_alerts, weekly_email,
+              billing_status in ('trialing', 'active') as paid_plan,
+              billing_status in ('trialing', 'active', 'past_due', 'paused') as plan_live,
+              prev.prev_changes->>'weekly_search' as weekly_search`;
+    const row = updated[0];
+    // The free weekly email follows one search: the one just chosen. A plan keeps its own searches.
+    if (row && row.weekly_search !== null && !row.plan_live) await replaceWithWeeklySearch(row.id, row.weekly_search, tx);
+    return updated;
+  });
   if (rows.length !== 1) return { ok: false };
   await recordEvent({ type: "alert_confirmed" });
-  return { ok: true, waitlist: rows[0].premium_waitlist, alerts: rows[0].wants_alerts, paidPlan: rows[0].paid_plan };
+  return { ok: true, waitlist: rows[0].premium_waitlist, alerts: rows[0].wants_alerts, weekly: rows[0].weekly_search !== null, paidPlan: rows[0].paid_plan };
 }
 
 /**
  * Privacy-policy retention, run by the scheduled job (every 2 hours):
  *  - sign-ups never confirmed, and unsubscribed addresses: 30 days;
  *  - canceled plans: 30 days after the cancellation took effect (Paddle, the
- *    reseller, keeps the payment records);
+ *    reseller, keeps the payment records), unless the address also signed up
+ *    for the free weekly email and is still subscribed to it;
  *  - early-access-only addresses: 30 days after the "alerts are open" email,
  *    unless they started a trial.
  * Saved searches and checkout references go with the subscriber (on delete cascade).
@@ -160,11 +189,12 @@ export async function purgeStaleSubscribers(): Promise<number> {
     delete from subscribers
     where billing_status = 'canceled'
       and coalesce(canceled_at, billing_event_at) < now() - interval '30 days'
+      and not (weekly_email and status = 'confirmed')
     returning id`;
   // Early access only: on the list, never asked for the free weekly email, never had a plan.
   const waitlist = await sql`
     delete from subscribers
-    where premium_waitlist and not wants_alerts
+    where premium_waitlist and not wants_alerts and not weekly_email
       and billing_status = 'none' and paddle_subscription_id is null
       and waitlist_notified_at < now() - interval '30 days'
     returning id`;

@@ -229,8 +229,9 @@ export async function resendConfirmationsAction(): Promise<void> {
 export async function sendDigestNowAction(): Promise<void> {
   await requireAdmin();
   const { runDigest } = await import("@/lib/digest");
-  const r = await runDigest();
-  redirect(`/admin/subscribers?msg=${encodeURIComponent(`digest: ${r.status}${r.message ? ` — ${r.message}` : ` — sent ${r.sent} of ${r.recipients}`}`)}`);
+  // Any day of the week; still at most one weekly email per subscriber per week.
+  const r = await runDigest({ force: true });
+  redirect(`/admin/subscribers?msg=${encodeURIComponent(`weekly email: ${r.status}${r.message ? ` — ${r.message}` : ` — sent ${r.sent} of ${r.recipients} (${r.empty} had no new matches)`}`)}`);
 }
 
 /**

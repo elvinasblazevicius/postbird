@@ -74,13 +74,20 @@ export default function PrivacyPage() {
           interest-based ads generally at <a className="text-accent underline" href="https://optout.aboutads.info" rel="noopener">optout.aboutads.info</a>.
         </p>
 
-        <H2>Email alerts and early access</H2>
+        <H2>{siteConfig.freeWeeklyEmail ? "Weekly email, email alerts and early access" : "Email alerts and early access"}</H2>
         <p>
           If you sign up, we store your email address, what you signed up for, the search or vacancy you were looking at, any note you type in the optional
           &quot;Anything else&quot; box, the campaign tags of the ad or link that brought you here (the click id only if allowed, see above), and when you confirmed. We use this only to send the emails you asked
           for and to measure interest in email alerts. Every email has a one-click unsubscribe link. We never sell or share your address.
           {mail ? <> If you reply to one of our emails, your reply goes to {mailLink}.</> : null}
         </p>
+        {siteConfig.freeWeeklyEmail ? (
+          <p>
+            <strong>Free weekly email.</strong> For the free weekly email we also store the one search you chose (keywords, organization, location and any other
+            filters, or none), a private link to change it, when you confirmed and when we last emailed you. Nothing is sent until you confirm your address with
+            the link we email you. We email you only on Mondays, and only when there are new vacancies for your search.
+          </p>
+        ) : null}
 
         <H2>Our book link</H2>
         <p>
@@ -120,9 +127,15 @@ export default function PrivacyPage() {
         <H2>How long we keep it</H2>
         <ul className="list-disc space-y-1 pl-6">
           <li>Pseudonymous visit counts: 13 months.</li>
-          <li>Sign-ups that are never confirmed: deleted after 30 days.</li>
-          <li>Unsubscribed addresses: deleted after 30 days, unless you still have a paid plan.</li>
-          {BILLING_LIVE ? <li>Cancelled subscriptions: your address, searches and settings are deleted 30 days after the plan ends.</li> : null}
+          <li>Sign-ups that are never confirmed: deleted 30 days after the last confirmation email, with the search you chose.</li>
+          <li>Unsubscribed addresses: deleted 30 days after you unsubscribe, with your searches, unless you still have a paid plan.</li>
+          {siteConfig.freeWeeklyEmail ? <li>Free weekly email: kept while you are subscribed; unsubscribing starts the 30 days above.</li> : null}
+          {BILLING_LIVE ? (
+            <li>
+              Cancelled subscriptions: your address, searches and settings are deleted 30 days after the plan ends
+              {siteConfig.freeWeeklyEmail ? ", unless you have also signed up for the free weekly email and are still subscribed to it (then we keep your address and searches for that email)" : ""}.
+            </li>
+          ) : null}
           <li>
             {BILLING_LIVE
               ? "Early-access list: we email you once to say alerts are open, and delete your address 30 days later unless you start a trial."

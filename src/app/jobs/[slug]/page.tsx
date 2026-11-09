@@ -135,7 +135,8 @@ export default async function JobPage({ params }: Props) {
     !job.languages?.length && "language requirements",
     !localOnly && "eligibility",
   ].filter((x): x is string => Boolean(x));
-  const alertHref = `/pricing/trial?search=${encodeURIComponent(`category=${job.category}`)}`;
+  // The free weekly email when it is on; otherwise the paid alerts' trial page.
+  const alertHref = `${siteConfig.freeWeeklyEmail ? "/alerts" : "/pricing/trial"}?search=${encodeURIComponent(`category=${job.category}`)}`;
 
   const applyButton = (
     <ApplyLink
@@ -290,9 +291,15 @@ export default async function JobPage({ params }: Props) {
           </div>
           <p className="flex items-start gap-2 px-1 text-sm">
             <svg viewBox="0 0 16 16" className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true"><path d="M8 2a4 4 0 0 0-4 4v2.5L2.5 11h11L12 8.5V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
-            <TrackedLink href={alertHref} event="premium_cta_click" source="job-similar" className="font-medium text-accent underline-offset-2 hover:underline">
-              Get new {categoryPhrase(job.category)}vacancies by email
-            </TrackedLink>
+            {siteConfig.freeWeeklyEmail ? (
+              <Link href={alertHref} className="font-medium text-accent underline-offset-2 hover:underline">
+                Get new {categoryPhrase(job.category)}vacancies in a free weekly email
+              </Link>
+            ) : (
+              <TrackedLink href={alertHref} event="premium_cta_click" source="job-similar" className="font-medium text-accent underline-offset-2 hover:underline">
+                Get new {categoryPhrase(job.category)}vacancies by email
+              </TrackedLink>
+            )}
           </p>
         </aside>
       </div>

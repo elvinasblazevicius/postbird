@@ -1,7 +1,9 @@
 import siteConfig from "@site-config";
 import type { JobListItem } from "@/lib/jobs";
+import { BILLING_LIVE } from "@/lib/billing/live";
 import { planDescription } from "@/lib/early-access-copy";
-import { absoluteUrl, formatDate, jobPath, locationLabel } from "@/lib/site";
+import { displayGrade } from "@/lib/grades";
+import { absoluteUrl, formatDate, jobPath, locationLabel, NOT_SPECIFIED } from "@/lib/site";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
@@ -25,10 +27,10 @@ function button(href: string, label: string): string {
 
 export function confirmationEmail(opts: { confirmUrl: string; waitlist: boolean; alerts: boolean }) {
   const what = opts.alerts && opts.waitlist
-    ? "the weekly job alert and early access to paid email alerts"
+    ? "the free weekly email with new vacancies, and early access to paid email alerts"
     : opts.waitlist
       ? "early access to paid email alerts (one email when they open; nothing is charged)"
-      : "the weekly job alert";
+      : "the free weekly email with new vacancies (sent on Mondays, only when there is something new for your search)";
   const subject = `Confirm your email for ${siteConfig.name}`;
   const html = layout(
     subject,
@@ -41,32 +43,86 @@ export function confirmationEmail(opts: { confirmUrl: string; waitlist: boolean;
   return { subject, html, text };
 }
 
-export function digestEmail(opts: { jobs: JobListItem[]; total: number; unsubscribeUrl: string }) {
-  const subject = `${opts.total} new international vacancies this week`;
-  const rows = opts.jobs
-    .map((j) => {
-      const url = absoluteUrl(jobPath(j)) + "?utm_source=digest&utm_medium=email";
-      return `<tr><td style="padding:14px 0;border-bottom:1px solid #dde3ea">
-        <a href="${esc(url)}" style="font-family:Georgia,serif;font-size:17px;font-weight:600;color:#0e1b2c;text-decoration:none">${esc(j.title)}</a>
-        <div style="font-size:14px;color:#0e1b2c;margin-top:4px">${esc(j.org_name ?? "Organization not in our source")}</div>
-        <div style="font-size:13px;color:#566476;margin-top:2px">${esc(locationLabel(j))}${j.deadline ? ` &nbsp;|&nbsp; Closes ${esc(formatDate(j.deadline))}` : ""}</div>
-      </td></tr>`;
-    })
+// ── Job lists in alert emails ────────────────────────────────
+
+export type AlertGroup = { label: string; url: string; jobs: JobListItem[]; total: number };
+
+/**
+ * At most this many vacancies are listed in one email, across all its searches: Gmail clips
+ * messages over 102 KB of HTML and hides what comes after, including the unsubscribe link.
+ */
+export const MAX_JOBS_PER_EMAIL = 50;
+
+/**
+ * Keeps at most `max` listed vacancies across the groups, in order: later searches get fewer
+ * (possibly none). Each group keeps its total, so its "See all N" link still shows.
+ */
+export function capGroups(groups: AlertGroup[], max = MAX_JOBS_PER_EMAIL): AlertGroup[] {
+  let left = max;
+  return groups.map((g) => {
+    const jobs = g.jobs.slice(0, Math.max(0, left));
+    left -= jobs.length;
+    return { ...g, jobs };
+  });
+}
+
+/** "UNICEF · Nairobi, Kenya · P-3 · Closes 30 Nov 2026": what is known, nothing guessed. */
+function jobMeta(j: JobListItem): string {
+  const where = locationLabel(j);
+  return [
+    j.org_name ?? "Organization not in our source",
+    where === NOT_SPECIFIED ? null : where,
+    displayGrade(j),
+    j.deadline ? `Closes ${formatDate(j.deadline)}` : null,
+  ].filter(Boolean).join(" · ");
+}
+
+/** One compact row per vacancy (kept small so a full email stays well under Gmail's clipping size). */
+function jobRowsHtml(jobs: JobListItem[], utm: string): string {
+  if (!jobs.length) return "";
+  const rows = jobs
+    .map((j) => `<tr><td style="padding:8px 0;border-bottom:1px solid #dde3ea"><a href="${esc(absoluteUrl(jobPath(j)) + utm)}" style="font-size:15px;font-weight:600;color:#0e1b2c;text-decoration:none">${esc(j.title)}</a><br><span style="font-size:13px;color:#566476">${esc(jobMeta(j))}</span></td></tr>`)
     .join("");
-  const more = opts.total > opts.jobs.length
-    ? `<p style="margin:20px 0 0">${button(absoluteUrl("/jobs?posted=7"), `See all ${opts.total} new vacancies`)}</p>`
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>`;
+}
+
+const jobRowsText = (jobs: JobListItem[]) => jobs.map((j) => `${j.title}\n${jobMeta(j)}\n${absoluteUrl(jobPath(j))}`).join("\n\n");
+
+/**
+ * The free weekly email: the new matches for the subscriber's one search (the
+ * caller lists at most 10), with "See all" when there are more. One calm line
+ * offers daily alerts (the free trial once billing is live, early access before).
+ */
+export function weeklyEmail(opts: { group: AlertGroup; search: string; trialUrl: string; accountUrl: string; unsubscribeUrl: string }) {
+  const all = opts.search === "";
+  const g = capGroups([opts.group])[0];
+  const subject = all
+    ? `${g.total} new international ${g.total === 1 ? "vacancy" : "vacancies"} this week`
+    : `${g.total} new ${g.total === 1 ? "vacancy matches" : "vacancies match"} your search this week`;
+  const rows = jobRowsHtml(g.jobs, "?utm_source=digest&utm_medium=email");
+  const more = g.total > g.jobs.length
+    ? `<p style="margin:20px 0 0">${button(g.url, `See all ${g.total} new vacancies`)}</p>`
     : "";
+  const p = siteConfig.premium;
+  const upsell = BILLING_LIVE
+    ? { lead: "Want new matches every day, with up to 5 searches?", link: `Start a ${p.trialDays}-day free trial` }
+    : { lead: "Daily alerts with up to 5 searches are coming.", link: "Join early access" };
+  const intro = all ? "The newest vacancies of the past week." : `New this week for your search: ${g.label}.`;
   const html = layout(
     subject,
     `<h1 style="font-family:Georgia,serif;font-size:24px;line-height:1.3;margin:0 0 6px">This week's new vacancies</h1>
-     <p style="font-size:15px;color:#566476;margin:0 0 10px">Apply on each employer's own website.</p>
-     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>${more}`,
-    `${esc(siteConfig.disclaimer)}<br><br><a href="${esc(opts.unsubscribeUrl)}" style="color:#566476">Unsubscribe</a> from these emails.`,
+     <p style="font-size:15px;color:#566476;margin:0 0 10px">${esc(intro)} Apply on each employer's own website.</p>
+     ${rows}${more}
+     <p style="font-size:14px;line-height:1.6;color:#566476;margin:24px 0 0">${esc(upsell.lead)} <a href="${esc(opts.trialUrl)}" style="color:${siteConfig.colors.accent};font-weight:600">${esc(upsell.link)}</a></p>`,
+    `${esc(siteConfig.disclaimer)}<br><br>You get this free weekly email because you signed up on ${esc(siteConfig.name)}.
+    <a href="${esc(opts.accountUrl)}" style="color:#566476">Change your search</a> &nbsp;|&nbsp; <a href="${esc(opts.unsubscribeUrl)}" style="color:#566476">Unsubscribe</a>`,
   );
   const text =
-    `This week's new vacancies on ${siteConfig.name}\n\n` +
-    opts.jobs.map((j) => `${j.title}\n${j.org_name ?? "Organization not in our source"} | ${locationLabel(j)}${j.deadline ? ` | Closes ${formatDate(j.deadline)}` : ""}\n${absoluteUrl(jobPath(j))}`).join("\n\n") +
-    `\n\nSee all: ${absoluteUrl("/jobs?posted=7")}\n\nUnsubscribe: ${opts.unsubscribeUrl}\n\n${postal()}`;
+    `This week's new vacancies on ${siteConfig.name}\n${intro}\n\n` +
+    jobRowsText(g.jobs) +
+    (g.total > g.jobs.length ? `\n\nSee all ${g.total}: ${g.url}` : "") +
+    `\n\n${upsell.lead} ${upsell.link}: ${opts.trialUrl}` +
+    `\n\nChange your search: ${opts.accountUrl}\nUnsubscribe: ${opts.unsubscribeUrl}\n\n${postal()}`;
   return { subject, html, text };
 }
 
@@ -128,27 +184,20 @@ export function accountLinkEmail(opts: { accountUrl: string; unsubscribeUrl: str
   return { subject, html, text };
 }
 
-export type AlertGroup = { label: string; url: string; jobs: JobListItem[]; total: number };
-
-/** One email per subscriber with the new matches for each saved search. */
+/**
+ * One email per subscriber with the new matches for each saved search (the caller lists up to
+ * 20 per search). At most MAX_JOBS_PER_EMAIL are listed in all; every search keeps its "See all".
+ */
 export function alertEmail(opts: { groups: AlertGroup[]; frequency: "daily" | "weekly"; accountUrl: string; unsubscribeUrl: string }) {
-  const total = opts.groups.reduce((n, g) => n + g.total, 0);
-  const subject = `${total} new ${total === 1 ? "vacancy matches" : "vacancies match"} your ${opts.groups.length === 1 ? "search" : "searches"}`;
-  const jobRow = (j: JobListItem) => {
-    const url = absoluteUrl(jobPath(j)) + "?utm_source=alert&utm_medium=email";
-    return `<tr><td style="padding:12px 0;border-bottom:1px solid #dde3ea">
-      <a href="${esc(url)}" style="font-family:Georgia,serif;font-size:17px;font-weight:600;color:#0e1b2c;text-decoration:none">${esc(j.title)}</a>
-      <div style="font-size:14px;color:#0e1b2c;margin-top:4px">${esc(j.org_name ?? "Organization not in our source")}</div>
-      <div style="font-size:13px;color:#566476;margin-top:2px">${esc(locationLabel(j))}${j.deadline ? ` &nbsp;|&nbsp; Closes ${esc(formatDate(j.deadline))}` : ""}</div>
-    </td></tr>`;
-  };
-  const sections = opts.groups
+  const groups = capGroups(opts.groups);
+  const total = groups.reduce((n, g) => n + g.total, 0);
+  const subject = `${total} new ${total === 1 ? "vacancy matches" : "vacancies match"} your ${groups.length === 1 ? "search" : "searches"}`;
+  const sections = groups
     .map((g) => {
       const more = g.total > g.jobs.length
-        ? `<p style="margin:12px 0 0"><a href="${esc(g.url)}" style="color:${siteConfig.colors.accent};font-weight:600">See all ${g.total} matches</a></p>`
+        ? `<p style="margin:10px 0 0"><a href="${esc(g.url)}" style="color:${siteConfig.colors.accent};font-weight:600">See all ${g.total} matches</a></p>`
         : "";
-      return `<h2 style="font-size:16px;margin:24px 0 4px;color:#0e1b2c">${esc(g.label)} <span style="font-weight:400;color:#566476">(${g.total} new)</span></h2>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${g.jobs.map(jobRow).join("")}</table>${more}`;
+      return `<h2 style="font-size:16px;margin:24px 0 4px;color:#0e1b2c">${esc(g.label)} <span style="font-weight:400;color:#566476">(${g.total} new)</span></h2>${jobRowsHtml(g.jobs, "?utm_source=alert&utm_medium=email")}${more}`;
     })
     .join("");
   const when = opts.frequency === "daily" ? "since yesterday's email" : "since last week's email";
@@ -161,10 +210,10 @@ export function alertEmail(opts: { groups: AlertGroup[]; frequency: "daily" | "w
   );
   const text =
     `New vacancies for your saved searches on ${siteConfig.name}\n\n` +
-    opts.groups
+    groups
       .map((g) => `${g.label} (${g.total} new)\n\n` +
-        g.jobs.map((j) => `${j.title}\n${j.org_name ?? "Organization not in our source"} | ${locationLabel(j)}${j.deadline ? ` | Closes ${formatDate(j.deadline)}` : ""}\n${absoluteUrl(jobPath(j))}`).join("\n\n") +
-        (g.total > g.jobs.length ? `\n\nSee all ${g.total}: ${g.url}` : ""))
+        jobRowsText(g.jobs) +
+        (g.total > g.jobs.length ? `${g.jobs.length ? "\n\n" : ""}See all ${g.total}: ${g.url}` : ""))
       .join("\n\n---\n\n") +
     `\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
   return { subject, html, text };

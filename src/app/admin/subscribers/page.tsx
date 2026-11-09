@@ -13,8 +13,9 @@ export default async function SubscribersPage({ searchParams }: Props) {
   await requireAdmin();
   const msg = (await searchParams).msg;
   const [[c], recent, digests] = await Promise.all([
-    sql<{ alerts: number; pending: number; waitlist: number; waitlist_all: number; waitlist_to_notify: number; unsub: number; total: number }[]>`
+    sql<{ alerts: number; weekly: number; pending: number; waitlist: number; waitlist_all: number; waitlist_to_notify: number; unsub: number; total: number }[]>`
       select count(*) filter (where status = 'confirmed' and wants_alerts)::int as alerts,
+             count(*) filter (where status = 'confirmed' and weekly_email and billing_status not in ('trialing', 'active', 'past_due', 'paused'))::int as weekly,
              count(*) filter (where status = 'confirmed' and premium_waitlist and waitlist_notified_at is null
                                 and billing_status not in ('trialing', 'active', 'past_due', 'paused'))::int as waitlist_to_notify,
              count(*) filter (where status = 'pending')::int as pending,
@@ -34,7 +35,7 @@ export default async function SubscribersPage({ searchParams }: Props) {
     <AdminShell title="Subscribers" active="/admin/subscribers">
       {msg ? <Card className="mb-6 text-sm text-ink">{msg === "email-not-configured" ? "Email isn't set up yet (RESEND_API_KEY missing)." : msg.replace(/-/g, " ")}</Card> : null}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Confirmed alert subscribers" value={c.alerts} />
+        <Stat label="Confirmed alert subscribers" value={c.alerts} hint={`${c.weekly} get the free weekly email`} />
         <Stat label="Premium waitlist (confirmed)" value={c.waitlist} hint={`${c.waitlist_all} including unconfirmed`} />
         <Stat label="Awaiting confirmation" value={c.pending} />
         <Stat label="Unsubscribed" value={c.unsub} hint={`${c.total} addresses in total`} />
@@ -45,7 +46,7 @@ export default async function SubscribersPage({ searchParams }: Props) {
           <button disabled={!emailOn} className="rounded-lg border border-rule bg-paper px-4 py-2 text-sm font-medium text-ink hover:bg-mist disabled:opacity-50">Send confirmation emails to unconfirmed sign-ups</button>
         </form>
         <form action={sendDigestNowAction}>
-          <button disabled={!emailOn} className="rounded-lg border border-rule bg-paper px-4 py-2 text-sm font-medium text-ink hover:bg-mist disabled:opacity-50">Send this week&apos;s digest now</button>
+          <button disabled={!emailOn} className="rounded-lg border border-rule bg-paper px-4 py-2 text-sm font-medium text-ink hover:bg-mist disabled:opacity-50">Send this week&apos;s free weekly email now</button>
         </form>
         <a href="/admin/subscribers/export" className="rounded-lg border border-rule bg-paper px-4 py-2 text-sm font-medium text-ink hover:bg-mist">Download CSV</a>
       </div>
@@ -67,7 +68,8 @@ export default async function SubscribersPage({ searchParams }: Props) {
       </form>
       {!emailOn ? <p className="mt-2 text-sm text-slate">Email buttons turn on once RESEND_API_KEY is set and your domain is verified in Resend.</p> : null}
 
-      <h2 className="mt-10 text-xl font-semibold text-ink">Weekly digests</h2>
+      <h2 className="mt-10 text-xl font-semibold text-ink">Free weekly emails</h2>
+      <p className="mt-1 text-sm text-slate">Sent on Mondays by the daily scheduled job: each free subscriber gets the past week&apos;s new matches for their one search, or nothing. Recipients = subscribers with matches.</p>
       <div className="mt-3">
         <Table head={["Week", "Status", "Recipients", "Sent", "Failed", "New jobs", "Started", "Note"]}>
           {digests.map((d) => (
@@ -77,7 +79,7 @@ export default async function SubscribersPage({ searchParams }: Props) {
               <td className="px-4 py-2 tabular-nums">{d.jobs_included}</td><td className="px-4 py-2">{fmtDateTime(d.started_at)}</td><td className="px-4 py-2 text-xs text-slate">{d.message}</td>
             </tr>
           ))}
-          {digests.length === 0 ? <tr><td colSpan={8} className="px-4 py-3 text-slate">No digests sent yet.</td></tr> : null}
+          {digests.length === 0 ? <tr><td colSpan={8} className="px-4 py-3 text-slate">No weekly emails sent yet.</td></tr> : null}
         </Table>
       </div>
 

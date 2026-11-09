@@ -1,8 +1,10 @@
 /**
  * Scheduled emails:
- *  - runDigest(): the weekly round-up of all new vacancies (free plan, when
- *    siteConfig.freeWeeklyEmail is on). Paying subscribers never get it; they
- *    get runAlerts() instead.
+ *  - runDigest(): the free weekly email (when siteConfig.freeWeeklyEmail is
+ *    on), sent on Mondays: for each free subscriber, the new vacancies of the
+ *    past week that match their one saved search (or the week's newest when
+ *    they chose none). Nothing is sent to someone with no new matches.
+ *    Subscribers with a plan never get it; they get runAlerts() instead.
  *  - runAlerts(): paid email alerts, one email per subscriber with the new
  *    matches for each of their saved searches, daily or weekly.
  * Both are safe to run more often than needed (they skip what was already sent).
@@ -10,12 +12,13 @@
 import siteConfig from "@site-config";
 import { sql } from "@/lib/db";
 import { batchKey, isEmailConfigured, sendBatch, type OutgoingEmail } from "@/lib/email";
-import { alertEmail, digestEmail, type AlertGroup } from "@/lib/email-templates";
+import { alertEmail, weeklyEmail, type AlertGroup } from "@/lib/email-templates";
 import { acquireLock, releaseLock } from "@/lib/feeds/sync";
 import { jobsUrl, parseFilters, searchJobs, type JobListItem } from "@/lib/jobs";
+import { describeSearch } from "@/lib/saved-searches";
 import { absoluteUrl } from "@/lib/site";
 
-function isoWeekKey(d = new Date()): string {
+export function isoWeekKey(d = new Date()): string {
   const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const day = t.getUTCDay() || 7;
   t.setUTCDate(t.getUTCDate() + 4 - day);
@@ -24,73 +27,185 @@ function isoWeekKey(d = new Date()): string {
   return `${t.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
-export type DigestResult = { status: "sent" | "skipped" | "failed"; periodKey: string; recipients: number; sent: number; failed: number; jobs: number; message: string | null };
+/** Monday 00:00 UTC of the (ISO, Monday-first) week that contains d. */
+export function weekStart(d: Date): Date {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() || 7) - 1));
+  return t;
+}
 
-export async function runDigest(opts: { force?: boolean } = {}): Promise<DigestResult> {
-  const periodKey = isoWeekKey();
-  const base: DigestResult = { status: "skipped", periodKey, recipients: 0, sent: 0, failed: 0, jobs: 0, message: null };
+/** The free weekly email goes out on this day (UTC; 1 = Monday). The scheduled job runs every day at 06:23 UTC. */
+export const WEEKLY_SEND_DAY = 1;
+/** Matches listed in the free weekly email (the rest are behind its "See all" button). */
+const WEEKLY_JOBS_PER_SEARCH = 10;
+/** The weekly email covers vacancies first seen in this many days before the week's first run. */
+const WEEK_HOURS = 7 * 24;
+/** Plan statuses: these subscribers get paid alerts (or none while on hold), never the free weekly email. */
+const PLAN_STATUSES = ["trialing", "active", "past_due", "paused"];
+
+export type DigestResult = {
+  status: "sent" | "skipped" | "failed";
+  periodKey: string;
+  recipients: number;
+  sent: number;
+  failed: number;
+  /** Free subscribers checked whose search had no new match this week (sent nothing). */
+  empty: number;
+  /** New vacancies (all of them, before matching) in the week's window. */
+  jobs: number;
+  message: string | null;
+};
+
+type WeeklyRow = {
+  id: number;
+  email: string;
+  last_digest_at: Date | null;
+  search_id: number | null;
+  search: string;
+  label: string | null;
+  last_sent_at: Date | null;
+};
+
+type WeeklyOut = { row: WeeklyRow; group: AlertGroup; trialUrl: string };
+
+/**
+ * The free weekly email. Runs from the daily scheduled job but sends only on
+ * Mondays (UTC): the first run of an ISO week on a Monday records the week in
+ * `digests` and its start time is the week's cut-off, so a retry later in the
+ * week (when Monday's run failed or was cut off) covers exactly the same
+ * window and sends the same email. Each subscriber gets at most one weekly
+ * email per ISO week (last_digest_at). force (the admin's "send now"): skips
+ * the Monday rule and the "already done" check, never the one-per-week rule.
+ * `at` replaces the database clock for the day and week rules (tests only).
+ */
+export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Promise<DigestResult> {
+  const [{ now }] = await sql<{ now: Date }[]>`select now() as now`;
+  const at = opts.at ?? new Date(now);
+  const periodKey = isoWeekKey(at);
+  const base: DigestResult = { status: "skipped", periodKey, recipients: 0, sent: 0, failed: 0, empty: 0, jobs: 0, message: null };
+  if (!siteConfig.freeWeeklyEmail) return { ...base, message: "The free weekly email is switched off (freeWeeklyEmail in site.config.ts)." };
   if (!isEmailConfigured()) return { ...base, message: "Email sending is not configured (RESEND_API_KEY missing)." };
 
   const holder = `digest-${Date.now()}`;
   if (!(await acquireLock("digest", holder, 15))) return { ...base, message: "A digest is already being sent." };
   try {
     const existing = (await sql<{ status: string }[]>`select status from digests where period_key = ${periodKey}`)[0];
-    if (existing?.status === "done" && !opts.force) return { ...base, message: `Digest ${periodKey} was already sent.` };
+    if (existing?.status === "done" && !opts.force) return { ...base, message: `The weekly email for ${periodKey} was already sent.` };
+    // A week that hasn't started sending yet only starts on Monday; one that started (and failed) is retried any day.
+    if (!existing && !opts.force && at.getUTCDay() !== WEEKLY_SEND_DAY) return { ...base, message: "The weekly email goes out on Mondays." };
 
-    const jobs = await sql<JobListItem[]>`
-      select j.id, j.slug, j.title, o.name as org_name, o.slug as org_slug, o.short_name as org_short, j.country_code, j.city,
-             j.location_text, j.is_remote, j.category, j.job_type, j.grade, j.published_at, j.first_seen_at,
-             j.deadline::text as deadline, j.status, j.is_demo
-      from jobs j left join organizations o on o.id = j.organization_id
-      where j.status = 'active' and not j.is_demo and j.first_seen_at >= now() - interval '7 days'
-      order by coalesce(j.published_at, j.first_seen_at) desc limit 15`;
+    // started_at is kept from the week's first run: it is the cut-off of the week's window.
+    const [{ cutoff }] = await sql<{ cutoff: Date }[]>`
+      insert into digests (period_key, status) values (${periodKey}, 'running')
+      on conflict (period_key) do update set status = 'running'
+      returning started_at as cutoff`;
+    const until = new Date(cutoff);
+    const from = new Date(until.getTime() - WEEK_HOURS * 3_600_000);
     const [{ total }] = await sql<{ total: number }[]>`
-      select count(*)::int as total from jobs where status = 'active' and not is_demo and first_seen_at >= now() - interval '7 days'`;
-    if (jobs.length === 0) return { ...base, message: "No new vacancies this week; nothing sent." };
+      select count(*)::int as total from jobs
+      where status = 'active' and not is_demo and first_seen_at > ${from} and first_seen_at <= ${until}`;
 
-    await sql`
-      insert into digests (period_key, status, jobs_included) values (${periodKey}, 'running', ${total})
-      on conflict (period_key) do update set status = 'running', started_at = now()`;
+    // Free subscribers not yet emailed this week, each with their one saved search ('' = every new vacancy).
+    // Someone whose plan ended may still have several searches: the oldest one is used.
+    const recipients = await sql<WeeklyRow[]>`
+      select s.id::int as id, s.email, s.last_digest_at,
+             ss.id::int as search_id, coalesce(ss.search, '') as search, ss.label, ss.last_sent_at
+      from subscribers s
+      left join lateral (
+        select id, search, label, last_sent_at from saved_searches where subscriber_id = s.id order by created_at, id limit 1
+      ) ss on true
+      where s.status = 'confirmed' and s.weekly_email
+        and s.billing_status <> all(${PLAN_STATUSES})
+        and (s.last_digest_at is null or s.last_digest_at < ${weekStart(at)})
+      order by s.id`;
 
-    const recipients = await sql<{ id: number; email: string; unsubscribe_token: string }[]>`
-      select id, email, unsubscribe_token from subscribers
-      where status = 'confirmed' and wants_alerts
-        and ${siteConfig.freeWeeklyEmail}
-        and billing_status not in ('trialing', 'active')  -- paying subscribers get their own alerts (runAlerts)
-        and (last_digest_at is null or last_digest_at < now() - interval '6 days')
-      order by id`;
-
-    let sent = 0, failed = 0;
+    let sent = 0, failed = 0, empty = 0;
     const errors: string[] = [];
-    for (let i = 0; i < recipients.length; i += 100) {
-      const chunk = recipients.slice(i, i + 100);
-      const msgs = chunk.map((r) => {
-        const unsubscribeUrl = absoluteUrl(`/alerts/unsubscribe?token=${r.unsubscribe_token}`);
-        const oneClick = absoluteUrl(`/api/unsubscribe?token=${r.unsubscribe_token}`);
+    const outbox: WeeklyOut[] = [];
+    // Many free subscribers share a search (often ""): look each window up once.
+    const cache = new Map<string, Promise<{ items: JobListItem[]; total: number }>>();
+    const labels = new Map<string, Promise<string | null>>();
+
+    const flush = async () => {
+      if (!outbox.length) return;
+      const pending = outbox.splice(0, outbox.length);
+      // Current links and status at send time: anyone who unsubscribed or started a plan meanwhile is skipped.
+      const current = await sql<{ id: number; email: string; manage_token: string; unsubscribe_token: string }[]>`
+        select id::int as id, email, manage_token, unsubscribe_token from subscribers
+        where id = any(${pending.map((o) => o.row.id)}) and status = 'confirmed' and weekly_email and billing_status <> all(${PLAN_STATUSES})`;
+      const byId = new Map(current.map((c) => [c.id, c]));
+      const chunk = pending.filter((o) => byId.has(o.row.id));
+      if (!chunk.length) return;
+      const msgs: OutgoingEmail[] = chunk.map((o) => {
+        const c = byId.get(o.row.id)!;
+        const oneClick = absoluteUrl(`/api/unsubscribe?token=${c.unsubscribe_token}`);
         return {
-          to: r.email,
-          ...digestEmail({ jobs, total, unsubscribeUrl }),
+          to: c.email,
+          ...weeklyEmail({
+            group: o.group,
+            search: o.row.search,
+            trialUrl: o.trialUrl,
+            accountUrl: absoluteUrl(`/account?t=${c.manage_token}`),
+            unsubscribeUrl: absoluteUrl(`/alerts/unsubscribe?token=${c.unsubscribe_token}`),
+          }),
           headers: { "List-Unsubscribe": `<${oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
         };
       });
       // One key per batch, built from each message's key digest:{week}:{subscriberId}: a retry of
       // the same recipients that already went out is not sent twice, and a different set of
-      // recipients (someone unsubscribed or joined in between) never reuses a key.
-      const res = await sendBatch(msgs, () => batchKey(`digest:${periodKey}`, chunk.map((r) => `digest:${periodKey}:${r.id}`)));
+      // recipients (someone unsubscribed or joined in between) never reuses a key. The week's
+      // window is fixed (cut-off above), so a retry sends the same message under the same key.
+      const res = await sendBatch(msgs, () => batchKey(`digest:${periodKey}`, chunk.map((o) => `digest:${periodKey}:${o.row.id}`)));
       sent += res.sent;
       failed += res.failed;
       errors.push(...res.errors);
       if (res.sent === chunk.length) {
-        await sql`update subscribers set last_digest_at = now() where id = any(${chunk.map((c) => c.id)})`;
+        await sql`update subscribers set last_digest_at = ${until} where id = any(${chunk.map((o) => o.row.id)})`;
+        const searchIds = chunk.map((o) => o.row.search_id).filter((x): x is number => x !== null);
+        if (searchIds.length) {
+          await sql`update saved_searches set last_sent_at = ${until} where id = any(${searchIds}) and (last_sent_at is null or last_sent_at < ${until})`;
+        }
       }
+    };
+
+    for (const r of recipients) {
+      // Only what wasn't in an earlier email (weekly, or paid alerts before a plan ended), and at most a week back.
+      const since = new Date(Math.max(
+        from.getTime(),
+        r.last_digest_at ? new Date(r.last_digest_at).getTime() : 0,
+        r.last_sent_at ? new Date(r.last_sent_at).getTime() : 0,
+      ));
+      const filters = parseFilters(Object.fromEntries(new URLSearchParams(r.search)));
+      const key = `${r.search}|${since.getTime()}`;
+      if (!cache.has(key)) {
+        cache.set(key, searchJobs({ ...filters, page: undefined, posted: undefined, sort: "newest", firstSeenAfter: since, firstSeenUntil: until, excludeDemo: true }, WEEKLY_JOBS_PER_SEARCH));
+      }
+      const res = await cache.get(key)!;
+      if (res.total === 0) { empty++; continue; }
+      if (!labels.has(r.search)) labels.set(r.search, r.search ? describeSearch(r.search) : Promise.resolve(null));
+      const label = r.search ? (r.label || (await labels.get(r.search)!) || "Your search") : "All new vacancies";
+      outbox.push({
+        row: r,
+        group: {
+          label,
+          // "See all" opens the search on the site, limited to the past week (close to, not exactly, the email's window).
+          url: absoluteUrl(jobsUrl({ ...filters, page: undefined, sort: undefined, posted: "7" })) + "&utm_source=digest&utm_medium=email",
+          jobs: res.items,
+          total: res.total,
+        },
+        trialUrl: absoluteUrl(`/pricing/trial?${r.search ? `search=${encodeURIComponent(r.search)}&` : ""}utm_source=digest&utm_medium=email`),
+      });
+      if (outbox.length >= 100) await flush();
     }
+    await flush();
 
     const message = errors.length ? errors.slice(0, 3).join("; ") : null;
+    // A week with failures stays open, so the next daily run retries the subscribers not yet emailed.
     await sql`
-      update digests set status = ${failed && !sent ? "failed" : "done"}, recipients = ${recipients.length}, sent = ${sent},
-        failed = ${failed}, message = ${message}, finished_at = now()
+      update digests set status = ${failed ? "failed" : "done"}, recipients = ${recipients.length - empty}, sent = ${sent},
+        failed = ${failed}, jobs_included = ${total}, message = ${message}, finished_at = now()
       where period_key = ${periodKey}`;
-    return { status: failed && !sent ? "failed" : "sent", periodKey, recipients: recipients.length, sent, failed, jobs: total, message };
+    return { status: failed && !sent ? "failed" : "sent", periodKey, recipients: recipients.length - empty, sent, failed, empty, jobs: total, message };
   } finally {
     await releaseLock("digest", holder);
   }
@@ -98,8 +213,11 @@ export async function runDigest(opts: { force?: boolean } = {}): Promise<DigestR
 
 // ── Paid email alerts ────────────────────────────────────────
 
-/** Matches listed per saved search in one email (the rest are behind a "See all" link). */
-const JOBS_PER_SEARCH = 10;
+/**
+ * Matches listed per saved search in one paid alert (the rest are behind a "See all" link).
+ * The email lists at most MAX_JOBS_PER_EMAIL (50) in all, so later searches may list fewer.
+ */
+const JOBS_PER_SEARCH = 20;
 /** A daily subscriber gets at most one email in this many hours; a weekly one in 6.5 days. Runs drift by minutes, so not 24h / 7d. */
 const MIN_HOURS_BETWEEN = { daily: 20, weekly: 156 } as const;
 /** First email for a search: vacancies first seen in the last day or week. */

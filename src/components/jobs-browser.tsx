@@ -237,16 +237,33 @@ export async function JobsBrowser({
 
         {/* Not for an any-word fallback: alerts match every word, so they would not send these jobs. */}
         {result.total > 0 && result.matchMode === "all" ? (
-          <p className="mb-4 flex items-center gap-2 text-[0.95rem] text-ink">
-            <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0 text-accent" aria-hidden="true"><path d="M8 2a4 4 0 0 0-4 4v2.5L2.5 11h11L12 8.5V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
-            <TrackedLink
-              href={`/pricing/trial?search=${encodeURIComponent(alertSearch)}`}
-              event="premium_cta_click"
-              source="search-alert"
-              className="font-medium text-accent underline-offset-2 hover:underline"
-            >
-              Get new matches for this search by email
-            </TrackedLink>
+          <p className="mb-4 flex items-start gap-2 text-[0.95rem] text-ink">
+            <svg viewBox="0 0 16 16" className="mt-1 h-4 w-4 shrink-0 text-accent" aria-hidden="true"><path d="M8 2a4 4 0 0 0-4 4v2.5L2.5 11h11L12 8.5V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
+            {siteConfig.freeWeeklyEmail ? (
+              <span>
+                <Link href={`/alerts?search=${encodeURIComponent(alertSearch)}`} className="font-medium text-accent underline-offset-2 hover:underline">
+                  Get new matches for this search in a free weekly email
+                </Link>
+                <span className="text-slate"> · or </span>
+                <TrackedLink
+                  href={`/pricing/trial?search=${encodeURIComponent(alertSearch)}`}
+                  event="premium_cta_click"
+                  source="search-alert"
+                  className="text-slate underline underline-offset-2 hover:text-accent"
+                >
+                  daily alerts (paid plan)
+                </TrackedLink>
+              </span>
+            ) : (
+              <TrackedLink
+                href={`/pricing/trial?search=${encodeURIComponent(alertSearch)}`}
+                event="premium_cta_click"
+                source="search-alert"
+                className="font-medium text-accent underline-offset-2 hover:underline"
+              >
+                Get new matches for this search by email
+              </TrackedLink>
+            )}
           </p>
         ) : null}
 

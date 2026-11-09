@@ -1,5 +1,6 @@
 import { latestJobs } from "@/lib/jobs";
-import { formatDate, locationLabel } from "@/lib/site";
+import { displayGrade } from "@/lib/grades";
+import { formatDate, locationLabel, NOT_SPECIFIED } from "@/lib/site";
 
 /** Used only when there are no listings to build the example from. Clearly labelled as illustrative. */
 const ILLUSTRATIVE = [
@@ -23,14 +24,15 @@ export async function AlertExample({ heading = "What an alert looks like" }: { h
                 <li key={j.id} className="py-2">
                   <p className="font-medium text-ink">{j.title}</p>
                   <p className="text-slate">
-                    {[j.org_name ?? "Organization not in our source", locationLabel(j), j.deadline ? `Closes ${formatDate(j.deadline)}` : null].filter(Boolean).join(", ")}
+                    {/* Same compact line as the emails (src/lib/email-templates.ts). */}
+                    {[j.org_name ?? "Organization not in our source", locationLabel(j) === NOT_SPECIFIED ? null : locationLabel(j), displayGrade(j), j.deadline ? `Closes ${formatDate(j.deadline)}` : null].filter(Boolean).join(" · ")}
                   </p>
                 </li>
               ))
             : ILLUSTRATIVE.map((j) => (
                 <li key={j.title} className="py-2">
                   <p className="font-medium text-ink">{j.title}</p>
-                  <p className="text-slate">{j.org}, {j.where}, closes {j.closes}</p>
+                  <p className="text-slate">{j.org} · {j.where} · Closes {j.closes}</p>
                 </li>
               ))}
         </ul>

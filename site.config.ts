@@ -65,11 +65,12 @@ const siteConfig = {
    * Prices here must match the Paddle prices; plans[0] is monthly, plans[1] 3 months.
    */
   /**
-   * Email alerts. false = alerts are part of the paid plan (every sign-up box
-   * offers the free trial). true = a free weekly email for everyone, with
-   * Premium as the paid upgrade.
+   * Email alerts. true = a free weekly email (Mondays) with the new matches for
+   * one saved search, with paid daily alerts (up to 5 searches) as the upgrade.
+   * false = alerts are only part of the paid plan (every sign-up box offers the
+   * free trial).
    */
-  freeWeeklyEmail: false,
+  freeWeeklyEmail: true,
 
   /**
    * Concept test (decided 9 Nov 2026, before any ad spend). Measured on visitors
@@ -92,7 +93,7 @@ const siteConfig = {
     /** Short version used in sign-up boxes. */
     priceSummary: "$9.99/month or $19.99 for 3 months",
     features: [
-      "New matching vacancies by email, daily or weekly",
+      "New matching vacancies by email every day (or weekly, if you prefer)",
       "Up to 5 saved searches by keyword, organization, place or grade",
       "Closing date shown on every vacancy in the email",
       "Change searches or cancel any time from your account page",

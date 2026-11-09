@@ -3,6 +3,8 @@ import { AlertSignup } from "@/components/alert-signup";
 import { JobGrid, OrgBadge } from "@/components/job-card";
 import { Flag } from "@/components/flag";
 import { HeroSearch } from "@/components/search-forms";
+import { TrackedLink } from "@/components/tracking";
+import { BILLING_LIVE } from "@/lib/billing/live";
 import { closingSoonJobs, categoryFacets, countryFacets, experienceFacets, gradeFacets, jobTypeFacets, languageFacets, latestJobs, organizationFacets, orgTypeFacets, regionFacets, siteStats } from "@/lib/jobs";
 import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
 import { absoluteUrl, jsonLd, siteConfig } from "@/lib/site";
@@ -228,11 +230,25 @@ export default async function HomePage() {
             <h2 id="alerts-heading" className="text-[1.9rem] font-semibold leading-tight">Let {siteConfig.name} bring new vacancies to you</h2>
             <p className="mt-3 max-w-lg leading-relaxed text-white/80">
               {siteConfig.freeWeeklyEmail
-                ? "A short Monday email with the week's newest openings. Free, no account needed, unsubscribe with one click."
+                ? "A free Monday email with the past week's new vacancies for the search you choose. No card, no account, unsubscribe with one click."
                 : "New vacancies for the roles, organizations and places you choose, by email, with every closing date shown."}
             </p>
           </div>
-          <AlertSignup source="home" tone="dark" />
+          {siteConfig.freeWeeklyEmail ? (
+            <div>
+              <Link href="/alerts" className="block rounded-lg bg-highlight px-5 py-3 text-center text-base font-semibold text-ink hover:brightness-95 sm:inline-block">
+                Get the free weekly email
+              </Link>
+              <p className="mt-4 text-sm leading-relaxed text-white/80">
+                Want new matches every day, with up to 5 searches?{" "}
+                <TrackedLink href="/pricing/trial" event="premium_cta_click" source="home-daily" className="font-semibold text-white underline underline-offset-4">
+                  {BILLING_LIVE ? `Daily alerts: ${siteConfig.premium.trialDays}-day free trial` : "Daily alerts are coming: get early access"}
+                </TrackedLink>
+              </p>
+            </div>
+          ) : (
+            <AlertSignup source="home" tone="dark" />
+          )}
         </div>
       </section>
     </>
