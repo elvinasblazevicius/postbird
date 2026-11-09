@@ -38,22 +38,29 @@ export default function TermsPage() {
               record for all orders and handles payment, invoices, sales tax and VAT. Paddle&apos;s{" "}
               <a className="text-accent underline" href="https://www.paddle.com/legal/checkout-buyer-terms" rel="noopener">buyer terms</a> also apply to your purchase.
             </p>
+            <h3 id="subscriptions" className="scroll-mt-24 pt-1 text-lg font-semibold">Subscriptions</h3>
             <ul className="list-disc space-y-1 pl-6">
               <li>
                 <strong>Free trial:</strong> new subscriptions start with a {p.trialDays}-day free trial. A card is required. If you don&apos;t cancel before the trial
-                ends, the plan you chose starts and you are charged automatically.
+                ends, the plan you chose starts and you are charged automatically. We email you a reminder a few days before the trial ends.
               </li>
               <li><strong>Renewal:</strong> plans renew automatically at the end of each period (every month or every 3 months) until you cancel.</li>
-              <li>
-                <strong>Cancelling:</strong> cancel any time from the account link in every alert email (&quot;Manage billing or cancel&quot;). Your alerts continue until
-                the end of the period you have paid for, and you are not charged again.
-              </li>
-              <li>
-                <strong>Refunds:</strong> if you are charged and didn&apos;t mean to be, email us within 14 days of the charge and we&apos;ll arrange a full refund. This
-                doesn&apos;t limit any right to withdraw or get a refund you have under consumer law where you live.
-              </li>
-              <li><strong>Price changes:</strong> we&apos;ll email you at least 30 days before any price change takes effect, so you can cancel first.</li>
             </ul>
+            <h3 id="cancel" className="scroll-mt-24 pt-1 text-lg font-semibold">Cancelling</h3>
+            <p>
+              Cancel any time: open your account (the link is in every alert email, or{" "}
+              <a className="text-accent underline" href="/account/login">get your account link by email</a>) and choose &quot;Manage billing or cancel&quot;. You can also
+              cancel from the link in Paddle&apos;s receipt email. Your alerts continue until the end of the period you have paid for, and you are not charged again.
+              Unsubscribing from our emails does not cancel your plan.
+            </p>
+            <h3 id="refunds" className="scroll-mt-24 pt-1 text-lg font-semibold">Refunds</h3>
+            <p>
+              If a charge was unexpected, email {mail ? <a className="text-accent underline" href={`mailto:${mail}`}>{mail}</a> : "us"} within 14 days of it and
+              we&apos;ll refund it in full, no questions asked. Customers in the EU and UK also have the statutory right to withdraw set out in Paddle&apos;s buyer terms.
+              Nothing here limits rights you have under consumer law where you live.
+            </p>
+            <h3 className="pt-1 text-lg font-semibold">Price changes</h3>
+            <p>We&apos;ll email you at least 30 days before any price change takes effect, so you can cancel first.</p>
           </>
         ) : (
           <p>

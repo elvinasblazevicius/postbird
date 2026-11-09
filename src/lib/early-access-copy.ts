@@ -17,12 +17,16 @@ const plans = () => siteConfig.premium.plans;
 export const trialButton = `Start ${siteConfig.premium.trialDays}-day free trial`;
 
 /**
- * The line under the trial button, e.g. "Card required. $0 today, then $6.99/month
- * or $11.99 every 3 months unless you cancel before day 14. Cancel any time."
+ * The terms shown right under the trial button, for the plan that is selected:
+ * "Card required. $0 today. Your trial ends on 23 Nov; then $19.99 every 3 months,
+ * renewing automatically until you cancel. Cancel any time in your account."
+ * `trialEnds` is a formatted date, or null before the browser has worked it out.
  */
-export function trialLine() {
+export function trialLine(plan: "monthly" | "quarterly" = "quarterly", trialEnds: string | null = null) {
   const [m, q] = plans();
-  return `Card required. $0 today, then ${m.price}/${m.per} or ${q.price} every ${q.per} unless you cancel before day ${siteConfig.premium.trialDays}. Cancel any time.`;
+  const price = plan === "monthly" ? `${m.price} a month` : `${q.price} every ${q.per}`;
+  const when = trialEnds ? `Your free trial ends on ${trialEnds}` : `Your free trial lasts ${siteConfig.premium.trialDays} days`;
+  return `Card required. $0 today. ${when}; then ${price}, renewing automatically until you cancel. Cancel any time before then and you pay nothing.`;
 }
 
 /** Plan choices for the checkout form; the 3-month plan (best value) comes first and is preselected. */

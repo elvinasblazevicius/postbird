@@ -1,3 +1,4 @@
+import siteConfig from "@site-config";
 import { TrackedLink } from "./tracking";
 
 /**
@@ -30,7 +31,10 @@ export function EpsoBook({ className = "", source }: { className?: string; sourc
           <span className="font-normal text-slate"> by {EPSO_BOOK.author}, on Amazon</span>
         </p>
         <p className="mt-1 text-sm leading-relaxed text-slate">{EPSO_BOOK.blurb}</p>
-        <p className="mt-1.5 text-xs text-slate">Postbird earns from sales of this book.</p>
+        <p className="mt-1.5 text-xs text-slate">
+          Our own book: published by {siteConfig.operator.name}, which runs {siteConfig.name}, and we earn from each sale. Not affiliated with or endorsed by EPSO
+          or the EU institutions.
+        </p>
       </div>
     </aside>
   );

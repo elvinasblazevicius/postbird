@@ -39,6 +39,8 @@ export function SiteFooter() {
             <li><Link href="/pricing" className="hover:text-ink">Pricing</Link></li>
             <li><Link href="/privacy" className="hover:text-ink">Privacy</Link></li>
             <li><Link href="/terms" className="hover:text-ink">Terms</Link></li>
+            <li><Link href="/terms#refunds" className="hover:text-ink">Refunds</Link></li>
+            <li><Link href="/account/login" className="hover:text-ink">Manage or cancel a subscription</Link></li>
             {siteConfig.contactEmail ? (
               <li><a href={`mailto:${siteConfig.contactEmail}`} className="hover:text-ink">Contact</a></li>
             ) : null}

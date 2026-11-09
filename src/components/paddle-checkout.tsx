@@ -80,6 +80,14 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
   const opened = useRef<string | null>(null);
   const dark = tone === "dark";
   const plans = planOptions();
+  const [plan, setPlan] = useState<"monthly" | "quarterly">("quarterly");
+  // The trial end date is worked out in the browser (the visitor's own date and time zone).
+  const [trialEnds, setTrialEnds] = useState<string | null>(null);
+  useEffect(() => {
+    const d = new Date(Date.now() + siteConfig.premium.trialDays * 86_400_000);
+    const t = setTimeout(() => setTrialEnds(d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })), 0);
+    return () => clearTimeout(t);
+  }, []);
 
   // Once the server has prepared the checkout, open Paddle's overlay with that reference.
   useEffect(() => {
@@ -192,7 +200,7 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
               ) : null}
               <span className="flex items-center justify-between gap-2">
                 <span className="font-semibold">{p.label}</span>
-                <input type="radio" name="plan" value={p.value} defaultChecked={p.best} className="h-4 w-4 accent-[var(--accent)]" />
+                <input type="radio" name="plan" value={p.value} defaultChecked={p.best} onChange={() => setPlan(p.value)} className="h-4 w-4 accent-[var(--accent)]" />
               </span>
               <span className="mt-1.5 flex items-baseline gap-1">
                 <span className="font-display text-3xl font-semibold leading-none">{p.price}</span>
@@ -221,7 +229,10 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
         </button>
       </div>
       {error ? <p role="alert" className={`mt-2 text-sm ${dark ? "text-[#ffd7d7]" : "text-[#9b1c1c]"}`}>{error}</p> : null}
-      <p className={`mt-2 text-sm ${dark ? "text-white/70" : "text-slate"}`}>{trialLine()}</p>
+      <p className={`mt-2 text-sm ${dark ? "text-white/80" : "text-slate"}`} aria-live="polite">
+        {trialLine(plan, trialEnds)}{" "}
+        <Link href="/terms#subscriptions" className="underline">Subscription terms</Link>
+      </p>
       <ul className={`mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs ${dark ? "text-white/70" : "text-slate"}`}>
         <li className="flex items-center gap-1.5">
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true"><path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2M3.5 7h9v6.5h-9z" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
@@ -229,7 +240,7 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
         </li>
         <li className="flex items-center gap-1.5">
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
-          $0 today, cancel before day {siteConfig.premium.trialDays}
+          $0 today, nothing charged if you cancel during the trial
         </li>
         <li className="flex items-center gap-1.5">
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>

@@ -94,6 +94,23 @@ function persistAttribution() {
   }
 }
 
+const CONSENT_EVENT = "postbird:consent-changed";
+
+/**
+ * Microsoft's click id (msclkid) is unique to one ad click, so it is only kept
+ * when advertising cookies are allowed. Otherwise it is replaced by "present":
+ * enough to count a visit as coming from an ad, without an identifier.
+ */
+export function withoutClickId(a: Attribution | null): Attribution | null {
+  if (!a || storageAllowed || !a.msclkid) return a;
+  return { ...a, msclkid: "present" };
+}
+
+/** True when advertising measurement is allowed for this visitor (consent given, or not required and not refused). */
+export function adMeasurementAllowed(): boolean {
+  return storageAllowed;
+}
+
 /** Report a conversion to Microsoft Ads (no-op when UET isn't loaded). */
 export function uetEvent(action: string, params: Record<string, string | number> = {}) {
   try {
@@ -173,8 +190,11 @@ export function AdsManager({ tagId }: { tagId: string | null }) {
   const apply = useCallback(
     (geo: Geo) => {
       const saved = local()?.getItem(CONSENT_KEY) ?? null;
-      const granted = geo.consentRequired ? saved === "granted" : saved !== "denied";
+      // Global Privacy Control counts as an opt-out where consent isn't required up front.
+      const gpc = typeof navigator !== "undefined" && (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
+      const granted = geo.consentRequired || gpc ? saved === "granted" : saved !== "denied";
       storageAllowed = granted;
+      window.dispatchEvent(new Event(CONSENT_EVENT));
       captureAttribution();
       if (tagId && granted && !isPrivatePath(window.location.pathname)) loadUet(tagId, true);
       return { saved, granted };
@@ -229,9 +249,11 @@ export function AdsManager({ tagId }: { tagId: string | null }) {
         /* ignore */
       }
       window.uetq?.push("consent", "update", { ad_storage: "denied" });
+      window.dispatchEvent(new Event(CONSENT_EVENT));
     } else {
       storageAllowed = true;
       persistAttribution();
+      window.dispatchEvent(new Event(CONSENT_EVENT));
       if (tagId && !isPrivatePath(window.location.pathname)) {
         if (document.getElementById("uet-tag")) window.uetq?.push("consent", "update", { ad_storage: "granted" });
         else loadUet(tagId, true);
@@ -259,11 +281,17 @@ export function AdsManager({ tagId }: { tagId: string | null }) {
 export function AttributionField() {
   const [value, setValue] = useState("");
   useEffect(() => {
-    const a = getAttribution() ?? attributionFromUrl();
-    if (a) {
-      const t = setTimeout(() => setValue(JSON.stringify(a)), 0);
-      return () => clearTimeout(t);
-    }
+    // Recomputed when the consent choice becomes known or changes, so a click id is only sent when allowed.
+    const update = () => {
+      const a = withoutClickId(getAttribution() ?? attributionFromUrl());
+      setValue(a ? JSON.stringify(a) : "");
+    };
+    const t = setTimeout(update, 0);
+    window.addEventListener(CONSENT_EVENT, update);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener(CONSENT_EVENT, update);
+    };
   }, []);
   return <input type="hidden" name="attribution" value={value} />;
 }

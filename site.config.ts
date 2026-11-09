@@ -53,7 +53,7 @@ const siteConfig = {
   home: {
     headline: "Jobs at the UN, EU and international organizations",
     subheadline:
-      "UN agencies, EU institutions and other international organizations in one place. Every listing links to the employer's own website.",
+      "UN agencies, EU institutions and other international organizations in one place. Every listing links to the employer's own website or application form.",
   },
 
   /**
@@ -119,7 +119,7 @@ const siteConfig = {
    * the site lists vacancies from these organizations but is not run by them.
    */
   disclaimer:
-    "Postbird is an independent job discovery site. It is not affiliated with, endorsed by or acting for the United Nations or any organization listed. Applications are made only on each employer's own website.",
+    "Postbird is an independent job discovery site. It is not affiliated with, endorsed by or acting for the United Nations or any organization listed. Applications are made only through each employer's own website or application form.",
 
   /** Optional social links shown in the footer. Leave empty to hide. */
   social: {

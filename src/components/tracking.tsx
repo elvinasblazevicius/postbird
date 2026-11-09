@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { attributionFromUrl, isPrivatePath, uetEvent } from "./ads";
+import { adMeasurementAllowed, attributionFromUrl, isPrivatePath, uetEvent, withoutClickId } from "./ads";
 
 type EventPayload = { type: string; path?: string; jobId?: number; props?: Record<string, unknown> };
 
@@ -14,7 +14,9 @@ function safePath(): string {
   try {
     const keep = new URLSearchParams();
     new URLSearchParams(location.search).forEach((v, k) => {
-      if (k.startsWith("utm_") || k === "msclkid") keep.set(k, v);
+      if (k.startsWith("utm_")) keep.set(k, v);
+      // The unique click id only with advertising consent; otherwise just mark that it was there.
+      else if (k === "msclkid") keep.set(k, adMeasurementAllowed() ? v : "present");
     });
     const q = keep.toString();
     return location.pathname + (q ? `?${q}` : "");
@@ -45,7 +47,7 @@ export function PageviewTracker() {
   useEffect(() => {
     if (!pathname || isPrivatePath(pathname) || last.current === pathname) return;
     last.current = pathname;
-    const campaign = attributionFromUrl();
+    const campaign = withoutClickId(attributionFromUrl());
     track({ type: "pageview", props: campaign ? { campaign } : undefined });
   }, [pathname]);
   return null;

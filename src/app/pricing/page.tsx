@@ -11,7 +11,7 @@ export const revalidate = 600;
 
 export const metadata: Metadata = {
   title: "Pricing — email alerts for international jobs",
-  description: `Browsing every vacancy is free. ${siteConfig.premium.name} (launching soon): new vacancies by email, filtered by keyword, organization and location.`,
+  description: `Browsing every vacancy is free. ${siteConfig.premium.name}: new vacancies by email, filtered by keyword, organization and location. ${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}.`,
   alternates: { canonical: "/pricing" },
 };
 
@@ -34,10 +34,10 @@ export default async function PricingPage() {
         ],
         [
           "How do I cancel?",
-          <>Every alert email has a link to your account, with &quot;Manage billing or cancel&quot;. Cancel any time; you keep alerts until the end of the period you paid for.</>,
+          <>Every alert email links to your account, where &quot;Manage billing or cancel&quot; opens Paddle&apos;s page to cancel. Lost the email? <Link href="/account/login" className="text-accent underline">Get your account link</Link>. You keep alerts until the end of the period you paid for.</>,
         ],
         ["Who handles the payment?", <>Paddle.com, our reseller and merchant of record. It handles payment, invoices and tax; we never see your card details.</>],
-        ["Can I get a refund?", <>If you&apos;re charged and didn&apos;t mean to be, email us within 14 days of the charge for a full refund.</>],
+        ["Can I get a refund?", <>Yes. If a charge was unexpected, email us within 14 days of it and we&apos;ll refund it in full. <Link href="/terms#refunds" className="text-accent underline">Refund policy</Link></>],
       ]
     : [
         ["Is anything charged now?", <>No. Email alerts aren&apos;t open yet. Joining early access is free and needs no card.</>],
@@ -49,7 +49,7 @@ export default async function PricingPage() {
         ["Can I unsubscribe?", <>Yes, at any time: every email has a one-click unsubscribe link.</>],
       ];
   const quarterly = p.plans.find((x) => "perMonth" in x && x.perMonth);
-  const trialLine = `Card required. $0 today, then ${p.plans[0]?.price ?? ""}/month or ${quarterly?.price ?? ""} every 3 months unless you cancel before day ${p.trialDays}. Cancel any time.`;
+  const trialLine = `Card required. $0 today. After the ${p.trialDays}-day free trial, ${quarterly?.price ?? ""} every 3 months or ${p.plans[0]?.price ?? ""} a month (the plan you choose), renewing automatically until you cancel. Cancel any time before the trial ends and you pay nothing.`;
   const faq: [string, React.ReactNode][] = [
     ...billingFaq,
     [
