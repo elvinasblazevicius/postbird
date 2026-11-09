@@ -26,17 +26,37 @@ export function trialLine() {
 }
 
 /** Plan choices for the checkout form; the 3-month plan (best value) comes first and is preselected. */
-export function planOptions(): { value: "monthly" | "quarterly"; label: string; price: string; detail: string }[] {
+export type PlanOption = {
+  value: "monthly" | "quarterly";
+  label: string;
+  /** Full price charged each period, e.g. "$19.99". */
+  price: string;
+  /** "/ month" or "/ 3 months". */
+  per: string;
+  /** "= $6.66 a month" for longer plans. */
+  perMonth: string | null;
+  /** "Save 33%". */
+  note: string | null;
+  /** One short line under the price. */
+  detail: string;
+  best: boolean;
+};
+
+export function planOptions(): PlanOption[] {
   const [m, q] = plans();
   const perMonth = "perMonth" in q ? q.perMonth : null;
   return [
     {
       value: "quarterly",
       label: q.label,
-      price: `${q.price} every ${q.per}`,
-      detail: [perMonth ? `${perMonth}/month` : null, q.note || null].filter(Boolean).join(", "),
+      price: q.price,
+      per: `/ ${q.per}`,
+      perMonth: perMonth ? `= ${perMonth} a month` : null,
+      note: q.note || null,
+      detail: `Billed every ${q.per}`,
+      best: true,
     },
-    { value: "monthly", label: m.label, price: `${m.price}/${m.per}`, detail: m.note || "" },
+    { value: "monthly", label: m.label, price: m.price, per: `/ ${m.per}`, perMonth: null, note: m.note || null, detail: "Billed monthly", best: false },
   ];
 }
 

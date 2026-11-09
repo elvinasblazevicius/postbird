@@ -129,7 +129,8 @@ describe("paid-alert copy", () => {
   it("offers the 3-month plan first, with its monthly equivalent", () => {
     const opts = planOptions();
     expect(opts.map((o) => o.value)).toEqual(["quarterly", "monthly"]);
-    expect(opts[0].detail).toContain("/month");
+    expect(opts[0].perMonth).toContain("a month");
+    expect(opts[0].best).toBe(true);
     expect(planDescription("month")).toContain(m.price);
     expect(planDescription("quarter")).toContain(q.price);
     expect(planPriceNumber("month")).toBe(Number(m.price.replace("$", "")));

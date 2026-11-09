@@ -1,5 +1,7 @@
 "use client";
 
+import siteConfig from "@site-config";
+
 /**
  * The "Start free trial" form when billing is live: plan, email, then Paddle's
  * overlay checkout. Paddle.js loads from Paddle's CDN (as Paddle requires)
@@ -174,19 +176,34 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
         <label>Leave empty<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label>
       </div>
       <fieldset className="mb-4">
-        <legend className={`mb-1.5 block text-sm font-medium ${dark ? "text-white/90" : "text-ink"}`}>Plan</legend>
-        <div className={`grid gap-2 ${compact ? "@md:grid-cols-2" : "sm:grid-cols-2"}`}>
+        <legend className={`mb-2 block text-sm font-medium ${dark ? "text-white/90" : "text-ink"}`}>Choose your plan</legend>
+        <div className={`grid gap-3 ${compact ? "@md:grid-cols-2" : "sm:grid-cols-2"}`}>
           {plans.map((p) => (
             <label
               key={p.value}
-              className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 has-[:checked]:ring-2 ${
-                dark ? "border-white/30 text-white has-[:checked]:ring-white/60" : "border-rule bg-paper text-ink has-[:checked]:border-accent has-[:checked]:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]"
+              className={`relative flex cursor-pointer flex-col rounded-xl border-2 px-4 pb-3.5 pt-4 transition-colors ${
+                dark
+                  ? "border-white/25 text-white has-[:checked]:border-white has-[:checked]:bg-white/10"
+                  : "border-rule bg-paper text-ink hover:border-[color-mix(in_srgb,var(--accent)_45%,var(--rule))] has-[:checked]:border-accent has-[:checked]:bg-[color-mix(in_srgb,var(--accent)_6%,white)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[color-mix(in_srgb,var(--accent)_35%,transparent)]"
               }`}
             >
-              <input type="radio" name="plan" value={p.value} defaultChecked={p.value === "quarterly"} className="mt-1 h-4 w-4 accent-[var(--accent)]" />
-              <span>
-                <span className="block font-semibold">{p.label}: {p.price}</span>
-                {p.detail ? <span className={`block text-sm ${dark ? "text-white/75" : "text-slate"}`}>{p.detail}</span> : null}
+              {p.best ? (
+                <span className="absolute -top-3 left-4 rounded-full bg-remote px-2.5 py-0.5 text-xs font-semibold tracking-wide text-white shadow-sm">Best value</span>
+              ) : null}
+              <span className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold uppercase tracking-wide">{p.label}</span>
+                <input type="radio" name="plan" value={p.value} defaultChecked={p.best} className="h-4 w-4 accent-[var(--accent)]" />
+              </span>
+              <span className="mt-1.5 flex items-baseline gap-1">
+                <span className="font-display text-3xl font-semibold leading-none">{p.price}</span>
+                <span className={`text-sm ${dark ? "text-white/75" : "text-slate"}`}>{p.per}</span>
+              </span>
+              <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                {p.perMonth ? <span className={`font-semibold ${dark ? "text-white" : "text-remote"}`}>{p.perMonth}</span> : null}
+                {p.note ? (
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${dark ? "bg-white/15 text-white" : "bg-remote-bg text-remote"}`}>{p.note}</span>
+                ) : null}
+                {!p.perMonth && !p.note ? <span className={dark ? "text-white/75" : "text-slate"}>{p.detail}, cancel any time</span> : null}
               </span>
             </label>
           ))}
@@ -205,6 +222,20 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
       </div>
       {error ? <p role="alert" className={`mt-2 text-sm ${dark ? "text-[#ffd7d7]" : "text-[#9b1c1c]"}`}>{error}</p> : null}
       <p className={`mt-2 text-sm ${dark ? "text-white/70" : "text-slate"}`}>{trialLine()}</p>
+      <ul className={`mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs ${dark ? "text-white/70" : "text-slate"}`}>
+        <li className="flex items-center gap-1.5">
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true"><path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2M3.5 7h9v6.5h-9z" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
+          Secure checkout by Paddle
+        </li>
+        <li className="flex items-center gap-1.5">
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+          $0 today, cancel before day {siteConfig.premium.trialDays}
+        </li>
+        <li className="flex items-center gap-1.5">
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+          Cancel any time from your account
+        </li>
+      </ul>
     </form>
   );
 }

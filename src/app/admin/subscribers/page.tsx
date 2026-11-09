@@ -20,8 +20,8 @@ export default async function SubscribersPage({ searchParams }: Props) {
              count(*) filter (where status = 'unsubscribed')::int as unsub,
              count(*)::int as total
       from subscribers`,
-    sql<{ email: string; status: string; wants_alerts: boolean; premium_waitlist: boolean; source: string | null; created_at: Date; preferences: Record<string, string>; waitlist_note: string | null }[]>`
-      select email, status, wants_alerts, premium_waitlist, source, created_at, preferences, waitlist_note from subscribers order by id desc limit 100`,
+    sql<{ email: string; status: string; wants_alerts: boolean; premium_waitlist: boolean; billing_status: string | null; plan_interval: string | null; source: string | null; created_at: Date; preferences: Record<string, string>; waitlist_note: string | null }[]>`
+      select email, status, wants_alerts, premium_waitlist, billing_status, plan_interval, source, created_at, preferences, waitlist_note from subscribers order by id desc limit 100`,
     sql<{ period_key: string; status: string; recipients: number; sent: number; failed: number; jobs_included: number; started_at: Date; message: string | null }[]>`
       select period_key, status, recipients, sent, failed, jobs_included, started_at, message from digests order by id desc limit 8`,
   ]);
@@ -69,7 +69,9 @@ export default async function SubscribersPage({ searchParams }: Props) {
             <tr key={s.email} className="align-top">
               <td className="px-4 py-2">{s.email}</td>
               <td className="px-4 py-2"><StatusPill status={s.status} /></td>
-              <td className="px-4 py-2">{[s.wants_alerts && "weekly alerts", s.premium_waitlist && "premium"].filter(Boolean).join(", ")}</td>
+              <td className="px-4 py-2">{s.billing_status && s.billing_status !== "none"
+                ? `paid alerts: ${s.billing_status === "trialing" ? "in trial" : s.billing_status}${s.plan_interval ? ` (${s.plan_interval === "quarter" ? "3 months" : "monthly"})` : ""}`
+                : [s.wants_alerts && "weekly email", s.premium_waitlist && "early access"].filter(Boolean).join(", ")}</td>
               <td className="px-4 py-2 text-slate">{s.source ?? "—"}</td>
               <td className="max-w-xs px-4 py-2 text-xs text-slate">
                 {Object.entries(s.preferences ?? {}).filter(([k]) => ["keywords", "organizations", "locations", "search", "remind_job"].includes(k)).map(([k, v]) => `${k}: ${v}`).join(" | ")}
