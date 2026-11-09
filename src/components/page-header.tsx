@@ -30,19 +30,17 @@ export function Breadcrumbs({ items, dark = false }: { items: Crumb[]; dark?: bo
   );
 }
 
-/** Textured brand band used at the top of inner pages. `badge` is an optional logo or flag beside the title. */
+/** Quiet header band at the top of inner pages. `badge` is an optional logo or flag beside the title. */
 export function PageHeader({ title, intro, crumbs, badge, children }: { title: string; intro?: React.ReactNode; crumbs?: Crumb[]; badge?: React.ReactNode; children?: React.ReactNode }) {
   return (
-    <header className="brand-band grain">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/world-dots.svg" alt="" aria-hidden="true" className="band-map hidden md:block" />
-      <div className="mx-auto max-w-6xl px-4 pb-11 pt-9 sm:px-6">
-        {crumbs ? <Breadcrumbs items={crumbs} dark /> : null}
+    <header className="brand-band">
+      <div className="mx-auto max-w-6xl px-4 pb-9 pt-7 sm:px-6">
+        {crumbs ? <Breadcrumbs items={crumbs} /> : null}
         <div className="mt-4 flex items-center gap-4">
           {badge}
-          <h1 className="text-[2.1rem] font-semibold leading-tight text-white sm:text-[2.6rem]">{title}</h1>
+          <h1 className="text-[2rem] font-semibold leading-tight text-ink sm:text-[2.5rem]">{title}</h1>
         </div>
-        {intro ? <div className="mt-3 max-w-3xl text-[1.05rem] leading-relaxed text-white/80">{intro}</div> : null}
+        {intro ? <div className="mt-3 max-w-3xl text-[1.05rem] leading-relaxed text-slate">{intro}</div> : null}
         {children}
       </div>
     </header>

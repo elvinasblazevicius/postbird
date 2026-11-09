@@ -5,24 +5,26 @@
  * as --brand / --accent / --ink); everything else is defined here.
  */
 :root {
-  --brand: #1d5bff;
-  --accent: #0f44d6;
+  --brand: #1f4fd1;
+  --accent: #173fae;
   --sky: #38c6ff;
-  --candy: #c0145f;
+  --candy: #b42318;
   --highlight: #ffd23f;
-  --ink: #0b1b3f;
+  --ink: #0e1f3d;
   --paper: #ffffff;
-  --mist: #eef4ff;
-  --rule: #d9e4ff;
-  --slate: #4b5b7c;
+  /* Neutral, cool greys: hairlines and quiet surfaces, not blue tints. */
+  --mist: #f4f6f9;
+  --rule: #e1e5ec;
+  --slate: #536079;
   --signal: var(--candy);
-  --signal-bg: #ffe8f2;
-  --remote: #0a8277;
-  --remote-bg: #dcf8f3;
-  --tint: #e6eeff;
-  --tint-ink: #1846c9;
-  --lilac: #efe9ff;
-  --lilac-ink: #5a3cc2;
+  --signal-bg: #fdecea;
+  --remote: #0a7a55;
+  --remote-bg: #e3f4ec;
+  /* Tags share one quiet style; colour is reserved for status (remote, closing soon). */
+  --tint: #f1f3f7;
+  --tint-ink: #33405a;
+  --lilac: #f1f3f7;
+  --lilac-ink: #33405a;
 }
 
 @theme inline {
@@ -120,11 +122,10 @@ a {
 /* Brand surfaces: one deep-to-bright blue direction, no decorative blobs */
 .bg-candy-hero,
 .bg-candy-band {
-  background-color: #0b2c78;
-  background-image: linear-gradient(155deg, #0a2566 0%, #0f3aa6 52%, var(--brand) 100%);
+  background-color: #10264f;
 }
 .bg-candy-soft {
-  background: #f5f8fd;
+  background: var(--mist);
 }
 /* Dot-matrix world map (public/world-dots.svg) used behind brand surfaces */
 .world-dots {
@@ -135,11 +136,10 @@ a {
 }
 
 .card-lift {
-  box-shadow: 0 1px 2px rgba(11, 27, 63, 0.04);
-  transition: box-shadow 150ms ease, border-color 150ms ease;
+  transition: border-color 120ms ease;
 }
 .card-lift:hover {
-  box-shadow: 0 10px 28px -14px rgba(29, 91, 255, 0.45);
+  border-color: #b9c2d3;
 }
 .bg-candy-band > :not(.world-dots) {
   position: relative;
@@ -168,59 +168,23 @@ a {
   }
 }
 
-/* ── Texture ──────────────────────────────────────────────────
- * Brand bands (inner page headers): deep blue with a fine dot grid that
- * fades in from the right, a soft sky glow and film grain. Light panels get
- * a very faint dot grid. All decorative layers ignore the pointer. */
+/* Inner page headers: quiet paper band with a hairline, like an institution's
+ * own career pages. No gradients, glows, dot grids or grain. */
 .brand-band {
   position: relative;
-  overflow: hidden;
-  color: #fff;
-  background-color: #0b2c78;
-  background-image:
-    radial-gradient(circle at 88% -10%, rgba(56, 198, 255, 0.38), transparent 42%),
-    radial-gradient(circle at 10% 120%, rgba(29, 91, 255, 0.55), transparent 50%),
-    linear-gradient(155deg, #0a2566 0%, #0f3aa6 55%, #1d5bff 100%);
-}
-.brand-band::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1.5px);
-  background-size: 18px 18px;
-  -webkit-mask-image: linear-gradient(100deg, transparent 25%, #000 80%);
-  mask-image: linear-gradient(100deg, transparent 25%, #000 80%);
-}
-.brand-band > * {
-  position: relative;
-}
-/* Film grain on brand surfaces */
-.grain::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.09;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-color: var(--mist);
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink);
 }
 .brand-band .band-map {
-  position: absolute;
-  right: -60px;
-  top: 50%;
-  width: 640px;
-  max-width: none;
-  transform: translateY(-50%);
-  opacity: 0.16;
-  pointer-events: none;
-  user-select: none;
+  display: none !important;
 }
-/* Faint dot grid on light panels */
+/* Kept as no-ops so older markup stays harmless. */
+.grain::after {
+  content: none;
+}
 .dots-soft {
-  background-color: #f5f8fd;
-  background-image: radial-gradient(rgba(29, 91, 255, 0.09) 1px, transparent 1.4px);
-  background-size: 16px 16px;
+  background-color: var(--mist);
 }
 
 /* Home search on phones: labels stay for screen readers but take no space. */

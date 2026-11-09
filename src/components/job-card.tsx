@@ -65,12 +65,12 @@ export function JobCard({ job, headingLevel = 3 }: { job: JobListItem; headingLe
   const H = `h${headingLevel}` as "h2" | "h3";
   const href = jobPath(job);
   return (
-    <article className="card-lift group relative rounded-2xl border border-rule bg-paper p-5 hover:border-[color-mix(in_srgb,var(--brand)_45%,var(--rule))] sm:p-6">
+    <article className="card-lift group relative rounded-xl border border-rule bg-paper p-5 hover:border-[color-mix(in_srgb,var(--brand)_45%,var(--rule))] sm:p-6">
       <div className="flex gap-4">
         <OrgBadge name={job.org_name} short={job.org_short} logo={job.org_logo} />
         <div className="min-w-0 flex-1">
           <H className="font-display text-[1.28rem] font-semibold leading-snug text-ink">
-            <Link href={href} className="after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-none">
+            <Link href={href} className="after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none">
               {job.title}
             </Link>
           </H>
@@ -127,7 +127,7 @@ export function JobList({ jobs, headingLevel = 3 }: { jobs: JobListItem[]; headi
 export function JobTile({ job }: { job: JobListItem }) {
   const dl = deadlineLabel(job.deadline);
   return (
-    <article className="card-lift group relative flex h-full flex-col rounded-2xl border border-rule bg-paper p-5 hover:border-[color-mix(in_srgb,var(--brand)_45%,var(--rule))]">
+    <article className="card-lift group relative flex h-full flex-col rounded-xl border border-rule bg-paper p-5 hover:border-[color-mix(in_srgb,var(--brand)_45%,var(--rule))]">
       <div className="flex items-start justify-between gap-3">
         <OrgBadge name={job.org_name} short={job.org_short} logo={job.org_logo} />
         <div className="text-right">
@@ -146,7 +146,7 @@ export function JobTile({ job }: { job: JobListItem }) {
         </div>
       </div>
       <h3 className="mt-4 font-display text-[1.18rem] font-semibold leading-snug text-ink">
-        <Link href={jobPath(job)} className="after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-none">{job.title}</Link>
+        <Link href={jobPath(job)} className="after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none">{job.title}</Link>
       </h3>
       <p className="mt-1.5 text-[0.95rem] text-ink">{job.org_name ?? <span className="text-slate">Organization {NOT_SPECIFIED.toLowerCase()}</span>}</p>
       <p className="flex items-center gap-1.5 text-[0.95rem] text-slate"><Flag code={job.country_code} />{locationLabel(job)}</p>

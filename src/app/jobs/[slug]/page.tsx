@@ -148,12 +148,9 @@ export default async function JobPage({ params }: Props) {
       {ld ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(ld) }} /> : null}
       <TrackOnMount event={{ type: "job_view", jobId: job.id }} />
 
-      <div className="brand-band grain">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/world-dots.svg" alt="" aria-hidden="true" className="band-map hidden md:block" />
-        <div className="mx-auto max-w-6xl px-4 pb-10 pt-8 sm:px-6">
+      <div className="brand-band">
+        <div className="mx-auto max-w-6xl px-4 pb-9 pt-7 sm:px-6">
           <Breadcrumbs
-            dark
             items={[
               { href: "/", label: "Home" },
               { href: "/jobs", label: "Jobs" },
@@ -164,11 +161,11 @@ export default async function JobPage({ params }: Props) {
           <div className="mt-5 flex gap-4">
             <OrgBadge name={job.org_name} short={job.org_short} logo={job.org_logo} size="lg" />
             <div className="min-w-0">
-              <h1 className="text-[1.9rem] font-semibold leading-tight text-white sm:text-[2.4rem]">{job.title}</h1>
-              <p className="mt-2 text-lg text-white">
-                {job.org_slug ? <Link href={`/organizations/${job.org_slug}`} className="hover:underline">{job.org_name}</Link> : <span className="text-white/70">Organization not stated</span>}
+              <h1 className="text-[1.9rem] font-semibold leading-tight text-ink sm:text-[2.4rem]">{job.title}</h1>
+              <p className="mt-2 text-lg text-ink">
+                {job.org_slug ? <Link href={`/organizations/${job.org_slug}`} className="text-accent hover:underline">{job.org_name}</Link> : <span className="text-slate">Organization not stated</span>}
               </p>
-              <p className="flex items-center gap-1.5 text-white/80"><Flag code={job.country_code} className="shadow-[0_0_0_1px_rgba(255,255,255,0.35)]" />{where}</p>
+              <p className="mt-1 flex items-center gap-1.5 text-slate"><Flag code={job.country_code} className="shadow-[0_0_0_1px_rgba(14,31,61,0.15)]" />{where}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {job.is_demo ? <Tag tone="demo">Demo data — not a real vacancy</Tag> : null}
                 {!open ? <Tag tone="signal">Closed</Tag> : null}

@@ -191,7 +191,7 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
                 <span className="absolute -top-3 left-4 rounded-full bg-remote px-2.5 py-0.5 text-xs font-semibold tracking-wide text-white shadow-sm">Best value</span>
               ) : null}
               <span className="flex items-center justify-between gap-2">
-                <span className="text-sm font-semibold uppercase tracking-wide">{p.label}</span>
+                <span className="font-semibold">{p.label}</span>
                 <input type="radio" name="plan" value={p.value} defaultChecked={p.best} className="h-4 w-4 accent-[var(--accent)]" />
               </span>
               <span className="mt-1.5 flex items-baseline gap-1">

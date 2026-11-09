@@ -48,7 +48,7 @@ export default async function HomePage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(websiteLd) }} />
 
       {/* Hero */}
-      <section className="bg-candy-hero grain relative overflow-hidden">
+      <section className="bg-candy-hero relative overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/flag-wall.svg" alt="" aria-hidden="true" className="flag-wall" />
         <div className="relative mx-auto max-w-6xl px-4 pb-5 pt-5 sm:px-6 sm:pb-12 sm:pt-16">
@@ -213,15 +213,13 @@ export default async function HomePage() {
 
       {/* Alerts */}
       <section className="mx-auto mt-20 max-w-6xl px-4 sm:px-6" aria-labelledby="alerts-heading">
-        <div className="bg-candy-band grain relative grid items-center gap-8 overflow-hidden rounded-2xl px-6 py-10 text-white sm:px-10 lg:grid-cols-[1.1fr_1fr]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/world-dots.svg" alt="" aria-hidden="true" className="world-dots -left-40 -top-24 w-[900px] opacity-[0.10]" />
+        <div className="bg-candy-band relative grid items-center gap-8 overflow-hidden rounded-2xl px-6 py-10 text-white sm:px-10 lg:grid-cols-[1.1fr_1fr]">
           <div>
             <h2 id="alerts-heading" className="text-[1.9rem] font-semibold leading-tight">Let {siteConfig.name} bring new vacancies to you</h2>
             <p className="mt-3 max-w-lg leading-relaxed text-white/80">
               {siteConfig.freeWeeklyEmail
                 ? "A short Monday email with the week's newest openings. Free, no account needed, unsubscribe with one click."
-                : "Email alerts for the roles, organizations and places you choose, with reminders before deadlines."}
+                : "New vacancies for the roles, organizations and places you choose, by email, with every closing date shown."}
             </p>
           </div>
           <AlertSignup source="home" tone="dark" />

@@ -14,7 +14,7 @@ export const metadata: Metadata = {
     : "Email job alerts for UN and international organization vacancies",
   description: free
     ? "Get a free Monday email with the week's newest vacancies at UN agencies and international organizations. Unsubscribe with one click."
-    : "New UN and international organization vacancies by email, filtered by role, organization and location, with deadline reminders.",
+    : "New UN and international organization vacancies by email, filtered by role, organization and location, with each closing date shown.",
   alternates: { canonical: "/alerts" },
 };
 

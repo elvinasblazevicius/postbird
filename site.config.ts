@@ -104,13 +104,14 @@ const siteConfig = {
    * yellow of the main call-to-action buttons, `ink` the text colour.
    */
   colors: {
-    brand: "#1D5BFF",
-    accent: "#0F44D6",
+    brand: "#1F4FD1",
+    accent: "#173FAE",
     sky: "#38C6FF",
-    candy: "#C0145F",
+    /** Deadline red: closing-soon labels only. */
+    candy: "#B42318",
     /** Sunshine yellow for the main "Get email alerts" buttons. */
     highlight: "#FFD23F",
-    ink: "#0B1B3F",
+    ink: "#0E1F3D",
   },
 
   /**
