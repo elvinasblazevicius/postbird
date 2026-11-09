@@ -155,7 +155,7 @@ export default async function PricingPage() {
           ))}
         </dl>
         <p className="mt-6 text-sm text-slate">
-          Prices in US dollars{BILLING_LIVE ? "; sales tax or VAT is added where it applies" : ""}. {siteConfig.name} is run by {siteConfig.operator.name}.{" "}
+          Prices in US dollars{BILLING_LIVE ? ", including any sales tax or VAT" : ""}. {siteConfig.name} is run by {siteConfig.operator.name}.{" "}
           <Link href="/terms" className="text-accent underline">Terms</Link> · <Link href="/privacy" className="text-accent underline">Privacy</Link>
         </p>
       </section>
