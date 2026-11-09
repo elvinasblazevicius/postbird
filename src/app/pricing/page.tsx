@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { sharedTitle, shareMetadata } from "@/lib/share-metadata";
 import Link from "next/link";
 import { AlertExample } from "@/components/alert-example";
 import { CoverageLine } from "@/components/coverage-line";
@@ -10,12 +11,16 @@ import { siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
+const TITLE = "Pricing — email alerts for international jobs";
+const DESCRIPTION = siteConfig.freeWeeklyEmail
+  ? `Browsing every vacancy is free, and so is a weekly email with new matches for one search. ${siteConfig.premium.name} with up to 5 searches: ${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}.`
+  : `Browsing every vacancy is free. ${siteConfig.premium.name}: new vacancies by email, filtered by keyword, organization and location. ${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}.`;
+
 export const metadata: Metadata = {
-  title: "Pricing — email alerts for international jobs",
-  description: siteConfig.freeWeeklyEmail
-    ? `Browsing every vacancy is free, and so is a weekly email with new matches for one search. ${siteConfig.premium.name} with up to 5 searches: ${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}.`
-    : `Browsing every vacancy is free. ${siteConfig.premium.name}: new vacancies by email, filtered by keyword, organization and location. ${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}.`,
+  title: TITLE,
+  description: DESCRIPTION,
   alternates: { canonical: "/pricing" },
+  ...shareMetadata(sharedTitle(TITLE), DESCRIPTION),
 };
 
 function Check() {
@@ -32,7 +37,7 @@ export default async function PricingPage() {
     ? [
         [
           "How does the free trial work?",
-          <>You pay $0 for {p.trialDays} days, and a card is needed to start. If you don&apos;t cancel before your trial ends (we show the date before you start and email you about 3 days ahead), the plan you chose starts automatically. {ONE_TRIAL_RULE}</>,
+          <>We&apos;ll email you a link to confirm your address; your alerts start once you confirm. You pay $0 for {p.trialDays} days, and a card is needed to start. If you don&apos;t cancel before your trial ends (we show the date before you start and email you about 3 days ahead), the plan you chose starts automatically. {ONE_TRIAL_RULE}</>,
         ],
         [
           "How do I cancel?",

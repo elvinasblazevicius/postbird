@@ -241,8 +241,9 @@ a {
     border-radius: inherit;
     opacity: 0.45;
   }
+  /* Never below 12px (0.75rem), so the small stamp stays readable. */
   .postmark-top {
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     font-weight: 500;
   }
   .postmark-main {
@@ -252,13 +253,13 @@ a {
     white-space: nowrap;
   }
   .postmark-bottom {
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     font-weight: 600;
     white-space: nowrap;
   }
   .postmark-sm .postmark-ring {
-    width: 4.25rem;
-    height: 4.25rem;
+    width: 4.5rem;
+    height: 4.5rem;
   }
   .postmark-sm .postmark-main {
     font-size: 0.95rem;
@@ -288,6 +289,13 @@ a {
   .postmark-lg .postmark-waves {
     width: 3.5rem;
     height: 2.6rem;
+  }
+  /* Phones: barely tilted, so the small text stays easy to read. */
+  @media (max-width: 639.98px) {
+    .postmark-ring,
+    .postmark-waves {
+      transform: rotate(-2deg);
+    }
   }
 }
 

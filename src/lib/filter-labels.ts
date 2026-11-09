@@ -11,6 +11,20 @@ export function orList(items: string[]): string {
   return `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
 }
 
+/** "a grade", "a grade and a contract type", "a grade, a contract type and language requirements". */
+export function andList(items: string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/** What each filter read from a posting's text needs the posting to state (DERIVED_FILTERS in src/lib/jobs.ts). */
+export const STATED_DETAIL: Record<"grade" | "exp" | "lang" | "type", string> = {
+  grade: "a grade",
+  exp: "the experience required",
+  lang: "language requirements",
+  type: "a contract type",
+};
+
 /** Names of the chosen regions and countries, regions first. */
 export function placeNames(f: { country?: string[]; region?: string[] }): string[] {
   return [

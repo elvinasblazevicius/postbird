@@ -3,13 +3,13 @@ import Link from "next/link";
 import { AccountUnsubscribe, AddSearchForm, FrequencyForm, PortalButton, RemoveSearchButton, RestartPlanButton } from "@/components/account-forms";
 import { ALL_CATEGORIES } from "@/config/categories";
 import { COUNTRIES } from "@/config/countries";
-import { GRADE_GROUPS, REGIONS } from "@/config/regions";
+import { GRADE_GROUPS, LANGUAGES, REGIONS } from "@/config/regions";
 import { findByManageToken, type Account } from "@/lib/account";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { hadTrialBefore } from "@/lib/billing/subscriptions";
 import { trialUsedElsewhere } from "@/lib/billing/trial-markers";
 import { planDescription } from "@/lib/early-access-copy";
-import { JOB_TYPES } from "@/lib/jobs";
+import { EXPERIENCE_BANDS, JOB_TYPES, organizationFacets } from "@/lib/jobs";
 import { listSavedSearches, MAX_SAVED_SEARCHES, searchLimit } from "@/lib/saved-searches";
 import { formatDate, siteConfig } from "@/lib/site";
 
@@ -160,6 +160,9 @@ export default async function AccountPage({ searchParams }: Props) {
               categories={ALL_CATEGORIES.map((c) => ({ value: c.slug, label: c.name }))}
               grades={GRADE_GROUPS.map((g) => ({ value: g.value, label: g.name }))}
               types={JOB_TYPES.map((x) => ({ value: x, label: x }))}
+              orgs={(await organizationFacets(500, false).catch(() => [])).map((o) => ({ value: o.slug, label: o.name }))}
+              langs={LANGUAGES.map((l) => ({ value: l, label: l }))}
+              exps={EXPERIENCE_BANDS.map((b) => ({ value: b.value, label: b.name }))}
             />
           </div>
         ) : null}

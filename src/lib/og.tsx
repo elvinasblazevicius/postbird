@@ -7,6 +7,7 @@ import siteConfig from "@site-config";
 
 export const OG_SIZE = { width: 1200, height: 630 };
 
+/** `footer` defaults to the tagline without the EU (see src/lib/eu-claim.ts). */
 type Lines = { eyebrow?: string; title: string; lines?: string[]; footer?: string };
 
 function shorten(s: string, max: number): string {
@@ -41,7 +42,7 @@ export function shareImage({ eyebrow, title, lines = [], footer }: Lines): Image
             <div key={l} style={{ fontSize: 32, color: "rgba(255,255,255,0.9)" }}>{shorten(l, 80)}</div>
           ))}
         </div>
-        <div style={{ fontSize: 24, color: "rgba(255,255,255,0.7)" }}>{footer ?? siteConfig.tagline}</div>
+        <div style={{ fontSize: 24, color: "rgba(255,255,255,0.7)" }}>{footer ?? siteConfig.home.withoutEu.tagline}</div>
       </div>
     ),
     OG_SIZE,

@@ -13,7 +13,7 @@ import { checkoutDoneAction, continueCheckoutAction, startCheckoutAction, type C
 import { PADDLE_CLIENT_TOKEN, PADDLE_ENV, PADDLE_PRICE_MONTHLY, PADDLE_PRICE_QUARTERLY } from "@/lib/billing/live";
 import {
   CONFIRM_FIRST_DONE, NO_TRIAL_CONSENT, NO_TRIAL_RENEWAL_ACK, noTrialButton, noTrialLine, planOptions, RENEWING, RENEWS, TAX_LINE, TRIAL_CONSENT,
-  TRIAL_RENEWAL_ACK, trialButton, trialLine,
+  TRIAL_CONFIRM_NOTE, TRIAL_RENEWAL_ACK, trialButton, trialLine,
 } from "@/lib/early-access-copy";
 import { AttributionField, consentRegion, uetEvent } from "./ads";
 
@@ -205,9 +205,10 @@ function PlanChoice({ dark, compact, plan, setPlan, locked = false }: { dark: bo
 /**
  * The terms, the consent line right under them, the required "renews automatically" checkbox
  * (the browser won't submit the form without it; the button stays enabled), then the button.
+ * `confirmNote`: the public trial form, where the address still has to be confirmed (TRIAL_CONFIRM_NOTE).
  */
-function TermsAndButton({ dark, trial, plan, trialEnds, busy, label, type = "submit", onClick }: {
-  dark: boolean; trial: boolean; plan: "monthly" | "quarterly"; trialEnds: string | null; busy: boolean; label: string; type?: "submit" | "button"; onClick?: () => void;
+function TermsAndButton({ dark, trial, plan, trialEnds, busy, label, type = "submit", onClick, confirmNote = false }: {
+  dark: boolean; trial: boolean; plan: "monthly" | "quarterly"; trialEnds: string | null; busy: boolean; label: string; type?: "submit" | "button"; onClick?: () => void; confirmNote?: boolean;
 }) {
   // Never the trial terms for an address that has had a trial before.
   const bold = trial ? RENEWS : RENEWING;
@@ -222,6 +223,7 @@ function TermsAndButton({ dark, trial, plan, trialEnds, busy, label, type = "sub
         <Link href="/privacy" className="underline">Privacy</Link>
       </p>
       <p className={`mt-2 text-xs ${dark ? "text-white/75" : "text-slate"}`}>{trial ? TRIAL_CONSENT : NO_TRIAL_CONSENT}</p>
+      {trial && confirmNote ? <p className={`mt-2 text-xs ${dark ? "text-white/75" : "text-slate"}`}>{TRIAL_CONFIRM_NOTE}</p> : null}
       <div className="mt-3 flex items-start gap-2">
         <input
           id={ackId}
@@ -284,9 +286,9 @@ function useTrialEnds() {
 /**
  * Plan choice (3 months preselected, the best value), email, and
  * "Start 14-day free trial". `compact` is the one-line version used in the
- * small sign-up boxes; `tone="dark"` for coloured backgrounds. An address that
- * has or had a plan gets "check your inbox" and the next step by email, the
- * same reply whichever it is.
+ * small sign-up boxes; `tone="dark"` for coloured backgrounds. A confirmed
+ * address, or one that has or had a plan, gets "check your inbox" and the next
+ * step by email, the same reply whichever it is.
  */
 export function TrialCheckoutForm({ source, search, compact = false, tone = "light", watch }: { source: string; search?: string; compact?: boolean; tone?: "light" | "dark"; watch?: React.ReactNode }) {
   const [state, action, pending] = useActionState(startCheckoutAction, initial);
@@ -327,7 +329,8 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
       action={(fd) => {
         setLoadError(null);
         // The same address again after closing the checkout: reopen the one already prepared
-        // (the server doesn't prepare a second one for the same address for 30 minutes).
+        // (the server hands the same visitor that one back, and prepares no second one for the
+        // same address for 5 minutes).
         if (state.status === "ready" && String(fd.get("email") ?? "").trim().toLowerCase() === state.email) {
           openPaddleCheckout({ ...state, plan }, { source, setPhase, setLoadError, cancelled: () => false });
           return;
@@ -349,7 +352,7 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
       <PlanChoice dark={dark} compact={compact} plan={plan} setPlan={setPlan} />
       <label htmlFor={id("email")} className={`mb-1.5 block text-sm font-medium ${dark ? "text-white/90" : "text-ink"}`}>Email address</label>
       <input id={id("email")} name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} {...warmup.email} />
-      <TermsAndButton dark={dark} trial plan={plan} trialEnds={trialEnds} busy={busy} label={pending ? "Preparing…" : phase.step === "checkout" ? "Checkout open…" : trialButton} />
+      <TermsAndButton dark={dark} trial confirmNote plan={plan} trialEnds={trialEnds} busy={busy} label={pending ? "Preparing…" : phase.step === "checkout" ? "Checkout open…" : trialButton} />
       {error ? <p role="alert" className={`mt-2 text-sm ${dark ? "text-[#ffd7d7]" : "text-[#9b1c1c]"}`}>{error}</p> : null}
       <ul className={`mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs ${dark ? "text-white/70" : "text-slate"}`}>
         <li className="flex items-center gap-1.5">

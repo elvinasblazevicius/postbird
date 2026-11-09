@@ -46,8 +46,10 @@ export function weekLead(week: WeekInReview): string | null {
  * past 7 days, by employer type, and the three organizations with the most. Every number is
  * computed from the listings (weekInReview in src/lib/jobs.ts) and links to the same list
  * (the "posted in the past week" filter). Hidden while there are fewer than WEEK_IN_REVIEW_MIN.
+ * `headingId` and `className` let the home page place it once for phones (after "Recently posted")
+ * and once for wider screens (before it), each hidden at the other size.
  */
-export function WeekInReviewStrip({ week }: { week: WeekInReview }) {
+export function WeekInReviewStrip({ week, headingId = "week-heading", className = "" }: { week: WeekInReview; headingId?: string; className?: string }) {
   if (week.total < WEEK_IN_REVIEW_MIN) return null;
   const types = week.types
     .map((t) => {
@@ -60,11 +62,11 @@ export function WeekInReviewStrip({ week }: { week: WeekInReview }) {
   const item = "whitespace-nowrap";
   const link = "font-medium text-accent hover:underline";
   return (
-    <section className="mx-auto max-w-6xl px-4 pt-8 sm:px-6 sm:pt-10" aria-labelledby="week-heading">
+    <section className={`mx-auto max-w-6xl px-4 pt-8 sm:px-6 sm:pt-10 ${className}`} aria-labelledby={headingId}>
       <div className="rounded-xl border border-rule bg-paper px-4 py-4 sm:px-6 sm:py-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 id="week-heading" className="text-[1.3rem] font-semibold leading-tight text-ink">This week in international jobs</h2>
+            <h2 id={headingId} className="text-[1.3rem] font-semibold leading-tight text-ink">This week in international jobs</h2>
             {lead ? <p className="mt-1.5 max-w-[62ch] text-[0.95rem] leading-snug text-ink">{lead}</p> : null}
           </div>
           {/* The digest's postmark: the day the 7 days run to (today, UTC). */}
@@ -96,7 +98,7 @@ export function WeekInReviewStrip({ week }: { week: WeekInReview }) {
               <ol className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[0.95rem]">
                 {week.orgs.map((o) => (
                   <li key={o.slug}>
-                    <Link href={jobsUrl({ org: o.slug, posted: "7" })} className={link}>{listName(o.name, o.short_name)}</Link>{" "}
+                    <Link href={jobsUrl({ org: [o.slug], posted: "7" })} className={link}>{listName(o.name, o.short_name)}</Link>{" "}
                     <span className="whitespace-nowrap tabular-nums text-slate">{o.count.toLocaleString("en-US")}</span>
                   </li>
                 ))}

@@ -133,12 +133,23 @@ export async function findByConfirmToken(t: unknown) {
  * switches the weekly email on and, unless the address has a plan, makes that
  * search its one saved search.
  */
-export type ConfirmResult = { ok: false } | { ok: true; id: number; waitlist: boolean; alerts: boolean; weekly: boolean; paidPlan: boolean };
+export type ConfirmResult =
+  | { ok: false }
+  | {
+      ok: true; id: number; waitlist: boolean; alerts: boolean;
+      /** This confirmation started the free weekly email (a weekly sign-up was waiting). */
+      weekly: boolean;
+      /** The free weekly email is on after this confirmation (now or from before). */
+      weeklyEmail: boolean;
+      paidPlan: boolean;
+      /** The plan at this address is a trial the daily job canceled because the address wasn't confirmed in time. */
+      trialCanceled: boolean;
+    };
 
 export async function confirmSubscriber(t: unknown): Promise<ConfirmResult> {
   if (!isLinkToken(t)) return { ok: false };
   const rows = await transaction(async (tx) => {
-    const updated = await tx<{ id: number; premium_waitlist: boolean; wants_alerts: boolean; weekly_email: boolean; paid_plan: boolean; plan_live: boolean; weekly_search: string | null }[]>`
+    const updated = await tx<{ id: number; premium_waitlist: boolean; wants_alerts: boolean; weekly_email: boolean; paid_plan: boolean; plan_live: boolean; trial_canceled: boolean; weekly_search: string | null }[]>`
     with prev as (
       select id, status as prev_status, pending_changes as prev_changes from subscribers where confirm_token = ${t} for update
     )
@@ -162,6 +173,7 @@ export async function confirmSubscriber(t: unknown): Promise<ConfirmResult> {
     returning subscribers.id::int as id, premium_waitlist, wants_alerts, weekly_email,
               billing_status in ('trialing', 'active') as paid_plan,
               billing_status in ('trialing', 'active', 'past_due', 'paused') as plan_live,
+              (billing_status = 'canceled' and coalesce(subscribers.paddle_subscription_id = subscribers.unconfirmed_trial_sub, false)) as trial_canceled,
               prev.prev_changes->>'weekly_search' as weekly_search`;
     const row = updated[0];
     // The free weekly email follows one search: the one just chosen. A plan keeps its own searches.
@@ -170,7 +182,11 @@ export async function confirmSubscriber(t: unknown): Promise<ConfirmResult> {
   });
   if (rows.length !== 1) return { ok: false };
   await recordEvent({ type: "alert_confirmed" });
-  return { ok: true, id: rows[0].id, waitlist: rows[0].premium_waitlist, alerts: rows[0].wants_alerts, weekly: rows[0].weekly_search !== null, paidPlan: rows[0].paid_plan };
+  const r = rows[0];
+  return {
+    ok: true, id: r.id, waitlist: r.premium_waitlist, alerts: r.wants_alerts, weekly: r.weekly_search !== null,
+    weeklyEmail: r.weekly_email, paidPlan: r.paid_plan, trialCanceled: r.trial_canceled,
+  };
 }
 
 /**

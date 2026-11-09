@@ -51,7 +51,8 @@ export default function TermsPage() {
           sign up other people without their permission.
         </p>
         <p>
-          We may suspend or close access, including a subscription, that breaks these terms. If we do, we&apos;ll tell you why by email.
+          We may suspend or close access, including a subscription, that breaks these terms. If we do, we&apos;ll tell you why by email. If we close a paid plan
+          for a breach, we refund the unused part of the period, unless the law allows otherwise.
         </p>
 
         {siteConfig.freeWeeklyEmail ? (
@@ -88,12 +89,17 @@ export default function TermsPage() {
                 aren&apos;t charged. Until you confirm, we send the confirmation link again instead of the trial reminder.
               </li>
               <li><strong>Renewal:</strong> plans renew automatically at the end of each period (every month or every 3 months) until you cancel.</li>
+              <li>
+                <strong>Failed payments:</strong> if a payment fails, Paddle retries it and alerts pause until it goes through; you can update your card from your
+                account.
+              </li>
             </ul>
             <h3 id="cancel" className="scroll-mt-24 pt-1 text-lg font-semibold">Cancelling</h3>
             <p>
               Cancel any time: open your account (the link is in every alert email, or{" "}
               <a className="text-accent underline" href="/account/login">get your account link by email</a>) and choose &quot;Cancel or manage billing&quot;. You can also
-              cancel from the link in Paddle&apos;s receipt email. Your alerts continue until the end of the period you have paid for, and you are not charged again.
+              cancel from the link in Paddle&apos;s receipt email
+              {mail ? <>, or email us at <a className="text-accent underline" href={`mailto:${mail}`}>{mail}</a> and we&apos;ll cancel it for you</> : null}. Your alerts continue until the end of the period you have paid for, and you are not charged again.
               Unsubscribing from our emails does not cancel your plan.
             </p>
             <h3 id="refunds" className="scroll-mt-24 pt-1 text-lg font-semibold">Refunds</h3>

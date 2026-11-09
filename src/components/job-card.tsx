@@ -27,6 +27,9 @@ export function OrgBadge({ name, short, size = "md" }: { name: string | null; sh
   );
 }
 
+/** Width of the badge column in job rows: fits a six-letter small badge ("UNICEF", "UNESCO"), the longest monogram. */
+export const BADGE_COLUMN = "w-[3.75rem]";
+
 /**
  * Font sizes by badge length (up to 3, 4, 5 and 6 characters): one line, never split, a little
  * smaller for longer monograms but never below 0.6875rem (11px); the tile widens instead.
@@ -64,7 +67,7 @@ export function Tag({ children, tone = "plain" }: { children: React.ReactNode; t
 
 /** Closing date at the right of a row: a postmark ("Closes / 12 Nov", red with "in 3 days" when close). */
 function Deadline({ deadline }: { deadline: string | null }) {
-  if (!deadline) return <span className="block w-[4.25rem] text-center text-xs leading-snug text-slate">No closing date in our source</span>;
+  if (!deadline) return <span className="block w-[4.5rem] text-center text-xs leading-snug text-slate">No closing date in our source</span>;
   return <ClosingPostmark deadline={deadline} />;
 }
 
@@ -123,7 +126,8 @@ export function JobCard({ job, headingLevel = 3 }: { job: JobListItem; headingLe
   ] as (Meta | null)[]).filter((m): m is Meta => m !== null);
   return (
     <article className="group relative flex items-start gap-3 bg-paper px-3 py-3 hover:bg-mist sm:px-4">
-      <span className="hidden pt-0.5 sm:block"><OrgBadge name={job.org_name} short={job.org_short} size="sm" /></span>
+      {/* A fixed-width column, as wide as the widest monogram (six letters, BADGE_COLUMN), so every title starts at the same place. */}
+      <span className={`hidden shrink-0 justify-center pt-0.5 sm:flex ${BADGE_COLUMN}`}><OrgBadge name={job.org_name} short={job.org_short} size="sm" /></span>
       <div className="min-w-0 flex-1">
         <H className="font-sans text-[1.02rem] font-semibold leading-snug text-ink">
           <Link href={href} lang={lang?.code} className="after:absolute after:inset-0 group-hover:text-accent focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-accent">

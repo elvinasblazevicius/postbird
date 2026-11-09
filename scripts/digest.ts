@@ -5,6 +5,8 @@
  * First, the billing safety checks (runBillingSafety): trials at addresses
  * nobody confirmed are canceled before they end, failed Paddle cancels are
  * retried, and unchecked Paddle customers are checked again (needs PADDLE_API_KEY).
+ * A successful run ends by storing its heartbeat (src/lib/heartbeat.ts): Admin →
+ * Overview warns when none came for 26 hours.
  * Usage: npm run digest
  */
 import { runPlanEmails } from "../src/lib/billing/notices";
@@ -12,6 +14,7 @@ import { runBillingSafety, type BillingSafetyResult } from "../src/lib/billing/s
 import { BILLING_LIVE } from "../src/lib/billing/live";
 import { getSql } from "../src/lib/db";
 import { runAlerts, runDigest } from "../src/lib/digest";
+import { recordDailyJob } from "../src/lib/heartbeat";
 import { recordOpsEvent } from "../src/lib/ops-events";
 
 async function main() {
@@ -41,13 +44,15 @@ async function main() {
   // A run that sent nothing because everything failed is shown on Admin → Overview.
   if (digest.status === "failed") await recordOpsEvent("emails", `Weekly email failed: ${digest.message ?? "no details"}`);
   if (alerts.status === "failed") await recordOpsEvent("emails", `Alerts failed: ${alerts.message ?? "no details"}`);
+  // A failed run must fail the scheduled job so it shows up in GitHub Actions.
+  const failed = ["failed" in billing ? `Billing safety checks failed: ${billing.failed}` : null, digest.status === "failed" ? `Digest failed: ${digest.message ?? ""}` : null, alerts.status === "failed" ? `Alerts failed: ${alerts.message ?? ""}` : null].filter(Boolean);
+  // Only a successful run counts as the day's run (Admin → Overview, /api/health).
+  if (!failed.length && !("failed" in billing)) await recordDailyJob(billing);
   await getSql().end();
   if ("welcome" in planEmails) {
     const failedPlan = planEmails.welcome.failed + planEmails.confirmations.failed + planEmails.trialReminders.failed;
     if (failedPlan) console.log(`::warning title=Plan emails::${failedPlan} plan email(s) were not sent; the next daily run tries again.`);
   }
-  // A failed run must fail the scheduled job so it shows up in GitHub Actions.
-  const failed = ["failed" in billing ? `Billing safety checks failed: ${billing.failed}` : null, digest.status === "failed" ? `Digest failed: ${digest.message ?? ""}` : null, alerts.status === "failed" ? `Alerts failed: ${alerts.message ?? ""}` : null].filter(Boolean);
   if (failed.length) {
     console.log(`::error::${failed.join(" ").replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A")}`);
     process.exit(1);

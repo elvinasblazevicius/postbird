@@ -18,6 +18,7 @@ function Result({ state }: { state: FormState }) {
   return (
     <p role={state.status === "error" ? "alert" : "status"} className={`rounded-xl p-5 text-[1.02rem] leading-relaxed ${state.status === "error" ? "bg-signal-bg text-ink" : "bg-remote-bg text-ink"}`}>
       {state.message}
+      {state.link ? <>{" "}<Link href={state.link.href} className="font-semibold text-accent underline">{state.link.label}</Link></> : null}
     </p>
   );
 }

@@ -25,6 +25,8 @@ export type Account = {
   /** Set once the Paddle customer was checked against this address (see verifiedCustomerFor). */
   paddle_customer_verified_at: Date | null;
   paddle_subscription_id: string | null;
+  /** A trial canceled because the address wasn't confirmed in time (see PlanHistory). */
+  unconfirmed_trial_sub: string | null;
   unsubscribe_token: string;
   manage_token: string;
 };
@@ -38,7 +40,7 @@ export async function findByManageToken(t: unknown): Promise<Account | null> {
   if (!isManageToken(t)) return null;
   const [row] = await sql<Account[]>`
     select id::int as id, email, status, weekly_email, frequency, billing_status, plan_interval, trial_ends_at, current_period_end, cancel_at, canceled_at, confirmed_at,
-           paddle_customer_id, paddle_customer_verified_at, paddle_subscription_id, unsubscribe_token, manage_token
+           paddle_customer_id, paddle_customer_verified_at, paddle_subscription_id, unconfirmed_trial_sub, unsubscribe_token, manage_token
     from subscribers where manage_token = ${t}`;
   return row ?? null;
 }
@@ -72,6 +74,8 @@ export type AccountLinkPurpose = "manage" | "cancel" | "already";
  * the current link when they are sent. Returns false if sending failed. Over
  * the daily cap nothing is sent or replaced, and it returns true like a send,
  * so callers reply the same either way (nothing about the address is revealed).
+ * Callers on public forms run it after the response (after() in
+ * src/app/billing-actions.ts), so the time the reply takes reveals nothing either.
  */
 export async function sendAccountLink(email: string, purpose: AccountLinkPurpose = "manage"): Promise<boolean> {
   // Counted before the lookup, so addresses with and without an account are treated alike.

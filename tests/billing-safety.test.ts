@@ -161,18 +161,16 @@ describe("/api/geo consent regions", () => {
   const call = async (headers: Record<string, string>) => (await geo(new Request("http://localhost/api/geo", { headers })).json()) as { country: string | null; consentRequired: boolean };
   const nf = (geoJson: object) => ({ "x-nf-geo": Buffer.from(JSON.stringify(geoJson)).toString("base64") });
 
-  it("asks first in Türkiye, South Korea and Brazil", async () => {
-    for (const c of ["TR", "KR", "BR"]) expect(await call({ "x-vercel-ip-country": c })).toEqual({ country: c, consentRequired: true });
-    expect((await call({ "x-vercel-ip-country": "US" })).consentRequired).toBe(false);
+  it("asks first everywhere except the United States", async () => {
+    for (const c of ["TR", "KR", "BR", "DE", "GB", "IN", "JP", "AU", "KE", "MX", "CA"]) expect(await call({ "x-vercel-ip-country": c })).toEqual({ country: c, consentRequired: true });
+    expect(await call({ "x-vercel-ip-country": "US" })).toEqual({ country: "US", consentRequired: false });
+    expect(await call(nf({ country: { code: "US" }, subdivision: { code: "CA", name: "California" } }))).toEqual({ country: "US", consentRequired: false });
+    expect(await call(nf({ country: { code: "CA" }, subdivision: { code: "ON", name: "Ontario" } }))).toEqual({ country: "CA", consentRequired: true });
   });
 
-  it("asks first in Québec, and in all of Canada when the province is unknown", async () => {
-    expect(await call(nf({ country: { code: "CA" }, subdivision: { code: "QC", name: "Quebec" } }))).toEqual({ country: "CA", consentRequired: true });
-    expect(await call(nf({ country: { code: "CA" }, subdivision: { code: "ON", name: "Ontario" } }))).toEqual({ country: "CA", consentRequired: false });
-    expect(await call(nf({ country: { code: "CA" } }))).toEqual({ country: "CA", consentRequired: true });
-    expect((await call({ "x-vercel-ip-country": "CA", "x-vercel-ip-country-region": "QC" })).consentRequired).toBe(true);
-    expect((await call({ "x-vercel-ip-country": "CA", "x-vercel-ip-country-region": "BC" })).consentRequired).toBe(false);
-    expect((await call({ "x-vercel-ip-country": "CA" })).consentRequired).toBe(true);
+  it("asks first when the country is unknown", async () => {
+    expect(await call({})).toEqual({ country: null, consentRequired: true });
+    for (const c of ["XX", "T1", "", "usa"]) expect((await call({ "cf-ipcountry": c })).consentRequired).toBe(true);
   });
 });
 

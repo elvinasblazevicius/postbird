@@ -1,5 +1,5 @@
 import { sql } from "@/lib/db";
-import { NO_LOGO_ORG_TYPES } from "@/lib/feeds/logos";
+import { logoProtectedSql } from "@/lib/feeds/logos";
 
 export const dynamic = "force-dynamic";
 
@@ -7,10 +7,10 @@ export const dynamic = "force-dynamic";
 export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   if (!/^[a-z0-9-]{1,80}$/.test(slug)) return new Response("Not found", { status: 404 });
-  // Never the emblem of a UN system organization or EU institution (see src/lib/feeds/logos.ts).
+  // Never a protected emblem: UN system, EU institutions, Red Cross and Red Crescent (see src/lib/feeds/logos.ts).
   const [row] = await sql<{ logo: Buffer | null; logo_type: string | null }[]>`
     select logo, logo_type from organizations
-    where slug = ${slug} and logo is not null and coalesce(org_type, '') <> all(${[...NO_LOGO_ORG_TYPES]})`;
+    where slug = ${slug} and logo is not null and not ${logoProtectedSql("organizations")}`;
   if (!row?.logo || row.logo_type !== "image/png") return new Response("Not found", { status: 404, headers: { "cache-control": "public, max-age=3600" } });
   return new Response(new Uint8Array(row.logo), {
     headers: {

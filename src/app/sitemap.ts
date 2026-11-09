@@ -23,7 +23,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       where status = 'active' and not is_demo
         and (deadline is null or deadline >= (now() at time zone 'utc')::date)
         and (${LISTING_SETTINGS.indexJobsWithoutDescription} or summary is not null or description_html is not null)
-      order by coalesce(published_at, first_seen_at) desc limit 45000`,
+      order by coalesce(published_at, first_seen_at) desc, id desc limit 45000`,
     organizationFacets(500, false),
     categoryFacets(false),
     countryFacets(false),

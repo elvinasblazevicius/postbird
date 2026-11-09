@@ -65,6 +65,27 @@ const Bookmark = ({ filled }: { filled: boolean }) => (
 );
 
 /**
+ * The header's link to /saved with how many vacancies are saved in this browser. Nothing at all
+ * while none are saved, before the browser has been read, or where storage is blocked.
+ */
+export function SavedCount({ className = "px-2" }: { className?: string }) {
+  const list = useSavedJobs();
+  const n = list?.length ?? 0;
+  if (!n) return null;
+  return (
+    <Link
+      href="/saved"
+      aria-label={`Saved jobs: ${n}`}
+      title="Saved jobs"
+      className={`inline-flex items-center gap-1 rounded-lg py-2 text-sm font-semibold text-accent hover:bg-tint ${className}`}
+    >
+      <Bookmark filled />
+      <span className="tabular-nums">{n}</span>
+    </Link>
+  );
+}
+
+/**
  * Save / Saved toggle. `compact`: icon only (job rows), with the job title in its accessible name.
  * Sits above the row's full-size link (relative z-10) so it can be clicked on its own.
  */

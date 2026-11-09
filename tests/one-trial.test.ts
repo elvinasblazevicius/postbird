@@ -15,7 +15,7 @@ import { NO_TRIAL_CONSENT, noTrialButton, noTrialLine, ONE_TRIAL_RULE, RENEWING,
 import { accountLinkEmail, checkoutLinkEmail, welcomeEmail } from "@/lib/email-templates";
 
 /** A confirmed address that never had a plan. */
-const NEVER = { confirmed_at: "2026-09-01T00:00:00Z", paddle_subscription_id: null, billing_status: "none" as const, trial_ends_at: null, canceled_at: null };
+const NEVER = { confirmed_at: "2026-09-01T00:00:00Z", paddle_subscription_id: null, billing_status: "none" as const, trial_ends_at: null, canceled_at: null, unconfirmed_trial_sub: null };
 
 describe("returning-customer rule", () => {
   it("an address that never had a Paddle subscription is new", () => {
@@ -36,6 +36,15 @@ describe("returning-customer rule", () => {
     expect(hadTrialBefore(unconfirmed)).toBe(false);
     // A marker or another form of the address still counts.
     expect(hadTrialBefore(unconfirmed, true)).toBe(true);
+  });
+
+  it("a trial canceled because the address wasn't confirmed in time doesn't count, even once confirmed later", () => {
+    const sub = "sub_01hv8x29kz0t586xy6zn1a62ny";
+    const canceled = { ...NEVER, paddle_subscription_id: sub, billing_status: "canceled" as const, trial_ends_at: "2026-10-01T00:00:00Z", canceled_at: "2026-09-29T00:00:00Z", unconfirmed_trial_sub: sub };
+    expect(hadTrialBefore(canceled)).toBe(false);
+    // A later subscription at the address counts as usual.
+    expect(hadTrialBefore({ ...canceled, paddle_subscription_id: "sub_01hv8x29kz0t586xy6zn1a62nz" })).toBe(true);
+    expect(hadTrialBefore(canceled, true)).toBe(true);
   });
 
   it("an address whose record was deleted after a plan counts through its trial marker", () => {

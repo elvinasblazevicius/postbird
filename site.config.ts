@@ -65,6 +65,8 @@ const siteConfig = {
       subheadline:
         "UN agencies and other international organizations in one place. Every listing links to the employer's own website or application form.",
       tagline: "UN and international organization jobs in one place",
+      /** Also the default meta and share description on every page (see src/lib/eu-claim.ts). */
+      description: "Independent job search for UN and international organization vacancies, each linked to the employer's own website.",
     },
   },
 

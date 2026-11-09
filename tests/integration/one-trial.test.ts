@@ -307,6 +307,15 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
     await sql`delete from rate_limits`;
     const [row] = await sql`select id::int as id from subscribers where email = 'down@example.org'`;
     const token = await links.createCheckoutLink(row.id, { plan: "monthly", search: null });
+    // The checkout prepared a moment ago (the test above) may still be open: no second one, no
+    // second Paddle transaction, and the link is given back.
+    paddleCalls.length = 0;
+    expect(await actions.continueCheckoutAction({ status: "idle", message: "" }, form({ token, plan: "quarterly" })))
+      .toEqual({ status: "error", message: billing.CHECKOUT_ALREADY_OPEN });
+    expect(paddleCalls).toHaveLength(0);
+    expect(await links.findCheckoutLink(token)).not.toBeNull();
+    // Over 5 minutes later it was closed without paying: the same link works.
+    await sql`update paddle_checkouts set created_at = now() - interval '6 minutes' where subscriber_id = ${row.id}`;
     const res = await actions.continueCheckoutAction({ status: "idle", message: "" }, form({ token, plan: "quarterly" }));
     expect(res).toMatchObject({ status: "ready", trial: false, transactionId: TXN, plan: "quarterly", email: "down@example.org" });
     const again = await actions.continueCheckoutAction({ status: "idle", message: "" }, form({ token, plan: "quarterly" }));
@@ -374,10 +383,29 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
     expect(m.text).not.toMatch(/trial/i);
   });
 
+  it("“Email me my account link” replies before looking the address up: the same reply and no email until after the response", async () => {
+    await sql`delete from rate_limits`;
+    sent.length = 0;
+    await settle();
+    const reply = async (email: string, intent = "manage") => actions.accountLinkAction({ status: "idle", message: "" }, form({ email, intent }));
+    const known = await reply("paying@example.org");
+    const unknown = await reply("nobody-here@example.org", "cancel");
+    expect(unknown).toEqual(known);
+    expect(known.status).toBe("success");
+    // The lookup and the send were handed to after() for both addresses alike: they run after the response.
+    expect(afterTasks).toHaveLength(2);
+    await settle();
+    expect(sent.map((m) => m.to)).toEqual(["paying@example.org"]);
+  });
+
   it("“Cancel my plan” on the unsubscribe page emails the account link worded for cancelling, and opens nothing", async () => {
+    await settle();
     await sql`delete from rate_limits`;
     const res = await actions.unsubscribeCancelLinkAction({ status: "idle", message: "" }, form({ token: tok("paying") }));
     expect(res).toEqual({ status: "success", message: "We've emailed you a link to cancel your plan." });
+    // Sent after the response (after()), so the reply takes as long either way.
+    expect(afterTasks).toHaveLength(1);
+    await settle();
     expect(paddleCalls).toHaveLength(0);
     const m = sent.find((x) => x.to === "paying@example.org")!;
     expect(m.subject).toBe("Your link to cancel your Postbird plan");

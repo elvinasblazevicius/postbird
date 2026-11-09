@@ -6,9 +6,9 @@
 import { categoryBySlug } from "@/config/categories";
 import { ORG_TYPES } from "@/config/regions";
 import { sql, type Db } from "@/lib/db";
-import { orList, placeNames } from "@/lib/filter-labels";
+import { orList, placeNames, STATED_DETAIL } from "@/lib/filter-labels";
 import { gradeLabel } from "@/lib/grades";
-import { EXPERIENCE_BANDS, filtersFromQuery, getOrganization, jobsUrl } from "@/lib/jobs";
+import { derivedFilters, EXPERIENCE_BANDS, filtersFromQuery, getOrganizations, jobsUrl } from "@/lib/jobs";
 
 export const MAX_SAVED_SEARCHES = 5;
 /** Saved searches without a plan: the one the free weekly email uses. */
@@ -54,14 +54,14 @@ export function normalizeSearch(raw: string | null | undefined): string | null {
 }
 
 /** Filters of a saved search that the alert sign-up's "What should we watch for?" step carries over unchanged. */
-const STEP_KEEP = ["category", "grade", "type", "remote", "lang", "exp", "orgtype", "closing", "hidelocal"] as const;
+const STEP_KEEP = ["category", "grade", "type", "remote", "lang", "exp", "orgtype", "closing", "hidelocal", "unstated"] as const;
 
 type SP = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
-/** Every value of a field that may be repeated (where, grade), at most 10. */
+/** Every value of a field that may be repeated (where, grade, org), at most 10. */
 const all = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v === undefined ? [] : [v]).slice(0, 10);
 /** Filters that may hold several values. */
-const MULTI = new Set(["where", "grade"]);
+const MULTI = new Set(["where", "grade", "org"]);
 
 /**
  * The saved search for the alert sign-up pages (/alerts, /pricing/trial): from the "What should we
@@ -100,8 +100,8 @@ export function searchFromSignupForm(form: FormLike): string {
   if (Object.values(WATCH_FIELDS).some((k) => form.has(k))) {
     for (const k of ["q", "org", "where", "country", "region"]) p.delete(k);
     for (const [key, field] of Object.entries(WATCH_FIELDS)) {
-      // The location may be several places (one field each).
-      for (const raw of key === "where" ? form.getAll(field).slice(0, 10) : [form.get(field)]) {
+      // The location and the organization may each be several (one field each).
+      for (const raw of key === "where" || key === "org" ? form.getAll(field).slice(0, 10) : [form.get(field)]) {
         const v = String(raw ?? "").trim().slice(0, 120);
         if (v) p.append(key, v);
       }
@@ -135,7 +135,10 @@ export async function describeSearch(query: string): Promise<string | null> {
   const parts: string[] = [];
   if (f.q) parts.push(`“${f.q}”`);
   if (f.category) parts.push(`${categoryBySlug(f.category)?.name} jobs`);
-  if (f.org) parts.push(`at ${(await getOrganization(f.org).catch(() => null))?.name ?? f.org}`);
+  if (f.org?.length) {
+    const orgs = await getOrganizations(f.org).catch(() => []);
+    parts.push(`at ${orList(f.org.map((s) => orgs.find((o) => o.slug === s)?.name ?? s))}`);
+  }
   if (f.orgtype) parts.push(ORG_TYPE_PHRASE[f.orgtype] ?? `at ${ORG_TYPES.find((o) => o.value === f.orgtype)?.name ?? f.orgtype}`);
   const places = placeNames(f);
   if (places.length) parts.push(`in ${orList(places)}`);
@@ -147,6 +150,7 @@ export async function describeSearch(query: string): Promise<string | null> {
   if (f.posted) parts.push(POSTED[f.posted]);
   if (f.closing) parts.push(`closing within ${f.closing} days`);
   if (f.hidelocal) parts.push("without local-only posts");
+  if (f.unstated) parts.push(`also those that don't state ${orList(derivedFilters(f).map((k) => STATED_DETAIL[k]))}`);
   return parts.length ? parts.join(", ") : null;
 }
 

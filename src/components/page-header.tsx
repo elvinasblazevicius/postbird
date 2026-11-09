@@ -3,23 +3,36 @@ import { absoluteUrl, jsonLd } from "@/lib/site";
 
 export type Crumb = { href: string; label: string };
 
-export function Breadcrumbs({ items, dark = false }: { items: Crumb[]; dark?: boolean }) {
+/**
+ * The trail of links above a page title. On phones it is one link back (`back`, or the page above
+ * this one: "← Jobs"), so a long trail never wraps over several lines; from the sm breakpoint the whole trail.
+ */
+export function Breadcrumbs({ items, dark = false, back }: { items: Crumb[]; dark?: boolean; back?: Crumb }) {
   const ld = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: items.map((c, i) => ({ "@type": "ListItem", position: i + 1, name: c.label, item: absoluteUrl(c.href) })),
   };
+  const up = back ?? (items.length > 1 ? items[items.length - 2] : null);
+  const linkCls = dark ? "hover:text-white hover:underline" : "hover:text-ink hover:underline";
   return (
     <>
       <nav aria-label="Breadcrumb" className={`text-sm ${dark ? "text-white/70" : "text-slate"}`}>
-        <ol className="flex flex-wrap items-center gap-1.5">
+        {up ? (
+          <p className="sm:hidden">
+            <Link href={up.href} className={`inline-flex items-center gap-1 py-1 ${linkCls}`}>
+              <span aria-hidden="true">←</span> {up.label}
+            </Link>
+          </p>
+        ) : null}
+        <ol className={`flex-wrap items-center gap-1.5 ${up ? "hidden sm:flex" : "flex"}`}>
           {items.map((c, i) => (
             <li key={c.href} className="flex items-center gap-1.5">
               {i > 0 ? <span aria-hidden="true">/</span> : null}
               {i === items.length - 1 ? (
                 <span aria-current="page" className={dark ? "text-white" : "text-ink"}>{c.label}</span>
               ) : (
-                <Link href={c.href} className={dark ? "hover:text-white hover:underline" : "hover:text-ink hover:underline"}>{c.label}</Link>
+                <Link href={c.href} className={linkCls}>{c.label}</Link>
               )}
             </li>
           ))}

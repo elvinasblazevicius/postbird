@@ -1,3 +1,4 @@
+import { euListingsOpen, homeCopy } from "@/lib/eu-claim";
 import { OG_SIZE, shareImage } from "@/lib/og";
 import { formatDate, locationLabel, NOT_SPECIFIED, siteConfig } from "@/lib/site";
 import { isJobOpen, loadJob } from "./job-data";
@@ -10,7 +11,8 @@ export const dynamic = "force-dynamic";
 /** Share image for a vacancy: title, organization, location and closing date. */
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const job = await loadJob((await params).slug).catch(() => null);
-  if (!job || !isJobOpen(job)) return shareImage({ title: siteConfig.home.headline });
+  // A closed or unknown vacancy: the site's headline, naming the EU only while it has EU vacancies.
+  if (!job || !isJobOpen(job)) return shareImage({ title: homeCopy(await euListingsOpen()).headline });
   const where = locationLabel(job);
   return shareImage({
     eyebrow: job.org_name ?? undefined,

@@ -63,6 +63,13 @@ export const CONFIRM_FIRST_DONE = `Confirm your address within ${CONFIRM_WITHIN_
 /** One free trial per email address (terms, pricing FAQ). */
 export const ONE_TRIAL_RULE = "One free trial per email address, counting forms like name+tag@ and dotted Gmail addresses as the same address. If you've had a trial before, your plan starts and is charged straight away.";
 
+/**
+ * Before the "renews automatically" checkbox on the public trial form, where the address isn't
+ * proven yet (the trial page and the pricing FAQ say the same). Not on the emailed continue page:
+ * opening that link already confirmed the address.
+ */
+export const TRIAL_CONFIRM_NOTE = "We'll email you a link to confirm your address; your alerts start once you confirm. One free trial per email address.";
+
 /** Right under the trial terms, above the button that starts a trial. */
 export const TRIAL_CONSENT = "By starting the trial you agree to automatic renewal as described above.";
 /** Right under the terms, above the button that starts a plan without a trial. */

@@ -7,6 +7,7 @@ import { BILLING_LIVE, PADDLE_ENV } from "@/lib/billing/live";
 import { planPriceNumber } from "@/lib/early-access-copy";
 import { checkMarkerKey } from "@/lib/billing/trial-markers";
 import { openOpsEvents } from "@/lib/ops-events";
+import { DAILY_JOB_STALE_HOURS, dailyJobFresh, readDailyJob, type DailyJobStatus } from "@/lib/heartbeat";
 import { resolveBillingFlagAction, resolveOpsEventAction, sendTestEmailAction, syncNowAction } from "./actions";
 import { BillingSelfCheck } from "./billing-check";
 import { requireAdmin } from "./guard";
@@ -136,9 +137,11 @@ export default async function AdminHome({ searchParams }: Props) {
     where f.resolved_at is null order by f.updated_at desc limit 20`.catch(() => []);
   // Unexpected errors from the webhook and the scheduled jobs, and whether the scheduled jobs
   // use the same trial-marker secret as this site (see src/lib/billing/trial-markers.ts).
-  const [opsEvents, markerKey] = await Promise.all([
+  // The daily job's heartbeat (src/lib/heartbeat.ts): stored at the end of each successful run.
+  const [opsEvents, markerKey, dailyJob] = await Promise.all([
     openOpsEvents(),
     checkMarkerKey().catch(() => ({ status: "unknown" as const })),
+    readDailyJob().catch((): DailyJobStatus => ({ at: null, billing: null })),
   ]);
   // Monthly recurring revenue estimate: paying subscribers only (not trials), 3-month plans counted at a third. Before Paddle's fees and taxes.
   const mrr = bill.active_month * planPriceNumber("month") + (bill.active_quarter * planPriceNumber("quarter")) / 3;
@@ -165,6 +168,11 @@ export default async function AdminHome({ searchParams }: Props) {
   if (feeds.erroring) warnings.push(<>{feeds.erroring} feed(s) failed at the last sync. <Link href="/admin/feeds" className="underline">Check feeds</Link>.</>);
   if (!lastOk) warnings.push(<>No successful import yet. Use &quot;Sync now&quot; to run the first one.</>);
   else if (olderThanHours(lastOk.started_at, 8)) warnings.push(<>The last successful import was over 8 hours ago. Check that the scheduled sync (GitHub Actions) is running.</>);
+  if (!dailyJobFresh(dailyJob.at)) {
+    warnings.push(dailyJob.at
+      ? <>The daily job (emails and billing safety checks) last finished successfully {fmtDateTime(dailyJob.at)}, over {DAILY_JOB_STALE_HOURS} hours ago. Check the &quot;Scheduled jobs&quot; workflow in GitHub Actions: unconfirmed trials aren&apos;t canceled while it is stopped.</>
+      : <>The daily job (emails and billing safety checks) hasn&apos;t recorded a successful run yet. Check the &quot;Scheduled jobs&quot; workflow in GitHub Actions.</>);
+  }
   if (!isEmailConfigured()) warnings.push(<>Email isn&apos;t set up (RESEND_API_KEY missing). Sign-ups are saved but no confirmation or alert emails are sent.</>);
   if (!process.env.CRON_SECRET) warnings.push(<>CRON_SECRET is missing, so the /api/cron addresses are switched off.</>);
   if (markerKey.status === "missing") {
@@ -243,6 +251,7 @@ export default async function AdminHome({ searchParams }: Props) {
         <Card className="mt-4">
           <div className="mb-2 text-sm font-medium text-ink">Billing self-check</div>
           <BillingSelfCheck />
+          <p className="mt-3 text-sm text-slate">{dailyJobSummary(dailyJob)}</p>
         </Card>
       ) : null}
       {flags.length ? (
@@ -389,6 +398,16 @@ const FLAG_LABELS: Record<string, string> = {
   duplicate_subscription: "Second subscription for one address",
   trial_unconfirmed: "Trial canceled: address never confirmed",
 };
+
+/** One line about the last successful daily run's billing safety checks (stored with its heartbeat). */
+function dailyJobSummary(d: DailyJobStatus): string {
+  if (!d.at) return "The daily job hasn't recorded a successful run yet.";
+  const when = `Last successful daily job: ${fmtDateTime(d.at)}.`;
+  const b = d.billing;
+  if (!b) return when;
+  if ("skipped" in b) return `${when} Billing safety checks skipped: ${b.skipped}`;
+  return `${when} Billing safety: ${b.unconfirmed.canceled} unconfirmed trial(s) canceled (${b.unconfirmed.failed} failed), ${b.cancelRetries.canceled} earlier cancel(s) retried (${b.cancelRetries.failed} failed), ${b.customers.verified} customer(s) checked, ${b.customers.mismatch} mismatch(es), ${b.customers.unverified} still unchecked.`;
+}
 
 type CampaignRow = { source: string; campaign: string; content: string; visitors: number; alerts: number; waitlist: number; trialClicks: number };
 

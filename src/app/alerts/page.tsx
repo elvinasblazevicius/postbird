@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { sharedTitle, shareMetadata } from "@/lib/share-metadata";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AlertExample } from "@/components/alert-example";
@@ -13,14 +14,18 @@ import { siteConfig } from "@/lib/site";
 
 const free = siteConfig.freeWeeklyEmail;
 
+const TITLE = free
+  ? "Free weekly job email for UN and international organization vacancies"
+  : "Email job alerts for UN and international organization vacancies";
+const DESCRIPTION = free
+  ? "A free Monday email with the past week's new vacancies at UN agencies and international organizations that match your search. No card, no account, one-click unsubscribe."
+  : "New UN and international organization vacancies by email, filtered by role, organization and location, with the closing date whenever the employer publishes one.";
+
 export const metadata: Metadata = {
-  title: free
-    ? "Free weekly job email for UN and international organization vacancies"
-    : "Email job alerts for UN and international organization vacancies",
-  description: free
-    ? "A free Monday email with the past week's new vacancies at UN agencies and international organizations that match your search. No card, no account, one-click unsubscribe."
-    : "New UN and international organization vacancies by email, filtered by role, organization and location, with the closing date whenever the employer publishes one.",
+  title: TITLE,
+  description: DESCRIPTION,
   alternates: { canonical: "/alerts" },
+  ...shareMetadata(sharedTitle(TITLE), DESCRIPTION),
 };
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };

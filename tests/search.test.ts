@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { countriesInLocation, locationPatterns, normalizePlace } from "@/lib/country-match";
 import { gradeGroupOf, gradeMatches, isLocalOnlyGrade, LOCAL_ONLY_GRADE_SQL } from "@/lib/grades";
-import { activeFilterCount, filtersFromQuery, jobsUrl, parseFilters, wantsLooseMatch, withSearchIntent } from "@/lib/jobs";
+import { activeFilterCount, derivedFilters, filtersFromQuery, jobsUrl, parseFilters, wantsLooseMatch, withSearchIntent } from "@/lib/jobs";
 import { alertStepKeep, describeSearch, normalizeSearch, searchFromAlertStep, searchFromSignupForm } from "@/lib/saved-searches";
-import { categoriesForWord, interpretQuery, placeVariants, searchTerms } from "@/lib/search-intent";
+import { categoriesForWord, interpretQuery, languageFromWord, placeVariants, searchTerms } from "@/lib/search-intent";
 
 describe("duty-station names", () => {
   it("finds other spellings and names of common duty stations, with or without accents", () => {
@@ -256,5 +256,95 @@ describe("describeSearch", () => {
     expect(await describeSearch("region=africa&country=france&grade=P")).toBe("in Africa or France, grade Professional (P-1 to P-5)");
     expect(await describeSearch("orgtype=io&lang=Spanish")).toBe("at other international organizations, Spanish mentioned");
     expect(await describeSearch("")).toBeNull();
+  });
+});
+
+describe("several organizations", () => {
+  it("reads repeated org parameters, drops invalid ones and keeps a fixed order", () => {
+    const f = parseFilters({ org: ["wfp", "unicef", "Bad Slug", "wfp"] });
+    expect(f.org).toEqual(["unicef", "wfp"]);
+    expect(jobsUrl(f)).toBe("/jobs?org=unicef&org=wfp");
+    expect(filtersFromQuery(jobsUrl(f).split("?")[1])).toEqual(f);
+    expect(parseFilters({ org: "iom" }).org).toEqual(["iom"]);
+    expect(activeFilterCount({ org: ["unicef", "wfp"], q: "data" })).toBe(3);
+  });
+
+  it("keeps every organization in a saved search and in the alert sign-up", () => {
+    expect(normalizeSearch("org=wfp&org=unicef&grade=P-3")).toBe("org=unicef&org=wfp&grade=P-3");
+    expect(searchFromAlertStep({ step: "watch", org: ["wfp", "iom"], where: "" })).toBe("org=iom&org=wfp");
+    const form = new FormData();
+    form.set("search", "org=undp&category=health");
+    form.append("watch_org", "wfp");
+    form.append("watch_org", "unicef");
+    form.append("watch_org", "");
+    expect(searchFromSignupForm(form)).toBe("org=unicef&org=wfp&category=health");
+  });
+});
+
+describe("listings that don't state a detail (unstated)", () => {
+  it("is kept only while a filter read from the posting's text is in use", () => {
+    expect(parseFilters({ grade: "P-3", unstated: "1" }).unstated).toBe(true);
+    expect(parseFilters({ exp: "3-5", unstated: "1" }).unstated).toBe(true);
+    expect(parseFilters({ lang: "French", unstated: "1" }).unstated).toBe(true);
+    expect(parseFilters({ type: "Consultancy", unstated: "1" }).unstated).toBe(true);
+    // Read from the search words ("p3", "french") counts too.
+    expect(parseFilters({ q: "p3 data", unstated: "1" }).unstated).toBe(true);
+    expect(parseFilters({ q: "french", unstated: "1" }).unstated).toBe(true);
+    expect(parseFilters({ category: "health", unstated: "1" }).unstated).toBeUndefined();
+    expect(parseFilters({ grade: "P-3", unstated: "yes" }).unstated).toBeUndefined();
+  });
+
+  it("is written into the URL and saved searches only with such a filter", () => {
+    expect(jobsUrl({ grade: ["P-3"], unstated: true })).toBe("/jobs?grade=P-3&unstated=1");
+    expect(jobsUrl({ category: "health", unstated: true })).toBe("/jobs?category=health");
+    expect(normalizeSearch("unstated=1&grade=P-3&lang=French")).toBe("grade=P-3&lang=French&unstated=1");
+    expect(normalizeSearch("unstated=1&category=health")).toBe("category=health");
+    expect(alertStepKeep("grade=P-3&unstated=1")).toEqual([["grade", "P-3"], ["unstated", "1"]]);
+    expect(activeFilterCount({ grade: ["P-3"], unstated: true })).toBe(1);
+  });
+
+  it("lists the filters it widens, in a fixed order", () => {
+    expect(derivedFilters({ type: "Consultancy", grade: ["P-3"], category: "health" })).toEqual(["grade", "type"]);
+    expect(derivedFilters({ q: "internship spanish" })).toEqual(["lang", "type"]);
+    expect(derivedFilters({ q: "data" })).toEqual([]);
+  });
+
+  it("is named in the saved search's description", async () => {
+    expect(await describeSearch("grade=P-3&unstated=1")).toBe("grade P-3, also those that don't state a grade");
+    expect(await describeSearch("type=Consultancy&exp=3-5&unstated=1")).toBe("consultancy, experience 3–5 years, also those that don't state the experience required or a contract type");
+  });
+});
+
+describe("language names in the search words", () => {
+  it("become the language filter, like grades", () => {
+    expect(languageFromWord("french")).toBe("French");
+    expect(languageFromWord("Arabic")).toBe("Arabic");
+    expect(languageFromWord("francophone")).toBeNull();
+    expect(interpretQuery("french")).toEqual({ text: null, lang: "French" });
+    expect(interpretQuery("Spanish data analyst")).toEqual({ text: "data analyst", lang: "Spanish" });
+    expect(interpretQuery("portuguese consultant mozambique")).toEqual({ text: null, lang: "Portuguese", type: "Consultancy", country: "mozambique" });
+    for (const l of ["Russian", "Chinese"]) expect(interpretQuery(l.toLowerCase()).lang).toBe(l);
+  });
+
+  it("take one language; a second one stays a search word, and places keep their names", () => {
+    expect(interpretQuery("french arabic")).toEqual({ text: "arabic", lang: "French" });
+    expect(interpretQuery("jobs in french polynesia").lang).toBeUndefined();
+    expect(interpretQuery("german").lang).toBeUndefined();
+  });
+
+  it("never replace a language filter that is set (withSearchIntent)", () => {
+    expect(withSearchIntent({ q: "french officer" })).toMatchObject({ q: "officer", lang: "French" });
+    expect(withSearchIntent({ q: "french officer", lang: "Arabic" })).toMatchObject({ q: "officer", lang: "Arabic" });
+  });
+});
+
+describe("account page: build a search from filters", () => {
+  it("saves every picked filter, as the Jobs page's address would", async () => {
+    const { builderLink } = await import("@/components/account-forms");
+    const form = new FormData();
+    for (const [k, v] of [["t", "tok"], ["link", ""], ["q", "data"], ["org", "unicef"], ["where", "region-africa"], ["grade", "P"], ["lang", "French"], ["exp", "3-5"], ["category", ""], ["type", ""], ["hidelocal", "1"]]) form.set(k, v);
+    expect(builderLink(form)).toBe("/jobs?q=data&org=unicef&where=region-africa&grade=P&lang=French&exp=3-5&hidelocal=1");
+    expect(normalizeSearch(builderLink(form))).toBe("q=data&org=unicef&region=africa&grade=P&lang=French&exp=3-5&hidelocal=1");
+    expect(normalizeSearch(builderLink(new FormData()))).toBe("");
   });
 });

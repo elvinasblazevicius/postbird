@@ -3,9 +3,9 @@ import { notFound } from "next/navigation";
 import { categoryBySlug } from "@/config/categories";
 import { countryBySlug } from "@/config/countries";
 import { ORG_TYPES, regionBySlug } from "@/config/regions";
-import { orList, placeNames, resultsHeading } from "@/lib/filter-labels";
+import { andList, orList, placeNames, resultsHeading, STATED_DETAIL } from "@/lib/filter-labels";
 import { gradeLabel } from "@/lib/grades";
-import { activeFilterCount, EXPERIENCE_BANDS, filteredFacets, getOrganization, jobsUrl, latestJobs, searchJobs, searchSuggestion, withSearchIntent, type FilteredFacets, type FilterKey, type JobFilters } from "@/lib/jobs";
+import { activeFilterCount, countJobs, derivedFilters, EXPERIENCE_BANDS, filteredFacets, getOrganizations, jobsUrl, latestJobs, searchJobs, searchSuggestion, withSearchIntent, type FilteredFacets, type FilterKey, type JobFilters } from "@/lib/jobs";
 import { interpretQuery } from "@/lib/search-intent";
 import siteConfig from "@site-config";
 import { JobList } from "./job-card";
@@ -41,7 +41,7 @@ function Pagination({ page, pages, filters, base, showLast = true }: { page: num
   );
 }
 
-type Chip = { key: FilterKey; label: string; href: string; fromSearch: boolean };
+type Chip = { key: FilterKey | "unstated"; label: string; href: string; fromSearch: boolean };
 /** One "remove a filter" suggestion of the empty state: a whole filter, even when it holds several values. */
 type Removal = { key: FilterKey; label: string; href: string; /** How the empty state names it when it is the only filter. */ phrase?: string };
 
@@ -65,7 +65,7 @@ function filterChips(filters: JobFilters, fixed: Partial<JobFilters>, base: stri
     const rest = (list ?? []).filter((x) => x !== v);
     return rest.length ? rest : undefined;
   };
-  const fromSearch = (k: "orgtype" | "remote" | "type" | "country" | "grade") => {
+  const fromSearch = (k: "orgtype" | "remote" | "type" | "country" | "grade" | "lang") => {
     const set = filters[k];
     return Boolean(intent && intent[k] !== undefined && !(Array.isArray(set) ? set.length : set) && Boolean(read[k]));
   };
@@ -77,7 +77,10 @@ function filterChips(filters: JobFilters, fixed: Partial<JobFilters>, base: stri
     removals.push({ key, label, href: h, phrase });
   };
   if (own.q) single("q", `Keywords: “${own.q}”`, { q: undefined, sort: undefined }, false, `“${own.q}”`);
-  if (own.org) single("org", `Organization: ${facets.orgs.find((o) => o.slug === own.org)?.name ?? own.org}`, { org: undefined });
+  const orgs = own.org ?? [];
+  const orgName = (slug: string) => facets.orgs.find((o) => o.slug === slug)?.name ?? slug;
+  for (const o of orgs) chips.push({ key: "org", label: `Organization: ${orgName(o)}`, href: href({ org: without(orgs, o) }), fromSearch: false });
+  if (orgs.length) removals.push({ key: "org", label: orgs.length > 1 ? `Organization: ${orList(orgs.map(orgName))}` : chips[chips.length - 1].label, href: href({ org: undefined }) });
   const regions = own.region ?? [];
   const countries = own.country ?? [];
   for (const r of regions) chips.push({ key: "where", label: `Region: ${regionBySlug(r)?.name ?? r}`, href: href({ region: without(regions, r) }), fromSearch: false });
@@ -93,10 +96,15 @@ function filterChips(filters: JobFilters, fixed: Partial<JobFilters>, base: stri
   if (own.orgtype) single("orgtype", `Organization type: ${ORG_TYPES.find((o) => o.value === own.orgtype)?.name ?? own.orgtype}`, { orgtype: undefined }, fromSearch("orgtype"));
   if (own.remote) single("remote", "Remote / home-based", { remote: undefined }, fromSearch("remote"));
   if (own.hidelocal) single("hidelocal", "Local-only posts hidden", { hidelocal: undefined });
-  if (own.lang) single("lang", `Language: ${own.lang} mentioned`, { lang: undefined });
+  if (own.lang) single("lang", `Language: ${own.lang} mentioned`, { lang: undefined }, fromSearch("lang"));
   if (own.exp) single("exp", `Experience: ${EXPERIENCE_BANDS.find((b) => b.value === own.exp)?.name ?? own.exp}`, { exp: undefined });
   if (own.posted) single("posted", `Posted: ${POSTED_LABELS[own.posted]}`, { posted: undefined });
   if (own.closing) single("closing", `Closing within ${own.closing} days`, { closing: undefined });
+  // Not a removal for the empty state: it only ever adds listings.
+  const derived = derivedFilters(own);
+  if (own.unstated && derived.length) {
+    chips.push({ key: "unstated", label: `Including vacancies that don't state ${orList(derived.map((k) => STATED_DETAIL[k]))}`, href: href({ unstated: undefined }), fromSearch: false });
+  }
   return { chips, removals };
 }
 
@@ -116,9 +124,10 @@ function ChipLink({ chip }: { chip: Chip }) {
 /** Keeps the option chosen in the form visible even when no job matches it with the other filters. */
 async function withSelected(f: FilteredFacets, filters: JobFilters): Promise<FilteredFacets> {
   const out = { ...f };
-  if (filters.org && !f.orgs.some((o) => o.slug === filters.org)) {
-    const org = await getOrganization(filters.org).catch(() => null);
-    if (org) out.orgs = [...f.orgs, { slug: org.slug, name: org.name, count: 0 }];
+  const missing = (filters.org ?? []).filter((slug) => !f.orgs.some((o) => o.slug === slug));
+  if (missing.length) {
+    const orgs = await getOrganizations(missing).catch(() => []);
+    out.orgs = [...f.orgs, ...orgs.map((o) => ({ slug: o.slug, name: o.name, count: 0 }))];
   }
   for (const slug of filters.country ?? []) {
     const c = countryBySlug(slug);
@@ -176,7 +185,7 @@ export async function JobsBrowser({
   if (result.page > result.pages) notFound();
   const facets = await withSelected(result.matchMode === "any" ? await filteredFacets(effective, "any") : facetsAll, filters);
   const hidden: Record<string, string> = {};
-  if (fixed.org) hidden.org = fixed.org;
+  if (fixed.org) hidden.org = fixed.org.join(",");
   if (fixed.country) hidden.country = fixed.country.join(",");
   if (fixed.region) hidden.region = fixed.region.join(",");
   if (fixed.category) hidden.category = fixed.category;
@@ -201,6 +210,12 @@ export async function JobsBrowser({
   // "Did you mean finance?" when the words matched nothing exactly (or only loosely).
   const suggestion = filters.q && (result.total === 0 || result.matchMode === "any") ? await searchSuggestion(filters.q).catch(() => null) : null;
   const suggestionHref = suggestion ? jobsUrl({ ...filters, q: suggestion.q, page: undefined }, base) : null;
+  // Filters read from the posting's text leave out listings that don't state the detail: say how many, with a way to add them.
+  const derived = derivedFilters(effective);
+  const unstatedMore = derived.length && !effective.unstated
+    ? Math.max(0, (await countJobs({ ...effective, unstated: true }, result.matchMode).catch(() => result.total)) - result.total)
+    : 0;
+  const unstatedHref = unstatedMore ? jobsUrl({ ...filters, unstated: true, page: undefined }, base) : null;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[18rem_1fr] lg:gap-8">
@@ -261,6 +276,14 @@ export async function JobsBrowser({
             </div>
           ) : null}
         </div>
+
+        {unstatedHref ? (
+          <p className="mb-4 text-[0.95rem] text-slate">
+            Only vacancies that state {andList(derived.map((k) => STATED_DETAIL[k]))} are shown.{" "}
+            {unstatedMore.toLocaleString("en-US")} more {derived.length > 1 ? "don't state all of these" : `don't state ${derived[0] === "lang" ? "them" : derived[0] === "exp" ? "it" : "one"}`}.{" "}
+            <Link href={unstatedHref} className="whitespace-nowrap font-medium text-accent underline underline-offset-2">Show them too</Link>
+          </p>
+        ) : null}
 
         {result.matchMode === "any" ? (
           <p role="status" className="mb-4 rounded-xl border border-rule bg-mist px-4 py-3 text-[0.95rem] text-ink">
@@ -365,7 +388,7 @@ export async function JobsBrowser({
 
         <Pagination page={result.page} pages={result.pages} filters={filters} base={base} showLast={showTotal} />
         {userFilters > 0 && result.page === 1 ? (
-          <TrackOnMount event={{ type: "search", props: { ...effective, country: effective.country?.join(","), region: effective.region?.join(","), grade: effective.grade?.join(","), results: result.total, match: result.matchMode } }} />
+          <TrackOnMount event={{ type: "search", props: { ...effective, org: effective.org?.join(","), country: effective.country?.join(","), region: effective.region?.join(","), grade: effective.grade?.join(","), results: result.total, match: result.matchMode } }} />
         ) : null}
       </section>
     </div>

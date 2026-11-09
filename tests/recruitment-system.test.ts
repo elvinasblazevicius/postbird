@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTarget, isOrgOwnHost, recruitmentSystem } from "@/lib/recruitment-system";
+import { applyTarget, isOrgOwnHost, possessive, recruitmentSystem } from "@/lib/recruitment-system";
 
 describe("recruitment systems behind application links", () => {
   it("names known applicant-tracking systems by their hostname, subdomains included", () => {
@@ -75,8 +75,35 @@ describe("the line under the Apply button", () => {
       .toEqual({ text: "Opens the vacancy on the employer’s website", host: null });
   });
 
+  it("uses “of” for names ending in s or longer than three words, “’s” otherwise", () => {
+    expect(applyTarget({ url: "https://blueventures.org/jobs/1", host: "blueventures.org", orgName: "Blue Ventures", orgShort: null }))
+      .toEqual({ text: "Opens the careers site of Blue Ventures", host: "blueventures.org" });
+    expect(applyTarget({ url: "https://msf.org/x", host: "msf.org", orgName: "Médecins Sans Frontières en Suisse", orgShort: null, homepage: true }).text)
+      .toBe("Opens the careers page of Médecins Sans Frontières en Suisse");
+    expect(applyTarget({ url: "https://x.myworkdayjobs.com/y", host: "x.myworkdayjobs.com", orgName: "Médecins Sans Frontières en Suisse", orgShort: null }).text)
+      .toBe("Opens the recruitment system of Médecins Sans Frontières en Suisse (Workday)");
+    expect(applyTarget({ url: iomOracle, host: "fa-evlj-saasfaprod1.fa.ocs.oraclecloud.com", orgName: "International Organization for Migration", orgShort: "IOM" }).text)
+      .toBe("Opens IOM’s recruitment system (Oracle)");
+    expect(applyTarget({ url: "https://rescue.org/x", host: "rescue.org", orgName: "International Rescue Committee", orgShort: null }).text)
+      .toBe("Opens the International Rescue Committee’s careers site");
+    expect(possessive("Agency for Technical Cooperation and Development", null)).toEqual({ pre: null, of: "the Agency for Technical Cooperation and Development" });
+    expect(possessive(null, null)).toEqual({ pre: "the employer’s", of: null });
+  });
+
   it("calls a form a form", () => {
     expect(applyTarget({ url: "https://forms.gle/abc", host: "forms.gle", orgName: "ACTED", orgShort: "ACTED" }))
       .toEqual({ text: "Opens an application form (Google Forms)", host: null });
+  });
+});
+
+describe("the organization's official site (organization pages)", () => {
+  it("prefers a listed careers host and says when it is only the main website", async () => {
+    const { officialSite } = await import("@/lib/recruitment-system");
+    expect(officialSite("United Nations Secretariat", "UN")).toEqual({ href: "https://careers.un.org", host: "careers.un.org", careers: true });
+    expect(officialSite("EPSO (EU institutions)", "EPSO")).toEqual({ href: "https://eu-careers.europa.eu", host: "eu-careers.europa.eu", careers: true });
+    expect(officialSite("UNICEF", "UNICEF")).toEqual({ href: "https://unicef.org", host: "unicef.org", careers: false });
+    expect(officialSite("Médecins Sans Frontières en Suisse", null)?.host).toBe("msf.org");
+    expect(officialSite("Syrian Center for Media and Freedom of Expression", "SCM")).toBeNull();
+    expect(officialSite("Unknown Helpers", null)).toBeNull();
   });
 });

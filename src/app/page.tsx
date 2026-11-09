@@ -10,18 +10,20 @@ import { BILLING_LIVE } from "@/lib/billing/live";
 import { closingSoonJobs, categoryFacets, countryFacets, experienceFacets, gradeFacets, jobTypeFacets, languageFacets, latestJobs, organizationFacets, orgTypeFacets, regionFacets, siteStats, weekInReview } from "@/lib/jobs";
 import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
 import { euListingsOpen, homeCopy } from "@/lib/eu-claim";
+import { shareMetadata } from "@/lib/share-metadata";
 import { absoluteUrl, jsonLd, siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
-/** The title names the EU only while EU institutions have open vacancies here (see src/lib/eu-claim.ts). */
+/** The title and description name the EU only while EU institutions have open vacancies here (see src/lib/eu-claim.ts). */
 export async function generateMetadata(): Promise<Metadata> {
-  const { tagline } = homeCopy(await euListingsOpen());
+  const { tagline, description } = homeCopy(await euListingsOpen());
   const title = `${siteConfig.name} — ${tagline}`;
   return {
     title: { absolute: title },
+    description,
     alternates: { canonical: "/" },
-    openGraph: { type: "website", siteName: siteConfig.name, title, description: siteConfig.description },
+    ...shareMetadata(title, description),
   };
 }
 
@@ -120,7 +122,8 @@ export default async function HomePage() {
 
       {/* Latest */}
       <div className="dots-soft border-b border-rule pb-14">
-      <WeekInReviewStrip week={week} />
+      {/* Wider screens: the week's numbers first. Phones: "Recently posted" first, the week after it (below). */}
+      <WeekInReviewStrip week={week} className="max-sm:hidden" />
       <section className="mx-auto max-w-6xl px-4 pt-8 sm:px-6 sm:pt-12" aria-labelledby="latest-heading">
         <div className="flex items-end justify-between gap-4">
           <h2 id="latest-heading" className="text-[1.6rem] font-semibold leading-tight text-ink sm:text-[1.9rem]">Recently posted</h2>
@@ -141,6 +144,7 @@ export default async function HomePage() {
           )}
         </div>
       </section>
+      <WeekInReviewStrip week={week} headingId="week-heading-phone" className="sm:hidden" />
       {closingSoon.length ? (
         <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6" aria-labelledby="closing-heading">
           <div className="flex items-end justify-between gap-4">
@@ -186,12 +190,12 @@ export default async function HomePage() {
       <section className="mx-auto mt-12 max-w-6xl px-4 sm:px-6" aria-labelledby="facts-heading">
         <h2 id="facts-heading" className="sr-only">About the listings</h2>
         <div className="flex flex-col gap-3 border-y border-rule py-4 sm:flex-row sm:items-center sm:justify-between">
-          {/* Each fact ends with its own separator, glued to it by a no-break space (as in the job rows), so a wrapped line never starts with "·". */}
-          <ul className="flex flex-wrap gap-x-2 gap-y-1.5 text-[0.95rem] text-ink">
-            {FACTS.map((f, i) => (
-              <li key={f} className="whitespace-nowrap">
+          {/* No text separators: the gap and a small mark before each fact, so a wrapped line never ends or starts with a lone "·". */}
+          <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-[0.95rem] text-ink">
+            {FACTS.map((f) => (
+              <li key={f} className="flex items-center gap-2 whitespace-nowrap">
+                <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent/60" />
                 {f}
-                {i < FACTS.length - 1 ? <span aria-hidden="true" className="text-slate">{"\u00a0·"}</span> : null}
               </li>
             ))}
           </ul>

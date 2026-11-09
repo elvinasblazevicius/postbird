@@ -1,30 +1,33 @@
 /**
  * Checkout for addresses that have or had a plan (server only).
  *
- * What the public trial form shows: an address that can start a free trial
- * (new, or never had a plan) goes straight to Paddle Checkout; any address
- * that has or had a plan (or whose canonical form had one, or that left a
- * trial marker) gets "Check your inbox" instead, and the next step goes to the
+ * What the public trial form shows: an address that is new here, or was never
+ * confirmed and never had a plan, goes straight to Paddle Checkout; any other
+ * address gets "Check your inbox" instead, and the next step goes to the
  * address itself:
  *  - a plan is running: the account link ("You already have daily alerts");
- *  - a plan was had before: a single-use link, valid 24 hours, to
+ *  - a plan was had before (or the address's canonical form had one, or it
+ *    left a trial marker): a single-use link, valid 24 hours, to
  *    /account/continue, which shows the terms for this address (no second
  *    free trial: one per person) and opens Paddle Checkout for a transaction
- *    without a trial.
- * So the form does tell whoever types an address one thing: whether it can
- * still start a free trial here (Paddle opens) or not ("Check your inbox"),
- * which suggests the address has or had a plan. It does not say which (a
- * running plan and a past one get the same reply, also when the daily cap
- * stops the email), and the account link and checkout terms only ever go to
- * the address. The trade-off: hiding even that would mean emailing every
- * address a link before checkout, an extra step for every genuine new
- * customer; it was judged not worth it for this one bit of information.
+ *    without a trial;
+ *  - a confirmed address that never had a plan (e.g. a free weekly email
+ *    subscriber): the same link, whose page offers the free trial. Its owner
+ *    is known, so nobody else can start (and use up) its trial from the form.
+ * So the form does tell whoever types an address one thing: whether it is
+ * new or unconfirmed here (Paddle opens) or not ("Check your inbox"), which
+ * suggests the address is a confirmed subscriber or has or had a plan. It does
+ * not say which (all of them get the same reply, also when the daily cap stops
+ * the email), and the account link and checkout terms only ever go to the
+ * address. The trade-off: hiding even that would mean emailing every address a
+ * link before checkout, an extra step for every genuine new customer; it was
+ * judged not worth it for this one bit of information.
  */
 import { createHash, randomBytes } from "node:crypto";
 import { sendAccountLink } from "@/lib/account";
 import { createNoTrialTransaction, isPaddleApiConfigured } from "@/lib/billing/paddle";
 import {
-  CHECKOUT_UNAVAILABLE, hadTrialBefore, LIVE_STATUSES, priceIdFor, TOKEN_RE,
+  CHECKOUT_ALREADY_OPEN, CHECKOUT_UNAVAILABLE, hadTrialBefore, LIVE_STATUSES, OPEN_CHECKOUT_MINUTES, priceIdFor, TOKEN_RE,
   type CheckoutPlan, type PlanHistory, type StartCheckoutResult,
 } from "@/lib/billing/subscriptions";
 import { trialUsedElsewhere } from "@/lib/billing/trial-markers";
@@ -111,7 +114,7 @@ export type LinkState = "live" | "returning" | "new";
 
 async function stateOf(subscriberId: number): Promise<{ email: string; state: LinkState } | null> {
   const [s] = await sql<(PlanHistory & { email: string })[]>`
-    select email, confirmed_at, paddle_subscription_id, billing_status, trial_ends_at, canceled_at from subscribers where id = ${subscriberId}`;
+    select email, confirmed_at, paddle_subscription_id, billing_status, trial_ends_at, canceled_at, unconfirmed_trial_sub from subscribers where id = ${subscriberId}`;
   if (!s) return null;
   const state: LinkState = LIVE_STATUSES.includes(s.billing_status) ? "live"
     : hadTrialBefore(s, await trialUsedElsewhere(s.email, subscriberId)) ? "returning" : "new";
@@ -157,6 +160,19 @@ export async function continueCheckout(token: unknown, plan: CheckoutPlan): Prom
   const st = await stateOf(link.subscriber_id);
   if (!st) return { ok: false, error: LINK_USED, used: true };
   if (st.state === "live") return { ok: false, error: "This address already has daily alerts. Open your account from the link in any of our emails." };
+
+  // Another checkout for this address in the last OPEN_CHECKOUT_MINUTES that hasn't led to a
+  // subscription yet (e.g. a second emailed link opened in another tab): it may still be open or
+  // being paid, so no second one (two finished checkouts would be two subscriptions, two charges).
+  // The link is given back, so it works again once that time has passed.
+  const [open] = await sql`
+    select 1 from paddle_checkouts
+    where subscriber_id = ${link.subscriber_id} and subscription_id is null
+      and created_at > now() - make_interval(mins => ${OPEN_CHECKOUT_MINUTES}) limit 1`;
+  if (open) {
+    await giveBack();
+    return { ok: false, error: CHECKOUT_ALREADY_OPEN };
+  }
 
   const ref = newToken();
   let transactionId: string | null = null;

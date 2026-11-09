@@ -1058,6 +1058,37 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       const rows = await sql`select slug from organizations where logo is not null and slug in ('un-agency', 'eu-body', 'ngo-x')`;
       expect(rows.map((r: { slug: string }) => r.slug)).toEqual(["ngo-x"]);
     });
+
+    it("never serves, keeps or fetches a Red Cross or Red Crescent emblem (by name or website)", async () => {
+      const png = Buffer.from("89504e470d0a1a0a0000000d4948445200000040000000400806000000", "hex");
+      await sql`insert into organizations (slug, name, short_name, org_type, website, logo, logo_type) values
+        ('icrc-x', 'International Committee of the Red Cross', 'ICRC', 'International organization', 'icrc.org', ${png}, 'image/png'),
+        ('ns-x', 'Croix-Rouge française', null, 'NGO', null, ${png}, 'image/png'),
+        ('rc-site', 'Volunteer programme', null, 'NGO', 'www.redcross.org.uk', ${png}, 'image/png'),
+        ('ngo-y', 'NGO Y', null, 'NGO', 'ngo-y.example', ${png}, 'image/png')`;
+      const { GET } = await import("@/app/api/org-logo/[slug]/route");
+      const get = (slug: string) => GET(new Request(`http://localhost/api/org-logo/${slug}`), { params: Promise.resolve({ slug }) });
+      for (const slug of ["icrc-x", "ns-x", "rc-site"]) expect([slug, (await get(slug)).status]).toEqual([slug, 404]);
+      expect((await get("ngo-y")).status).toBe(200);
+      const jobs = await import("@/lib/jobs");
+      expect((await jobs.getOrganization("icrc-x"))?.logo).toBeNull();
+      expect((await jobs.getOrganization("ngo-y"))?.logo).toBe("ngo-y");
+      const logos = await import("@/lib/feeds/logos");
+      expect(await logos.clearProtectedLogos()).toBe(3);
+      const rows = await sql`select slug from organizations where logo is not null and slug in ('icrc-x', 'ns-x', 'rc-site', 'ngo-y')`;
+      expect(rows.map((r: { slug: string }) => r.slug)).toEqual(["ngo-y"]);
+      // Never picked for fetching either (the icon refresh checks the same rule before fetching).
+      await sql`update organizations set logo_checked_at = null where slug in ('icrc-x', 'ns-x', 'rc-site')`;
+      const fetched: string[] = [];
+      const realFetch = globalThis.fetch;
+      globalThis.fetch = (async (u: string | URL) => { fetched.push(String(u)); return new Response(null, { status: 404 }); }) as typeof fetch;
+      try {
+        await logos.refreshOrgLogos(() => 60_000);
+      } finally {
+        globalThis.fetch = realFetch;
+      }
+      expect(fetched.filter((u) => /icrc|redcross/.test(u))).toEqual([]);
+    });
   });
 
   describe("filter counts", () => {

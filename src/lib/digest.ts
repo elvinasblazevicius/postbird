@@ -147,7 +147,7 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
       const pending = outbox.splice(0, outbox.length);
       // Current links and status at send time: anyone who unsubscribed or started a plan meanwhile is skipped.
       const current = await sql<(PlanHistory & { id: number; email: string; manage_token: string; unsubscribe_token: string })[]>`
-        select id::int as id, email, manage_token, unsubscribe_token, confirmed_at, paddle_subscription_id, billing_status, trial_ends_at, canceled_at from subscribers
+        select id::int as id, email, manage_token, unsubscribe_token, confirmed_at, paddle_subscription_id, billing_status, trial_ends_at, canceled_at, unconfirmed_trial_sub from subscribers
         where id = any(${pending.map((o) => o.row.id)}) and status = 'confirmed' and weekly_email and billing_status <> all(${PLAN_STATUSES})`;
       const byId = new Map(current.map((c) => [c.id, c]));
       const chunk = pending.filter((o) => byId.has(o.row.id));

@@ -16,7 +16,7 @@ export const metadata: Metadata = { title: "Continue to daily alerts", robots: {
 type Props = { searchParams: Promise<{ token?: string | string[] }> };
 
 /**
- * The single-use checkout link emailed to an address that has or had a plan
+ * The single-use checkout link emailed to a confirmed address, or one that has or had a plan
  * (see src/lib/billing/checkout-links.ts). Opening the page doesn't use the
  * link up (mail scanners open links); the button does.
  */

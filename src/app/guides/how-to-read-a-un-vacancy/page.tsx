@@ -1,15 +1,20 @@
 import type { Metadata } from "next";
+import { sharedTitle, shareMetadata } from "@/lib/share-metadata";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { siteConfig } from "@/lib/site";
 
 const PATH = "/guides/how-to-read-a-un-vacancy";
 
+const TITLE = "How to read a UN vacancy";
+const DESCRIPTION =
+  "What the parts of a UN or international organization vacancy usually mean: grade, contract type, duty station, closing date and time zone, who can apply, required and desirable qualifications, languages and how to apply.";
+
 export const metadata: Metadata = {
-  title: "How to read a UN vacancy",
-  description:
-    "What the parts of a UN or international organization vacancy usually mean: grade, contract type, duty station, closing date and time zone, who can apply, required and desirable qualifications, languages and how to apply.",
+  title: TITLE,
+  description: DESCRIPTION,
   alternates: { canonical: PATH },
+  ...shareMetadata(sharedTitle(TITLE), DESCRIPTION),
 };
 
 /**

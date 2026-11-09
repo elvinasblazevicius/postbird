@@ -143,7 +143,7 @@ export default async function JobPage({ params }: Props) {
   const [similar, orgOpen] = await Promise.all([
     similarJobs(job),
     // How many open vacancies the organization has (this one included), for "4 other open vacancies at IOM".
-    job.org_slug ? searchJobs({ org: job.org_slug }, 1).then((r) => r.total).catch(() => 0) : Promise.resolve(0),
+    job.org_slug ? searchJobs({ org: [job.org_slug] }, 1).then((r) => r.total).catch(() => 0) : Promise.resolve(0),
   ]);
   const ld = jobPostingLd(job);
   const dl = deadlineLabel(job.deadline);
@@ -168,18 +168,19 @@ export default async function JobPage({ params }: Props) {
     !job.languages?.length && !job.desirable_languages?.length && "language requirements",
   ].filter((x): x is string => Boolean(x));
   const experience = job.min_experience_years != null ? `${job.min_experience_years}+ ${job.min_experience_years === 1 ? "year" : "years"}` : null;
-  // Local-only posts: the rule they usually follow. Any other post: no general claim (eligibility
-  // differs by employer: EU citizenship, member-country nationality, work permits), so the posting decides.
-  const whoCanApply = localOnly
-    ? `Usually only nationals or legal residents of ${dutyCountry ?? "the duty-station country"}.`
-    : "Set by the employer: check the posting for any nationality, residence or work-permit requirement.";
-  const missingLine = missing.length ? (
+  // "Who can apply" only where we know the usual rule: local-only posts. For any other post we make
+  // no general claim (eligibility differs by employer: EU citizenship, member-country nationality,
+  // work permits); that advice is part of the one note below instead.
+  const whoCanApply = localOnly ? `Usually only nationals or legal residents of ${dutyCountry ?? "the duty-station country"}.` : null;
+  // One compact note for everything the page can't say: what our source lacks, eligibility, and where the full posting is.
+  const missingLine = (
     <p className="mt-3 text-sm text-slate">
-      {listPhrase(missing)} {missing.length === 1 ? "isn't" : "aren't"} in our source.{" "}
+      {missing.length ? `${listPhrase(missing)} ${missing.length === 1 ? "isn't" : "aren't"} in our source. ` : ""}
+      {localOnly ? "" : "Any nationality, residence or work-permit requirement is set by the employer. "}
       <a href={job.apply_url} target="_blank" rel="nofollow noopener noreferrer" className="text-accent underline">See the employer&apos;s page</a>
-      {description ? "." : " for the full description."}
+      {description ? "." : " for the full description, requirements and how to apply."}
     </p>
-  ) : null;
+  );
   const orgRef = orgInText(job.org_name, job.org_short);
   // Where Apply goes, in plain words: "Opens IOM's recruitment system (Oracle)"; the address only for the organization's own site.
   const homepage = applyLinkKind(job.apply_url) === "homepage";
@@ -233,11 +234,13 @@ export default async function JobPage({ params }: Props) {
     </>
   );
 
-  /** "Who can apply" and "Pay": said for every post, as far as Postbird can say it honestly. */
+  /** "Pay": no figures (they depend on grade, step and place), only where the official scales are. */
   const payLink = pay ? (
-    <>
-      See the <a href={pay.href} className="text-accent underline" rel="noopener">official {pay.label}</a>
-    </>
+    pay.family === "UN" ? (
+      <>UN salaries depend on grade and duty station — see the <a href={pay.href} className="text-accent underline" rel="noopener">ICSC scales</a></>
+    ) : (
+      <>EU salaries by grade — see the <a href={pay.href} className="text-accent underline" rel="noopener">EU pay page</a></>
+    )
   ) : null;
   const orgLink = job.org_slug && otherAtOrg > 0 ? (
     <Link href={`/organizations/${job.org_slug}`} className="font-medium text-accent underline-offset-2 hover:underline">
@@ -253,6 +256,7 @@ export default async function JobPage({ params }: Props) {
       <div className="brand-band">
         <div className="mx-auto max-w-6xl px-4 pb-8 pt-7 sm:px-6">
           <Breadcrumbs
+            back={{ href: "/jobs", label: "Jobs" }}
             items={[
               { href: "/", label: "Home" },
               { href: "/jobs", label: "Jobs" },
@@ -311,10 +315,12 @@ export default async function JobPage({ params }: Props) {
                 {payLink ? <Fact label="Pay">{payLink}</Fact> : null}
                 {job.reference ? <Fact label="Reference"><span className="break-all">{job.reference}</span></Fact> : null}
               </dl>
-              <p className={`mt-3 rounded-xl px-4 py-3 text-[0.95rem] text-ink ${localOnly ? "bg-mist" : "border border-rule"}`}>
-                <span className="font-semibold">Who can apply:</span> {whoCanApply}{" "}
-                {localOnly ? <Link href="/grades" className="text-accent underline">About grades and contract types</Link> : null}
-              </p>
+              {whoCanApply ? (
+                <p className="mt-3 rounded-xl bg-mist px-4 py-3 text-[0.95rem] text-ink">
+                  <span className="font-semibold">Who can apply:</span> {whoCanApply}{" "}
+                  <Link href="/grades" className="text-accent underline">About grades and contract types</Link>
+                </p>
+              ) : null}
               {missingLine}
               {orgLink ? <p className="mt-3 text-[0.95rem]">{orgLink}</p> : null}
             </section>
@@ -331,7 +337,7 @@ export default async function JobPage({ params }: Props) {
                 {job.job_type ? <GlanceRow label="Contract type">{job.job_type}</GlanceRow> : null}
                 {job.min_experience_years != null ? <GlanceRow label="Experience">{experience}</GlanceRow> : null}
                 {job.languages?.length || job.desirable_languages?.length ? <GlanceRow label="Languages besides English"><Languages job={job} /></GlanceRow> : null}
-                <GlanceRow label="Who can apply">{whoCanApply}</GlanceRow>
+                {whoCanApply ? <GlanceRow label="Who can apply">{whoCanApply}</GlanceRow> : null}
                 {payLink ? <GlanceRow label="Pay">{payLink}</GlanceRow> : null}
                 {job.published_at ? <GlanceRow label="Posted">{formatDate(job.published_at)}</GlanceRow> : null}
                 {category && category.slug !== "other" ? (
@@ -340,9 +346,6 @@ export default async function JobPage({ params }: Props) {
                 {job.reference ? <GlanceRow label="Reference number"><span className="break-all">{job.reference}</span></GlanceRow> : null}
                 {orgLink ? <GlanceRow label="Organization">{orgLink}</GlanceRow> : null}
               </dl>
-              <p className="mt-3 text-[0.95rem] text-ink">
-                The full description, requirements and application instructions are on the employer&apos;s own page.
-              </p>
               {missingLine}
             </section>
           )}

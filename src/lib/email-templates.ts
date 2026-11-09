@@ -239,6 +239,26 @@ export function checkoutLinkEmail(opts: { continueUrl: string; hours: number }) 
 }
 
 /**
+ * A second plan for one address (two checkouts finished at about the same time) was canceled in
+ * Paddle at once and never applied: tell the customer, and how to get a charge back. Replies go to
+ * the contact address (see replyTo in src/lib/email.ts); the owner refunds it in Paddle.
+ */
+export function duplicatePlanEmail() {
+  const plan = siteConfig.premium.name.toLowerCase();
+  const subject = "We canceled a duplicate plan";
+  const lead = `We canceled a duplicate plan for this address: two checkouts for ${plan} were completed at about the same time. Your first plan keeps running as before, and the duplicate won't be charged again.`;
+  const note = "If you were charged for the duplicate, reply to this email and we'll refund the charge.";
+  const html = layout(
+    subject,
+    `<p style="font-size:16px;line-height:1.6;margin:0 0 16px">${esc(lead)}</p>
+     <p style="font-size:16px;line-height:1.6;margin:0">${esc(note)}</p>`,
+    `You received this because a checkout on ${esc(siteConfig.name)} was completed with this address.`,
+  );
+  const text = `${lead}\n\n${note}\n\n${postal()}`;
+  return { subject, html, text };
+}
+
+/**
  * One paid-alert email per subscriber: the new matches for each saved search (the caller lists
  * up to 20 per search), then "Closing in the next 3 days" (`closing`, soonest first, at most
  * CLOSING_SOON_MAX). At most MAX_JOBS_PER_EMAIL are listed in all: the closing-soon rows are

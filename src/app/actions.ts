@@ -8,7 +8,12 @@ import { clientIp, safeRateLimit } from "@/lib/rate-limit";
 import { planRenewal, runWelcomeRetries } from "@/lib/billing/notices";
 import { confirmSubscriber, findByUnsubscribeToken, signup, unsubscribe, type SignupKind } from "@/lib/subscribers";
 
-export type FormState = { status: "idle" | "success" | "error"; message: string };
+export type FormState = {
+  status: "idle" | "success" | "error";
+  message: string;
+  /** A next step shown after the message (a link on this site). */
+  link?: { href: string; label: string };
+};
 
 const SERVER_ERROR = "Something went wrong on our side. Please try again in a minute.";
 
@@ -76,7 +81,13 @@ export async function signupAction(_prev: FormState, form: FormData): Promise<Fo
 
 export async function confirmAction(_prev: FormState, form: FormData): Promise<FormState> {
   const t = String(form.get("token") ?? "");
-  const res = await confirmSubscriber(t);
+  let res: Awaited<ReturnType<typeof confirmSubscriber>>;
+  try {
+    res = await confirmSubscriber(t);
+  } catch (e) {
+    console.error("confirm failed", (e as Error).message);
+    return { status: "error", message: SERVER_ERROR };
+  }
   if (!res.ok) return { status: "error", message: "This link has already been used or has expired. If you meant to sign up, please do so again." };
   // A plan started at checkout with an address that wasn't proven yet (see applySubscription):
   // the welcome email with the account link goes out now (the daily job retries it if sending fails).
@@ -87,10 +98,20 @@ export async function confirmAction(_prev: FormState, form: FormData): Promise<F
     });
     return { status: "success", message: "Confirmed. We'll email you the link to your account page now, and your alerts start with the next daily run." };
   }
-  if (res.weekly || res.alerts) {
+  // A trial at this address was canceled because it wasn't confirmed in time: it didn't use up the free trial.
+  if (res.trialCanceled) {
+    const weekly = res.weeklyEmail ? " Your weekly email comes on Mondays, and only when there are new vacancies that match your search." : "";
+    return {
+      status: "success",
+      message: `Your trial was canceled because the address wasn't confirmed in time. You can start it again.${weekly}`,
+      link: { href: "/pricing/trial", label: "Start the free trial" },
+    };
+  }
+  if (res.weeklyEmail) {
     return { status: "success", message: "Confirmed. Your weekly email comes on Mondays, and only when there are new vacancies that match your search." };
   }
-  return { status: "success", message: `Confirmed: you're on the early-access list. ${earlyAccess()}` };
+  if (res.waitlist) return { status: "success", message: `Confirmed: you're on the early-access list. ${earlyAccess()}` };
+  return { status: "success", message: "Your address is confirmed." };
 }
 
 const PLAN_CHOICES = ["monthly", "three_months", "would_not_pay"] as const;
@@ -108,9 +129,15 @@ export async function planChoiceAction(choice: string, source: string): Promise<
 
 export async function unsubscribeAction(_prev: FormState, form: FormData): Promise<FormState> {
   const t = String(form.get("token") ?? "");
-  await unsubscribe(t);
+  let sub: Awaited<ReturnType<typeof findByUnsubscribeToken>>;
+  try {
+    await unsubscribe(t);
+    sub = await findByUnsubscribeToken(t);
+  } catch (e) {
+    console.error("unsubscribe failed", (e as Error).message);
+    return { status: "error", message: SERVER_ERROR };
+  }
   // Unsubscribing stops emails, not a paid plan: say so when the plan will still charge.
-  const sub = await findByUnsubscribeToken(t);
   const renewal = sub ? planRenewal(sub) : null;
   if (renewal?.chargesAhead) {
     return { status: "success", message: `You're unsubscribed from alerts. ${renewal.sentence} To stop payments, use “Cancel my plan” above.` };

@@ -4,10 +4,11 @@
  * Microsoft Advertising (Bing Ads) support:
  *  - remembers which campaign a visitor came from (utm_* and msclkid), first touch, 90 days
  *  - loads the UET conversion tag when NEXT_PUBLIC_MS_UET_TAG_ID is set
- *  - where /api/geo says to ask first (the EEA, UK, Switzerland, Türkiye, South
- *    Korea, Brazil and Québec, or when the place is unknown) nothing is
- *    stored on the device and Microsoft's script is not loaded until the
- *    visitor clicks "Allow"; elsewhere visitors can opt out any time
+ *  - where /api/geo says to ask first (everywhere except the United States,
+ *    and when the place is unknown) nothing is stored on the device and
+ *    Microsoft's script is not loaded until the visitor clicks "Allow"; in the
+ *    United States visitors can opt out any time, and Global Privacy Control
+ *    counts as opting out
  *  - never runs on /alerts/* (confirm/unsubscribe links carry personal tokens), /account (private link) or /admin
  *  - "Cookie settings" in the footer reopens the choice
  */

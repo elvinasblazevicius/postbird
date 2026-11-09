@@ -20,7 +20,7 @@ import { sql } from "@/lib/db";
 import { clientIp, rateLimit, safeRateLimit } from "@/lib/rate-limit";
 import { addSavedSearch, normalizeSearch, removeSavedSearch, searchFromSignupForm } from "@/lib/saved-searches";
 import { findByUnsubscribeToken, normalizeEmail } from "@/lib/subscribers";
-import { jobsUrl, parseFilters } from "@/lib/jobs";
+import { filtersFromQuery, jobsUrl } from "@/lib/jobs";
 import { parseId, siteConfig } from "@/lib/site";
 import type { FormState } from "@/app/actions";
 
@@ -35,9 +35,9 @@ const planFrom = (form: FormData): CheckoutPlan | null => {
 
 /**
  * Validates the trial form and prepares the subscriber; the browser then opens
- * Paddle Checkout with the trial. An address that has or had a plan gets the
- * same "check your inbox" reply either way, and its next step by email (sent
- * after the response, so the reply takes as long as for anyone else).
+ * Paddle Checkout with the trial. A confirmed address, or one that has or had
+ * a plan, gets the same "check your inbox" reply either way, and its next step
+ * by email (sent after the response, so the reply takes as long as for anyone else).
  */
 export async function startCheckoutAction(_prev: CheckoutState, form: FormData): Promise<CheckoutState> {
   if (!BILLING_LIVE) return { status: "error", message: "Daily alerts aren't open yet." };
@@ -125,9 +125,18 @@ async function accountFrom(form: FormData) {
   return findByManageToken(String(form.get("t") ?? ""));
 }
 
+/** A lookup that reads the database: "error" (logged) instead of throwing, so the form can say so. */
+function orError<T>(name: string, p: Promise<T>): Promise<T | "error"> {
+  return p.catch((e: Error) => {
+    console.error(`${name} failed`, e.message);
+    return "error" as const;
+  });
+}
+
 /** Adds a saved search, from a pasted /jobs link or from the filter fields. */
 export async function addSearchAction(_prev: FormState, form: FormData): Promise<FormState> {
-  const acct = await accountFrom(form);
+  const acct = await orError("add search", accountFrom(form));
+  if (acct === "error") return { status: "error", message: SERVER_ERROR };
   if (!acct) return INVALID_LINK;
   let search: string | null;
   const pasted = String(form.get("link") ?? "").trim();
@@ -135,12 +144,15 @@ export async function addSearchAction(_prev: FormState, form: FormData): Promise
     search = normalizeSearch(pasted);
     if (search === null) return { status: "error", message: "That doesn't look like a search link from our jobs page. Run a search on Jobs, then copy the address from your browser." };
   } else {
-    const fields: Record<string, string> = {};
-    for (const k of ["q", "where", "category", "grade", "type", "remote"]) {
-      const v = String(form.get(k) ?? "").trim().slice(0, 120);
-      if (v) fields[k] = v;
+    // Every field the account search builder offers; org, where and grade may repeat.
+    const params = new URLSearchParams();
+    for (const k of ["q", "where", "org", "category", "grade", "type", "lang", "exp", "remote", "hidelocal"]) {
+      for (const raw of form.getAll(k).slice(0, 10)) {
+        const v = String(raw ?? "").trim().slice(0, 120);
+        if (v) params.append(k, v);
+      }
     }
-    search = jobsUrl({ ...parseFilters(fields), page: undefined, sort: undefined, posted: undefined }).replace(/^\/jobs\??/, "");
+    search = jobsUrl({ ...filtersFromQuery(params.toString()), page: undefined, sort: undefined, posted: undefined }).replace(/^\/jobs\??/, "");
   }
   try {
     const res = await addSavedSearch(acct.id, search);
@@ -153,51 +165,72 @@ export async function addSearchAction(_prev: FormState, form: FormData): Promise
   }
 }
 
+/**
+ * Runs an account-page action: a database error becomes the usual "something went wrong" reply
+ * instead of an error page. (Nothing that redirects runs inside it.)
+ */
+async function guarded(name: string, fn: () => Promise<FormState>): Promise<FormState> {
+  try {
+    return await fn();
+  } catch (e) {
+    console.error(`${name} failed`, (e as Error).message);
+    return { status: "error", message: SERVER_ERROR };
+  }
+}
+
 export async function removeSearchAction(_prev: FormState, form: FormData): Promise<FormState> {
-  const acct = await accountFrom(form);
-  if (!acct) return INVALID_LINK;
-  const id = parseId(form.get("id"));
-  if (id === null) return { status: "error", message: "Unknown search." };
-  await removeSavedSearch(acct.id, id);
-  refresh();
-  return { status: "success", message: "Search removed." };
+  return guarded("remove search", async () => {
+    const acct = await accountFrom(form);
+    if (!acct) return INVALID_LINK;
+    const id = parseId(form.get("id"));
+    if (id === null) return { status: "error", message: "Unknown search." };
+    await removeSavedSearch(acct.id, id);
+    refresh();
+    return { status: "success", message: "Search removed." };
+  });
 }
 
 export async function frequencyAction(_prev: FormState, form: FormData): Promise<FormState> {
-  const acct = await accountFrom(form);
-  if (!acct) return INVALID_LINK;
-  const f = String(form.get("frequency") ?? "");
-  if (f !== "daily" && f !== "weekly") return { status: "error", message: "Choose daily or weekly." };
-  await sql`update subscribers set frequency = ${f} where id = ${acct.id}`;
-  refresh();
-  return { status: "success", message: f === "daily" ? "You'll get at most one email a day." : "You'll get at most one email a week." };
+  return guarded("frequency", async () => {
+    const acct = await accountFrom(form);
+    if (!acct) return INVALID_LINK;
+    const f = String(form.get("frequency") ?? "");
+    if (f !== "daily" && f !== "weekly") return { status: "error", message: "Choose daily or weekly." };
+    await sql`update subscribers set frequency = ${f} where id = ${acct.id}`;
+    refresh();
+    return { status: "success", message: f === "daily" ? "You'll get at most one email a day." : "You'll get at most one email a week." };
+  });
 }
 
 /** Stops all emails. A Paddle subscription keeps running until it is canceled in billing. */
 export async function accountUnsubscribeAction(_prev: FormState, form: FormData): Promise<FormState> {
-  const acct = await accountFrom(form);
-  if (!acct) return INVALID_LINK;
-  await sql`
-    update subscribers set status = 'unsubscribed', unsubscribed_at = now(), confirm_token = null, pending_changes = null
-    where id = ${acct.id} and status <> 'unsubscribed'`;
-  refresh();
-  // Unsubscribing stops alerts, not payments: say so when the plan still charges.
-  const renewal = planRenewal(acct);
-  if (renewal?.chargesAhead) {
-    return { status: "success", message: `You're unsubscribed from alerts. ${renewal.sentence} To stop payments, cancel the plan under “Cancel or manage billing”.` };
-  }
-  return { status: "success", message: "You're unsubscribed. We won't email you again." };
+  return guarded("account unsubscribe", async () => {
+    const acct = await accountFrom(form);
+    if (!acct) return INVALID_LINK;
+    await sql`
+      update subscribers set status = 'unsubscribed', unsubscribed_at = now(), confirm_token = null, pending_changes = null
+      where id = ${acct.id} and status <> 'unsubscribed'`;
+    refresh();
+    // Unsubscribing stops alerts, not payments: say so when the plan still charges.
+    const renewal = planRenewal(acct);
+    if (renewal?.chargesAhead) {
+      return { status: "success", message: `You're unsubscribed from alerts. ${renewal.sentence} To stop payments, cancel the plan under “Cancel or manage billing”.` };
+    }
+    return { status: "success", message: "You're unsubscribed. We won't email you again." };
+  });
 }
 
 /** Turns emails back on (the account link proves the address is theirs). */
 export async function resubscribeAction(_prev: FormState, form: FormData): Promise<FormState> {
-  const acct = await accountFrom(form);
-  if (!acct) return INVALID_LINK;
-  await sql`
-    update subscribers set status = 'confirmed', confirmed_at = coalesce(confirmed_at, now()), unsubscribed_at = null, wants_alerts = true
-    where id = ${acct.id}`;
-  refresh();
-  return { status: "success", message: "Emails are back on." };
+  return guarded("resubscribe", async () => {
+    const acct = await accountFrom(form);
+    if (!acct) return INVALID_LINK;
+    await sql`
+      update subscribers set status = 'confirmed', confirmed_at = coalesce(confirmed_at, now()), unsubscribed_at = null, wants_alerts = true
+      where id = ${acct.id}`;
+    refresh();
+    return { status: "success", message: "Emails are back on." };
+  });
 }
 
 /**
@@ -228,7 +261,8 @@ async function openPortal(target: BillingTarget): Promise<FormState> {
 
 /** "Cancel or manage billing": sends the customer to a fresh Paddle customer portal session. */
 export async function portalAction(_prev: FormState, form: FormData): Promise<FormState> {
-  const acct = await accountFrom(form);
+  const acct = await orError("portal", accountFrom(form));
+  if (acct === "error") return { status: "error", message: SERVER_ERROR };
   if (!acct) return INVALID_LINK;
   return openPortal(acct);
 }
@@ -240,12 +274,18 @@ export async function portalAction(_prev: FormState, form: FormData): Promise<Fo
  */
 export async function restartPlanAction(_prev: FormState, form: FormData): Promise<FormState> {
   if (!BILLING_LIVE) return { status: "error", message: "Daily alerts aren't open yet." };
-  const acct = await accountFrom(form);
-  if (!acct) return INVALID_LINK;
-  if (LIVE_STATUSES.includes(acct.billing_status)) return { status: "error", message: "You already have daily alerts." };
-  if (!hadTrialBefore(acct, await trialUsedElsewhere(acct.email, acct.id))) redirect("/pricing/trial");
-  const token = await createCheckoutLink(acct.id, { plan: "quarterly", search: null });
-  redirect(`/account/continue?token=${token}`);
+  let target: string;
+  try {
+    const acct = await accountFrom(form);
+    if (!acct) return INVALID_LINK;
+    if (LIVE_STATUSES.includes(acct.billing_status)) return { status: "error", message: "You already have daily alerts." };
+    if (!hadTrialBefore(acct, await trialUsedElsewhere(acct.email, acct.id))) target = "/pricing/trial";
+    else target = `/account/continue?token=${await createCheckoutLink(acct.id, { plan: "quarterly", search: null })}`;
+  } catch (e) {
+    console.error("restart plan failed", (e as Error).message);
+    return { status: "error", message: SERVER_ERROR };
+  }
+  redirect(target); // outside try: redirect() works by throwing
 }
 
 /**
@@ -254,7 +294,8 @@ export async function restartPlanAction(_prev: FormState, form: FormData): Promi
  * billing itself: it emails the account link, worded for cancelling.
  */
 export async function unsubscribeCancelLinkAction(_prev: FormState, form: FormData): Promise<FormState> {
-  const sub = await findByUnsubscribeToken(form.get("token"));
+  const sub = await orError("cancel link", findByUnsubscribeToken(form.get("token")));
+  if (sub === "error") return { status: "error", message: SERVER_ERROR };
   if (!sub) return { status: "error", message: "This link isn't valid any more. Use the link in your latest email from us." };
   const h = await headers();
   const limit = await safeRateLimit(`account-login:${clientIp(h)}`, 5, 3600);
@@ -263,7 +304,13 @@ export async function unsubscribeCancelLinkAction(_prev: FormState, form: FormDa
     return { status: "error", message: "Too many requests from this connection. Please try again in an hour." };
   }
   try {
-    if (await rateLimit(`account-link:${sub.email}`, 3, 3600)) await sendAccountLink(sub.email, "cancel");
+    // Sent after the response, like the account link below, so the reply always takes as long.
+    if (await rateLimit(`account-link:${sub.email}`, 3, 3600)) {
+      const email = sub.email;
+      after(async () => {
+        await sendAccountLink(email, "cancel").catch((e: Error) => console.error("cancel link failed", e.message));
+      });
+    }
   } catch (e) {
     console.error("cancel link failed", (e as Error).message);
   }
@@ -272,7 +319,12 @@ export async function unsubscribeCancelLinkAction(_prev: FormState, form: FormDa
 
 const LOGIN_MESSAGE = "If this address has an account with us, we've emailed it the link. It can take a minute or two to arrive; check your spam folder too.";
 
-/** "Email me my account link". Always the same answer, so it can't tell anyone who is subscribed. */
+/**
+ * "Email me my account link" (also "Email me a link to cancel"). Always the same answer, so it
+ * can't tell anyone who is subscribed. Only the rate limits are awaited: the lookup and the send
+ * run after the response (after()), so the reply takes as long whether or not the address has an
+ * account (as in startCheckoutAction).
+ */
 export async function accountLinkAction(_prev: FormState, form: FormData): Promise<FormState> {
   if (String(form.get("website") ?? "")) return { status: "success", message: LOGIN_MESSAGE };
   const h = await headers();
@@ -286,7 +338,11 @@ export async function accountLinkAction(_prev: FormState, form: FormData): Promi
   const purpose = form.get("intent") === "cancel" ? "cancel" : "manage";
   try {
     // Per address too, so nobody can flood someone's inbox from many connections.
-    if (await rateLimit(`account-link:${email}`, 3, 3600)) await sendAccountLink(email, purpose);
+    if (await rateLimit(`account-link:${email}`, 3, 3600)) {
+      after(async () => {
+        await sendAccountLink(email, purpose).catch((e: Error) => console.error("account link failed", e.message));
+      });
+    }
   } catch (e) {
     console.error("account link failed", (e as Error).message);
   }

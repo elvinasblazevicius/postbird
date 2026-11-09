@@ -8,7 +8,7 @@ import { jobsUrl, placeCondition, type JobFilters } from "@/lib/jobs";
 /** Number of open jobs for a landing page's fixed filter. */
 export async function countFor(fixed: Partial<JobFilters>, includeDemo = true): Promise<number> {
   let w = sql`j.status = 'active' and (j.deadline is null or j.deadline >= (now() at time zone 'utc')::date) and (${includeDemo} or not j.is_demo)`;
-  if (fixed.org) w = sql`${w} and o.slug = ${fixed.org}`;
+  if (fixed.org?.length) w = sql`${w} and o.slug = any(${fixed.org})`;
   if (fixed.category) w = sql`${w} and j.category = ${fixed.category}`;
   if (fixed.country?.length || fixed.region?.length) {
     // Any of the countries and regions, like the "where" filter (filterConditions in src/lib/jobs.ts).

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { sharedTitle, shareMetadata } from "@/lib/share-metadata";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { ORG_TYPES } from "@/config/regions";
@@ -7,10 +8,14 @@ import { siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
+const TITLE = "How it works and where our listings come from";
+const DESCRIPTION = `How ${siteConfig.name} finds international vacancies, what we show, and how to apply.`;
+
 export const metadata: Metadata = {
-  title: "How it works and where our listings come from",
-  description: `How ${siteConfig.name} finds international vacancies, what we show, and how to apply.`,
+  title: TITLE,
+  description: DESCRIPTION,
   alternates: { canonical: "/about" },
+  ...shareMetadata(sharedTitle(TITLE), DESCRIPTION),
 };
 
 /** Organizations with open vacancies now, by type (names only), for "Organizations we cover". */

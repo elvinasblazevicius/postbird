@@ -77,8 +77,9 @@ describe("/api/geo", () => {
     expect(await call({ "x-nf-geo": JSON.stringify({ country: { code: "US" } }) })).toEqual({ country: "US", consentRequired: false });
   });
 
-  it("reads Vercel's header and covers EEA, UK and Switzerland", async () => {
-    expect(await call({ "x-vercel-ip-country": "vn" })).toEqual({ country: "VN", consentRequired: false });
+  it("reads Vercel's header and asks first everywhere except the United States", async () => {
+    expect(await call({ "x-vercel-ip-country": "vn" })).toEqual({ country: "VN", consentRequired: true });
+    expect(await call({ "x-vercel-ip-country": "us" })).toEqual({ country: "US", consentRequired: false });
     for (const c of ["NO", "IS", "LI", "GB", "CH", "FR"]) expect((await call({ "x-vercel-ip-country": c })).consentRequired).toBe(true);
   });
 

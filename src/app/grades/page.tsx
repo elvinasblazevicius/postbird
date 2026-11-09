@@ -1,12 +1,17 @@
 import type { Metadata } from "next";
+import { sharedTitle, shareMetadata } from "@/lib/share-metadata";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { PAY_SOURCES } from "@/lib/grades";
 
+const TITLE = "UN and international job grades explained";
+const DESCRIPTION = "A plain-English guide to P, D, G and NO grades, service contracts, consultancies, internships, UN Volunteers and EU staff categories.";
+
 export const metadata: Metadata = {
-  title: "UN and international job grades explained",
-  description: "A plain-English guide to P, D, G and NO grades, service contracts, consultancies, internships, UN Volunteers and EU staff categories.",
+  title: TITLE,
+  description: DESCRIPTION,
   alternates: { canonical: "/grades" },
+  ...shareMetadata(sharedTitle(TITLE), DESCRIPTION),
 };
 
 /** Official pay sources, linked (no figures): see PAY_SOURCES in src/lib/grades.ts. */

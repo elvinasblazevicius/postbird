@@ -5,6 +5,7 @@
  */
 import { CATEGORIES } from "@/config/categories";
 import { COUNTRIES } from "@/config/countries";
+import { LANGUAGES } from "@/config/regions";
 import { KNOWN_ORGS } from "@/config/organizations";
 
 export type SearchIntent = {
@@ -16,6 +17,8 @@ export type SearchIntent = {
   country?: string;
   /** A grade written in the search ("p3", "P-3", "NOA", "GS-6"), normalized ("P-3", "NO-A", "GS-6"). */
   grade?: string;
+  /** A language the language filter knows ("french" → "French"; see languageFromWord). */
+  lang?: string;
 };
 
 const STOP_WORDS = new Set([
@@ -165,6 +168,16 @@ export function gradeFromWord(word: string): string | null {
   return m && GRADE_RANGES[m[1]].test(m[2]) ? `${m[1].toUpperCase()}-${m[2].toUpperCase()}` : null;
 }
 
+/**
+ * The language filter value one search word names ("french", "Arabic" → "French", "Arabic"), or
+ * null. Only the languages the filter offers (LANGUAGES in src/config/regions.ts), written as the
+ * plain language name: "francophone" or "Spanish-speaking" are left as words.
+ */
+export function languageFromWord(word: string): string | null {
+  const w = foldText(word.trim());
+  return LANGUAGES.find((l) => l.toLowerCase() === w) ?? null;
+}
+
 /** Takes the first grade out of a tidied query (" p3 data " → "P-3" and " data "). */
 function takeGrade(s: string): { grade?: string; rest: string } {
   const words = s.split(" ");
@@ -222,6 +235,8 @@ export function interpretQuery(q: string | undefined | null): SearchIntent {
     else if (CONSULTANCY_WORDS.has(w)) intent.type ??= "Consultancy";
     else if (VOLUNTEER_WORDS.has(w)) intent.type ??= "Volunteer";
     else if (FELLOWSHIP_WORDS.has(w)) intent.type ??= "Fellowship";
+    // One language: a second one ("french arabic") stays a search word.
+    else if (languageFromWord(w) && (intent.lang ?? languageFromWord(w)) === languageFromWord(w)) intent.lang = languageFromWord(w)!;
     else if (!STOP_WORDS.has(w)) kept.push(w);
   }
   intent.text = kept.length ? kept.join(" ") : null;

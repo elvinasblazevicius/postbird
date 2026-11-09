@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { andList, STATED_DETAIL } from "@/lib/filter-labels";
 import { FILTER_GRADE_GROUPS, gradeGroupOf } from "@/lib/grades";
-import { JOB_TYPES, jobsUrl, type JobFilters } from "@/lib/jobs";
+import { derivedFilters, JOB_TYPES, jobsUrl, type JobFilters } from "@/lib/jobs";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { AutoSubmit } from "./auto-submit";
 
@@ -72,24 +73,28 @@ export function WhereSelect({ facets, filters, idPrefix, label = "Where", name =
 
 /** Most places one search can hold. */
 const MAX_PLACES = 5;
+/** Most organizations one search can hold. */
+const MAX_ORGS = 5;
 
 /**
- * "Where" for result pages and alerts, with room for several places (a listing in any of them
- * matches). One select per chosen place, plus "Add another place" once one is chosen. Works
- * without JavaScript: each select is a repeated "where" field, and an empty one is ignored.
+ * A field that may hold several values (a listing matching any of them matches): one select per
+ * chosen value, plus "Add another …" once one is chosen. Works without JavaScript: each select is
+ * a repeated field of the same name, and an empty one is ignored.
  */
-export function WhereFields({ facets, filters, idPrefix, label = "Where", name = "where" }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string; name?: string }) {
-  const chosen = chosenPlaces(filters);
-  if (!chosen.length) return <WhereSelect facets={facets} filters={filters} idPrefix={idPrefix} label={label} name={name} />;
-  const groups = placeGroups(facets, filters);
+function RepeatSelect({ name, label, idPrefix, chosen, groups, anyLabel, chooseLabel, addLabel, removeLabel, itemNoun, max }: {
+  name: string; label: string; idPrefix: string; chosen: string[]; groups: Group[];
+  anyLabel: string; chooseLabel: string; addLabel: string; removeLabel: string; itemNoun: string; max: number;
+}) {
   const options = (empty: string) => (
     <>
       <option value="">{empty}</option>
-      {groups.filter((g) => g.options.length).map((g) => (
-        <optgroup key={g.label} label={g.label}>
-          {g.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </optgroup>
-      ))}
+      {groups.length === 1 && !groups[0].label
+        ? groups[0].options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)
+        : groups.filter((g) => g.options.length).map((g) => (
+          <optgroup key={g.label} label={g.label}>
+            {g.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </optgroup>
+        ))}
     </>
   );
   return (
@@ -102,23 +107,50 @@ export function WhereFields({ facets, filters, idPrefix, label = "Where", name =
             id={`${idPrefix}-${name}-${i}`}
             name={name}
             defaultValue={v}
-            aria-label={chosen.length > 1 ? `${label}, place ${i + 1} of ${chosen.length}` : label}
+            aria-label={chosen.length > 1 ? `${label}, ${itemNoun} ${i + 1} of ${chosen.length}` : label}
             className={fieldCls}
             style={chevron}
           >
-            {options(chosen.length > 1 ? "Remove this place" : "Anywhere")}
+            {options(chosen.length > 1 ? removeLabel : anyLabel)}
           </select>
         ))}
-        {chosen.length < MAX_PLACES ? (
+        {chosen.length < max ? (
           <div>
-            <label htmlFor={`${idPrefix}-${name}-add`} className="mb-1 block text-xs text-slate">Add another place (jobs in any of them)</label>
+            <label htmlFor={`${idPrefix}-${name}-add`} className="mb-1 block text-xs text-slate">{addLabel}</label>
             <select id={`${idPrefix}-${name}-add`} name={name} defaultValue="" className={fieldCls} style={chevron}>
-              {options("Choose a place")}
+              {options(chooseLabel)}
             </select>
           </div>
         ) : null}
       </div>
     </fieldset>
+  );
+}
+
+/**
+ * "Where" for result pages and alerts, with room for several places (a listing in any of them
+ * matches). One select per chosen place, plus "Add another place" once one is chosen.
+ */
+export function WhereFields({ facets, filters, idPrefix, label = "Where", name = "where" }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string; name?: string }) {
+  const chosen = chosenPlaces(filters);
+  if (!chosen.length) return <WhereSelect facets={facets} filters={filters} idPrefix={idPrefix} label={label} name={name} />;
+  return (
+    <RepeatSelect name={name} label={label} idPrefix={idPrefix} chosen={chosen} groups={placeGroups(facets, filters)} max={MAX_PLACES}
+      anyLabel="Anywhere" chooseLabel="Choose a place" addLabel="Add another place (jobs in any of them)" removeLabel="Remove this place" itemNoun="place" />
+  );
+}
+
+/**
+ * Organization for result pages and alerts, with room for several (a listing at any of them
+ * matches), like WhereFields. Organizations without open jobs are left out, except the ones chosen.
+ */
+export function OrgFields({ facets, filters, idPrefix, name = "org", counts = true }: { facets: FacetData; filters: JobFilters; idPrefix: string; name?: string; counts?: boolean }) {
+  const chosen = filters.org ?? [];
+  const options = facets.orgs.filter((o) => o.count > 0 || chosen.includes(o.slug)).map((o) => ({ value: o.slug, label: counts ? withCount(o.name, o.count) : o.name }));
+  if (!chosen.length) return <Select idPrefix={idPrefix} name={name} label="Organization" all="Any organization" options={options} />;
+  return (
+    <RepeatSelect name={name} label="Organization" idPrefix={idPrefix} chosen={chosen} groups={[{ label: "", options }]} max={MAX_ORGS}
+      anyLabel="Any organization" chooseLabel="Choose an organization" addLabel="Add another organization (jobs at any of them)" removeLabel="Remove this organization" itemNoun="organization" />
   );
 }
 
@@ -267,7 +299,22 @@ function MoreToggle() {
   );
 }
 
-const moreIsOpen = (f: JobFilters) => Boolean(f.grade?.length || f.type || f.posted || f.closing || f.lang || f.exp || f.orgtype);
+const moreIsOpen = (f: JobFilters) => Boolean(f.grade?.length || f.type || f.posted || f.closing || f.lang || f.exp || f.orgtype || f.unstated);
+
+/**
+ * "Also show vacancies that don't state a grade": with a filter read from the posting's text in
+ * use, listings that don't state that detail are left out unless this is ticked (`unstated`).
+ */
+function UnstatedToggle({ filters, idPrefix }: { filters: JobFilters; idPrefix: string }) {
+  const derived = derivedFilters(filters);
+  if (!derived.length) return null;
+  return (
+    <label htmlFor={`${idPrefix}-unstated`} className="flex cursor-pointer items-start gap-2.5 text-[0.95rem] text-ink">
+      <input id={`${idPrefix}-unstated`} type="checkbox" name="unstated" value="1" defaultChecked={!!filters.unstated} className="mt-1 h-4 w-4 shrink-0 accent-[var(--accent)]" />
+      <span>Also show vacancies that don&apos;t state {andList(derived.map((k) => STATED_DETAIL[k]))}</span>
+    </label>
+  );
+}
 
 /** Homepage search: What / Where / Search; every other filter under "More filters" so jobs stay close to the top. */
 export function HeroSearch({ facets }: { facets: FacetData }) {
@@ -320,9 +367,7 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
         </div>
       ) : null}
       {!("country" in hidden) && !("region" in hidden) ? <WhereFields facets={facets} filters={filters} idPrefix={P} /> : null}
-      {!("org" in hidden) ? (
-        <Select idPrefix={P} name="org" label="Organization" value={filters.org} all="Any organization" options={facets.orgs.filter((o) => o.count > 0 || o.slug === filters.org).map((o) => ({ value: o.slug, label: withCount(o.name, o.count) }))} />
-      ) : null}
+      {!("org" in hidden) ? <OrgFields facets={facets} filters={filters} idPrefix={P} /> : null}
       {!("category" in hidden) ? (
         <Select idPrefix={P} name="category" label="Category" value={filters.category} all="Any category" options={facets.categories.filter((c) => c.count > 0 || c.slug === filters.category).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) }))} />
       ) : null}
@@ -344,6 +389,7 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
         <div className="mt-3 space-y-4">
           <GradeChecks facets={facets} filters={filters} idPrefix={P} />
           <MoreFilterFields idPrefix={P} filters={filters} facets={facets} hideOrgType={"orgtype" in hidden} />
+          <UnstatedToggle filters={filters} idPrefix={P} />
         </div>
       </details>
       <div className="flex items-center gap-3 pt-1">
@@ -372,8 +418,7 @@ export function WatchFieldset({ facets, filters, hint }: { facets: FacetData; fi
         <input id="watch-q" name="watch_q" type="text" defaultValue={filters.q ?? ""} maxLength={120} placeholder="e.g. data analyst, WASH, monitoring" className={fieldCls} autoComplete="off" />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Select idPrefix="watch" name="watch_org" label="Organization" value={filters.org} all="Any organization"
-          options={facets.orgs.filter((o) => o.count > 0 || o.slug === filters.org).map((o) => ({ value: o.slug, label: o.name }))} />
+        <OrgFields idPrefix="watch" name="watch_org" facets={facets} filters={filters} counts={false} />
         <WhereFields idPrefix="watch" name="watch_where" facets={facets} filters={filters} label="Location" />
       </div>
     </fieldset>

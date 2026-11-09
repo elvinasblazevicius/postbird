@@ -1,6 +1,7 @@
 /**
  * What the Apply button opens, said in plain words under it: "Opens IOM's recruitment system
- * (Oracle)", "Opens UNICEF's careers site" (with its address), "Opens an application form
+ * (Oracle)", "Opens UNICEF's careers site" (with its address), "Opens the careers site of Blue
+ * Ventures", "Opens an application form
  * (Google Forms)". The raw address is shown only when it is the organization's own website, never
  * for a recruitment service's long technical hostname (fa-evlj-saasfaprod1.fa.ocs.oraclecloud.com).
  */
@@ -65,6 +66,23 @@ export function recruitmentSystem(host: string, path = ""): { label: string; kin
 const KNOWN_BY_NAME = new Map<string, KnownOrg>();
 for (const o of KNOWN_ORGS) for (const n of [o.name, o.short, ...(o.aliases ?? [])]) if (n && !KNOWN_BY_NAME.has(normalizeForCompare(n))) KNOWN_BY_NAME.set(normalizeForCompare(n), o);
 
+/** The known organization (src/config/organizations.ts) with this name or short name, if any. */
+export function knownOrg(orgName: string | null | undefined, orgShort: string | null | undefined): KnownOrg | undefined {
+  return (orgName ? KNOWN_BY_NAME.get(normalizeForCompare(orgName)) : undefined) ?? (orgShort ? KNOWN_BY_NAME.get(normalizeForCompare(orgShort)) : undefined);
+}
+
+/**
+ * The organization's own site for its page, from its known domains: a careers host
+ * ("careers.un.org", "eu-careers.europa.eu") when one is listed, otherwise its main domain. `careers`
+ * says which, so the link is named for what it is. Null when the organization has no known domain.
+ */
+export function officialSite(orgName: string | null | undefined, orgShort: string | null | undefined): { href: string; host: string; careers: boolean } | null {
+  const domains = knownOrg(orgName, orgShort)?.domains ?? [];
+  const careersHost = domains.find((d) => /(^|[.-])(careers?|jobs)([.-]|$)/.test(d));
+  const host = careersHost ?? domains[0];
+  return host ? { href: `https://${host}`, host, careers: Boolean(careersHost) } : null;
+}
+
 /**
  * Is this hostname the organization's own website? Its listed career domains (src/config/organizations.ts)
  * when it is a known organization, or a domain whose name clearly matches the organization's
@@ -73,16 +91,29 @@ for (const o of KNOWN_ORGS) for (const n of [o.name, o.short, ...(o.aliases ?? [
 export function isOrgOwnHost(host: string, orgName: string | null | undefined, orgShort: string | null | undefined): boolean {
   const h = cleanHost(host);
   if (!h || !orgName || recruitmentSystem(h)) return false;
-  const known = KNOWN_BY_NAME.get(normalizeForCompare(orgName)) ?? (orgShort ? KNOWN_BY_NAME.get(normalizeForCompare(orgShort)) : undefined);
+  const known = knownOrg(orgName, orgShort);
   if (known?.domains?.length && endsWithHost(h, known.domains)) return true;
   return domainMatchesOrg(siteDomain(h), orgName, orgShort);
 }
 
-/** "IOM's", "the World Bank's", "the UN's"; "the employer's" when the organization isn't known. */
-function possessive(orgName: string | null | undefined, orgShort: string | null | undefined): string {
+/**
+ * How the organization is named as an owner: "IOM’s", "the World Bank’s", "the UN’s"; "the
+ * employer’s" when the organization isn't known. A name ending in "s" (Blue Ventures, Médecins
+ * Sans Frontières) or longer than three words (not counting "the") reads badly with "’s", so it
+ * takes "of" instead: `of` is then set and `pre` is null ("the careers site of Blue Ventures").
+ */
+export function possessive(orgName: string | null | undefined, orgShort: string | null | undefined): { pre: string; of: null } | { pre: null; of: string } {
   const ref = orgInText(orgName, orgShort);
-  if (!ref) return "the employer’s";
-  return `${ref === "UN" ? "the UN" : ref}’s`;
+  if (!ref) return { pre: "the employer’s", of: null };
+  const name = ref === "UN" ? "the UN" : ref;
+  const words = name.replace(/^the\s+/i, "").split(/\s+/).filter(Boolean);
+  if (/s$/i.test(name) || words.length > 3) return { pre: null, of: name };
+  return { pre: `${name}’s`, of: null };
+}
+
+/** "IOM’s careers site", "the careers site of Blue Ventures". */
+function owned(thing: string, owner: ReturnType<typeof possessive>): string {
+  return owner.of ? `the ${thing} of ${owner.of}` : `${owner.pre} ${thing}`;
 }
 
 export type ApplyTarget = { text: string; host: string | null };
@@ -101,9 +132,9 @@ export function applyTarget(opts: { url: string; host: string; orgName: string |
   const whose = possessive(opts.orgName, opts.orgShort);
   const system = recruitmentSystem(opts.host, path);
   if (system?.kind === "form") return { text: `Opens an application form (${system.label})`, host: null };
-  if (system) return { text: `Opens ${whose} recruitment system (${system.label})`, host: null };
+  if (system) return { text: `Opens ${owned("recruitment system", whose)} (${system.label})`, host: null };
   if (isOrgOwnHost(opts.host, opts.orgName, opts.orgShort)) {
-    return { text: `Opens ${whose} ${opts.homepage ? "careers page" : "careers site"}`, host: cleanHost(opts.host) };
+    return { text: `Opens ${owned(opts.homepage ? "careers page" : "careers site", whose)}`, host: cleanHost(opts.host) };
   }
   return { text: `Opens ${opts.homepage ? "the employer’s careers page" : "the vacancy on the employer’s website"}`, host: null };
 }

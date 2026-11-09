@@ -142,16 +142,20 @@ describe.skipIf(!TEST_DB)("billing safety (database)", () => {
     });
 
     it("had_plan() in SQL agrees with hadTrialBefore() on every combination of the plan fields", async () => {
-      const cases: { confirmed: boolean; sub: boolean; status: string; trial: boolean; canceled: boolean }[] = [];
+      // unc: the trial canceled for want of confirmation (unconfirmed_trial_sub): none, this row's subscription, or another one.
+      const cases: { confirmed: boolean; sub: boolean; status: string; trial: boolean; canceled: boolean; unc: string }[] = [];
       for (const confirmed of [false, true]) for (const sub of [false, true]) for (const status of ["none", "trialing", "active", "past_due", "paused", "canceled"])
-        for (const trial of [false, true]) for (const canceled of [false, true]) cases.push({ confirmed, sub, status, trial, canceled });
+        for (const trial of [false, true]) for (const canceled of [false, true]) for (const unc of ["none", "same", "other"]) cases.push({ confirmed, sub, status, trial, canceled, unc });
       const rows = await sql`
-        insert into subscribers (email, status, confirmed_at, paddle_subscription_id, billing_status, trial_ends_at, canceled_at, unsubscribe_token)
+        insert into subscribers (email, status, confirmed_at, paddle_subscription_id, billing_status, trial_ends_at, canceled_at, unconfirmed_trial_sub, unsubscribe_token)
         select 'hadplan-' || i || '@example.org', 'pending', case when c then now() end, case when s then 'sub_hadplan_' || i end, b,
-               case when t then now() end, case when x then now() end, 'unsub-hadplan-' || lpad(i::text, 6, '0') || '-xxxxxxxx'
+               case when t then now() end, case when x then now() end,
+               case u when 'same' then 'sub_hadplan_' || i when 'other' then 'sub_hadplan_other' end,
+               'unsub-hadplan-' || lpad(i::text, 6, '0') || '-xxxxxxxx'
         from unnest(${cases.map((_, i) => i)}::int[], ${cases.map((c) => c.confirmed)}::bool[], ${cases.map((c) => c.sub)}::bool[],
-                    ${cases.map((c) => c.status)}::text[], ${cases.map((c) => c.trial)}::bool[], ${cases.map((c) => c.canceled)}::bool[]) as u(i, c, s, b, t, x)
-        returning email, confirmed_at, paddle_subscription_id, billing_status, trial_ends_at, canceled_at, had_plan(subscribers) as sql_had_plan`;
+                    ${cases.map((c) => c.status)}::text[], ${cases.map((c) => c.trial)}::bool[], ${cases.map((c) => c.canceled)}::bool[],
+                    ${cases.map((c) => c.unc)}::text[]) as u(i, c, s, b, t, x, u)
+        returning email, confirmed_at, paddle_subscription_id, billing_status, trial_ends_at, canceled_at, unconfirmed_trial_sub, had_plan(subscribers) as sql_had_plan`;
       expect(rows).toHaveLength(cases.length);
       for (const r of rows) expect([r.email, r.sql_had_plan]).toEqual([r.email, billing.hadTrialBefore(r)]);
       // Both answers occur, so the comparison means something.
@@ -166,10 +170,10 @@ describe.skipIf(!TEST_DB)("billing safety (database)", () => {
       expect(first).toMatchObject({ ok: true, trial: true });
       // A second tab, straight away: refused, with a neutral reply.
       expect(await billing.startCheckout({ email: "two-tabs@example.org", plan: "quarterly", search: null }))
-        .toEqual({ ok: false, error: "Your checkout is already open. If you closed it, try again in a few minutes." });
+        .toEqual({ ok: false, error: "Your checkout is already open. If you closed it, try again in 5 minutes." });
       expect(links.checkoutReply({ ok: false, error: billing.CHECKOUT_ALREADY_OPEN }, "quarterly")).toEqual({ status: "error", message: billing.CHECKOUT_ALREADY_OPEN });
-      // 30 minutes later (the first checkout was closed without paying) a new one is prepared.
-      await sql`update paddle_checkouts set created_at = now() - interval '31 minutes' where ref = ${(first as { ref: string }).ref}`;
+      // 5 minutes later (the first checkout was closed without paying) a new one is prepared.
+      await sql`update paddle_checkouts set created_at = now() - interval '6 minutes' where ref = ${(first as { ref: string }).ref}`;
       const second = await billing.startCheckout({ email: "two-tabs@example.org", plan: "quarterly", search: null });
       expect(second).toMatchObject({ ok: true, trial: true });
 
@@ -183,7 +187,11 @@ describe.skipIf(!TEST_DB)("billing safety (database)", () => {
       expect(await postEvent(subEvent("subscription.created", trialing(subB, customer, (second as { ref: string }).ref)))).toBe("flagged");
       await settle();
       expect(paddleCalls).toEqual([`POST /subscriptions/${subB}/cancel`]);
-      expect(sent).toHaveLength(0);
+      // Once Paddle confirmed the cancel, one short note to the customer about the refund.
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toMatchObject({ to: "two-tabs@example.org", subject: "We canceled a duplicate plan", key: `duplicate-plan:${subB}` });
+      expect(sent[0].text).toContain("reply to this email and we'll refund the charge");
+      sent.length = 0;
       const [s] = await sql`select paddle_subscription_id, billing_status from subscribers where email = 'two-tabs@example.org'`;
       expect(s).toEqual({ paddle_subscription_id: subA, billing_status: "trialing" });
       const [f] = await sql`select kind, detail, cancel_done_at from billing_flags where subscription_id = ${subB}`;
@@ -195,6 +203,10 @@ describe.skipIf(!TEST_DB)("billing safety (database)", () => {
       expect(await postEvent(subEvent("subscription.canceled", { ...trialing(subB, customer, (second as { ref: string }).ref), status: "canceled", canceled_at: inDays(0) }))).toBe("flagged");
       await settle();
       expect(paddleCalls).toEqual([]);
+      expect(sent).toHaveLength(0);
+      // A later cancel retry for the same flag doesn't email again.
+      expect(await billing.cancelFlaggedSubscription(subB, "duplicate_subscription")).toBe(true);
+      expect(sent).toHaveLength(0);
       expect((await sql`select paddle_subscription_id from subscribers where email = 'two-tabs@example.org'`)[0].paddle_subscription_id).toBe(subA);
     });
 
@@ -205,8 +217,12 @@ describe.skipIf(!TEST_DB)("billing safety (database)", () => {
       const t1 = await links.createCheckoutLink(r.id, { plan: "monthly", search: null });
       const t2 = await links.createCheckoutLink(r.id, { plan: "monthly", search: null });
       const c1 = await links.continueCheckout(t1, "monthly");
-      const c2 = await links.continueCheckout(t2, "monthly");
       expect(c1).toMatchObject({ ok: true, trial: true });
+      // The second link straight away: refused while the first checkout may be open, and given back.
+      expect(await links.continueCheckout(t2, "monthly")).toEqual({ ok: false, error: billing.CHECKOUT_ALREADY_OPEN });
+      // Over 5 minutes later it works (and here both checkouts are paid after all).
+      await sql`update paddle_checkouts set created_at = now() - interval '6 minutes' where ref = ${(c1 as { ref: string }).ref}`;
+      const c2 = await links.continueCheckout(t2, "monthly");
       expect(c2).toMatchObject({ ok: true, trial: true });
       const subA = "sub_01hv8x29kz0t586xy6zn1a7s11", subB = "sub_01hv8x29kz0t586xy6zn1a7s12";
       const customer = "ctm_01hv6y1jedq4p1n0yqn5ba3s02";
@@ -304,6 +320,117 @@ describe.skipIf(!TEST_DB)("billing safety (database)", () => {
       await sql`update subscribers set trial_ends_at = now() + interval '2.5 days' where id = ${r.id}`;
       expect(await notices.runTrialReminders()).toEqual({ sent: 0, failed: 0 });
       await sql`delete from subscribers where id = ${r.id}`;
+    });
+
+    it("a trial canceled for want of confirmation doesn't use up the free trial, even if the owner confirms later", async () => {
+      const subId = "sub_01hv8x29kz0t586xy6zn1a7w01";
+      const [r] = await sql`
+        insert into subscribers (email, status, confirm_token, billing_status, plan, plan_interval, paddle_subscription_id, trial_ends_at, confirm_sent_at, unsubscribe_token)
+        values ('late-confirm@example.org', 'pending', ${"confirm-lateconfirm".padEnd(24, "x")}, 'trialing', 'premium', 'month', ${subId},
+                now() + interval '1 day', now() - interval '13 days', ${tok("late-confirm@example.org")})
+        returning id::int as id`;
+      // A second one whose owner also signed up for the weekly email (that sign-up shares the token).
+      const subId2 = "sub_01hv8x29kz0t586xy6zn1a7w02";
+      await sql`
+        insert into subscribers (email, status, confirm_token, pending_changes, billing_status, plan, plan_interval, paddle_subscription_id, trial_ends_at, confirm_sent_at, unsubscribe_token)
+        values ('late-weekly@example.org', 'pending', ${"confirm-lateweekly".padEnd(24, "x")}, '{"weekly_search": ""}', 'trialing', 'premium', 'month', ${subId2},
+                now() + interval '1 day', now() - interval '13 days', ${tok("late-weekly@example.org")})`;
+      expect((await billing.runBillingSafety() as { unconfirmed: unknown }).unconfirmed).toEqual({ canceled: 2, failed: 0 });
+      const [after] = await sql`select confirm_token, unconfirmed_trial_sub from subscribers where id = ${r.id}`;
+      expect(after).toEqual({ confirm_token: null, unconfirmed_trial_sub: subId });
+      // The weekly sign-up's link keeps working.
+      expect((await sql`select confirm_token from subscribers where email = 'late-weekly@example.org'`)[0].confirm_token).not.toBeNull();
+      expect(await postEvent(subEvent("subscription.canceled", { ...trialing(subId, "", null, 1), status: "canceled", canceled_at: inDays(0) }))).toBe("applied");
+      expect((await sql`select confirm_token from subscribers where id = ${r.id}`)[0].confirm_token).toBeNull();
+
+      // The owner signs up for the weekly email later and confirms: the trial is offered again.
+      const subscribers = await import("@/lib/subscribers");
+      await subscribers.signup({ email: "late-confirm@example.org", kind: "alerts", weeklySearch: "" });
+      const [{ confirm_token }] = await sql`select confirm_token from subscribers where id = ${r.id}`;
+      const actions = await import("@/app/actions");
+      const fd = new FormData();
+      fd.set("token", confirm_token);
+      expect(await actions.confirmAction({ status: "idle", message: "" }, fd)).toEqual({
+        status: "success",
+        message: "Your trial was canceled because the address wasn't confirmed in time. You can start it again. Your weekly email comes on Mondays, and only when there are new vacancies that match your search.",
+        link: { href: "/pricing/trial", label: "Start the free trial" },
+      });
+      const [row] = await sql`
+        select confirmed_at, paddle_subscription_id, billing_status, trial_ends_at, canceled_at, unconfirmed_trial_sub, had_plan(subscribers) as sql_had_plan
+        from subscribers where id = ${r.id}`;
+      expect(row.confirmed_at).not.toBeNull();
+      expect(row.sql_had_plan).toBe(false);
+      expect(billing.hadTrialBefore(row)).toBe(false);
+      // Now confirmed, so the public form sends the trial through the address's inbox.
+      expect(await billing.startCheckout({ email: "late-confirm@example.org", plan: "monthly", search: null }))
+        .toEqual({ ok: true, inbox: true, email: "late-confirm@example.org", subscriberId: r.id, live: false });
+      await sql`delete from subscribers where email in ('late-confirm@example.org', 'late-weekly@example.org')`;
+    });
+  });
+
+  describe("the public trial form", () => {
+    it("gives the same visitor its open checkout back; anyone else waits 5 minutes", async () => {
+      const first = await billing.startCheckout({ email: "reopen@example.org", plan: "monthly", search: null, visitor: "visitor-a" });
+      expect(first).toMatchObject({ ok: true, trial: true });
+      const ref = (first as { ref: string }).ref;
+      const again = await billing.startCheckout({ email: "reopen@example.org", plan: "quarterly", search: "q=nurse", visitor: "visitor-a" });
+      expect(again).toEqual({ ok: true, ref, email: "reopen@example.org", trial: true });
+      expect((await sql`select plan, search from paddle_checkouts where ref = ${ref}`)[0]).toEqual({ plan: "quarterly", search: "q=nurse" });
+      expect(await sql`select 1 from paddle_checkouts c join subscribers s on s.id = c.subscriber_id where s.email = 'reopen@example.org'`).toHaveLength(1);
+      expect(await billing.startCheckout({ email: "reopen@example.org", plan: "monthly", search: null, visitor: "visitor-b" }))
+        .toEqual({ ok: false, error: "Your checkout is already open. If you closed it, try again in 5 minutes." });
+      expect(await billing.startCheckout({ email: "reopen@example.org", plan: "monthly", search: null }))
+        .toEqual({ ok: false, error: billing.CHECKOUT_ALREADY_OPEN });
+    });
+
+    it("a confirmed address that never had a plan gets “check your inbox”, and its trial through the emailed link", async () => {
+      const [r] = await sql`
+        insert into subscribers (email, status, confirmed_at, weekly_email, unsubscribe_token)
+        values ('weekly-reader@example.org', 'confirmed', now() - interval '30 days', true, ${tok("weekly-reader@example.org")})
+        returning id::int as id`;
+      const res = await billing.startCheckout({ email: "weekly-reader@example.org", plan: "quarterly", search: null, visitor: "stranger" });
+      expect(res).toEqual({ ok: true, inbox: true, email: "weekly-reader@example.org", subscriberId: r.id, live: false });
+      expect(links.checkoutReply(res, "quarterly")).toEqual({ status: "inbox", message: links.CHECK_INBOX });
+      // Nothing was prepared for Paddle from the public form.
+      expect(await sql`select 1 from paddle_checkouts where subscriber_id = ${r.id}`).toHaveLength(0);
+      sent.length = 0;
+      expect(await links.sendCheckoutLink({ subscriberId: r.id, email: "weekly-reader@example.org", live: false }, { plan: "quarterly", search: null })).toBe(true);
+      const token = sent[0].text.match(/\/account\/continue\?token=([\w-]+)/)![1];
+      expect(await links.findCheckoutLink(token)).toEqual({ email: "weekly-reader@example.org", plan: "quarterly", state: "new" });
+      const c = await links.continueCheckout(token, "quarterly");
+      expect(c).toMatchObject({ ok: true, trial: true, transactionId: null });
+      expect((await sql`select trial_allowed, address_proven from paddle_checkouts where ref = ${(c as { ref: string }).ref}`)[0])
+        .toEqual({ trial_allowed: true, address_proven: true });
+      await sql`delete from subscribers where id = ${r.id}`;
+    });
+  });
+
+  describe("daily job heartbeat", () => {
+    it("is stored by a successful run of /api/cron/digest (billing safety first) and reported by /api/health as a yes/no only", async () => {
+      const heartbeat = await import("@/lib/heartbeat");
+      const { GET: health } = await import("@/app/api/health/route");
+      await sql`delete from settings where key in (${heartbeat.DAILY_JOB_KEY}, ${heartbeat.BILLING_SAFETY_KEY})`;
+      expect((await (await health()).json()).dailyJobFresh).toBe(false);
+      expect(await heartbeat.readDailyJob()).toEqual({ at: null, billing: null });
+
+      process.env.CRON_SECRET = "test-cron-secret-0123456789abcdef";
+      try {
+        const { GET } = await import("@/app/api/cron/digest/route");
+        const res = await GET(new Request("http://localhost/api/cron/digest", { headers: { authorization: `Bearer ${process.env.CRON_SECRET}` } }));
+        expect(res.status).toBe(200);
+        expect((await res.json()).billing).toEqual({ unconfirmed: { canceled: 0, failed: 0 }, cancelRetries: { canceled: 0, failed: 0 }, customers: { verified: 0, mismatch: 0, unverified: 0 } });
+      } finally {
+        delete process.env.CRON_SECRET;
+      }
+      const job = await heartbeat.readDailyJob();
+      expect(heartbeat.dailyJobFresh(job.at)).toBe(true);
+      expect(job.billing).toMatchObject({ unconfirmed: { canceled: 0, failed: 0 } });
+      const body = await (await health()).json();
+      expect(body.dailyJobFresh).toBe(true);
+      expect(JSON.stringify(body)).not.toMatch(/unconfirmed|cancel/);
+      // Over 26 hours without a run: stale.
+      await sql`update settings set value = ${new Date(Date.now() - 27 * 3600_000).toISOString()} where key = ${heartbeat.DAILY_JOB_KEY}`;
+      expect((await (await health()).json()).dailyJobFresh).toBe(false);
     });
   });
 

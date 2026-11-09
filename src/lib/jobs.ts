@@ -4,6 +4,7 @@ import { GRADE_GROUPS, LANGUAGES, ORG_TYPES, REGIONS, regionBySlug } from "@/con
 import { LISTING_SETTINGS } from "@/config/import";
 import { countriesInLocation, DROP_CHARS, FOLD_FROM, FOLD_TO, locationPatterns } from "@/lib/country-match";
 import { sql, transaction } from "@/lib/db";
+import { logoProtectedSql } from "@/lib/feeds/logos";
 import { GENERAL_SERVICE_TITLE_SQL, LOCAL_ONLY_GRADE_SQL, LOCAL_ONLY_TITLE_SQL, NATIONAL_OFFICER_TITLE_SQL, PROFESSIONAL_TITLE_SQL } from "@/lib/grades";
 import { categoriesForWord, foldText, interpretQuery, orgNamesForTerm, placeVariants, searchTerms, wordPattern } from "@/lib/search-intent";
 
@@ -59,7 +60,8 @@ export const EXPERIENCE_BANDS = [
 
 export type JobFilters = {
   q?: string;
-  org?: string;
+  /** Organization slugs; a listing at any of them matches. Sorted, no repeats. */
+  org?: string[];
   /** Country slugs; several are matched as "any of them" together with `region` (one "where" filter). Sorted, no repeats. */
   country?: string[];
   /** Region slugs (see `country`). Sorted, no repeats. */
@@ -76,6 +78,11 @@ export type JobFilters = {
   closing?: "7" | "30";
   /** Leave out posts usually open only to nationals or residents of the duty-station country (see src/lib/grades.ts). */
   hidelocal?: boolean;
+  /**
+   * With the grade, experience, language or contract-type filter: also match listings that don't
+   * state that detail (see DERIVED_FILTERS). Kept only while one of those filters is in use.
+   */
+  unstated?: boolean;
   sort?: "newest" | "deadline" | "relevance";
   page?: number;
   /** Email alerts only (never read from the URL): first seen after / up to these times, and no demo listings. */
@@ -120,8 +127,8 @@ export function parseFilters(sp: SP): JobFilters {
   const f: JobFilters = {};
   const q = first(sp.q);
   if (q) f.q = q.slice(0, 120);
-  const org = first(sp.org);
-  if (org && /^[a-z0-9-]{1,80}$/.test(org)) f.org = org;
+  const orgs = every(sp.org).filter((org) => /^[a-z0-9-]{1,80}$/.test(org));
+  if (orgs.length) f.org = tidyList(orgs);
   // "where" is the combined region/country field used by the search forms; it, "country", "region"
   // and "grade" may be repeated (where=kenya&where=uganda): a listing then matches any of them.
   const countries: string[] = [];
@@ -152,6 +159,7 @@ export function parseFilters(sp: SP): JobFilters {
   const closing = first(sp.closing);
   if (closing === "7" || closing === "30") f.closing = closing;
   if (first(sp.hidelocal) === "1") f.hidelocal = true;
+  if (first(sp.unstated) === "1" && derivedFilters(f).length) f.unstated = true;
   const sort = first(sp.sort);
   if (sort === "deadline" || sort === "relevance" || sort === "newest") f.sort = sort;
   const page = Number(first(sp.page));
@@ -163,7 +171,7 @@ export function parseFilters(sp: SP): JobFilters {
 export function jobsUrl(f: JobFilters, base = "/jobs"): string {
   const p = new URLSearchParams();
   if (f.q) p.set("q", f.q);
-  if (f.org) p.set("org", f.org);
+  for (const o of f.org ?? []) p.append("org", o);
   for (const c of f.country ?? []) p.append("country", c);
   for (const r of f.region ?? []) p.append("region", r);
   for (const g of f.grade ?? []) p.append("grade", g);
@@ -176,6 +184,7 @@ export function jobsUrl(f: JobFilters, base = "/jobs"): string {
   if (f.posted) p.set("posted", f.posted);
   if (f.closing) p.set("closing", f.closing);
   if (f.hidelocal) p.set("hidelocal", "1");
+  if (f.unstated && derivedFilters(f).length) p.set("unstated", "1");
   // With keywords "Best match" is the default order, so "Newest" has to be in the URL then.
   if (f.sort && (f.sort !== "newest" || f.q)) p.set("sort", f.sort);
   if (f.page && f.page > 1) p.set("page", String(f.page));
@@ -183,10 +192,10 @@ export function jobsUrl(f: JobFilters, base = "/jobs"): string {
   return s ? `${base}?${s}` : base;
 }
 
-/** How many filters are in use; each place and each grade of a multiple choice counts once. */
+/** How many filters are in use; each place, grade and organization of a multiple choice counts once. */
 export function activeFilterCount(f: JobFilters): number {
-  const multi = (f.country?.length ?? 0) + (f.region?.length ?? 0) + (f.grade?.length ?? 0);
-  return multi + [f.q, f.org, f.orgtype, f.lang, f.exp, f.category, f.remote, f.type, f.posted, f.closing, f.hidelocal].filter(Boolean).length;
+  const multi = (f.country?.length ?? 0) + (f.region?.length ?? 0) + (f.grade?.length ?? 0) + (f.org?.length ?? 0);
+  return multi + [f.q, f.orgtype, f.lang, f.exp, f.category, f.remote, f.type, f.posted, f.closing, f.hidelocal].filter(Boolean).length;
 }
 
 /** A listing is shown while active and not past its published closing date (checked at query time, between syncs). */
@@ -205,6 +214,7 @@ export function withSearchIntent(f: JobFilters): JobFilters {
     remote: f.remote || i.remote || undefined,
     type: f.type ?? i.type,
     grade: f.grade?.length ? f.grade : i.grade ? [i.grade] : undefined,
+    lang: f.lang ?? i.lang,
     country: f.country?.length ? f.country : f.region?.length || !i.country ? undefined : [i.country],
     sort: !i.text && f.sort === "relevance" ? undefined : f.sort,
   };
@@ -212,7 +222,7 @@ export function withSearchIntent(f: JobFilters): JobFilters {
 
 const listColumns = () => sql`
   j.id::int as id, j.slug, j.title, o.name as org_name, o.slug as org_slug, o.short_name as org_short,
-  case when o.logo is not null and coalesce(o.org_type, '') not in ('UN system', 'EU institution') then o.slug end as org_logo,
+  case when o.logo is not null and not ${logoProtectedSql("o")} then o.slug end as org_logo,
   j.country_code, j.city, j.location_text, j.is_remote, j.category, j.job_type, j.grade,
   j.published_at, j.first_seen_at, j.deadline::text as deadline, j.status, j.is_demo`;
 
@@ -230,6 +240,20 @@ export function placeCondition(codes: string[]): Frag {
   const p = locationPatterns(codes);
   if (!p) return sql`j.country_code = any(${codes})`;
   return sql`(j.country_code = any(${codes}) or regexp_replace(${placeText()}, ${p.strip}, ' ', 'g') ~ ${p.match})`;
+}
+
+/**
+ * Filters read from the text of a posting (grade, experience, languages, contract type). A posting
+ * that doesn't state the detail can't match them, so they leave such listings out unless
+ * `unstated` is set.
+ */
+export const DERIVED_FILTERS = ["grade", "exp", "lang", "type"] as const;
+export type DerivedFilter = (typeof DERIVED_FILTERS)[number];
+
+/** The derived filters in use, including those read from the search words ("p3", "internship", "french"). */
+export function derivedFilters(f: JobFilters): DerivedFilter[] {
+  const read = withSearchIntent(f);
+  return DERIVED_FILTERS.filter((k) => (k === "grade" ? Boolean(read.grade?.length) : Boolean(read[k])));
 }
 
 /** The filters a visitor can set (and remove one at a time). */
@@ -340,11 +364,23 @@ function gradeCondition(grade: string): Frag {
   return sql`j.grade = ${grade}`;
 }
 
+/**
+ * A listing that doesn't state the detail a derived filter reads: no grade (nor a grade group in
+ * its title, see gradeKey), no years of experience, no language besides English (required or
+ * desirable), no contract type.
+ */
+const UNSTATED: Record<DerivedFilter, () => Frag> = {
+  grade: () => sql`${gradeKey()} is null`,
+  exp: () => sql`j.min_experience_years is null`,
+  lang: () => sql`(coalesce(cardinality(j.languages), 0) = 0 and coalesce(cardinality(j.desirable_languages), 0) = 0)`,
+  type: () => sql`j.job_type is null`,
+};
+
 /** The SQL condition for each filter that is set, keyed by filter. */
 function filterConditions(f: JobFilters, mode: MatchMode = "all"): Partial<Record<FilterKey, Frag>> {
   const c: Partial<Record<FilterKey, Frag>> = {};
   if (f.q) c.q = textCondition(f.q, mode);
-  if (f.org) c.org = sql`o.slug = ${f.org}`;
+  if (f.org?.length) c.org = sql`o.slug = any(${f.org})`;
   if (f.country?.length || f.region?.length) {
     // Any of the chosen countries and regions (one "where" filter).
     const codes = [
@@ -353,16 +389,18 @@ function filterConditions(f: JobFilters, mode: MatchMode = "all"): Partial<Recor
     ];
     c.where = codes.length ? placeCondition([...new Set(codes)]) : sql`false`;
   }
-  if (f.grade?.length) c.grade = sql`(${f.grade.map(gradeCondition).reduce((a, b) => sql`${a} or ${b}`)})`;
+  // With `unstated`, each derived filter also matches listings that don't state the detail (UNSTATED).
+  const orUnstated = (k: DerivedFilter, cond: Frag) => (f.unstated ? sql`(${cond} or ${UNSTATED[k]()})` : cond);
+  if (f.grade?.length) c.grade = orUnstated("grade", sql`(${f.grade.map(gradeCondition).reduce((a, b) => sql`${a} or ${b}`)})`);
   if (f.orgtype) c.orgtype = sql`o.org_type = ${ORG_TYPES.find((o) => o.value === f.orgtype)?.type ?? "--"}`;
-  if (f.lang) c.lang = sql`${f.lang} = any(j.languages)`;
+  if (f.lang) c.lang = orUnstated("lang", sql`${f.lang} = any(j.languages)`);
   if (f.exp) {
     const band = EXPERIENCE_BANDS.find((b) => b.value === f.exp)!;
-    c.exp = sql`j.min_experience_years between ${band.min} and ${band.max}`;
+    c.exp = orUnstated("exp", sql`j.min_experience_years between ${band.min} and ${band.max}`);
   }
   if (f.category) c.category = sql`j.category = ${f.category}`;
   if (f.remote) c.remote = sql`j.is_remote is true`;
-  if (f.type) c.type = sql`j.job_type = ${f.type}`;
+  if (f.type) c.type = orUnstated("type", sql`j.job_type = ${f.type}`);
   if (f.posted) c.posted = sql`coalesce(j.published_at, j.first_seen_at) >= now() - make_interval(days => ${Number(f.posted)})`;
   if (f.closing) c.closing = sql`j.deadline is not null and j.deadline <= (now() at time zone 'utc')::date + ${Number(f.closing)}::int`;
   // Same rule as isLocalOnly() in src/lib/grades.ts: the parsed grade, or words in the title.
@@ -395,9 +433,9 @@ export async function searchJobs(input: JobFilters, pageSize: number = LISTING_S
   const run = async (mode: MatchMode) => {
     const where = whereFor(f, mode);
     const order =
-      sort === "deadline" ? sql`j.deadline asc nulls last, coalesce(j.published_at, j.first_seen_at) desc` :
+      sort === "deadline" ? sql`j.deadline asc nulls last, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
       sort === "relevance" && f.q && mode === "any"
-        ? sql`(${searchWords(f.q).map((t) => sql`(${wordCondition(t)})::int * 2 + (${looseWordCondition(t)})::int`).reduce((a, b) => sql`${a} + ${b}`)}) desc, coalesce(j.published_at, j.first_seen_at) desc` :
+        ? sql`(${searchWords(f.q).map((t) => sql`(${wordCondition(t)})::int * 2 + (${looseWordCondition(t)})::int`).reduce((a, b) => sql`${a} + ${b}`)}) desc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
       sort === "relevance" && f.q ? sql`ts_rank(j.search_folded, ${rankQuery(f.q)}) desc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
       sql`coalesce(j.published_at, j.first_seen_at) desc, j.id desc`;
     // Each in its own short transaction, which carries the statement time limit (see
@@ -423,6 +461,16 @@ export async function searchJobs(input: JobFilters, pageSize: number = LISTING_S
     }
   }
   return { ...res, page, pageSize, pages: Math.max(1, Math.ceil(res.total / pageSize)), sort, matchMode };
+}
+
+/**
+ * How many listings these filters match, with the match mode the results used (see searchJobs).
+ * For "{N} more don't state one": the same filters with `unstated`, less the results shown.
+ */
+export async function countJobs(input: JobFilters, mode: MatchMode = "all"): Promise<number> {
+  const where = whereFor(withSearchIntent(input), mode);
+  const [r] = await transaction(async (tx) => await tx<{ n: number }[]>`select count(*)::int as n from jobs j left join organizations o on o.id = j.organization_id where ${where}`);
+  return r.n;
 }
 
 /**
@@ -497,20 +545,15 @@ export async function searchSuggestion(q: string | undefined): Promise<{ q: stri
 
 /**
  * The newest open listings ("Recently posted" on the home page, the alert example, the fallback
- * under empty results): posts open to international applicants first, local-only ones (the same
- * rule as the "Hide local-only posts" filter) after them; within each, recent UN system posts first.
- * That order only picks WHICH listings are shown: they are returned newest first, as a list headed
- * "Recently posted" reads.
+ * under empty results), picked and returned purely newest first (posting date, or first seen when
+ * the source gives none), so a list headed "Recently posted" is literally that.
  */
 export async function latestJobs(limit = 8) {
-  const rows = await sql<JobListItem[]>`
+  return sql<JobListItem[]>`
     select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
     where ${isOpen()}
-    order by (coalesce(j.grade, '') ~ ${LOCAL_ONLY_GRADE_SQL} or lower(j.title) ~ ${LOCAL_ONLY_TITLE_SQL}) asc,
-             (o.org_type = 'UN system' and coalesce(j.published_at, j.first_seen_at) >= now() - interval '10 days') desc nulls last,
-             coalesce(j.published_at, j.first_seen_at) desc, j.id desc
+    order by coalesce(j.published_at, j.first_seen_at) desc, j.id desc
     limit ${limit}`;
-  return newestFirst([...rows]);
 }
 
 /** Listings newest first (posting date, or first seen when the source gives none; then the newer id). */
@@ -559,7 +602,7 @@ export async function closingSoonJobs(limit = 6) {
   return sql<JobListItem[]>`
     select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
     where ${isOpen()} and j.deadline is not null and j.deadline <= (now() at time zone 'utc')::date + 14
-    order by j.deadline asc, coalesce(j.published_at, j.first_seen_at) desc limit ${limit}`;
+    order by j.deadline asc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc limit ${limit}`;
 }
 
 export async function getJob(id: number): Promise<JobDetail | null> {
@@ -590,14 +633,14 @@ export async function similarJobs(job: JobDetail, limit = 4) {
   return sql<JobListItem[]>`
     select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
     where ${isOpen()} and j.id <> ${job.id} and (j.category = ${job.category} or o.slug = ${job.org_slug ?? "--"})
-    order by (o.slug = ${job.org_slug ?? "--"}) desc nulls last, coalesce(j.published_at, j.first_seen_at) desc limit ${limit}`;
+    order by (o.slug = ${job.org_slug ?? "--"}) desc nulls last, coalesce(j.published_at, j.first_seen_at) desc, j.id desc limit ${limit}`;
 }
 
 // ── Facets & stats ───────────────────────────────────────────
 
 export async function organizationFacets(limit = 500, includeDemo = true) {
   return sql<{ slug: string; name: string; short_name: string | null; org_type: string | null; logo: string | null; count: number }[]>`
-    select o.slug, o.name, o.short_name, o.org_type, case when o.logo is not null and coalesce(o.org_type, '') not in ('UN system', 'EU institution') then o.slug end as logo, count(*)::int as count
+    select o.slug, o.name, o.short_name, o.org_type, case when o.logo is not null and not ${logoProtectedSql("o")} then o.slug end as logo, count(*)::int as count
     from jobs j join organizations o on o.id = j.organization_id
     where ${isOpen()} and (${includeDemo} or not j.is_demo) group by o.id order by count(*) desc, o.name limit ${limit}`;
 }
@@ -824,8 +867,41 @@ export async function getOrganization(slug: string) {
   // Slugs are lower-case letters, digits and hyphens; anything else (e.g. a NUL byte from the URL) is no organization.
   if (typeof slug !== "string" || !/^[a-z0-9-]{1,80}$/.test(slug)) return null;
   const rows = await sql<{ id: number; slug: string; name: string; short_name: string | null; org_type: string | null; logo: string | null }[]>`
-    select id, slug, name, short_name, org_type, case when logo is not null and coalesce(org_type, '') not in ('UN system', 'EU institution') then slug end as logo from organizations where slug = ${slug}`;
+    select id, slug, name, short_name, org_type, case when logo is not null and not ${logoProtectedSql("organizations")} then slug end as logo from organizations where slug = ${slug}`;
   return rows[0] ?? null;
+}
+
+/** Several organizations by slug (the organization filter's chips and labels), in the order given; unknown slugs are left out. */
+export async function getOrganizations(slugs: string[]): Promise<{ slug: string; name: string; short_name: string | null }[]> {
+  const list = slugs.filter((s) => typeof s === "string" && /^[a-z0-9-]{1,80}$/.test(s)).slice(0, 20);
+  if (!list.length) return [];
+  const rows = await sql<{ slug: string; name: string; short_name: string | null }[]>`select slug, name, short_name from organizations where slug = any(${list})`;
+  return list.flatMap((s) => rows.find((r) => r.slug === s) ?? []);
+}
+
+/** How far back "recent" listings go for an organization's posting mix (organizationPostingMix). */
+export const POSTING_MIX_DAYS = 180;
+
+/**
+ * What an organization's listings usually are, for its page: contract types and grade groups
+ * (gradeKey, so IOM's "(P)" counts as Professional) among its open listings and those first seen
+ * in the past POSTING_MIX_DAYS days, closed ones included, each with how many state it. Demo
+ * listings count only on a site that shows them.
+ */
+export async function organizationPostingMix(slug: string): Promise<{ total: number; types: Count<string>[]; grades: Count<string>[] }> {
+  const [r] = await transaction(async (tx) => await tx<{ total: number; types: Count<string>[]; grades: Count<string>[] }[]>`
+    with mine as materialized (
+      select j.job_type, ${gradeKey()} as grade
+      from jobs j join organizations o on o.id = j.organization_id
+      where o.slug = ${slug} and (${isOpen()} or j.first_seen_at >= now() - make_interval(days => ${POSTING_MIX_DAYS}))
+    )
+    select
+      (select count(*)::int from mine) as total,
+      (select coalesce(json_agg(json_build_object('k', k, 'n', n) order by n desc, k), '[]'::json)
+         from (select job_type as k, count(*)::int as n from mine where job_type is not null group by 1) x) as types,
+      (select coalesce(json_agg(json_build_object('k', k, 'n', n) order by n desc, k), '[]'::json)
+         from (select grade as k, count(*)::int as n from mine where grade is not null group by 1) x) as grades`);
+  return r;
 }
 
 export async function hasDemoJobs(): Promise<boolean> {

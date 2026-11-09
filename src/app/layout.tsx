@@ -5,6 +5,7 @@ import "./globals.css";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { PageviewTracker } from "@/components/tracking";
+import { defaultSiteCopy } from "@/lib/eu-claim";
 import { siteConfig, siteUrl } from "@/lib/site";
 
 /*
@@ -62,20 +63,25 @@ const newsreaderExt = localFont({
   adjustFontFallback: false,
 });
 
+// Defaults for pages that don't set their own: never naming the EU (see defaultSiteCopy in
+// src/lib/eu-claim.ts). The homepage names it while EU institutions have open vacancies here.
+const defaults = defaultSiteCopy();
+
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
   title: {
-    default: `${siteConfig.name} — ${siteConfig.tagline}`,
+    default: `${siteConfig.name} — ${defaults.tagline}`,
     template: `%s | ${siteConfig.name}`,
   },
-  description: siteConfig.description,
+  description: defaults.description,
   applicationName: siteConfig.name,
   openGraph: {
     type: "website",
     siteName: siteConfig.name,
-    title: `${siteConfig.name} — ${siteConfig.tagline}`,
-    description: siteConfig.description,
+    title: `${siteConfig.name} — ${defaults.tagline}`,
+    description: defaults.description,
   },
+  // Title and description come from openGraph (Next.js fills them in), also on pages that set their own.
   twitter: { card: "summary_large_image" },
   formatDetection: { telephone: false },
 };

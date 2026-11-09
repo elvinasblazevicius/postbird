@@ -231,6 +231,35 @@ describe("requirements", () => {
     expect(detectExperienceYears("At least 2 years of relevant professional experience is required.")).toBe(2);
     expect(detectExperienceYears("Experience with Python is an asset.")).toBeNull();
   });
+
+  it("reads the shorter ways of writing years of experience", () => {
+    expect(detectExperienceYears("5+ years experience in humanitarian logistics")).toBe(5);
+    expect(detectExperienceYears("Requires a minimum of 3 years' experience in finance.")).toBe(3);
+    expect(detectExperienceYears("At least 7 years’ relevant experience")).toBe(7);
+    expect(detectExperienceYears("Experience: 5 years minimum")).toBe(5);
+    expect(detectExperienceYears("Work experience: at least 3 years in M&E")).toBe(3);
+    expect(detectExperienceYears("Ten years professional experience")).toBe(10);
+    // Durations are still not requirements.
+    expect(detectExperienceYears("Duration: 2 years contract with experience in GIS an asset")).toBeNull();
+    expect(detectExperienceYears("A 2 years assignment; experience in GIS")).toBeNull();
+  });
+
+  it("reads languages written as mandatory, must or speak", () => {
+    expect(detectLanguageRequirements("French is mandatory for this post.")).toEqual({ required: ["French"], desirable: null });
+    expect(detectLanguageRequirements("Must speak Arabic.")).toEqual({ required: ["Arabic"], desirable: null });
+    expect(detectLanguageRequirements("Candidates must be able to speak and write Portuguese.")).toEqual({ required: ["Portuguese"], desirable: null });
+    expect(detectLanguageRequirements("Spoken Russian is an advantage.")).toEqual({ required: null, desirable: ["Russian"] });
+    expect(detectLanguageRequirements("You speak Spanish; Chinese is an asset.")).toEqual({ required: ["Spanish"], desirable: ["Chinese"] });
+  });
+
+  it("still leaves places and organization-wide language lists alone", () => {
+    expect(detectLanguages("Experience in Spanish-speaking countries is required.")).toBeNull();
+    expect(detectLanguages("Must have worked in French speaking West Africa.")).toBeNull();
+    expect(detectLanguages("You must submit your application by the deadline. The office is in French Polynesia.")).toBeNull();
+    expect(detectLanguageRequirements("Working knowledge of another official UN language (Arabic, Chinese, French, Russian and Spanish) is an advantage.")).toEqual({ required: null, desirable: null });
+    expect(detectLanguageRequirements("Fluency in English and French is mandatory; another UN language (Arabic, Spanish) is an asset.")).toEqual({ required: ["French"], desirable: null });
+    expect(detectLanguages("English and French are the working languages of the United Nations Secretariat. Staff must speak English.")).toBeNull();
+  });
 });
 
 describe("review regressions", () => {

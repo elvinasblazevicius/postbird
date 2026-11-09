@@ -191,7 +191,7 @@ export function detectCategory(title: string): string {
 }
 
 const LANGUAGE_NAMES = ["French", "Spanish", "Arabic", "Portuguese", "Russian", "Chinese"];
-const LANG_CONTEXT = /\b(fluen\w*|proficien\w*|knowledge of|command of|written and (?:oral|spoken)|spoken and written|oral and written|bilingual|mother tongue|native speaker|language (?:skills?|requirements?|proficiency)|required|essential|desirable|an asset|advantage|preferred)\b|\blanguages?\s*[:：]/i;
+const LANG_CONTEXT = /\b(fluen\w*|proficien\w*|knowledge of|command of|written and (?:oral|spoken)|spoken and written|oral and written|bilingual|mother tongue|native speaker|language (?:skills?|requirements?|proficiency)|required|essential|mandatory|obligatory|must\s+(?:be\s+able\s+to\s+)?(?:speak|read|write|understand|communicate|be fluent|be proficient|have)|speak|speaks|speaking|spoken|desirable|an asset|advantage|preferred)\b|\blanguages?\s*[:：]/i;
 /** Words that make a language a plus rather than a requirement ("… is an advantage", "Desirable: French"). */
 const DESIRABLE_MARK = /\b(?:advantage\w*|advantageous|desirable|desired|assets?|preferred|preferabl[ey]|a plus|added value|nice to have|beneficial)\b/gi;
 /** Words that make it a requirement ("… is required", "Essential: French"). */
@@ -227,8 +227,8 @@ export function detectLanguageRequirements(text: string): LanguageRequirements {
       ...[...sentence.matchAll(REQUIRED_MARK)].map((m) => ({ at: m.index ?? 0, desirable: false })),
     ].sort((a, b) => a.at - b.at);
     for (const lang of LANGUAGE_NAMES) {
-      // "French" but not "French Polynesia" / "Spanish-speaking"-style adjectives are still fine
-      for (const m of sentence.matchAll(new RegExp(`\\b${lang}\\b(?! Polynesia| Guiana| Southern|-language)`, "gi"))) {
+      // "French" but not "French Polynesia", nor "Spanish-speaking countries" (a place, not a language the job needs)
+      for (const m of sentence.matchAll(new RegExp(`\\b${lang}\\b(?! Polynesia| Guiana| Southern|-language|[- ]speaking (?:countr|region|area|world|communit|populat|context|environment|africa|west|east|central|north|south|nation|state|people))`, "gi"))) {
         const at = m.index ?? 0;
         const mark = marks.find((k) => k.at > at) ?? [...marks].reverse().find((k) => k.at < at);
         (mark?.desirable ? desirable : required).add(lang);
@@ -249,12 +249,21 @@ const NUMBER_WORDS: Record<string, number> = {
   eleven: 11, twelve: 12, fifteen: 15, twenty: 20,
 };
 
-/** Minimum years of experience from phrases like "a minimum of five (5) years of ... experience". */
+/**
+ * Minimum years of experience from phrases like "a minimum of five (5) years of ... experience",
+ * "5+ years experience", "3 years' relevant experience" or "Experience: 5 years minimum".
+ * Without "of", at most two words may stand between "years" and "experience", none of them a
+ * linking word ("2 years contract with experience in GIS" is a duration, not a requirement).
+ */
 export function detectExperienceYears(text: string): number | null {
   const N = "(\\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty)";
-  const forward = new RegExp(`\\b${N}(?:\\s*(?:-|–|to)\\s*\\d{1,2})?(?:\\s*\\(\\d{1,2}\\))?\\s*\\+?\\s*(?:or more\\s+)?years?\\s+of\\s+(?:[\\w-]+\\s+){0,5}?experience\\b`, "i");
+  const years = `${N}(?:\\s*(?:-|–|to)\\s*\\d{1,2})?(?:\\s*\\(\\d{1,2}\\))?\\s*\\+?\\s*(?:or more\\s+)?years?(?:['’]s?)?`;
+  const between = "(?:of\\s+(?:[\\w-]+\\s+){0,5}?|(?:(?!(?:with|and|or|in|on|for|to|the|a|an|as|at|by|from|contract|duration|period|assignment|appointment)\\b)[\\w-]+\\s+){0,2}?)";
+  const forward = new RegExp(`\\b${years}\\s+${between}experience\\b`, "i");
   const backward = new RegExp(`\\bexperience\\s+of\\s+(?:at least|a minimum of|minimum|over)?\\s*${N}(?:\\s*\\(\\d{1,2}\\))?\\s*\\+?\\s*years?\\b`, "i");
-  const m = text.match(forward) ?? text.match(backward);
+  // "Experience: 5 years minimum", "Work experience: at least 3 years".
+  const labelled = new RegExp(`\\bexperience\\s*[:：]\\s*(?:at least|a minimum of|minimum|min\\.?|over)?\\s*${N}(?:\\s*\\(\\d{1,2}\\))?\\s*\\+?\\s*years?\\b`, "i");
+  const m = text.match(forward) ?? text.match(backward) ?? text.match(labelled);
   if (!m) return null;
   const n = /^\d+$/.test(m[1]) ? Number(m[1]) : NUMBER_WORDS[m[1].toLowerCase()];
   return n !== undefined && n >= 0 && n <= 30 ? n : null;

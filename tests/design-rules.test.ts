@@ -103,3 +103,20 @@ describe("this week's lead sentence", () => {
     expect(weekLead({ total: 0, types: [], orgs: [] })).toBeNull();
   });
 });
+
+describe("what an organization usually posts", () => {
+  it("names the contract types and grade groups that make up a good share of its listings", async () => {
+    const { usuallyPosts } = await import("@/lib/org-profile");
+    expect(usuallyPosts({
+      types: [{ k: "Fixed-term", n: 8 }, { k: "Consultancy", n: 4 }, { k: "Internship", n: 1 }],
+      grades: [{ k: "P-3", n: 3 }, { k: "P-4", n: 2 }, { k: "P", n: 1 }, { k: "G-5", n: 3 }, { k: "NO-B", n: 1 }],
+    })).toBe("fixed-term and consultancy contracts; Professional and General Service grades");
+    expect(usuallyPosts({ types: [{ k: "Consultancy", n: 5 }], grades: [{ k: "NPSA-8", n: 3 }, { k: "SB-4", n: 2 }] })).toBe("consultancy contracts; service contracts");
+  });
+
+  it("says nothing from too few listings", async () => {
+    const { usuallyPosts } = await import("@/lib/org-profile");
+    expect(usuallyPosts({ types: [{ k: "Fixed-term", n: 2 }], grades: [] })).toBeNull();
+    expect(usuallyPosts({ types: [], grades: [{ k: "P-3", n: 2 }, { k: "P-4", n: 1 }] })).toBe("Professional grades");
+  });
+});
