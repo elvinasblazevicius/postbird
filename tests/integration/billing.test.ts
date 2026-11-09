@@ -444,10 +444,10 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(await notices.runTrialReminders()).toEqual({ sent: 0, failed: 0 });
     });
 
-    it("a returning customer's new trial gets its own reminder", async () => {
+    it("a later subscription with its own trial (e.g. made in Paddle's dashboard) gets its own reminder", async () => {
       const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString();
-      const trial = (id: string, customer: string, ref: string, endsAt: string) => ({
-        id, customer_id: customer, custom_data: { ref },
+      const trial = (id: string, customer: string, ref: string | null, endsAt: string) => ({
+        id, customer_id: customer, custom_data: ref ? { ref } : null,
         current_billing_period: { starts_at: inDays(-12), ends_at: endsAt }, next_billed_at: endsAt,
         items: [{ price: { id: "pri_test" }, trial_dates: { starts_at: inDays(-12), ends_at: endsAt } }],
       });
@@ -460,13 +460,15 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(await notices.runTrialReminders()).toEqual({ sent: 1, failed: 0 });
       expect(sent.map((m) => m.to)).toEqual(["returning@example.org"]);
 
-      // Canceled, then a new subscription with a new trial: the reminder is due again.
+      // Canceled. The site gives no second trial (one per person; without an API key no
+      // checkout at all), but a subscription with a trial made elsewhere (Paddle's dashboard,
+      // matched by customer) still gets its own reminder.
       const canceledAt = new Date(Date.now() + 1_000).toISOString();
       await billing.handlePaddleEvent(subEvent("subscription.canceled", { id: first, customer_id: customer, status: "canceled", canceled_at: canceledAt, current_billing_period: null }, canceledAt));
       expect((await sql`select billing_status from subscribers where email = 'returning@example.org'`)[0].billing_status).toBe("canceled");
       const start2 = await billing.startCheckout({ email: "returning@example.org", plan: "monthly", search: null });
-      expect("ref" in start2).toBe(true);
-      const res = await billing.handlePaddleEvent(subEvent("subscription.created", trial(second, customer, (start2 as { ref: string }).ref, inDays(1)), new Date(Date.now() + 2_000).toISOString()));
+      expect(start2).toEqual({ ok: false, error: billing.CHECKOUT_UNAVAILABLE, noTrial: true });
+      const res = await billing.handlePaddleEvent(subEvent("subscription.created", trial(second, customer, null, inDays(1)), new Date(Date.now() + 2_000).toISOString()));
       expect(res.outcome).toBe("applied");
       const [s] = await sql`select billing_status, paddle_subscription_id, trial_reminder_sent_at from subscribers where email = 'returning@example.org'`;
       expect(s).toMatchObject({ billing_status: "trialing", paddle_subscription_id: second, trial_reminder_sent_at: null });
@@ -475,7 +477,7 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(await notices.runTrialReminders()).toEqual({ sent: 1, failed: 0 });
       expect(sent.map((m) => m.to)).toEqual(["returning@example.org"]);
       // A repeated snapshot of the same subscription does not reset it.
-      await billing.handlePaddleEvent(subEvent("subscription.updated", trial(second, customer, (start2 as { ref: string }).ref, inDays(1)), new Date(Date.now() + 3_000).toISOString()));
+      await billing.handlePaddleEvent(subEvent("subscription.updated", trial(second, customer, null, inDays(1)), new Date(Date.now() + 3_000).toISOString()));
       sent.length = 0;
       expect(await notices.runTrialReminders()).toEqual({ sent: 0, failed: 0 });
     });
@@ -536,12 +538,15 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       await add("early1@example.org", "confirmed");
       await add("early2@example.org", "pending");
       await add("early3@example.org", "confirmed", "trialing");
+      // Had a plan (a trial, canceled): the email offers the free trial, so not to them.
+      await add("early4@example.org", "confirmed", "canceled");
       const res = await notices.notifyWaitlist();
       expect(res.ok).toBe(true);
       const to = sent.map((m) => m.to);
       expect(to).toContain("early1@example.org");
       expect(to).not.toContain("early2@example.org");
       expect(to).not.toContain("early3@example.org");
+      expect(to).not.toContain("early4@example.org");
       const m = sent.find((x) => x.to === "early1@example.org")!;
       expect(m.subject).toBe("Postbird email alerts are open");
       expect(m.text).toContain("/pricing/trial");

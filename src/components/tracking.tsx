@@ -8,8 +8,8 @@ type EventPayload = { type: string; path?: string; jobId?: number; props?: Recor
 
 /**
  * Events also sent to Microsoft Ads (UET). A click on an email-alert button is only interest, so it
- * goes as "trial_cta_click", which is not set up as a conversion; "begin_trial" is sent only when a
- * Paddle checkout completes (src/components/paddle-checkout.tsx).
+ * goes as "trial_cta_click", which is not set up as a conversion; "begin_trial" (or "purchase", for a
+ * plan without a trial) is sent only when a Paddle checkout completes (src/components/paddle-checkout.tsx).
  */
 const UET_EVENTS: Record<string, string> = { apply_click: "apply_click", premium_cta_click: "trial_cta_click" };
 

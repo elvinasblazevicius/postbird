@@ -63,8 +63,8 @@ export default function PrivacyPage() {
             load Microsoft&apos;s Universal Event Tracking (UET) tag, which sets the cookies <code>_uetsid</code>, <code>_uetvid</code>, <code>_uetmsclkid</code> and <code>MUID</code>, with matching entries in
             local storage, and sends
             Microsoft these events: the pages you view here (<code>page_view</code>), clicks on Apply (<code>apply_click</code>), clicks on an email-alert button
-            (<code>trial_cta_click</code>), joining early access or the email list (<code>trial_signup</code>, <code>subscribe</code>) and a completed free-trial
-            checkout (<code>begin_trial</code>). Microsoft processes this under its own{" "}
+            (<code>trial_cta_click</code>), joining early access or the email list (<code>trial_signup</code>, <code>subscribe</code>) and a completed checkout
+            (<code>begin_trial</code> for a free trial, <code>purchase</code> for a plan that starts straight away). Microsoft processes this under its own{" "}
             <a className="text-accent underline" href="https://privacy.microsoft.com/privacystatement" rel="noopener">privacy statement</a>.
           </li>
         </ul>

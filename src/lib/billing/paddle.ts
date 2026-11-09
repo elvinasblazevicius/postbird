@@ -139,3 +139,83 @@ export async function getSubscription(subscriptionId: string): Promise<PaddleSub
   if (!PADDLE_ID("sub").test(subscriptionId)) throw new Error("Invalid Paddle subscription id");
   return paddleFetch<PaddleSubscription>(`/subscriptions/${subscriptionId}`);
 }
+
+// ── Checkout without a trial (one free trial per person) ─────
+
+type Money = { amount: string; currency_code: string };
+
+/** Price fields this site reads (a subset of Paddle's price entity, GET /prices/{id}). */
+export type PaddlePrice = {
+  id: string;
+  product_id: string;
+  description: string;
+  name: string | null;
+  billing_cycle: { interval: string; frequency: number } | null;
+  trial_period: { interval: string; frequency: number } | null;
+  tax_mode: string;
+  unit_price: Money;
+  unit_price_overrides?: { country_codes: string[]; unit_price: Money }[] | null;
+  quantity?: { minimum: number; maximum: number } | null;
+  status?: string;
+};
+
+/** Fetches a catalog price (needs the price.read permission). */
+export async function getPrice(priceId: string): Promise<PaddlePrice> {
+  if (!PADDLE_ID("pri").test(priceId)) throw new Error("Invalid Paddle price id");
+  return paddleFetch<PaddlePrice>(`/prices/${priceId}`);
+}
+
+/**
+ * The same plan as a catalog price, without its free trial: a non-catalog
+ * price for the same product, amount (with its country overrides), billing
+ * cycle and tax mode, and trial_period null. Pure, so it is unit-tested.
+ * Throws for a price that isn't an active recurring one (that would not be
+ * the plan the visitor chose).
+ */
+export function noTrialPrice(price: PaddlePrice) {
+  if (!price || !PADDLE_ID("pro").test(price.product_id)) throw new Error("Paddle price has no product");
+  if (!price.billing_cycle) throw new Error("Paddle price is not recurring");
+  if (price.status && price.status !== "active") throw new Error("Paddle price is not active");
+  const base = (price.description || "Plan").trim();
+  return {
+    // Internal only (not shown to customers), 2–500 characters.
+    description: `${base} (no trial: one free trial per person)`.slice(0, 500),
+    name: price.name ?? null,
+    product_id: price.product_id,
+    unit_price: price.unit_price,
+    unit_price_overrides: price.unit_price_overrides ?? [],
+    billing_cycle: price.billing_cycle,
+    trial_period: null,
+    tax_mode: price.tax_mode || "account_setting",
+    ...(price.quantity ? { quantity: price.quantity } : {}),
+  };
+}
+
+/**
+ * Body of POST /transactions for a checkout without a trial. custom_data is
+ * what Paddle.js would otherwise pass as customData: Paddle copies a
+ * transaction's custom_data onto the subscription it creates, which is how the
+ * webhook finds the subscriber. No customer or address, so the transaction
+ * is a draft that Paddle Checkout completes (email, country, card).
+ */
+export function noTrialTransactionBody(price: PaddlePrice, customData: { ref: string }) {
+  return {
+    items: [{ quantity: 1, price: noTrialPrice(price) }],
+    custom_data: customData,
+    collection_mode: "automatic",
+  };
+}
+
+/**
+ * Creates the transaction a returning customer pays through: the chosen plan,
+ * charged straight away. Returns its id (txn_…), which Paddle.js opens with
+ * Checkout.open({ transactionId }). Needs price.read and transaction.write.
+ * Throws when PADDLE_API_KEY is missing or Paddle refuses: the caller must
+ * then show an error, never fall back to the catalog price (which has a trial).
+ */
+export async function createNoTrialTransaction(priceId: string, customData: { ref: string }): Promise<string> {
+  const price = await getPrice(priceId);
+  const txn = await paddleFetch<{ id: string }>("/transactions", { method: "POST", body: noTrialTransactionBody(price, customData) });
+  if (!PADDLE_ID("txn").test(txn?.id ?? "")) throw new Error("Paddle returned no transaction id");
+  return txn.id;
+}

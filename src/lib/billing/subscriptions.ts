@@ -5,6 +5,10 @@
  * Flow:
  *  1. startCheckout() stores (or finds) the subscriber and returns an opaque
  *     reference, which the browser passes to Paddle Checkout as customData.
+ *     One free trial per person: an address that has had a plan before
+ *     (hadTrialBefore) gets a Paddle transaction instead, for the same plan
+ *     without the trial and with the reference in its custom_data, and the
+ *     browser opens Paddle Checkout for that transaction.
  *  2. Paddle creates the subscription and sends webhooks; handlePaddleEvent()
  *     finds the subscriber through that reference (Paddle copies a checkout's
  *     customData onto the subscription) and mirrors the subscription's status.
@@ -17,7 +21,7 @@
 import { randomBytes } from "node:crypto";
 import { recordEvent } from "@/lib/analytics";
 import { PADDLE_PRICE_MONTHLY, PADDLE_PRICE_QUARTERLY } from "@/lib/billing/live";
-import { getSubscription, isPaddleApiConfigured, type PaddleSubscription } from "@/lib/billing/paddle";
+import { createNoTrialTransaction, getSubscription, isPaddleApiConfigured, type PaddleSubscription } from "@/lib/billing/paddle";
 import { sql, transaction, type Db, type Tx } from "@/lib/db";
 import { addSavedSearch } from "@/lib/saved-searches";
 import { normalizeEmail } from "@/lib/subscribers";
@@ -36,9 +40,41 @@ const newToken = () => randomBytes(24).toString("base64url");
 // ── Checkout ─────────────────────────────────────────────────
 
 export type StartCheckoutResult =
-  | { ok: true; ref: string; email: string }
+  /** Checkout with the catalog price and its free trial. */
+  | { ok: true; ref: string; email: string; trial: true }
+  /** Returning customer: Paddle Checkout opens this transaction (the plan, charged straight away). */
+  | { ok: true; ref: string; email: string; trial: false; transactionId: string }
   | { ok: true; alreadySubscribed: true; email: string; manageToken: string }
-  | { ok: false; error: string };
+  /** noTrial: the address has had a trial before (the form keeps the trial terms off). */
+  | { ok: false; error: string; noTrial?: boolean };
+
+/** Shown when a returning customer's checkout (no trial) can't be prepared. */
+export const CHECKOUT_UNAVAILABLE = "We couldn't open checkout. Please try again or email us.";
+
+/** The subscriber fields that show whether an address has had a plan before. */
+export type PlanHistory = {
+  paddle_subscription_id: string | null;
+  billing_status: BillingStatus;
+  trial_ends_at: Date | string | null;
+  canceled_at: Date | string | null;
+};
+
+/**
+ * One free trial per person: has this address had a Paddle subscription
+ * before? Every subscription sold through this site started with a trial
+ * unless the address had had one already, so any earlier subscription counts,
+ * including a trial canceled before it ended. A row only ever gains these
+ * fields from Paddle's webhooks, and the webhook never clears
+ * paddle_subscription_id or billing_status, so any one of them is enough.
+ * Limit: a canceled plan's row is deleted 30 days after the cancellation
+ * (privacy policy, purgeStaleSubscribers); after that the address counts as
+ * new again. Pure, so it is unit-tested.
+ */
+export function hadTrialBefore(h: PlanHistory): boolean {
+  return Boolean(h.paddle_subscription_id) || (h.billing_status ?? "none") !== "none" || h.trial_ends_at != null || h.canceled_at != null;
+}
+
+const priceIdFor = (plan: CheckoutPlan) => (plan === "quarterly" ? PADDLE_PRICE_QUARTERLY : PADDLE_PRICE_MONTHLY);
 
 /**
  * Prepares a checkout. A new address gets a pending subscriber row (no
@@ -77,15 +113,16 @@ export async function startCheckout(opts: {
       values (${ref}, ${row.id}, ${opts.plan}, ${opts.search}, true, ${opts.visitor ?? null})`;
     return true;
   });
-  if (created) return { ok: true, ref, email };
+  // A brand-new address has had no plan here: the catalog price, with its trial.
+  if (created) return { ok: true, ref, email, trial: true };
 
   // checkout_created: the row was created by an earlier checkout that was never
   // finished, and nobody has touched it since (no confirmation, no sign-up or
   // confirmation link, no subscription). Retrying the checkout is the same
   // payer typing the same new address again, so paying confirms it as well;
   // otherwise the row would stay pending after payment and alerts never start.
-  const [existing] = await sql<{ id: number; billing_status: BillingStatus; manage_token: string; checkout_created: boolean }[]>`
-    select s.id::int as id, s.billing_status, s.manage_token,
+  const [existing] = await sql<(PlanHistory & { id: number; manage_token: string; checkout_created: boolean })[]>`
+    select s.id::int as id, s.billing_status, s.manage_token, s.paddle_subscription_id, s.trial_ends_at, s.canceled_at,
            (s.status = 'pending' and s.confirmed_at is null and s.confirm_token is null and s.paddle_subscription_id is null
             and exists (select 1 from paddle_checkouts c where c.subscriber_id = s.id and c.new_subscriber)) as checkout_created
     from subscribers s where s.email = ${email}`;
@@ -94,12 +131,29 @@ export async function startCheckout(opts: {
   if (LIVE_STATUSES.includes(existing.billing_status)) {
     return { ok: true, alreadySubscribed: true, email, manageToken: existing.manage_token };
   }
+
+  // One free trial per person: an address that has had a plan before pays
+  // through a transaction for the same plan without the trial. If that
+  // transaction can't be created (no API key, Paddle refuses or is down),
+  // stop here: never fall back to the catalog price, which has the trial.
+  const returning = hadTrialBefore(existing);
+  let transactionId: string | null = null;
+  if (returning) {
+    try {
+      if (!isPaddleApiConfigured()) throw new Error("PADDLE_API_KEY is not set");
+      transactionId = await createNoTrialTransaction(priceIdFor(opts.plan), { ref });
+    } catch (e) {
+      console.error("no-trial checkout failed", (e as Error).message);
+      return { ok: false, error: CHECKOUT_UNAVAILABLE, noTrial: true };
+    }
+  }
+
   // First-touch attribution only, as in the early-access sign-up.
   if (attribution) await sql`update subscribers set attribution = coalesce(attribution, ${sql.json(attribution)}) where id = ${existing.id}`;
   await sql`
     insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor)
     values (${ref}, ${existing.id}, ${opts.plan}, ${opts.search}, ${existing.checkout_created}, ${opts.visitor ?? null})`;
-  return { ok: true, ref, email };
+  return transactionId ? { ok: true, ref, email, trial: false, transactionId } : { ok: true, ref, email, trial: true };
 }
 
 /**
@@ -174,6 +228,15 @@ export function transitionEffects(
     /** A running subscription newly linked to an address that isn't confirmed: ask its owner to confirm. */
     askConfirm: LIVE_STATUSES.includes(next.status) && !sameSub && !next.confirmed,
   };
+}
+
+/**
+ * The trial end date the welcome email mentions: only while the subscription
+ * is in its trial. A plan that started without one (a returning customer)
+ * arrives as active, and its welcome must not talk about a trial.
+ */
+export function welcomeTrialEnd(status: BillingStatus, trialEndsAt: Date | string | null): string | null {
+  return status === "trialing" && trialEndsAt ? new Date(trialEndsAt).toISOString() : null;
 }
 
 export type WelcomeInfo = { subscriberId: number; email: string; manageToken: string; unsubscribeToken: string; trialEndsAt: string | null; planInterval: PlanInterval | null };
@@ -316,7 +379,10 @@ async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: st
       billing_status = ${b.status},
       plan = ${alerts ? "premium" : "free"},
       plan_interval = coalesce(${b.planInterval ?? fallbackInterval}, s.plan_interval),
-      trial_ends_at = coalesce(${b.trialEndsAt}, s.trial_ends_at),
+      -- The trial of THIS subscription: a different one (a returning customer's plan,
+      -- which has no trial) must not inherit the date of an earlier trial.
+      trial_ends_at = case when prev.paddle_subscription_id is distinct from ${sub.id} then ${b.trialEndsAt}::timestamptz
+                           else coalesce(${b.trialEndsAt}::timestamptz, s.trial_ends_at) end,
       current_period_end = ${b.currentPeriodEnd},
       canceled_at = ${b.canceledAt},
       cancel_at = ${b.cancelAt},
@@ -369,7 +435,7 @@ async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: st
     result: {
       outcome: "applied",
       welcome: fx.sendWelcome
-        ? { subscriberId: target.subscriberId, email: row.email, manageToken: row.manage_token, unsubscribeToken: row.unsubscribe_token, trialEndsAt: row.trial_ends_at ? new Date(row.trial_ends_at).toISOString() : null, planInterval: row.plan_interval }
+        ? { subscriberId: target.subscriberId, email: row.email, manageToken: row.manage_token, unsubscribeToken: row.unsubscribe_token, trialEndsAt: welcomeTrialEnd(b.status, row.trial_ends_at), planInterval: row.plan_interval }
         : undefined,
       confirm: fx.askConfirm && row.confirm_token
         ? { subscriberId: target.subscriberId, email: row.email, confirmToken: row.confirm_token, subscriptionId: sub.id }

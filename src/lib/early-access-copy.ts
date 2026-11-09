@@ -38,6 +38,25 @@ export function trialLine(plan: "monthly" | "quarterly" = "quarterly", trialEnds
   return `Card required. $0 today. ${when}; then ${price}. Your plan ${RENEWS} until you cancel. Cancel any time before the trial ends and you pay nothing.`;
 }
 
+/** One free trial per person (terms, pricing FAQ). */
+export const ONE_TRIAL_RULE = "One free trial per person. If you've had a trial before, your plan starts and is charged straight away.";
+
+/** The words the no-trial line sets in bold. */
+export const RENEWING = "renewing automatically";
+
+/** Button that opens the checkout for someone who has had a trial before (never promises a trial). */
+export const noTrialButton = "Continue to payment";
+
+/**
+ * Replaces trialLine() once the server knows the address has had a trial before
+ * (only after the visitor submitted it): the plan starts and is charged today.
+ */
+export function noTrialLine(plan: "monthly" | "quarterly" = "quarterly") {
+  const [m, q] = plans();
+  const price = plan === "monthly" ? `${m.price} a month` : `${q.price} every ${q.per}`;
+  return `You've had a free trial before, so your plan starts today: ${price}, ${RENEWING} until you cancel.`;
+}
+
 /** Plan choices for the checkout form; the 3-month plan (best value) comes first and is preselected. */
 export type PlanOption = {
   value: "monthly" | "quarterly";

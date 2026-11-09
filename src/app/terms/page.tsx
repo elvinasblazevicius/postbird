@@ -3,6 +3,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { RefundPolicyText } from "@/components/refund-policy";
 import { BILLING_LIVE } from "@/lib/billing/live";
+import { ONE_TRIAL_RULE } from "@/lib/early-access-copy";
 import { siteConfig } from "@/lib/site";
 
 export const metadata: Metadata = { title: "Terms", alternates: { canonical: "/terms" } };
@@ -77,7 +78,8 @@ export default function TermsPage() {
             <ul className="list-disc space-y-1 pl-6">
               <li>
                 <strong>Free trial:</strong> new subscriptions start with a {p.trialDays}-day free trial. A card is required. If you don&apos;t cancel before the trial
-                ends, the plan you chose starts and you are charged automatically. We email you a reminder about 3 days before the trial ends.
+                ends, the plan you chose starts and you are charged automatically. We email you a reminder about 3 days before the trial ends.{" "}
+                {ONE_TRIAL_RULE}
               </li>
               <li><strong>Renewal:</strong> plans renew automatically at the end of each period (every month or every 3 months) until you cancel.</li>
             </ul>

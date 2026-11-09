@@ -15,7 +15,7 @@
 import siteConfig from "@site-config";
 import { accountUrl } from "@/lib/account";
 import { BILLING_LIVE } from "@/lib/billing/live";
-import { LIVE_STATUSES, type BillingStatus, type ConfirmInfo, type PlanInterval, type WelcomeInfo } from "@/lib/billing/subscriptions";
+import { LIVE_STATUSES, welcomeTrialEnd, type BillingStatus, type ConfirmInfo, type PlanInterval, type WelcomeInfo } from "@/lib/billing/subscriptions";
 import { sql } from "@/lib/db";
 import { planDescription } from "@/lib/early-access-copy";
 import { batchKey, isEmailConfigured, sendBatch, sendEmail, type OutgoingEmail, type SendResult } from "@/lib/email";
@@ -114,7 +114,7 @@ export async function sendWelcomeEmail(w: WelcomeInfo): Promise<SendResult> {
  */
 export async function runWelcomeRetries(limit = 200): Promise<{ sent: number; failed: number }> {
   // Claim the rows first, so a run started at the same time can't send them too.
-  const rows = await sql<{ id: number; email: string; manage_token: string; unsubscribe_token: string; trial_ends_at: Date | null; plan_interval: PlanInterval | null }[]>`
+  const rows = await sql<{ id: number; email: string; manage_token: string; unsubscribe_token: string; billing_status: BillingStatus; trial_ends_at: Date | null; plan_interval: PlanInterval | null }[]>`
     update subscribers set welcome_sent_at = now(), welcome_claimed_at = now()
     where id in (
       select id from subscribers
@@ -122,13 +122,13 @@ export async function runWelcomeRetries(limit = 200): Promise<{ sent: number; fa
         and status = 'confirmed' and billing_status in ('trialing', 'active')
       order by id limit ${limit}
     ) and (welcome_sent_at is null or welcome_claimed_at < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES}))
-    returning id::int as id, email, manage_token, unsubscribe_token, trial_ends_at, plan_interval`;
+    returning id::int as id, email, manage_token, unsubscribe_token, billing_status, trial_ends_at, plan_interval`;
   let sent = 0, failed = 0;
   for (const [i, r] of rows.entries()) {
     await spaced(i);
     const res = await sendWelcomeEmail({
       subscriberId: r.id, email: r.email, manageToken: r.manage_token, unsubscribeToken: r.unsubscribe_token,
-      trialEndsAt: r.trial_ends_at ? new Date(r.trial_ends_at).toISOString() : null, planInterval: r.plan_interval,
+      trialEndsAt: welcomeTrialEnd(r.billing_status, r.trial_ends_at), planInterval: r.plan_interval,
     });
     if (res.ok) {
       sent++;
@@ -256,8 +256,9 @@ export async function sendPlanStillActiveNotice(subscriberId: number): Promise<S
 export type WaitlistNoticeResult = { ok: boolean; sent: number; failed: number; remaining: number; message: string };
 
 /**
- * Admin button: emails each confirmed early-access member who isn't on a plan
- * that alerts are open (once: waitlist_notified_at). At most `limit` per click
+ * Admin button: emails each confirmed early-access member who has never had a
+ * plan (the email offers the free trial, one per person) that alerts are open
+ * (once: waitlist_notified_at). At most `limit` per click
  * so it stays within the website's time limit; click again for the rest.
  */
 export async function notifyWaitlist(limit = 300): Promise<WaitlistNoticeResult> {
@@ -268,6 +269,8 @@ export async function notifyWaitlist(limit = 300): Promise<WaitlistNoticeResult>
     where id in (
       select id from subscribers
       where premium_waitlist and status = 'confirmed' and waitlist_notified_at is null and billing_status <> all(${live})
+        -- The email offers the free trial: not to an address that has had a plan (see hadTrialBefore).
+        and billing_status = 'none' and paddle_subscription_id is null and trial_ends_at is null and canceled_at is null
       order by id limit ${limit}
     ) and waitlist_notified_at is null
     returning id::int as id, email, unsubscribe_token`;
@@ -290,7 +293,8 @@ export async function notifyWaitlist(limit = 300): Promise<WaitlistNoticeResult>
   }
   const [{ remaining }] = await sql<{ remaining: number }[]>`
     select count(*)::int as remaining from subscribers
-    where premium_waitlist and status = 'confirmed' and waitlist_notified_at is null and billing_status <> all(${live})`;
+    where premium_waitlist and status = 'confirmed' and waitlist_notified_at is null and billing_status <> all(${live})
+      and billing_status = 'none' and paddle_subscription_id is null and trial_ends_at is null and canceled_at is null`;
   const message = rows.length === 0
     ? "Nobody left to email: every confirmed early-access member has had this email."
     : `Sent ${sent}${failed ? `, ${failed} failed (they stay on the list for the next try)` : ""}. ${remaining ? `${remaining} still to send: click again.` : "Everyone has been emailed."}`;

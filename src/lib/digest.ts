@@ -11,6 +11,7 @@
  * Both are safe to run more often than needed (they skip what was already sent).
  */
 import siteConfig from "@site-config";
+import { hadTrialBefore, type PlanHistory } from "@/lib/billing/subscriptions";
 import { sql } from "@/lib/db";
 import { batchKey, isEmailConfigured, sendBatch, type OutgoingEmail } from "@/lib/email";
 import { alertEmail, weeklyEmail, type AlertGroup } from "@/lib/email-templates";
@@ -141,8 +142,8 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
       if (!outbox.length) return;
       const pending = outbox.splice(0, outbox.length);
       // Current links and status at send time: anyone who unsubscribed or started a plan meanwhile is skipped.
-      const current = await sql<{ id: number; email: string; manage_token: string; unsubscribe_token: string }[]>`
-        select id::int as id, email, manage_token, unsubscribe_token from subscribers
+      const current = await sql<(PlanHistory & { id: number; email: string; manage_token: string; unsubscribe_token: string })[]>`
+        select id::int as id, email, manage_token, unsubscribe_token, paddle_subscription_id, billing_status, trial_ends_at, canceled_at from subscribers
         where id = any(${pending.map((o) => o.row.id)}) and status = 'confirmed' and weekly_email and billing_status <> all(${PLAN_STATUSES})`;
       const byId = new Map(current.map((c) => [c.id, c]));
       const chunk = pending.filter((o) => byId.has(o.row.id));
@@ -156,6 +157,8 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
             group: o.group,
             search: o.row.search,
             trialUrl: o.trialUrl,
+            // One free trial per person: someone who had a plan isn't offered another trial.
+            hadTrial: hadTrialBefore(c),
             accountUrl: absoluteUrl(`/account?t=${c.manage_token}`),
             unsubscribeUrl: absoluteUrl(`/alerts/unsubscribe?token=${c.unsubscribe_token}`),
           }),
@@ -290,8 +293,8 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
       if (!outbox.length) return;
       const pending = outbox.splice(0, outbox.length);
       // Current links and status at send time.
-      const current = await sql<{ id: number; email: string; manage_token: string; unsubscribe_token: string }[]>`
-        select id::int as id, email, manage_token, unsubscribe_token from subscribers
+      const current = await sql<(PlanHistory & { id: number; email: string; manage_token: string; unsubscribe_token: string })[]>`
+        select id::int as id, email, manage_token, unsubscribe_token, paddle_subscription_id, billing_status, trial_ends_at, canceled_at from subscribers
         where id = any(${pending.map((o) => o.sub.id)}) and status = 'confirmed' and billing_status in ('trialing', 'active')`;
       const byId = new Map(current.map((c) => [c.id, c]));
       const chunk = pending.filter((o) => byId.has(o.sub.id));

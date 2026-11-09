@@ -4,7 +4,7 @@ import { AlertExample } from "@/components/alert-example";
 import { PageHeader } from "@/components/page-header";
 import { TrackedLink } from "@/components/tracking";
 import { BILLING_LIVE } from "@/lib/billing/live";
-import { EARLY_ACCESS_BUTTON, earlyAccessLine, TAX_LINE } from "@/lib/early-access-copy";
+import { EARLY_ACCESS_BUTTON, earlyAccessLine, ONE_TRIAL_RULE, TAX_LINE } from "@/lib/early-access-copy";
 import { siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +31,7 @@ export default function PricingPage() {
     ? [
         [
           "How does the free trial work?",
-          <>You pay $0 for {p.trialDays} days, and a card is needed to start. If you don&apos;t cancel before your trial ends (we show the date before you start and email you about 3 days ahead), the plan you chose starts automatically.</>,
+          <>You pay $0 for {p.trialDays} days, and a card is needed to start. If you don&apos;t cancel before your trial ends (we show the date before you start and email you about 3 days ahead), the plan you chose starts automatically. {ONE_TRIAL_RULE}</>,
         ],
         [
           "How do I cancel?",

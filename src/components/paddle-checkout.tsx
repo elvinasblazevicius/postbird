@@ -11,7 +11,7 @@ import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { checkoutDoneAction, startCheckoutAction, type CheckoutState } from "@/app/billing-actions";
 import { PADDLE_CLIENT_TOKEN, PADDLE_ENV, PADDLE_PRICE_MONTHLY, PADDLE_PRICE_QUARTERLY } from "@/lib/billing/live";
-import { planOptions, RENEWS, TAX_LINE, trialButton, trialLine } from "@/lib/early-access-copy";
+import { noTrialButton, noTrialLine, planOptions, RENEWING, RENEWS, TAX_LINE, trialButton, trialLine } from "@/lib/early-access-copy";
 import { AttributionField, uetEvent } from "./ads";
 
 // ── Paddle.js loader ─────────────────────────────────────────
@@ -64,9 +64,81 @@ export function loadPaddle(): Promise<PaddleGlobal> {
 
 // ── Trial form ───────────────────────────────────────────────
 
-const initial: CheckoutState = { status: "idle", message: "" };
+/**
+ * The server action's answer, plus what this form has learnt from earlier
+ * answers: noTrialEmail is an address the server said has had a free trial
+ * before (one per person). It is only ever known after the visitor submitted
+ * that address, and it keeps the trial copy off the form while the field
+ * still holds it, even after a later error.
+ */
+type FormState = CheckoutState & { noTrialEmail: string | null };
 
-type Phase = { step: "form" } | { step: "checkout" } | { step: "done"; accountUrl: string | null };
+const initial: FormState = { status: "idle", message: "", noTrialEmail: null };
+
+const normEmail = (e: string) => e.trim().toLowerCase();
+
+async function checkoutReducer(prev: FormState, form: FormData): Promise<FormState> {
+  const res = await startCheckoutAction({ status: "idle", message: "" }, form);
+  let noTrialEmail = prev.noTrialEmail;
+  if (res.status === "ready" && !res.trial) noTrialEmail = res.email;
+  else if (res.status === "ready" && res.trial && noTrialEmail === res.email) noTrialEmail = null;
+  else if (res.status === "error" && res.noTrial) noTrialEmail = normEmail(String(form.get("email") ?? ""));
+  return { ...res, noTrialEmail };
+}
+
+type Phase = { step: "form" } | { step: "checkout" } | { step: "done"; accountUrl: string | null; trial: boolean };
+
+type Launch = { ref: string; email: string; plan: "monthly" | "quarterly"; transactionId: string | null };
+
+/**
+ * Opens Paddle's overlay. With a transactionId (someone who has had a trial
+ * before) Paddle uses that transaction's item (the plan without a trial) and
+ * custom_data, set by the server; otherwise the catalog price, with its trial,
+ * and the reference as customData.
+ */
+function openPaddleCheckout(c: Launch, h: { source: string; setPhase: (p: Phase) => void; setLoadError: (m: string) => void; cancelled: () => boolean }) {
+  const trial = !c.transactionId;
+  loadPaddle()
+    .then((P) => {
+      if (h.cancelled()) return;
+      let completed = false;
+      eventListener = (e) => {
+        if (e.name === "checkout.completed" && !completed) {
+          completed = true;
+          // "begin_trial" is the Microsoft Ads conversion for a trial; a plan paid straight away is a purchase.
+          uetEvent(trial ? "begin_trial" : "purchase", { event_category: "premium", event_label: h.source });
+          h.setPhase({ step: "done", accountUrl: null, trial });
+          // The webhook usually lands within seconds; until then (or if this
+          // checkout didn't create the account) the link comes by email.
+          void (async () => {
+            for (let i = 0; i < 6; i++) {
+              await new Promise((r) => setTimeout(r, 2000));
+              const res = await checkoutDoneAction(c.ref).catch(() => null);
+              if (res?.accountUrl) return h.setPhase({ step: "done", accountUrl: res.accountUrl, trial });
+              if (res?.linked) return;
+            }
+          })();
+        } else if (e.name === "checkout.closed" && !completed) {
+          h.setPhase({ step: "form" });
+        }
+      };
+      h.setPhase({ step: "checkout" });
+      const settings = { displayMode: "overlay", theme: "light", locale: "en", allowLogout: false };
+      P.Checkout.open(
+        c.transactionId
+          ? { transactionId: c.transactionId, customer: { email: c.email }, settings }
+          : {
+              items: [{ priceId: c.plan === "quarterly" ? PADDLE_PRICE_QUARTERLY : PADDLE_PRICE_MONTHLY, quantity: 1 }],
+              customer: { email: c.email },
+              customData: { ref: c.ref },
+              settings,
+            },
+      );
+    })
+    .catch(() => {
+      if (!h.cancelled()) h.setLoadError("The secure checkout couldn't load. Check your connection or ad blocker, then try again.");
+    });
+}
 
 /**
  * Plan choice (3 months preselected, the best value), email, and
@@ -74,13 +146,16 @@ type Phase = { step: "form" } | { step: "checkout" } | { step: "done"; accountUr
  * small sign-up boxes; `tone="dark"` for coloured backgrounds.
  */
 export function TrialCheckoutForm({ source, search, compact = false, tone = "light", watch }: { source: string; search?: string; compact?: boolean; tone?: "light" | "dark"; watch?: React.ReactNode }) {
-  const [state, action, pending] = useActionState(startCheckoutAction, initial);
+  const [state, action, pending] = useActionState(checkoutReducer, initial);
   const [phase, setPhase] = useState<Phase>({ step: "form" });
   const [loadError, setLoadError] = useState<string | null>(null);
   const opened = useRef<string | null>(null);
+  /** Whether the no-trial line was on screen when the form was last submitted. */
+  const noticeSeen = useRef(false);
   const dark = tone === "dark";
   const plans = planOptions();
   const [plan, setPlan] = useState<"monthly" | "quarterly">("quarterly");
+  const [typedEmail, setTypedEmail] = useState("");
   // The trial end date is worked out in the browser (the visitor's own date and time zone).
   const [trialEnds, setTrialEnds] = useState<string | null>(null);
   useEffect(() => {
@@ -89,47 +164,19 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
     return () => clearTimeout(t);
   }, []);
 
-  // Once the server has prepared the checkout, open Paddle's overlay with that reference.
+  // One free trial per person: this address has had a trial before (known only after it was submitted).
+  const noTrial = state.noTrialEmail !== null && normEmail(typedEmail) === state.noTrialEmail;
+  // A no-trial checkout already prepared for exactly the plan and address on screen.
+  const readyTxn = noTrial && state.status === "ready" && !state.trial && state.plan === plan ? state.transactionId : null;
+
+  // Once the server has prepared the checkout, open Paddle's overlay with that reference. Someone
+  // who has had a trial before first sees that the plan starts today, and opens it with the button.
   useEffect(() => {
     if (state.status !== "ready" || opened.current === state.ref) return;
+    if (!state.trial && !noticeSeen.current) return;
     opened.current = state.ref;
-    const { ref, email, plan } = state;
     let cancelled = false;
-    loadPaddle()
-      .then((P) => {
-        if (cancelled) return;
-        let completed = false;
-        eventListener = (e) => {
-          if (e.name === "checkout.completed" && !completed) {
-            completed = true;
-            uetEvent("begin_trial", { event_category: "premium", event_label: source });
-            setPhase({ step: "done", accountUrl: null });
-            // The webhook usually lands within seconds; until then (or if this
-            // checkout didn't create the account) the link comes by email.
-            void (async () => {
-              for (let i = 0; i < 6; i++) {
-                await new Promise((r) => setTimeout(r, 2000));
-                const res = await checkoutDoneAction(ref).catch(() => null);
-                if (res?.accountUrl) return setPhase({ step: "done", accountUrl: res.accountUrl });
-                if (res?.linked) return;
-              }
-            })();
-          } else if (e.name === "checkout.closed" && !completed) {
-            setPhase({ step: "form" });
-          }
-        };
-        setPhase({ step: "checkout" });
-        P.Checkout.open({
-          items: [{ priceId: plan === "quarterly" ? PADDLE_PRICE_QUARTERLY : PADDLE_PRICE_MONTHLY, quantity: 1 }],
-          customer: { email },
-          customData: { ref },
-          settings: { displayMode: "overlay", theme: "light", locale: "en", allowLogout: false },
-        });
-      })
-      .catch(() => {
-        // Opening the checkout state from a callback (not synchronously in the effect body).
-        if (!cancelled) setLoadError("The secure checkout couldn't load. Check your connection or ad blocker, then try again.");
-      });
+    openPaddleCheckout(state, { source, setPhase, setLoadError, cancelled: () => cancelled });
     return () => {
       cancelled = true;
     };
@@ -139,7 +186,7 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
   if (phase.step === "done") {
     return (
       <div role="status" className={`rounded-xl p-5 text-[1.02rem] leading-relaxed ${box}`}>
-        <p className="font-semibold">Your free trial has started.</p>
+        <p className="font-semibold">{phase.trial ? "Your free trial has started." : "Your plan has started."}</p>
         {phase.accountUrl ? (
           <p className="mt-2">
             Your first alert arrives with the next round of new vacancies.{" "}
@@ -164,14 +211,24 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
     dark ? "border-white/25 bg-white text-ink focus:ring-white/40" : "border-rule bg-paper text-ink focus:border-accent focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]"
   }`;
   const id = (k: string) => `trial-${k}-${source}`;
-  const [before, after = ""] = trialLine(plan, trialEnds).split(RENEWS);
+  // Never the trial terms for an address that has had a trial before.
+  const bold = noTrial ? RENEWING : RENEWS;
+  const [before, after = ""] = (noTrial ? noTrialLine(plan) : trialLine(plan, trialEnds)).split(bold);
   const line = { before, after };
+  const openReady = () => {
+    if (state.status !== "ready" || !readyTxn) return;
+    setLoadError(null);
+    opened.current = state.ref;
+    openPaddleCheckout({ ...state, transactionId: readyTxn }, { source, setPhase, setLoadError, cancelled: () => false });
+  };
 
   return (
     <form
       action={(fd) => {
         setLoadError(null);
         opened.current = null;
+        setTypedEmail(String(fd.get("email") ?? ""));
+        noticeSeen.current = noTrial;
         action(fd);
       }}
       // Start fetching Paddle.js as soon as someone shows interest, so the checkout opens without a wait.
@@ -221,20 +278,22 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
         </div>
       </fieldset>
       <label htmlFor={id("email")} className={`mb-1.5 block text-sm font-medium ${dark ? "text-white/90" : "text-ink"}`}>Email address</label>
-      <input id={id("email")} name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} />
+      <input id={id("email")} name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} onChange={(e) => setTypedEmail(e.target.value)} />
       {/* The terms come before the button, so they are read before starting. */}
       <p className={`mt-3 text-sm ${dark ? "text-white/85" : "text-slate"}`} aria-live="polite">
-        {line.before}<strong className={dark ? "text-white" : "text-ink"}>{RENEWS}</strong>{line.after} {TAX_LINE}{" "}
+        {line.before}<strong className={dark ? "text-white" : "text-ink"}>{bold}</strong>{line.after} {TAX_LINE}{" "}
         <Link href="/terms#subscriptions" className="underline">Subscription terms</Link> ·{" "}
         <Link href="/privacy" className="underline">Privacy</Link>
       </p>
       <div className="mt-3">
+        {/* With a no-trial checkout ready for this plan and address, the button opens it; otherwise it submits. */}
         <button
-          type="submit"
+          type={readyTxn ? "button" : "submit"}
+          onClick={readyTxn ? openReady : undefined}
           disabled={busy}
           className={`w-full rounded-lg px-5 py-3 text-base font-semibold disabled:opacity-60 ${dark ? "bg-highlight text-ink hover:brightness-95" : "bg-brand text-white hover:bg-accent"}`}
         >
-          {pending ? "Preparing…" : phase.step === "checkout" ? "Checkout open…" : trialButton}
+          {pending ? "Preparing…" : phase.step === "checkout" ? "Checkout open…" : noTrial ? noTrialButton : trialButton}
         </button>
       </div>
       {error ? <p role="alert" className={`mt-2 text-sm ${dark ? "text-[#ffd7d7]" : "text-[#9b1c1c]"}`}>{error}</p> : null}
@@ -243,10 +302,12 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true"><path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2M3.5 7h9v6.5h-9z" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
           Secure checkout by Paddle
         </li>
-        <li className="flex items-center gap-1.5">
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
-          $0 today, nothing charged if you cancel during the trial
-        </li>
+        {noTrial ? null : (
+          <li className="flex items-center gap-1.5">
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+            $0 today, nothing charged if you cancel during the trial
+          </li>
+        )}
         <li className="flex items-center gap-1.5">
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
           Cancel any time from your account

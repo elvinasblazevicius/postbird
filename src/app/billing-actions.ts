@@ -22,8 +22,13 @@ import { parseId } from "@/lib/site";
 import type { FormState } from "@/app/actions";
 
 export type CheckoutState =
-  | { status: "idle" | "error"; message: string }
-  | { status: "ready"; message: string; ref: string; email: string; plan: CheckoutPlan }
+  /** noTrial: the address has had a trial before, so the form must not show the trial terms. */
+  | { status: "idle" | "error"; message: string; noTrial?: boolean }
+  /**
+   * trial: false for an address that has had a trial before; the browser then opens
+   * Paddle Checkout for transactionId (the plan without its trial), not the catalog price.
+   */
+  | { status: "ready"; message: string; ref: string; email: string; plan: CheckoutPlan; trial: boolean; transactionId: string | null }
   | { status: "already"; message: string };
 
 const SERVER_ERROR = "Something went wrong on our side. Please try again in a minute.";
@@ -59,12 +64,12 @@ export async function startCheckoutAction(_prev: CheckoutState, form: FormData):
       attribution,
       visitor: visitorFromHeaders(h),
     });
-    if (!res.ok) return { status: "error", message: res.error };
+    if (!res.ok) return { status: "error", message: res.error, ...(res.noTrial ? { noTrial: true } : {}) };
     if ("alreadySubscribed" in res) {
       if (await rateLimit(`account-link:${res.email}`, 3, 3600)) await sendAccountLink(res.email);
       return { status: "already", message: "This address already has email alerts. We've emailed you the link to your account, where you can add searches or manage billing." };
     }
-    return { status: "ready", message: "", ref: res.ref, email: res.email, plan };
+    return { status: "ready", message: "", ref: res.ref, email: res.email, plan, trial: res.trial, transactionId: res.trial ? null : res.transactionId };
   } catch (e) {
     console.error("checkout start failed", (e as Error).message);
     return { status: "error", message: SERVER_ERROR };

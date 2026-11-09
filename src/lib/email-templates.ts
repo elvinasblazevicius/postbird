@@ -91,9 +91,10 @@ const jobRowsText = (jobs: JobListItem[]) => jobs.map((j) => `${j.title}\n${jobM
 /**
  * The free weekly email: the new matches for the subscriber's one search (the
  * caller lists at most 10), with "See all" when there are more. One calm line
- * offers daily alerts (the free trial once billing is live, early access before).
+ * offers daily alerts (the free trial once billing is live, early access before;
+ * no trial to an address that has had a plan: hadTrial).
  */
-export function weeklyEmail(opts: { group: AlertGroup; search: string; trialUrl: string; accountUrl: string; unsubscribeUrl: string }) {
+export function weeklyEmail(opts: { group: AlertGroup; search: string; trialUrl: string; accountUrl: string; unsubscribeUrl: string; hadTrial?: boolean }) {
   const all = opts.search === "";
   const g = capGroups([opts.group])[0];
   const subject = all
@@ -105,7 +106,7 @@ export function weeklyEmail(opts: { group: AlertGroup; search: string; trialUrl:
     : "";
   const p = siteConfig.premium;
   const upsell = BILLING_LIVE
-    ? { lead: "Want new matches every day, with up to 5 searches?", link: `Start a ${p.trialDays}-day free trial` }
+    ? { lead: "Want new matches every day, with up to 5 searches?", link: opts.hadTrial ? "Get daily alerts" : `Start a ${p.trialDays}-day free trial` }
     : { lead: "Daily alerts with up to 5 searches are coming.", link: "Join early access" };
   const intro = all ? "The newest vacancies of the past week." : `New this week for your search: ${g.label}.`;
   const html = layout(
@@ -148,7 +149,11 @@ function chargeLine(plan: string): string {
   return `the price of the plan you chose (${m.price} every ${m.per} or ${q.price} every ${q.per})`;
 }
 
-/** Sent once when a subscriber's trial (or subscription) starts. `plan` is planDescription() of their plan. */
+/**
+ * Sent once when a subscriber's trial (or subscription) starts. `plan` is planDescription() of their plan.
+ * trialEndsAt only while the subscription is in its trial (welcomeTrialEnd): a plan that started
+ * without one gets no trial wording.
+ */
 export function welcomeEmail(opts: { accountUrl: string; unsubscribeUrl: string; trialEndsAt: string | null; plan: string }) {
   const subject = `Your ${siteConfig.name} ${siteConfig.premium.name.toLowerCase()} are on`;
   const refundsUrl = absoluteUrl("/refunds");
