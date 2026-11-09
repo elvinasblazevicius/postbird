@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { StripUrlToken } from "@/components/strip-url-token";
 import { ConfirmForm } from "@/components/token-forms";
 import { findByConfirmToken } from "@/lib/subscribers";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Confirm your email", robots: { index: false, follow: false } };
+// The token is in the address: no referrer at all goes to any other site, and the token is taken
+// out of the address bar once the page has loaded (the forms carry it).
+export const metadata: Metadata = { title: "Confirm your email", robots: { index: false, follow: false }, referrer: "no-referrer" };
+
+const TOKEN_PARAMS = ["token"];
 
 type Props = { searchParams: Promise<{ token?: string | string[] }> };
 
@@ -15,6 +20,7 @@ export default async function ConfirmPage({ searchParams }: Props) {
   const sub = token ? await findByConfirmToken(token) : null;
   return (
     <div className="mx-auto max-w-xl px-4 py-20 sm:px-6">
+      <StripUrlToken params={TOKEN_PARAMS} />
       <h1 className="text-[2rem] font-semibold text-ink">Confirm your email</h1>
       {sub ? (
         <>

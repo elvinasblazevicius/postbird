@@ -1,10 +1,11 @@
 "use server";
 
 import { headers } from "next/headers";
+import { after } from "next/server";
 import siteConfig from "@site-config";
 import { cleanCampaign, recordEvent, visitorFromHeaders } from "@/lib/analytics";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
-import { planRenewal } from "@/lib/billing/notices";
+import { planRenewal, runWelcomeRetries } from "@/lib/billing/notices";
 import { confirmSubscriber, findByUnsubscribeToken, signup, unsubscribe, type SignupKind } from "@/lib/subscribers";
 
 export type FormState = { status: "idle" | "success" | "error"; message: string };
@@ -73,8 +74,15 @@ export async function confirmAction(_prev: FormState, form: FormData): Promise<F
   const t = String(form.get("token") ?? "");
   const res = await confirmSubscriber(t);
   if (!res.ok) return { status: "error", message: "This link has already been used or has expired. If you meant to sign up, please do so again." };
-  // A plan started at checkout with an address that was already on our list (see applySubscription).
-  if (res.paidPlan) return { status: "success", message: "Confirmed. Your alerts start with the next daily run, and we'll email you the link to your account page." };
+  // A plan started at checkout with an address that wasn't proven yet (see applySubscription):
+  // the welcome email with the account link goes out now (the daily job retries it if sending fails).
+  if (res.paidPlan) {
+    const id = res.id;
+    after(async () => {
+      await runWelcomeRetries(1, id).catch((e: Error) => console.error("welcome after confirmation failed", e.message));
+    });
+    return { status: "success", message: "Confirmed. We'll email you the link to your account page now, and your alerts start with the next daily run." };
+  }
   if (res.weekly || res.alerts) {
     return { status: "success", message: "Confirmed. Your weekly email comes on Mondays, and only when there are new vacancies that match your search." };
   }

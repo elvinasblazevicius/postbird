@@ -8,6 +8,22 @@ export const metadata: Metadata = {
   alternates: { canonical: "/grades" },
 };
 
+/**
+ * Official pay sources, linked (no figures: they change every year and by duty station).
+ * Checked on 9 November 2026: ICSC salary scales (Professional and higher, and General Service
+ * and related categories), ICSC post adjustment, EU Careers salary tables, EU Staff Regulations.
+ */
+const ICSC_SALARY_SCALES = "https://icsc.un.org/home/salaryscales";
+const ICSC_POST_ADJUSTMENT = "https://icsc.un.org/Home/PostAdjustment";
+const EU_SALARIES = "https://eu-careers.europa.eu/benefits-and-pay/salary-and-allowances/salary-levels-and-progression_en";
+const EU_STAFF_REGULATIONS = "https://eur-lex.europa.eu/eli/reg/1962/31(1)";
+
+function Pay({ children }: { children: React.ReactNode }) {
+  return <p className="text-[0.95rem] text-slate"><span className="font-medium text-ink">Pay:</span> {children}</p>;
+}
+
+const ext = { className: "text-accent underline", rel: "noopener" } as const;
+
 const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
   {
     id: "professional",
@@ -22,6 +38,10 @@ const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
           In the UN Secretariat the usual minimum, with an advanced university degree, is 2 years of relevant experience for P-2, 5 for P-3, 7 for
           P-4 and 10 for P-5. Other organizations set their own requirements, so the posting decides.
         </p>
+        <Pay>
+          one salary scale across the UN common system, plus a post adjustment that depends on the duty station. See the{" "}
+          <a href={ICSC_SALARY_SCALES} {...ext}>ICSC salary scales</a> and <a href={ICSC_POST_ADJUSTMENT} {...ext}>post adjustment</a>.
+        </Pay>
       </>
     ),
   },
@@ -29,30 +49,41 @@ const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
     id: "director",
     title: "Director (D-1, D-2) and senior appointments",
     body: (
-      <p>
-        D-1 and D-2 are director-level posts that head large offices, divisions or programmes. Assistant Secretary-General (ASG) and
-        Under-Secretary-General (USG) are senior leadership appointments.
-      </p>
+      <>
+        <p>
+          D-1 and D-2 are director-level posts that head large offices, divisions or programmes. Assistant Secretary-General (ASG) and
+          Under-Secretary-General (USG) are senior leadership appointments.
+        </p>
+        <Pay>
+          the same scale and post adjustment as Professional posts: the <a href={ICSC_SALARY_SCALES} {...ext}>ICSC salary scales</a>.
+        </Pay>
+      </>
     ),
   },
   {
     id: "national-officers",
     title: "National Officer (NO-A to NO-E)",
     body: (
-      <p>
-        Professional-level posts in country offices, filled by nationals of the country where the post is located. NO-A is the entry level and
-        NO-E the most senior.
-      </p>
+      <>
+        <p>
+          Professional-level posts in country offices, filled by nationals of the country where the post is located. NO-A is the entry level and
+          NO-E the most senior.
+        </p>
+        <Pay>a local salary scale for each duty station, linked from the <a href={ICSC_SALARY_SCALES} {...ext}>ICSC salary scales</a> page.</Pay>
+      </>
     ),
   },
   {
     id: "general-service",
     title: "General Service (G-1 to G-7)",
     body: (
-      <p>
-        Administrative, technical and support posts. They are normally recruited locally, from nationals or legal residents of the country (or
-        commuting area) of the duty station.
-      </p>
+      <>
+        <p>
+          Administrative, technical and support posts. They are normally recruited locally, from nationals or legal residents of the country (or
+          commuting area) of the duty station.
+        </p>
+        <Pay>a local salary scale for each duty station, linked from the <a href={ICSC_SALARY_SCALES} {...ext}>ICSC salary scales</a> page.</Pay>
+      </>
     ),
   },
   {
@@ -114,6 +145,10 @@ const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
           Contract agents (function groups I to IV) and temporary agents are hired for limited periods, usually through separate selection
           procedures.
         </p>
+        <Pay>
+          set by the <a href={EU_STAFF_REGULATIONS} {...ext}>EU Staff Regulations</a>. EU Careers publishes the{" "}
+          <a href={EU_SALARIES} {...ext}>salary tables for AD, AST, AST/SC and contract staff</a>.
+        </Pay>
       </>
     ),
   },

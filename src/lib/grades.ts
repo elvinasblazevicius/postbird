@@ -35,8 +35,16 @@ const LOCAL_TITLE_WORDS = [
   "g-[1-7]",
   "no-[a-e]",
 ];
-/** IOM marks General Service vacancies with "(G)" at the end of the title ("(P)" is Professional). */
-const LOCAL_TITLE_SUFFIX = "\\(g\\)\\s*$";
+/**
+ * IOM marks General Service vacancies with "(G)" at the end of the title and Professional ones with
+ * "(P)" (sometimes followed by " - Place"). Postgres and JavaScript regexes for the lower-cased title.
+ */
+const IOM_SUFFIX = (letter: "g" | "p") => `\\(${letter}\\)(\\s*$|\\s+[-–—|,])`;
+const LOCAL_TITLE_SUFFIX = IOM_SUFFIX("g");
+export const GENERAL_SERVICE_TITLE_SQL = IOM_SUFFIX("g");
+export const PROFESSIONAL_TITLE_SQL = IOM_SUFFIX("p");
+const GENERAL_SERVICE_TITLE_RE = new RegExp(GENERAL_SERVICE_TITLE_SQL);
+const PROFESSIONAL_TITLE_RE = new RegExp(PROFESSIONAL_TITLE_SQL);
 
 /** Postgres regex (advanced regex: \m and \M are word boundaries) for the lower-cased title. */
 export const LOCAL_ONLY_TITLE_SQL = `\\m(${LOCAL_TITLE_WORDS.join("|")})\\M|${LOCAL_TITLE_SUFFIX}`;
@@ -66,17 +74,34 @@ export function isNationalOfficerTitle(title: string | null | undefined): boolea
 }
 
 /**
- * The grade to show: the parsed one, or "National Officer" when no grade was parsed and the title
- * names the National Officer category. National Officer grades are written out ("NO-B" →
- * "National Officer B"), since "NO" on its own reads as the word. IOM's "(P)" and "(G)" suffixes
- * give a category, not a grade, so they only count for the local-only rule.
+ * The grade group a title names when no grade was parsed: "NO" for "National (Professional)
+ * Officer" / "NPO", "P" for IOM's "(P)" suffix, "G" for its "(G)" suffix. The filters, the grade
+ * counts and the job pages all use this (with the same SQL in src/lib/jobs.ts), so such a listing
+ * counts once, under "{Group}, any level".
+ */
+export function titleGradeGroup(title: string | null | undefined): "NO" | "P" | "G" | null {
+  if (!title) return null;
+  const t = title.toLowerCase();
+  if (NATIONAL_OFFICER_TITLE_RE.test(t)) return "NO";
+  if (PROFESSIONAL_TITLE_RE.test(t)) return "P";
+  if (GENERAL_SERVICE_TITLE_RE.test(t)) return "G";
+  return null;
+}
+
+const GROUP_DISPLAY: Record<"NO" | "P" | "G", string> = { NO: "National Officer", P: "Professional", G: "General Service" };
+
+/**
+ * The grade to show: the parsed one, or the grade group the title names when no grade was parsed
+ * ("National Officer", or "Professional" / "General Service" for IOM's "(P)" / "(G)"). National
+ * Officer grades are written out ("NO-B" → "National Officer B"), since "NO" on its own reads as the word.
  */
 export function displayGrade(job: { grade: string | null | undefined; title: string | null | undefined }): string | null {
   if (job.grade) {
     const no = job.grade.match(/^NO-?([A-E])$/i);
     return no ? `National Officer ${no[1].toUpperCase()}` : job.grade;
   }
-  return isNationalOfficerTitle(job.title) ? "National Officer" : null;
+  const group = titleGradeGroup(job.title);
+  return group ? GROUP_DISPLAY[group] : null;
 }
 
 /** The grade groups shown in the filter (the overlapping "entry" group is kept only for old links). */
@@ -84,9 +109,13 @@ export const FILTER_GRADE_GROUPS = GRADE_GROUPS.filter((g) => g.value !== "entry
 
 const SERVICE_CONTRACT_RE = /^(SB|SC|LICA|NPSA|IPSA|ICS)-/;
 
-/** Which filter group an exact grade belongs to ("P-3" → "P"), or null for grades outside every group. */
+/**
+ * Which filter group a grade belongs to ("P-3" → "P"), or null for grades outside every group. A
+ * group's own value ("NO": a listing whose title gives only the group) belongs to that group.
+ */
 export function gradeGroupOf(grade: string): string | null {
   if (SERVICE_CONTRACT_RE.test(grade)) return "SC";
+  if (FILTER_GRADE_GROUPS.some((g) => g.value === grade)) return grade;
   return FILTER_GRADE_GROUPS.find((g) => g.grades.includes(grade))?.value ?? null;
 }
 

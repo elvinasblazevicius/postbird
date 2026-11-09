@@ -95,7 +95,35 @@ export function orgNamesForTerm(term: string): string[] {
   return ORG_ALIAS_INDEX.get(tidyQuery(term)) ?? ORG_ALIAS_INDEX.get(tidyQuery(foldText(term))) ?? [];
 }
 
-/** Takes organization names of several words out of a tidied query, so they are matched as one term. */
+/**
+ * Other names of common duty stations, folded (foldText): a search for any name in a group also
+ * finds listings whose location uses another one ("geneve" finds Geneva, "kiev" finds Kyiv, "den
+ * haag" finds The Hague). Accents never matter ("Genève" is folded to "geneve" first).
+ */
+const PLACE_ALIAS_GROUPS: string[][] = [
+  ["geneva", "geneve", "genf", "ginevra"],
+  ["kyiv", "kiev"],
+  ["brussels", "bruxelles", "brussel"],
+  ["the hague", "hague", "den haag", "la haye"],
+  ["vienna", "wien"],
+  ["rome", "roma"],
+  ["new york", "ny", "nyc"],
+  ["addis ababa", "addis abeba", "addis"],
+];
+const PLACE_ALIAS_INDEX = new Map<string, string[]>();
+for (const g of PLACE_ALIAS_GROUPS) for (const name of g) PLACE_ALIAS_INDEX.set(name, g.filter((n) => n !== name));
+/** Place names of several words (other than "the hague", whose "the" is dropped as a stop word anyway), longest first. */
+const PLACE_PHRASES = [...PLACE_ALIAS_INDEX.keys()].filter((k) => k.includes(" ") && !k.startsWith("the ")).sort((a, b) => b.length - a.length);
+
+/** The other names of the duty station a search term names ("geneve" → ["geneva", "genf", "ginevra"]), folded; [] for other terms. */
+export function placeVariants(term: string): string[] {
+  return PLACE_ALIAS_INDEX.get(tidyQuery(foldText(term))) ?? [];
+}
+
+/**
+ * Takes organization and duty-station names of several words out of a tidied query, so they are
+ * matched as one term ("doctors without borders", "den haag").
+ */
 function takeOrgPhrases(s: string): { phrases: string[]; rest: string } {
   let rest = ` ${s} `;
   const phrases: string[] = [];
@@ -103,6 +131,15 @@ function takeOrgPhrases(s: string): { phrases: string[]; rest: string } {
     if (rest.includes(` ${p} `)) {
       phrases.push(p);
       rest = rest.replace(` ${p} `, " ");
+    }
+  }
+  if (PLACE_PHRASES.some((p) => ` ${foldText(rest)} `.includes(` ${p} `))) {
+    rest = ` ${foldText(rest).trim()} `;
+    for (const p of PLACE_PHRASES) {
+      if (rest.includes(` ${p} `)) {
+        phrases.push(p);
+        rest = rest.replace(` ${p} `, " ");
+      }
     }
   }
   return { phrases, rest: rest.replace(/\s+/g, " ").trim() };

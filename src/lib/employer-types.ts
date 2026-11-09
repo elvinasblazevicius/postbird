@@ -57,9 +57,9 @@ export const EMPLOYER_TYPE_PAGES: EmployerTypePage[] = [
   {
     orgtype: "io",
     path: "/international-organization-jobs",
-    title: "International organization jobs",
+    title: "Jobs at other international organizations",
     label: "Other international organizations",
-    metaTitle: "International organization jobs: vacancies outside the UN and EU",
+    metaTitle: "Jobs at other international organizations, outside the UN and EU",
     intro: "Vacancies at international and intergovernmental organizations outside the UN system and the EU. Each one links to the organization's own careers site, where you apply.",
     alertNoun: "international organization",
   },

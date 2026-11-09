@@ -6,7 +6,8 @@ import { absoluteUrl } from "@/lib/site";
 import { recordEvent } from "@/lib/analytics";
 import { takeDailyQuota } from "@/lib/rate-limit";
 import { replaceWithWeeklySearch } from "@/lib/saved-searches";
-import { writeTrialMarkers } from "@/lib/billing/trial-markers";
+import { storeMarkerFingerprint, writeTrialMarkers } from "@/lib/billing/trial-markers";
+import { sharedSecret } from "@/lib/server-secret";
 import type { BillingStatus, PlanInterval } from "@/lib/billing/subscriptions";
 
 export type SignupKind = "alerts" | "waitlist";
@@ -132,7 +133,7 @@ export async function findByConfirmToken(t: unknown) {
  * switches the weekly email on and, unless the address has a plan, makes that
  * search its one saved search.
  */
-export type ConfirmResult = { ok: false } | { ok: true; waitlist: boolean; alerts: boolean; weekly: boolean; paidPlan: boolean };
+export type ConfirmResult = { ok: false } | { ok: true; id: number; waitlist: boolean; alerts: boolean; weekly: boolean; paidPlan: boolean };
 
 export async function confirmSubscriber(t: unknown): Promise<ConfirmResult> {
   if (!isLinkToken(t)) return { ok: false };
@@ -169,7 +170,7 @@ export async function confirmSubscriber(t: unknown): Promise<ConfirmResult> {
   });
   if (rows.length !== 1) return { ok: false };
   await recordEvent({ type: "alert_confirmed" });
-  return { ok: true, waitlist: rows[0].premium_waitlist, alerts: rows[0].wants_alerts, weekly: rows[0].weekly_search !== null, paidPlan: rows[0].paid_plan };
+  return { ok: true, id: rows[0].id, waitlist: rows[0].premium_waitlist, alerts: rows[0].wants_alerts, weekly: rows[0].weekly_search !== null, paidPlan: rows[0].paid_plan };
 }
 
 /**
@@ -182,18 +183,32 @@ export async function confirmSubscriber(t: unknown): Promise<ConfirmResult> {
  *  - early-access-only addresses: 30 days after the "alerts are open" email,
  *    unless they started a trial.
  * Saved searches, checkout references and checkout links go with the
- * subscriber (on delete cascade). A deleted address that had a plan leaves a
- * trial marker (a one-way code, not the address) for 24 months, so it can't
- * get a second free trial (see src/lib/billing/trial-markers.ts); markers are
- * deleted once they expire.
+ * subscriber (on delete cascade). A deleted address that had a plan while
+ * confirmed leaves a trial marker (a one-way code, not the address) for 24
+ * months, so it can't get a second free trial (see
+ * src/lib/billing/trial-markers.ts); markers are deleted once they expire.
+ * A plan at an address that was never confirmed leaves none (its owner never
+ * proved the address, so it doesn't use up their trial).
+ *
+ * Without ANALYTICS_SALT or CRON_SECRET no marker can be written: addresses
+ * that would need one are kept (not deleted) and an error is logged in the
+ * GitHub Actions run, until the secret is set.
  */
 export async function purgeStaleSubscribers(): Promise<number> {
+  const canMark = sharedSecret() !== null;
+  if (!canMark) {
+    console.error("::error title=Trial markers::Neither ANALYTICS_SALT nor CRON_SECRET is set, so no trial marker can be written. Addresses that had a plan are kept until it is set (use exactly the same values on Netlify and in GitHub).");
+  } else {
+    // Lets Admin → Overview check that the website uses the same secret.
+    await storeMarkerFingerprint();
+  }
   // Each delete and the markers of the addresses it removed commit together.
   // "Had a plan" is the same test as hadTrialBefore in src/lib/billing/subscriptions.ts.
   type Deleted = { email: string; had_plan: boolean }[];
   const purge = (del: (tx: Tx) => Promise<Deleted>) => transaction(async (tx) => {
     const rows = await del(tx);
-    await writeTrialMarkers(tx, rows.filter((r) => r.had_plan).map((r) => r.email));
+    const toMark = rows.filter((r) => r.had_plan).map((r) => r.email);
+    if (toMark.length && !(await writeTrialMarkers(tx, toMark))) throw new Error("trial markers could not be written");
     return rows.length;
   });
   // Never deletes someone with a running Paddle subscription (they still pay,
@@ -204,20 +219,23 @@ export async function purgeStaleSubscribers(): Promise<number> {
       and (status = 'pending' or (status = 'unsubscribed' and unsubscribed_at < now() - interval '30 days'))
       and billing_status in ('none', 'canceled')
       and (canceled_at is null or canceled_at < now() - interval '30 days')
-    returning email, (paddle_subscription_id is not null or billing_status <> 'none' or trial_ends_at is not null or canceled_at is not null) as had_plan`);
+      and (${canMark}::boolean or not (confirmed_at is not null and (paddle_subscription_id is not null or billing_status <> 'none' or trial_ends_at is not null or canceled_at is not null)))
+    returning email, (confirmed_at is not null and (paddle_subscription_id is not null or billing_status <> 'none' or trial_ends_at is not null or canceled_at is not null)) as had_plan`);
   const canceled = await purge((tx) => tx<Deleted>`
     delete from subscribers
     where billing_status = 'canceled'
       and coalesce(canceled_at, billing_event_at) < now() - interval '30 days'
       and not (weekly_email and status = 'confirmed')
-    returning email, (paddle_subscription_id is not null or billing_status <> 'none' or trial_ends_at is not null or canceled_at is not null) as had_plan`);
+      and (${canMark}::boolean or confirmed_at is null)
+    returning email, (confirmed_at is not null and (paddle_subscription_id is not null or billing_status <> 'none' or trial_ends_at is not null or canceled_at is not null)) as had_plan`);
   // Early access only: on the list, never asked for the free weekly email, never had a plan.
   const waitlist = await purge((tx) => tx<Deleted>`
     delete from subscribers
     where premium_waitlist and not wants_alerts and not weekly_email
       and billing_status = 'none' and paddle_subscription_id is null
       and waitlist_notified_at < now() - interval '30 days'
-    returning email, (paddle_subscription_id is not null or billing_status <> 'none' or trial_ends_at is not null or canceled_at is not null) as had_plan`);
+      and (${canMark}::boolean or not (confirmed_at is not null and (trial_ends_at is not null or canceled_at is not null)))
+    returning email, (confirmed_at is not null and (paddle_subscription_id is not null or billing_status <> 'none' or trial_ends_at is not null or canceled_at is not null)) as had_plan`);
   // Checkout references (they link a daily visitor code to a subscriber) are only
   // needed until Paddle's webhooks arrive; webhook ids for a year (late retries).
   await sql`delete from paddle_checkouts where created_at < now() - interval '30 days'`;

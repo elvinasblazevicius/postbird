@@ -1,16 +1,24 @@
 /**
  * Checkout for addresses that have or had a plan (server only).
  *
- * The public trial form must not tell whoever typed an address that it is (or
- * was) a customer. So for those addresses the form only says "check your
- * inbox", and the next step goes to the address itself:
+ * What the public trial form shows: an address that can start a free trial
+ * (new, or never had a plan) goes straight to Paddle Checkout; any address
+ * that has or had a plan (or whose canonical form had one, or that left a
+ * trial marker) gets "Check your inbox" instead, and the next step goes to the
+ * address itself:
  *  - a plan is running: the account link ("You already have daily alerts");
  *  - a plan was had before: a single-use link, valid 24 hours, to
  *    /account/continue, which shows the terms for this address (no second
- *    free trial: one per email address) and opens Paddle Checkout for a
- *    transaction without a trial.
- * The reply on the page is the same in both cases, and the same when the
- * daily cap stops the email.
+ *    free trial: one per person) and opens Paddle Checkout for a transaction
+ *    without a trial.
+ * So the form does tell whoever types an address one thing: whether it can
+ * still start a free trial here (Paddle opens) or not ("Check your inbox"),
+ * which suggests the address has or had a plan. It does not say which (a
+ * running plan and a past one get the same reply, also when the daily cap
+ * stops the email), and the account link and checkout terms only ever go to
+ * the address. The trade-off: hiding even that would mean emailing every
+ * address a link before checkout, an extra step for every genuine new
+ * customer; it was judged not worth it for this one bit of information.
  */
 import { createHash, randomBytes } from "node:crypto";
 import { sendAccountLink } from "@/lib/account";
@@ -19,7 +27,7 @@ import {
   CHECKOUT_UNAVAILABLE, hadTrialBefore, LIVE_STATUSES, priceIdFor, TOKEN_RE,
   type CheckoutPlan, type PlanHistory, type StartCheckoutResult,
 } from "@/lib/billing/subscriptions";
-import { hasTrialMarker } from "@/lib/billing/trial-markers";
+import { trialUsedElsewhere } from "@/lib/billing/trial-markers";
 import { sql } from "@/lib/db";
 import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { checkoutLinkEmail } from "@/lib/email-templates";
@@ -36,8 +44,11 @@ export const CHECK_INBOX = "Check your inbox: we've emailed this address a link 
 
 export type CheckoutState =
   | { status: "idle" | "error"; message: string }
-  /** trial: false only on the continue page; the browser then opens Paddle Checkout for transactionId (the plan without its trial). */
-  | { status: "ready"; message: string; ref: string; email: string; plan: CheckoutPlan; trial: boolean; transactionId: string | null }
+  /**
+   * trial: false only on the continue page; the browser then opens Paddle Checkout for transactionId (the plan without its trial).
+   * confirmFirst: the address isn't proven (the public form), so after checkout the page asks to confirm it from the inbox.
+   */
+  | { status: "ready"; message: string; ref: string; email: string; plan: CheckoutPlan; trial: boolean; transactionId: string | null; confirmFirst: boolean }
   /** The address has or had a plan: the same reply either way; the next step was emailed. */
   | { status: "inbox"; message: string };
 
@@ -45,7 +56,7 @@ export type CheckoutState =
 export function checkoutReply(res: StartCheckoutResult, plan: CheckoutPlan): CheckoutState {
   if (!res.ok) return { status: "error", message: res.error };
   if ("inbox" in res) return { status: "inbox", message: CHECK_INBOX };
-  return { status: "ready", message: "", ref: res.ref, email: res.email, plan, trial: true, transactionId: null };
+  return { status: "ready", message: "", ref: res.ref, email: res.email, plan, trial: true, transactionId: null, confirmFirst: true };
 }
 
 const hashToken = (t: string) => createHash("sha256").update(t).digest("hex");
@@ -100,9 +111,10 @@ export type LinkState = "live" | "returning" | "new";
 
 async function stateOf(subscriberId: number): Promise<{ email: string; state: LinkState } | null> {
   const [s] = await sql<(PlanHistory & { email: string })[]>`
-    select email, paddle_subscription_id, billing_status, trial_ends_at, canceled_at from subscribers where id = ${subscriberId}`;
+    select email, confirmed_at, paddle_subscription_id, billing_status, trial_ends_at, canceled_at from subscribers where id = ${subscriberId}`;
   if (!s) return null;
-  const state: LinkState = LIVE_STATUSES.includes(s.billing_status) ? "live" : hadTrialBefore(s, await hasTrialMarker(s.email)) ? "returning" : "new";
+  const state: LinkState = LIVE_STATUSES.includes(s.billing_status) ? "live"
+    : hadTrialBefore(s, await trialUsedElsewhere(s.email, subscriberId)) ? "returning" : "new";
   return { email: s.email, state };
 }
 
@@ -131,7 +143,7 @@ export const LINK_USED = "This link has already been used or has expired. Start 
  * gets a Paddle transaction for the plan without its trial; if that can't be
  * created, the link is given back so the visitor can try again, and the trial
  * is never offered instead. Opening the link proves the address is the
- * visitor's, so paying confirms it (new_subscriber on the checkout).
+ * visitor's, so paying confirms it (address_proven on the checkout).
  */
 export async function continueCheckout(token: unknown, plan: CheckoutPlan): Promise<ContinueResult> {
   if (typeof token !== "string" || !TOKEN_RE.test(token)) return { ok: false, error: LINK_USED, used: true };
@@ -159,7 +171,7 @@ export async function continueCheckout(token: unknown, plan: CheckoutPlan): Prom
     }
   }
   await sql`
-    insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor, trial_allowed)
-    values (${ref}, ${link.subscriber_id}, ${plan}, ${link.search}, true, ${link.visitor}, ${transactionId === null})`;
+    insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor, trial_allowed, address_proven)
+    values (${ref}, ${link.subscriber_id}, ${plan}, ${link.search}, true, ${link.visitor}, ${transactionId === null}, true)`;
   return { ok: true, ref, email: st.email, trial: transactionId === null, transactionId };
 }

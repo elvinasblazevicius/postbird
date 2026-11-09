@@ -98,6 +98,8 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
     process.env.NEXT_PUBLIC_PADDLE_PRICE_MONTHLY = PRICE_MONTHLY;
     process.env.NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY = PRICE_QUARTERLY;
     delete process.env.NEXT_PUBLIC_PADDLE_ENV;
+    // The secret that keys trial markers (the site and the scheduled jobs must share it).
+    process.env.ANALYTICS_SALT = "test-analytics-salt-0123456789";
 
     vi.stubGlobal("fetch", async (url: string | URL, init?: RequestInit) => {
       const u = String(url);
@@ -172,11 +174,13 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
     const firstRef = (first as { ref: string }).ref;
     const subId = "sub_01hv8x29kz0t586xy6zn1a70aa";
     const customer = "ctm_01hv6y1jedq4p1n0yqn5ba3k70";
-    await billing.handlePaddleEvent(subEvent("subscription.created", {
+    const created = await billing.handlePaddleEvent(subEvent("subscription.created", {
       id: subId, status: "trialing", customer_id: customer, custom_data: { ref: firstRef },
       billing_cycle: { interval: "month", frequency: 1 }, current_billing_period: { starts_at: "2026-11-01T10:00:00Z", ends_at: "2026-11-15T10:00:00Z" },
       items: [{ price: { id: PRICE_MONTHLY }, trial_dates: { starts_at: "2026-11-01T10:00:00Z", ends_at: "2026-11-15T10:00:00Z" } }],
     }, "2026-11-01T10:00:00Z"));
+    // The owner confirms the address (from the email sent after the trial started): the trial now counts.
+    expect((await (await import("@/lib/subscribers")).confirmSubscriber(created.confirm!.confirmToken)).ok).toBe(true);
     // Canceled during the trial.
     await billing.handlePaddleEvent(subEvent("subscription.canceled", {
       id: subId, status: "canceled", customer_id: customer, custom_data: { ref: firstRef }, canceled_at: "2026-11-03T10:00:00Z", current_billing_period: null,
@@ -219,8 +223,8 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
     expect(paddleCalls.some((c) => c.url.includes("again") || c.url.includes("%40"))).toBe(false);
     // The checkout record the webhook matches the subscription with: no trial allowed; opening
     // the emailed link proved the address, so paying confirms it.
-    expect(await sql`select plan, search, trial_allowed, new_subscriber from paddle_checkouts where ref = ${ref}`)
-      .toEqual([{ plan: "quarterly", search: "q=data", trial_allowed: false, new_subscriber: true }]);
+    expect(await sql`select plan, search, trial_allowed, new_subscriber, address_proven from paddle_checkouts where ref = ${ref}`)
+      .toEqual([{ plan: "quarterly", search: "q=data", trial_allowed: false, new_subscriber: true, address_proven: true }]);
 
     // Single use.
     expect(await links.findCheckoutLink(token)).toBeNull();
@@ -229,8 +233,8 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
 
   it("if the no-trial checkout can't be prepared, the link is given back and the trial is never offered", async () => {
     const [row] = await sql`
-      insert into subscribers (email, status, billing_status, paddle_subscription_id, trial_ends_at, canceled_at, unsubscribe_token)
-      values ('down@example.org', 'confirmed', 'canceled', 'sub_01hv8x29kz0t586xy6zn1a71aa', '2026-10-15', '2026-10-10', ${tok("down")})
+      insert into subscribers (email, status, confirmed_at, billing_status, paddle_subscription_id, trial_ends_at, canceled_at, unsubscribe_token)
+      values ('down@example.org', 'confirmed', '2026-09-20', 'canceled', 'sub_01hv8x29kz0t586xy6zn1a71aa', '2026-10-15', '2026-10-10', ${tok("down")})
       returning id::int as id`;
     const token = await links.createCheckoutLink(row.id, { plan: "monthly", search: null });
     const before = (await sql`select count(*)::int as n from paddle_checkouts`)[0].n;
@@ -313,8 +317,8 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
     // A former subscriber whose welcome went out for the earlier subscription.
     const oldSub = "sub_01hv8x29kz0t586xy6zn1a72aa";
     const [r] = await sql`
-      insert into subscribers (email, status, billing_status, paddle_subscription_id, paddle_customer_id, trial_ends_at, canceled_at, billing_event_at, welcome_sent_at, unsubscribe_token)
-      values ('back@example.org', 'confirmed', 'canceled', ${oldSub}, 'ctm_01hv6y1jedq4p1n0yqn5ba3k72',
+      insert into subscribers (email, status, confirmed_at, billing_status, paddle_subscription_id, paddle_customer_id, trial_ends_at, canceled_at, billing_event_at, welcome_sent_at, unsubscribe_token)
+      values ('back@example.org', 'confirmed', now() - interval '70 days', 'canceled', ${oldSub}, 'ctm_01hv6y1jedq4p1n0yqn5ba3k72',
               now() - interval '20 days', now() - interval '25 days', now() - interval '20 days', now() - interval '60 days', ${tok("back")})
       returning id::int as id`;
     const trialsBefore = (await sql`select count(*)::int as n from events where type = 'trial_started'`)[0].n;
@@ -382,5 +386,147 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
     // A malformed token isn't looked up.
     expect(await actions.unsubscribeCancelLinkAction({ status: "idle", message: "" }, form({ token: "bad\u0000token-xxxxxxxxxxxxxx" })))
       .toMatchObject({ status: "error" });
+  });
+  // ── One trial per person: canonical addresses ──────────────
+
+  it("the database's canonical address matches canonicalTrialEmail, and is kept up to date", async () => {
+    const markers = await import("@/lib/billing/trial-markers");
+    const samples = ["Name@Example.org", " name+jobs@example.org", "name+a+b@example.org", "first.last@example.org", "First.Last+x@gmail.com",
+      "f.i.r.s.t@googlemail.com", "+tag@example.org", "...@gmail.com", "name@mail.gmail.com", "a.b+c@GoogleMail.com"];
+    for (const e of samples) {
+      const [{ c }] = await sql`select canonical_trial_email(${e}) as c`;
+      expect(c).toBe(markers.canonicalTrialEmail(e));
+    }
+    const [r] = await sql`insert into subscribers (email, status, unsubscribe_token) values ('canon.check+x@gmail.com', 'pending', ${tok("canon-check")}) returning id::int as id, canonical_email`;
+    expect(r.canonical_email).toBe("canoncheck@gmail.com");
+    await sql`update subscribers set email = 'other.one@example.org' where id = ${r.id}`;
+    expect((await sql`select canonical_email from subscribers where id = ${r.id}`)[0].canonical_email).toBe("other.one@example.org");
+    await sql`delete from subscribers where id = ${r.id}`;
+  });
+
+  it("another form of an address that had a plan gets no trial: the inbox reply, the no-trial terms, and a blocked webhook trial", async () => {
+    await sql`
+      insert into subscribers (email, status, confirmed_at, billing_status, paddle_subscription_id, trial_ends_at, canceled_at, unsubscribe_token)
+      values ('janedoe@gmail.com', 'confirmed', now() - interval '60 days', 'canceled', 'sub_01hv8x29kz0t586xy6zn1a75aa', now() - interval '45 days', now() - interval '50 days', ${tok("janedoe")})`;
+    const res = await billing.startCheckout({ email: "Jane.Doe+jobs@googlemail.com", plan: "monthly", search: null });
+    expect(res).toMatchObject({ ok: true, inbox: true, email: "jane.doe+jobs@googlemail.com", live: false });
+    const id = (res as { subscriberId: number }).subscriberId;
+    const [row] = await sql`select canonical_email from subscribers where id = ${id}`;
+    expect(row.canonical_email).toBe("janedoe@gmail.com");
+    // The emailed link offers the plan without a trial.
+    const token = await links.createCheckoutLink(id, { plan: "monthly", search: null });
+    expect(await links.findCheckoutLink(token)).toMatchObject({ state: "returning" });
+    // A trialing subscription for it (a reference that did allow a trial) is held back and canceled.
+    await sql`insert into paddle_checkouts (ref, subscriber_id, plan, trial_allowed) values ('ref-variant-0123456789abcd', ${id}, 'monthly', true)`;
+    const sub = "sub_01hv8x29kz0t586xy6zn1a75ab";
+    const out = await billing.handlePaddleEvent(subEvent("subscription.created", {
+      id: sub, status: "trialing", customer_id: null, custom_data: { ref: "ref-variant-0123456789abcd" },
+      billing_cycle: { interval: "month", frequency: 1 }, items: [{ price: { id: PRICE_MONTHLY }, trial_dates: { starts_at: "2026-11-09T10:00:00Z", ends_at: "2026-11-23T10:00:00Z" } }],
+    }));
+    expect(out).toEqual({ outcome: "flagged", cancel: { subscriptionId: sub } });
+    expect((await sql`select kind from billing_flags where subscription_id = ${sub}`)[0].kind).toBe("trial_blocked");
+
+    // A plan at a form of the address that was never confirmed doesn't count.
+    await sql`
+      insert into subscribers (email, status, billing_status, paddle_subscription_id, canceled_at, unsubscribe_token)
+      values ('unconfirmed.sib@gmail.com', 'pending', 'canceled', 'sub_01hv8x29kz0t586xy6zn1a75ac', now() - interval '5 days', ${tok("unconfsib")})`;
+    expect(await billing.startCheckout({ email: "unconfirmedsib+x@gmail.com", plan: "monthly", search: null })).toMatchObject({ ok: true, trial: true });
+  });
+
+  // ── Trial-marker secret ────────────────────────────────────
+
+  it("without ANALYTICS_SALT or CRON_SECRET no marker is written and the address is kept; the fingerprint shows a mismatch", async () => {
+    const markers = await import("@/lib/billing/trial-markers");
+    const subscribers = await import("@/lib/subscribers");
+    const { secretFingerprint } = await import("@/lib/server-secret");
+    await sql`
+      insert into subscribers (email, status, confirmed_at, billing_status, canceled_at, unsubscribe_token)
+      values ('keep-without-key@example.org', 'unsubscribed', now() - interval '90 days', 'canceled', now() - interval '40 days', ${tok("keep-without-key")})`;
+    await sql`update subscribers set unsubscribed_at = now() - interval '40 days', created_at = now() - interval '90 days' where email = 'keep-without-key@example.org'`;
+    const salt = process.env.ANALYTICS_SALT;
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...a: unknown[]) => { errors.push(a.map(String).join(" ")); });
+    delete process.env.ANALYTICS_SALT;
+    delete process.env.CRON_SECRET;
+    try {
+      expect(markers.trialMarker("keep-without-key@example.org")).toBeNull();
+      expect(await markers.writeTrialMarkers(sql, ["keep-without-key@example.org"])).toBe(false);
+      await subscribers.purgeStaleSubscribers();
+      expect(await sql`select 1 from subscribers where email = 'keep-without-key@example.org'`).toHaveLength(1);
+      expect(errors.some((e) => e.startsWith("::error"))).toBe(true);
+      expect(await markers.hasTrialMarker("keep-without-key@example.org")).toBe(false);
+      expect(await markers.checkMarkerKey()).toEqual({ status: "missing" });
+    } finally {
+      spy.mockRestore();
+      process.env.ANALYTICS_SALT = salt;
+    }
+    // With the secret: deleted, marked, and the fingerprint stored for Admin → Overview.
+    await subscribers.purgeStaleSubscribers();
+    expect(await sql`select 1 from subscribers where email = 'keep-without-key@example.org'`).toHaveLength(0);
+    expect(await markers.hasTrialMarker("keep-without-key@example.org")).toBe(true);
+    const [fp] = await sql`select value from settings where key = ${markers.MARKER_FINGERPRINT_KEY}`;
+    expect(fp.value).toBe(secretFingerprint());
+    expect(fp.value).toMatch(/^[0-9a-f]{12}$/);
+    expect(await markers.checkMarkerKey()).toEqual({ status: "ok" });
+    // The site with a different secret than the scheduled jobs: a warning, and markers don't match.
+    process.env.ANALYTICS_SALT = "a-different-salt-on-the-site";
+    try {
+      expect(await markers.checkMarkerKey()).toMatchObject({ status: "mismatch" });
+      expect(await markers.hasTrialMarker("keep-without-key@example.org")).toBe(false);
+    } finally {
+      process.env.ANALYTICS_SALT = salt;
+    }
+  });
+
+  it("a marker written before canonical forms existed (normalized address) still counts", async () => {
+    const markers = await import("@/lib/billing/trial-markers");
+    const { createHmac } = await import("node:crypto");
+    const legacy = createHmac("sha256", process.env.ANALYTICS_SALT!).update("trial-marker|old.style+tag@gmail.com").digest("hex");
+    await sql`insert into trial_markers (hash, expires_at) values (${legacy}, now() + interval '1 year')`;
+    expect(await markers.hasTrialMarker("Old.Style+tag@gmail.com")).toBe(true);
+  });
+
+  // ── Daily email quota ──────────────────────────────────────
+
+  it("the daily quota holds under concurrent calls", async () => {
+    const { takeDailyQuota } = await import("@/lib/rate-limit");
+    // Several rounds: without the lock, calls at the same moment regularly all saw room for one more.
+    for (let round = 0; round < 10; round++) {
+      const results = await Promise.all(Array.from({ length: 12 }, () => takeDailyQuota(`concurrent-quota|round-${round}@example.org`, 3)));
+      expect(results.filter(Boolean)).toHaveLength(3);
+    }
+    await takeDailyQuota("concurrent-quota|someone@example.org", 3);
+    await takeDailyQuota("concurrent-quota|someone@example.org", 3);
+    expect(await takeDailyQuota("concurrent-quota|someone@example.org", 3)).toBe(true);
+    expect(await takeDailyQuota("concurrent-quota|someone@example.org", 3)).toBe(false);
+    expect(await takeDailyQuota("concurrent-quota|someone-else@example.org", 3)).toBe(true);
+  });
+
+  // ── Errors shown on Admin → Overview ───────────────────────
+
+  it("a webhook event that fails unexpectedly is recorded once per message, counted, and can be marked as dealt with", async () => {
+    const ops = await import("@/lib/ops-events");
+    await sql.unsafe(`
+      create or replace function test_boom() returns trigger language plpgsql as $$ begin raise exception 'boom for someone@example.org'; end $$;
+      drop trigger if exists test_boom on paddle_events;
+      create trigger test_boom before insert on paddle_events for each row when (new.event_id like 'evt_boom%') execute function test_boom();`);
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      for (const n of [1, 2]) {
+        const ev = { ...subEvent("subscription.created", { id: "sub_01hv8x29kz0t586xy6zn1a76aa", status: "trialing", customer_id: null, custom_data: null }), event_id: `evt_boom_${n}` };
+        expect((await postEvent(ev)).status).toBe(500);
+      }
+    } finally {
+      spy.mockRestore();
+      await sql.unsafe("drop trigger if exists test_boom on paddle_events; drop function if exists test_boom();");
+    }
+    const open = (await ops.openOpsEvents()).filter((o) => o.source === "webhook");
+    expect(open).toHaveLength(1);
+    expect(open[0]).toMatchObject({ count: 2 });
+    expect(open[0].message).toMatch(/^subscription\.created failed: .*boom/);
+    // No address is stored, even when the error quoted one.
+    expect(open[0].message).not.toContain("@");
+    await ops.resolveOpsEvent(open[0].id);
+    expect((await ops.openOpsEvents()).filter((o) => o.source === "webhook")).toHaveLength(0);
   });
 });

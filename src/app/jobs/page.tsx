@@ -4,8 +4,6 @@ import { PageHeader } from "@/components/page-header";
 import { categoryBySlug } from "@/config/categories";
 import { gradeShortName, orList, placeNames } from "@/lib/filter-labels";
 import { activeFilterCount, getOrganization, parseFilters, type JobFilters } from "@/lib/jobs";
-import { nonAffiliationLine } from "@/lib/org-names";
-import { siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +51,6 @@ export default async function JobsPage({ searchParams }: Props) {
         title={heading}
         crumbs={[{ href: "/", label: "Home" }, { href: "/jobs", label: "Jobs" }]}
         intro="Vacancies from UN agencies and international organizations. Every listing links to the employer's own website."
-        note={nonAffiliationLine(siteConfig.name, null)}
       />
       <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-8">
         <JobsBrowser filters={filters} />

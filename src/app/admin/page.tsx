@@ -5,7 +5,9 @@ import { sql } from "@/lib/db";
 import { isEmailConfigured } from "@/lib/email";
 import { BILLING_LIVE, PADDLE_ENV } from "@/lib/billing/live";
 import { planPriceNumber } from "@/lib/early-access-copy";
-import { resolveBillingFlagAction, sendTestEmailAction, syncNowAction } from "./actions";
+import { checkMarkerKey } from "@/lib/billing/trial-markers";
+import { openOpsEvents } from "@/lib/ops-events";
+import { resolveBillingFlagAction, resolveOpsEventAction, sendTestEmailAction, syncNowAction } from "./actions";
 import { BillingSelfCheck } from "./billing-check";
 import { requireAdmin } from "./guard";
 import { AdminShell, Card, fmtDateTime, olderThanHours, Stat, StatusPill, Table } from "./ui";
@@ -132,6 +134,12 @@ export default async function AdminHome({ searchParams }: Props) {
     select f.subscription_id, f.kind, f.customer_id, f.detail, f.updated_at, s.email
     from billing_flags f left join subscribers s on s.id = f.subscriber_id
     where f.resolved_at is null order by f.updated_at desc limit 20`.catch(() => []);
+  // Unexpected errors from the webhook and the scheduled jobs, and whether the scheduled jobs
+  // use the same trial-marker secret as this site (see src/lib/billing/trial-markers.ts).
+  const [opsEvents, markerKey] = await Promise.all([
+    openOpsEvents(),
+    checkMarkerKey().catch(() => ({ status: "unknown" as const })),
+  ]);
   // Monthly recurring revenue estimate: paying subscribers only (not trials), 3-month plans counted at a third. Before Paddle's fees and taxes.
   const mrr = bill.active_month * planPriceNumber("month") + (bill.active_quarter * planPriceNumber("quarter")) / 3;
   const money = (x: number) => `$${x.toFixed(2)}`;
@@ -159,6 +167,11 @@ export default async function AdminHome({ searchParams }: Props) {
   else if (olderThanHours(lastOk.started_at, 8)) warnings.push(<>The last successful import was over 8 hours ago. Check that the scheduled sync (GitHub Actions) is running.</>);
   if (!isEmailConfigured()) warnings.push(<>Email isn&apos;t set up (RESEND_API_KEY missing). Sign-ups are saved but no confirmation or alert emails are sent.</>);
   if (!process.env.CRON_SECRET) warnings.push(<>CRON_SECRET is missing, so the /api/cron addresses are switched off.</>);
+  if (markerKey.status === "missing") {
+    warnings.push(<>Neither ANALYTICS_SALT nor CRON_SECRET is set on this site, so the one-free-trial check can&apos;t read trial markers. Set them, using exactly the same values on Netlify and in GitHub.</>);
+  } else if (markerKey.status === "mismatch") {
+    warnings.push(<>The scheduled jobs (GitHub Actions) use a different ANALYTICS_SALT or CRON_SECRET from this site (last seen {fmtDateTime(markerKey.storedAt)}). Trial markers they write won&apos;t match here, so a deleted address could start a second free trial. Use exactly the same values on Netlify and in GitHub.</>);
+  }
   if (jobs.demo) warnings.push(<>{jobs.demo} demo listings are in the database. Remove them with <code>npm run demo:clear</code> before launch.</>);
 
   const maxV = Math.max(1, ...daily.map((d) => d.visitors));
@@ -188,6 +201,28 @@ export default async function AdminHome({ searchParams }: Props) {
         <Card className="mb-6 border-[#f0d9b5] bg-signal-bg">
           <ul className="list-disc space-y-1 pl-5 text-sm text-ink">{warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
         </Card>
+      ) : null}
+
+      {opsEvents.length ? (
+        <div className="mb-6">
+          <h3 className="mb-2 text-base font-semibold text-ink">Errors to look at ({opsEvents.length})</h3>
+          <Table head={["Last seen", "Where", "What happened", "Times", ""]}>
+            {opsEvents.map((o) => (
+              <tr key={o.id}>
+                <td className="px-4 py-2 whitespace-nowrap">{fmtDateTime(o.last_at)}</td>
+                <td className="px-4 py-2">{OPS_LABELS[o.source] ?? o.source}</td>
+                <td className="px-4 py-2">{o.message}</td>
+                <td className="px-4 py-2">{o.count}{o.count > 1 ? <span className="text-slate">, since {fmtDateTime(o.first_at)}</span> : null}</td>
+                <td className="px-4 py-2">
+                  <form action={resolveOpsEventAction}>
+                    <input type="hidden" name="id" value={o.id} />
+                    <button className="text-accent hover:underline">Mark dealt with</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </Table>
+        </div>
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -340,6 +375,12 @@ export default async function AdminHome({ searchParams }: Props) {
     </AdminShell>
   );
 }
+
+const OPS_LABELS: Record<string, string> = {
+  webhook: "Paddle webhook",
+  sync: "Scheduled import",
+  emails: "Scheduled emails",
+};
 
 const FLAG_LABELS: Record<string, string> = {
   trial_blocked: "Second free trial blocked",

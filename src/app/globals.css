@@ -86,6 +86,15 @@ body {
   outline-offset: 2px;
   border-radius: 4px;
 }
+/* On the dark brand surfaces (#10264f) the blue ring would barely show (about 1.5:1), so it is
+ * white there (about 14:1). Inside a white card on those surfaces (the hero search) the ring sits
+ * on white again and stays blue (about 9:1). */
+:where(.bg-candy-hero, .bg-candy-band) :focus-visible {
+  outline-color: #ffffff;
+}
+:where(.bg-candy-hero, .bg-candy-band) :where(.bg-paper, .bg-white) :focus-visible {
+  outline-color: var(--accent);
+}
 
 a {
   text-underline-offset: 3px;

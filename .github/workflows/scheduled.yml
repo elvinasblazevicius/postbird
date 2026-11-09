@@ -3,6 +3,9 @@
 #
 # Repository secrets needed (Settings → Secrets and variables → Actions):
 #   DATABASE_URL     same value as on your host
+#   CRON_SECRET, ANALYTICS_SALT
+#                    required; use exactly the same values on Netlify and in GitHub. They key
+#                    the one-way trial markers written here and checked by the site (README Step 4).
 #   SITE_URL         your site's address, e.g. https://postbirdjobs.com (used in email links)
 #   RESEND_API_KEY   (optional until email is set up)
 #   EMAIL_FROM       (optional) e.g. Postbird <alerts@yourdomain.com>
@@ -60,11 +63,15 @@ jobs:
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           INOREADER_FEED_URLS: ${{ secrets.INOREADER_FEED_URLS }}
           ANALYTICS_SALT: ${{ secrets.ANALYTICS_SALT }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
           NEXT_PUBLIC_PADDLE_CLIENT_TOKEN: ${{ secrets.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN }}
           NEXT_PUBLIC_PADDLE_PRICE_MONTHLY: ${{ secrets.NEXT_PUBLIC_PADDLE_PRICE_MONTHLY }}
           NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY: ${{ secrets.NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY }}
         run: |
           if [ -z "$DATABASE_URL" ]; then echo "::error::Add the DATABASE_URL repository secret."; exit 1; fi
+          if [ -z "$ANALYTICS_SALT" ] && [ -z "$CRON_SECRET" ]; then
+            echo "::error::Add the CRON_SECRET and ANALYTICS_SALT repository secrets (exactly the same values as on Netlify). Without them no trial marker can be written."
+          fi
           # Database tables are created or updated first (safe to repeat; already-applied steps are skipped).
           npm run db:migrate
           if [ "$TASK" = "setup" ]; then echo "Database is ready."; exit 0; fi

@@ -12,7 +12,7 @@
  */
 import siteConfig from "@site-config";
 import { hadTrialBefore, type PlanHistory } from "@/lib/billing/subscriptions";
-import { markedEmails } from "@/lib/billing/trial-markers";
+import { trialUsedElsewhereIds } from "@/lib/billing/trial-markers";
 import { sql } from "@/lib/db";
 import { batchKey, isEmailConfigured, sendBatch, type OutgoingEmail } from "@/lib/email";
 import { alertEmail, weeklyEmail, type AlertGroup } from "@/lib/email-templates";
@@ -144,13 +144,14 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
       const pending = outbox.splice(0, outbox.length);
       // Current links and status at send time: anyone who unsubscribed or started a plan meanwhile is skipped.
       const current = await sql<(PlanHistory & { id: number; email: string; manage_token: string; unsubscribe_token: string })[]>`
-        select id::int as id, email, manage_token, unsubscribe_token, paddle_subscription_id, billing_status, trial_ends_at, canceled_at from subscribers
+        select id::int as id, email, manage_token, unsubscribe_token, confirmed_at, paddle_subscription_id, billing_status, trial_ends_at, canceled_at from subscribers
         where id = any(${pending.map((o) => o.row.id)}) and status = 'confirmed' and weekly_email and billing_status <> all(${PLAN_STATUSES})`;
       const byId = new Map(current.map((c) => [c.id, c]));
       const chunk = pending.filter((o) => byId.has(o.row.id));
       if (!chunk.length) return;
-      // Addresses deleted after a plan and signed up again keep their trial marker (one trial per email address).
-      const marked = await markedEmails(current.map((c) => c.email));
+      // One trial per person: addresses deleted after a plan and signed up again keep their trial
+      // marker, and another form of the same address (name+x@, Gmail dots) may have had a plan.
+      const elsewhere = await trialUsedElsewhereIds(current.map((c) => ({ id: c.id, email: c.email })));
       const msgs: OutgoingEmail[] = chunk.map((o) => {
         const c = byId.get(o.row.id)!;
         const oneClick = absoluteUrl(`/api/unsubscribe?token=${c.unsubscribe_token}`);
@@ -161,7 +162,7 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
             search: o.row.search,
             trialUrl: o.trialUrl,
             // One free trial per person: someone who had a plan isn't offered another trial.
-            hadTrial: hadTrialBefore(c, marked.has(c.email)),
+            hadTrial: hadTrialBefore(c, elsewhere.has(c.id)),
             accountUrl: absoluteUrl(`/account?t=${c.manage_token}`),
             unsubscribeUrl: absoluteUrl(`/alerts/unsubscribe?token=${c.unsubscribe_token}`),
           }),
@@ -232,6 +233,20 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
   }
 }
 
+/** Runs fn over items, at most `limit` at a time; resolves once all are done (rejects on the first failure). */
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
 // ── Paid email alerts ────────────────────────────────────────
 
 /**
@@ -241,6 +256,8 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
 const JOBS_PER_SEARCH = 20;
 /** A daily subscriber gets at most one email in this many hours; a weekly one in 6.5 days. Runs drift by minutes, so not 24h / 7d. */
 const MIN_HOURS_BETWEEN = { daily: 20, weekly: 156 } as const;
+/** At most this many alert searches run at once (each takes up to two of the pool's connections, see src/lib/db.ts). */
+const ALERT_SEARCH_CONCURRENCY = 4;
 /** First email for a search: vacancies first seen in the last day or week. */
 const FIRST_WINDOW_HOURS = { daily: 24, weekly: 7 * 24 } as const;
 /** Never look back further than this (e.g. after a paused subscription resumes). */
@@ -327,32 +344,55 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
       }
     };
 
-    for (const sub of due) {
-      const groups: AlertGroup[] = [];
-      for (const s of searches.filter((x) => x.subscriber_id === sub.id)) {
-        const firstHours = FIRST_WINDOW_HOURS[sub.frequency] ?? FIRST_WINDOW_HOURS.weekly;
-        const maxHours = MAX_WINDOW_HOURS[sub.frequency] ?? MAX_WINDOW_HOURS.weekly;
-        const since = new Date(Math.max(
-          s.last_sent_at ? new Date(s.last_sent_at).getTime() : now.getTime() - firstHours * 3_600_000,
-          now.getTime() - maxHours * 3_600_000,
-        ));
-        const filters = filtersFromQuery(s.search);
-        const res = await searchJobs({ ...filters, page: undefined, posted: undefined, sort: "newest", firstSeenAfter: since, firstSeenUntil: now, excludeDemo: true }, JOBS_PER_SEARCH);
-        if (res.total === 0) continue;
-        // "See all" opens the search on the site, limited to the last day or week (close to, not exactly, the email's window).
-        const posted = sub.frequency === "daily" ? "1" : "7";
-        groups.push({
-          label: s.label || "All new vacancies",
-          url: absoluteUrl(jobsUrl({ ...filters, page: undefined, sort: undefined, posted })) + "&utm_source=alert&utm_medium=email",
-          jobs: res.items,
-          total: res.total,
-        });
+    // Many subscribers share a search and a window (a new search, or one emailed by the same
+    // earlier run): each is looked up once per run, at most ALERT_SEARCH_CONCURRENCY at a time.
+    type Lookup = { key: string; search: string; since: Date };
+    const cache = new Map<string, Promise<{ items: JobListItem[]; total: number }>>();
+    const lookup = (l: Lookup) => {
+      if (!cache.has(l.key)) {
+        const filters = filtersFromQuery(l.search);
+        const p = searchJobs({ ...filters, page: undefined, posted: undefined, sort: "newest", firstSeenAfter: l.since, firstSeenUntil: now, excludeDemo: true }, JOBS_PER_SEARCH);
+        p.catch(() => {}); // awaited below; this only keeps an early failure from being reported as unhandled
+        cache.set(l.key, p);
       }
-      if (groups.length === 0) { empty++; continue; }
-      outbox.push({ sub, groups });
-      if (outbox.length >= 100) await flush();
+      return cache.get(l.key)!;
+    };
+    const windowsFor = (sub: DueRow) => searches.filter((x) => x.subscriber_id === sub.id).map((s) => {
+      const firstHours = FIRST_WINDOW_HOURS[sub.frequency] ?? FIRST_WINDOW_HOURS.weekly;
+      const maxHours = MAX_WINDOW_HOURS[sub.frequency] ?? MAX_WINDOW_HOURS.weekly;
+      const since = new Date(Math.max(
+        s.last_sent_at ? new Date(s.last_sent_at).getTime() : now.getTime() - firstHours * 3_600_000,
+        now.getTime() - maxHours * 3_600_000,
+      ));
+      return { s, l: { key: `${s.search}|${since.getTime()}`, search: s.search, since } };
+    });
+
+    // In slices of 100 subscribers (one email batch each): run the slice's searches, then build its emails.
+    for (let i = 0; i < due.length; i += 100) {
+      const slice = due.slice(i, i + 100).map((sub) => ({ sub, items: windowsFor(sub) }));
+      const todo = new Map<string, Lookup>();
+      for (const x of slice) for (const { l } of x.items) if (!cache.has(l.key)) todo.set(l.key, l);
+      await mapLimit([...todo.values()], ALERT_SEARCH_CONCURRENCY, (l) => lookup(l));
+
+      for (const { sub, items } of slice) {
+        const groups: AlertGroup[] = [];
+        for (const { s, l } of items) {
+          const res = await lookup(l);
+          if (res.total === 0) continue;
+          // "See all" opens the search on the site, limited to the last day or week (close to, not exactly, the email's window).
+          const posted = sub.frequency === "daily" ? "1" : "7";
+          groups.push({
+            label: s.label || "All new vacancies",
+            url: absoluteUrl(jobsUrl({ ...filtersFromQuery(s.search), page: undefined, sort: undefined, posted })) + "&utm_source=alert&utm_medium=email",
+            jobs: res.items,
+            total: res.total,
+          });
+        }
+        if (groups.length === 0) { empty++; continue; }
+        outbox.push({ sub, groups });
+      }
+      await flush();
     }
-    await flush();
 
     const message = errors.length ? errors.slice(0, 3).join("; ") : null;
     return { status: failed && !sent ? "failed" : "sent", due: due.length, sent, failed, empty, message };

@@ -220,6 +220,10 @@ describe("coverage line", () => {
     expect(c).toEqual({ count: 7, names: ["UNICEF", "WHO", "UNDP", "IOM"] });
     expect(joinNames(c!.names)).toBe("UNICEF, WHO, UNDP and IOM");
     expect(coverageFrom([org("Alpha Org", null, 3), org("Beta Org", null, 2), org("Gamma Org", null, 1), org("D", null, 1), org("E", "E", 1)])?.names)
-      .toEqual(["E", "Alpha Org", "Beta Org"]);
+      .toEqual(["Alpha Org", "Beta Org", "Gamma Org"]);
+    // Ambiguous or little-known acronyms give way to full names ("DRC" is also a country).
+    expect(coverageFrom([
+      org("Danish Refugee Council", "DRC", 40), org("UNICEF", "UNICEF", 30), org("International Rescue Committee", "IRC", 20), org("A", null, 1), org("B", null, 1),
+    ])?.names).toEqual(["UNICEF", "Danish Refugee Council", "International Rescue Committee"]);
   });
 });

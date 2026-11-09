@@ -200,14 +200,32 @@ describe("parseFeed", () => {
   });
 });
 
-import { detectExperienceYears, detectLanguages } from "@/lib/feeds/extract";
+import { detectExperienceYears, detectLanguageRequirements, detectLanguages } from "@/lib/feeds/extract";
 
 describe("requirements", () => {
   it("finds languages only in language-requirement sentences", () => {
-    expect(detectLanguages("Fluency in English and French is required. Knowledge of Arabic is an asset.")).toEqual(["Arabic", "French"]);
+    expect(detectLanguages("Fluency in English and French is required. Knowledge of Arabic is an asset.")).toEqual(["French"]);
+    expect(detectLanguageRequirements("Fluency in English and French is required. Knowledge of Arabic is an asset.")).toEqual({ required: ["French"], desirable: ["Arabic"] });
     expect(detectLanguages("The office in French Polynesia covers the region. Fluency in English is required.")).toBeNull();
     expect(detectLanguages("Duty station: Paris. We value diversity.")).toBeNull();
   });
+  it("skips lists of UN official languages and keeps desirable languages apart", () => {
+    const none = { required: null, desirable: null };
+    // IOM's wording: any one of the other official languages is a plus, so no language is named.
+    expect(detectLanguageRequirements("Working knowledge of another official UN language (Arabic, Chinese, French, Russian and Spanish) is an advantage.")).toEqual(none);
+    expect(detectLanguageRequirements("Working knowledge of another official UN language (Arabic, Chinese, French, Russian and Spanish) is required.")).toEqual(none);
+    expect(detectLanguageRequirements("Knowledge of another United Nations language, such as Arabic or Spanish, is an asset.")).toEqual(none);
+    expect(detectLanguageRequirements("Knowledge of another UN official language (e.g. Arabic, Chinese) is desirable.")).toEqual(none);
+    expect(detectLanguageRequirements(
+      "Fluency in English is required. Working knowledge of French is an advantage. Working knowledge of another official UN language (Arabic, Chinese, Russian and Spanish) is an advantage.",
+    )).toEqual({ required: null, desirable: ["French"] });
+    expect(detectLanguageRequirements("Fluency in English and French is required; knowledge of another UN language (Arabic, Spanish) is an asset.")).toEqual({ required: ["French"], desirable: null });
+    expect(detectLanguageRequirements("Proficiency in French is required, and knowledge of Arabic or Spanish would be an advantage.")).toEqual({ required: ["French"], desirable: ["Arabic", "Spanish"] });
+    expect(detectLanguageRequirements("Desirable: knowledge of Portuguese.")).toEqual({ required: null, desirable: ["Portuguese"] });
+    expect(detectLanguageRequirements("Languages: Spanish (preferred).")).toEqual({ required: null, desirable: ["Spanish"] });
+    expect(detectLanguageRequirements("Fluency in Arabic is essential. Arabic and French are an asset.")).toEqual({ required: ["Arabic"], desirable: ["French"] });
+  });
+
   it("reads minimum years of experience", () => {
     expect(detectExperienceYears("A minimum of five (5) years of progressively responsible experience in data analysis")).toBe(5);
     expect(detectExperienceYears("At least 2 years of relevant professional experience is required.")).toBe(2);
@@ -231,6 +249,15 @@ describe("review regressions: extraction", () => {
     expect(detectLanguages("English and French are the working languages of the United Nations Secretariat.")).toBeNull();
     expect(detectExperienceYears("Duration: 2 years (renewable), experience in GIS")).toBeNull();
     expect(detectExperienceYears("Minimum experience of 3 years in finance")).toBe(3);
+  });
+  it("stores required and desirable languages apart, and IOM's (P) is no grade", () => {
+    const m = normalizeItem(r({
+      title: "Programme Officer (P)",
+      contentHtml: "<p>Fluency in English and Spanish is required.</p><p>Working knowledge of another official UN language (Arabic, Chinese, French, Russian and Spanish) is an advantage.</p><p>Knowledge of Portuguese is desirable.</p>",
+    }), f);
+    expect(m.grade).toBeNull();
+    expect(m.languages).toEqual(["Spanish"]);
+    expect(m.desirableLanguages).toEqual(["Portuguese"]);
   });
   it("reads grades only where they are clearly grades", () => {
     expect(normalizeItem(r({ title: "Coordinator, G7 Summit Secretariat" }), f).grade).toBeNull();

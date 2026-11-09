@@ -1,0 +1,22 @@
+# Weekly update pull requests for npm packages and the GitHub Actions used in
+# the workflows. Few open at a time, so they stay easy to review; CI (types,
+# lint, tests, dependency audit) runs on each one.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      # Minor and patch updates of dev tools arrive as one pull request.
+      dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2

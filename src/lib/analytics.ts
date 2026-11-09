@@ -4,6 +4,7 @@
  * changes every day, so no IP address or long-term identifier is stored.
  */
 import { createHash } from "node:crypto";
+import { sharedSecret } from "@/lib/server-secret";
 import { sql } from "@/lib/db";
 import { clientIp } from "@/lib/rate-limit";
 
@@ -23,7 +24,7 @@ export function isBot(userAgent: string | null): boolean {
 
 export function visitorHash(ip: string, userAgent: string): string {
   const day = new Date().toISOString().slice(0, 10);
-  const secret = process.env.ANALYTICS_SALT || process.env.CRON_SECRET || "gch";
+  const secret = sharedSecret() ?? "gch";
   return createHash("sha256").update(`${day}|${ip}|${userAgent}|${secret}`).digest("hex").slice(0, 20);
 }
 

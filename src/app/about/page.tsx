@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 /** Organizations with open vacancies now, by type (names only), for "Organizations we cover". */
 async function coveredOrganizations() {
   const orgs = await organizationFacets(500, false).catch(() => []);
-  const groups = [...ORG_TYPES.map((t) => ({ name: t.name, type: t.type as string | null })), { name: "Other organizations", type: null }]
+  const groups = [...ORG_TYPES.map((t) => ({ name: t.name, type: t.type as string | null })), { name: "Other employers", type: null }]
     .map((g) => ({
       name: g.name,
       orgs: orgs
@@ -37,7 +37,7 @@ export default async function AboutPage() {
         <section>
           <h2 className="text-2xl font-semibold leading-tight">Where the vacancies come from</h2>
           <p className="mt-3">
-            {siteConfig.name} collects vacancies from public job feeds several times a day. New openings are added automatically, each one is linked to the
+            {siteConfig.name} collects vacancies from public job feeds every 2 hours. New openings are added automatically, each one is linked to the
             employer&apos;s own website, and vacancies are hidden once their published closing date has passed.
           </p>
         </section>

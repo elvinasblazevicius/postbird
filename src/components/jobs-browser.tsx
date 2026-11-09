@@ -247,9 +247,10 @@ export async function JobsBrowser({
             <div className="flex items-center gap-1 text-sm" aria-label="Sort">
               <span className="mr-1 text-slate">Sort:</span>
               {[
+                // "Best match" (the default with keywords) only when words are left to rank by.
+                ...(filters.q && interpretQuery(filters.q).text ? [{ key: "relevance", label: "Best match" }] : []),
                 { key: "newest", label: "Newest" },
                 { key: "deadline", label: "Closing soonest" },
-                ...(filters.q ? [{ key: "relevance", label: "Best match" }] : []),
               ].map((o) => {
                 const active = result.sort === o.key;
                 return (

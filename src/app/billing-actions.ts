@@ -15,7 +15,7 @@ import { checkoutReply, continueCheckout, createCheckoutLink, sendCheckoutLink, 
 import { planRenewal } from "@/lib/billing/notices";
 import { createPortalSession, isPaddleApiConfigured } from "@/lib/billing/paddle";
 import { checkoutAccountToken, hadTrialBefore, LIVE_STATUSES, startCheckout, verifiedCustomerFor, type BillingTarget, type CheckoutPlan } from "@/lib/billing/subscriptions";
-import { hasTrialMarker } from "@/lib/billing/trial-markers";
+import { trialUsedElsewhere } from "@/lib/billing/trial-markers";
 import { sql } from "@/lib/db";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { addSavedSearch, normalizeSearch, removeSavedSearch, searchFromSignupForm } from "@/lib/saved-searches";
@@ -93,7 +93,7 @@ export async function continueCheckoutAction(_prev: CheckoutState, form: FormDat
   try {
     const res = await continueCheckout(form.get("token"), plan);
     if (!res.ok) return { status: "error", message: res.error };
-    return { status: "ready", message: "", ref: res.ref, email: res.email, plan, trial: res.trial, transactionId: res.transactionId };
+    return { status: "ready", message: "", ref: res.ref, email: res.email, plan, trial: res.trial, transactionId: res.transactionId, confirmFirst: false };
   } catch (e) {
     console.error("checkout continue failed", (e as Error).message);
     return { status: "error", message: SERVER_ERROR };
@@ -237,7 +237,7 @@ export async function restartPlanAction(_prev: FormState, form: FormData): Promi
   const acct = await accountFrom(form);
   if (!acct) return INVALID_LINK;
   if (LIVE_STATUSES.includes(acct.billing_status)) return { status: "error", message: "You already have daily alerts." };
-  if (!hadTrialBefore(acct, await hasTrialMarker(acct.email))) redirect("/pricing/trial");
+  if (!hadTrialBefore(acct, await trialUsedElsewhere(acct.email, acct.id))) redirect("/pricing/trial");
   const token = await createCheckoutLink(acct.id, { plan: "quarterly", search: null });
   redirect(`/account/continue?token=${token}`);
 }

@@ -278,3 +278,15 @@ export async function resolveBillingFlagAction(form: FormData): Promise<void> {
   revalidatePath("/admin");
   redirect("/admin");
 }
+
+/** Marks an unexpected error (Admin → Overview → Errors to look at) as dealt with. */
+export async function resolveOpsEventAction(form: FormData): Promise<void> {
+  await requireAdmin();
+  const id = parseId(String(form.get("id") ?? ""));
+  if (id) {
+    const { resolveOpsEvent } = await import("@/lib/ops-events");
+    await resolveOpsEvent(id);
+  }
+  revalidatePath("/admin");
+  redirect("/admin");
+}

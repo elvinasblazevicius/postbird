@@ -4,8 +4,9 @@ import { JobGrid, OrgBadge } from "@/components/job-card";
 import { Flag } from "@/components/flag";
 import { HeroSearch } from "@/components/search-forms";
 import { TrackedLink } from "@/components/tracking";
+import { WeekInReviewStrip } from "@/components/week-in-review";
 import { BILLING_LIVE } from "@/lib/billing/live";
-import { closingSoonJobs, categoryFacets, countryFacets, experienceFacets, gradeFacets, jobTypeFacets, languageFacets, latestJobs, organizationFacets, orgTypeFacets, regionFacets, siteStats } from "@/lib/jobs";
+import { closingSoonJobs, categoryFacets, countryFacets, experienceFacets, gradeFacets, jobTypeFacets, languageFacets, latestJobs, organizationFacets, orgTypeFacets, regionFacets, siteStats, weekInReview } from "@/lib/jobs";
 import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
 import { absoluteUrl, jsonLd, siteConfig } from "@/lib/site";
 
@@ -15,8 +16,11 @@ export const metadata = {
   alternates: { canonical: "/" },
 };
 
+/** What is true of every listing (see the comment above the facts strip below). */
+const FACTS = ["Updated every 2 hours", "Apply links go to the employer", "Local-only posts flagged", "No sign-in needed"];
+
 export default async function HomePage() {
-  const [latest, orgs, countries, categories, stats, types, regions, grades, langs, exps, orgTypes, closing] = await Promise.all([
+  const [latest, orgs, countries, categories, stats, types, regions, grades, langs, exps, orgTypes, closing, week] = await Promise.all([
     latestJobs(8),
     organizationFacets(),
     countryFacets(),
@@ -29,6 +33,8 @@ export default async function HomePage() {
     experienceFacets(),
     orgTypeFacets(),
     closingSoonJobs(12),
+    // The strip is optional: if its query fails, the page shows without it.
+    weekInReview().catch(() => ({ total: 0, types: [], orgs: [] })),
   ]);
   const closingFresh = closing.filter((j) => !latest.some((l) => l.id === j.id));
   // The grid has two columns on wide screens: show 4 or 2 so no row is half empty, none below 2.
@@ -91,7 +97,7 @@ export default async function HomePage() {
                   {stats.orgs ? <> from <strong className="font-semibold">{stats.orgs}</strong> organizations</> : null}
                 </>
               ) : (
-                <>New vacancies added every few hours</>
+                <>Updated every 2 hours</>
               )}
             </span>
             <Link href="/alerts" className="font-semibold text-highlight underline decoration-highlight/50 underline-offset-4 hover:decoration-highlight">Get new ones by email</Link>
@@ -102,9 +108,10 @@ export default async function HomePage() {
 
       {/* Latest */}
       <div className="dots-soft border-b border-rule pb-14">
+      <WeekInReviewStrip week={week} />
       <section className="mx-auto max-w-6xl px-4 pt-8 sm:px-6 sm:pt-12" aria-labelledby="latest-heading">
         <div className="flex items-end justify-between gap-4">
-          <h2 id="latest-heading" className="text-[1.6rem] font-semibold leading-tight text-ink sm:text-[1.9rem]">Recently posted, UN system first</h2>
+          <h2 id="latest-heading" className="text-[1.6rem] font-semibold leading-tight text-ink sm:text-[1.9rem]">Recently posted</h2>
           <Link href="/jobs" className="hidden shrink-0 text-[0.95rem] font-medium text-accent hover:underline sm:inline">{showTotal ? `See all ${stats.active.toLocaleString("en-US")} jobs` : "See all jobs"}</Link>
         </div>
         <div className="mt-5">
@@ -167,11 +174,12 @@ export default async function HomePage() {
       <section className="mx-auto mt-12 max-w-6xl px-4 sm:px-6" aria-labelledby="facts-heading">
         <h2 id="facts-heading" className="sr-only">About the listings</h2>
         <div className="flex flex-col gap-3 border-y border-rule py-4 sm:flex-row sm:items-center sm:justify-between">
+          {/* Each fact ends with its own separator, glued to it by a no-break space (as in the job rows), so a wrapped line never starts with "·". */}
           <ul className="flex flex-wrap gap-x-2 gap-y-1.5 text-[0.95rem] text-ink">
-            {["Updated every 2 hours", "Apply links go to the employer", "Local-only posts flagged", "No sign-in needed"].map((f, i) => (
-              <li key={f} className="flex items-center gap-2">
-                {i > 0 ? <span aria-hidden="true" className="text-slate">·</span> : null}
+            {FACTS.map((f, i) => (
+              <li key={f} className="whitespace-nowrap">
                 {f}
+                {i < FACTS.length - 1 ? <span aria-hidden="true" className="text-slate">{"\u00a0·"}</span> : null}
               </li>
             ))}
           </ul>
@@ -185,7 +193,7 @@ export default async function HomePage() {
       {/* Browse */}
       <section className="mx-auto mt-14 grid max-w-6xl gap-12 px-4 sm:px-6 lg:grid-cols-2" aria-label="Browse">
         <div>
-          <div className="flex items-end justify-between">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
             <h2 className="text-[1.6rem] font-semibold leading-tight text-ink">Browse by organization</h2>
             <Link href="/organizations" className="text-[0.95rem] font-medium text-accent hover:underline">All organizations</Link>
           </div>
@@ -203,7 +211,7 @@ export default async function HomePage() {
           </ul>
         </div>
         <div>
-          <div className="flex items-end justify-between">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
             <h2 className="text-[1.6rem] font-semibold leading-tight text-ink">Browse by career category</h2>
             <Link href="/categories" className="text-[0.95rem] font-medium text-accent hover:underline">All categories</Link>
           </div>

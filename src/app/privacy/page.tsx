@@ -44,9 +44,11 @@ export default function PrivacyPage() {
           hash of IP addresses for up to 24 hours.
         </p>
         <p>
-          <strong>What is stored on your device.</strong> Before you make a cookie choice, the site stores only a session flag in your browser&apos;s session storage
-          (<code>gch_geo</code>), which notes whether we need to ask for consent where you are and is deleted when you close the tab. When you choose, your choice is
-          remembered in local storage (<code>gch_ads_consent</code>). Other storage depends on that choice, as described below. If you use &quot;Save&quot; on a vacancy,
+          <strong>What is stored on your device.</strong> In the European Economic Area, the United Kingdom and Switzerland (and when we can&apos;t tell where
+          you are), before you make a choice we store only <code>gch_geo</code> (a session flag in session storage that notes whether we need to ask for consent,
+          deleted when you close the tab) and your cookie choice (<code>gch_ads_consent</code>, in local storage) once you make it. Elsewhere, unless you opt out or
+          your browser sends Global Privacy Control, we also store <code>gch_attr</code> in local storage: the campaign tags and Microsoft click id of the ad you came
+          from, used for up to 90 days and then deleted. Microsoft&apos;s tag then also sets the cookies listed below. If you use &quot;Save&quot; on a vacancy,
           the list of saved vacancies is kept in your browser&apos;s local storage on this device only; to show which saved vacancies are still open, the{" "}
           <a className="text-accent underline" href="/saved">Saved jobs</a> page sends us their vacancy numbers, and nothing else.
         </p>
@@ -87,7 +89,7 @@ export default function PrivacyPage() {
           <p>
             <strong>Free weekly email.</strong> For the free weekly email we also store the one search you chose (keywords, organization, location and any other
             filters, or none), a private link to change it, when you confirmed and when we last emailed you. Nothing is sent until you confirm your address with
-            the link we email you. We email you only on Mondays, and only when there are new vacancies for your search.
+            the link we email you. We email you only on Mondays (or, if a Monday send fails, later that week), and only when there are new vacancies for your search.
           </p>
         ) : null}
 
@@ -102,8 +104,9 @@ export default function PrivacyPage() {
             <strong>Payments.</strong> Subscriptions are sold by Paddle.com, our merchant of record, which collects your payment details, billing address and tax
             information under its own <a className="text-accent underline" href="https://www.paddle.com/legal/privacy" rel="noopener">privacy notice</a>. We never see or
             store your card details. Paddle tells us your email address, country, plan, subscription status and dates, and its customer and subscription IDs, which
-            we use to send your alerts and let you manage your subscription. Paddle&apos;s checkout script (Paddle.js) is loaded from Paddle&apos;s servers when you
-            point at or click into the trial form, so that the secure checkout opens without a wait.
+            we use to send your alerts and let you manage your subscription. Paddle&apos;s checkout script (Paddle.js) is loaded from Paddle&apos;s servers only
+            once you use a checkout form, so that the secure checkout opens without a wait: in the EEA, the UK and Switzerland (and when we can&apos;t tell where
+            you are) when you click into the email field or start the checkout; elsewhere also when you point at the form.
           </p>
         ) : null}
 
@@ -144,7 +147,12 @@ export default function PrivacyPage() {
               ? "Early-access list: we email you once to say alerts are open, and delete your address 30 days later unless you start a trial."
               : "Early-access list: until paid alerts launch; if we decide not to launch, we tell you and delete the list within 30 days."}
           </li>
-          {BILLING_LIVE ? <li>Subscription records: while you subscribe, then as long as tax and accounting law requires (Paddle keeps payment records as merchant of record).</li> : null}
+          {BILLING_LIVE ? (
+            <li>
+              Subscription records: we keep none beyond the 30 days above; Paddle keeps payment and tax records as merchant of record. (We keep the ids of
+              Paddle&apos;s notifications, with no personal data, for a year, only to ignore repeats.)
+            </li>
+          ) : null}
           {BILLING_LIVE ? (
             <li>
               If you start a checkout and don&apos;t finish it, we keep the address and search you entered for 30 days, then delete them. We don&apos;t email you about it.

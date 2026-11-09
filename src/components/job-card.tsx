@@ -14,30 +14,40 @@ import { formatShortDate, jobPath, locationLabel, monogram, NOT_SPECIFIED, relat
  * than another and nothing suggests the organization endorses the site.
  */
 export function OrgBadge({ name, short, size = "md" }: { name: string | null; short: string | null; size?: "sm" | "md" | "lg" }) {
-  const box = size === "lg" ? "h-14 w-14" : size === "sm" ? "h-9 w-9" : "h-11 w-11";
+  const box = size === "lg" ? "h-14 w-14" : size === "sm" ? "h-10 w-10" : "h-11 w-11";
   const frame = `${box} flex shrink-0 items-center justify-center rounded-xl border border-rule bg-white`;
-  const lines = badgeLines(name ? monogram(name, short) : "–");
-  const two = lines.length > 1;
-  // Never smaller than 0.68rem: a longer short name goes on two lines of at most 4 characters.
-  const type = size === "lg" ? (two ? "text-[0.8rem]" : "text-base") : size === "sm" ? "text-[0.68rem]" : two ? "text-[0.68rem]" : "text-[0.8rem]";
+  const text = badgeText(name ? monogram(name, short) : "–");
+  // Six letters (UNESCO, UNICEF) are set a little tighter so they fit at a readable size.
+  const tracking = text.length >= 6 ? "tracking-[-0.04em]" : "tracking-[-0.02em]";
   return (
-    <span aria-hidden="true" className={`${frame} ${type} flex-col p-1 text-center font-semibold leading-[1.05] tracking-normal text-slate`}>
-      {lines.map((l, i) => <span key={i} className="block">{l}</span>)}
+    <span aria-hidden="true" className={`${frame} ${badgeFontSize(text, size)} ${tracking} overflow-hidden whitespace-nowrap px-px text-center font-semibold leading-none text-slate`}>
+      {text}
     </span>
   );
 }
 
 /**
- * The badge text in lines of at most 4 characters: "WFP"; "UN" over "ICEF" for UNICEF and the
- * other UN-prefixed names; other names of 5 to 8 characters split in two ("ACT" over "ED").
+ * Font sizes by badge length (up to 3, 4, 5 and 6 characters): one line, never split, smaller for
+ * longer monograms but never below 0.5625rem (9px). Measured to fit the widest (UNESCO, UNHCR) in each box.
  */
-export function badgeLines(text: string): string[] {
-  if (text.length <= 4) return [text];
-  const un = text.match(/^UN-?(.{1,4})$/);
-  if (un) return ["UN", un[1]];
-  const t = text.slice(0, 8);
-  const half = Math.ceil(t.length / 2);
-  return [t.slice(0, half), t.slice(half)];
+const BADGE_SIZES: Record<"sm" | "md" | "lg", [string, string, string, string]> = {
+  sm: ["text-[0.75rem]", "text-[0.68rem]", "text-[0.6rem]", "text-[0.5625rem]"],
+  md: ["text-[0.85rem]", "text-[0.76rem]", "text-[0.66rem]", "text-[0.6rem]"],
+  lg: ["text-base", "text-[0.92rem]", "text-[0.82rem]", "text-[0.72rem]"],
+};
+
+export function badgeFontSize(text: string, size: "sm" | "md" | "lg"): string {
+  return BADGE_SIZES[size][Math.min(Math.max(text.length, 3), 6) - 3];
+}
+
+/**
+ * The badge text on one line: the monogram (see monogram in src/lib/site.ts: a configured badge
+ * label, a short name of up to 5 characters, a known acronym such as UNICEF, or initials). Anything
+ * longer is cut to its first 5 characters, which monogram never produces.
+ */
+export function badgeText(text: string): string {
+  const t = text.trim();
+  return t.length <= 6 ? t : t.slice(0, 5);
 }
 
 export function Tag({ children, tone = "plain" }: { children: React.ReactNode; tone?: "plain" | "lilac" | "remote" | "signal" | "demo" }) {
@@ -74,6 +84,16 @@ export function postedMarker(job: { published_at: Date | null; first_seen_at: Da
   return days <= 30 ? { text: `${days}d ago`, fresh: false } : null;
 }
 
+function PlaceWithFlag({ code, where }: { code: string | null; where: string }) {
+  const [first, ...rest] = where.split(" ");
+  return (
+    <>
+      <span className="whitespace-nowrap"><Flag code={code} className="mr-1 align-[-0.05em]" />{first}</span>
+      {rest.length ? ` ${rest.join(" ")}` : null}
+    </>
+  );
+}
+
 /**
  * One vacancy as a compact two-line row: the title, then organization · location · grade · type,
  * with the closing date on the right. The whole row is the link (its accessible name is the title);
@@ -97,7 +117,8 @@ export function JobCard({ job, headingLevel = 3 }: { job: JobListItem; headingLe
   type Meta = { node: React.ReactNode; nowrap?: boolean };
   const meta = ([
     { node: job.org_name ?? <span className="italic">Organization not in our source</span> },
-    where !== NOT_SPECIFIED ? { node: <><Flag code={job.country_code} className="mr-1 align-[-0.05em]" />{where}</> } : null,
+    // The flag stays with the first word of the place, so a wrapped line never starts with a lone flag or name.
+    where !== NOT_SPECIFIED ? { node: <PlaceWithFlag code={job.country_code} where={where} /> } : null,
     ...[grade, job.job_type, job.is_remote && where !== "Remote" ? "Remote" : null, lang ? `In ${lang.name}` : null]
       .filter(Boolean)
       .map((x) => ({ node: x, nowrap: true })),

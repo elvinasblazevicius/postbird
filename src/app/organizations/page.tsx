@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { OrgBadge } from "@/components/job-card";
 import { PageHeader } from "@/components/page-header";
+import { ORG_TYPES } from "@/config/regions";
 import { organizationFacets } from "@/lib/jobs";
 
 export const dynamic = "force-dynamic";
@@ -12,18 +13,18 @@ export const metadata: Metadata = {
   alternates: { canonical: "/organizations" },
 };
 
-const ORDER = ["UN system", "International financial institution", "EU institution", "International organization", "NGO", "Other organizations"];
+const ORDER = ["UN system", "International financial institution", "EU institution", "International organization", "NGO", "Other employers"];
 
 export default async function OrganizationsPage() {
   const orgs = [...(await organizationFacets())];
   const groups = new Map<string, typeof orgs>();
   for (const o of orgs) {
-    const key = o.org_type ?? "Other organizations";
+    const key = o.org_type ?? "Other employers";
     groups.set(key, [...(groups.get(key) ?? []), o]);
   }
   const sorted = [...groups.entries()].sort((a, b) => ORDER.indexOf(a[0]) - ORDER.indexOf(b[0]));
-  const heading = (t: string) =>
-    t === "UN system" ? "UN system" : t === "Other organizations" ? "Other organizations" : `${t}s`;
+  // The same names as the employer-type filter and pages (ORG_TYPES in src/config/regions.ts).
+  const heading = (t: string) => ORG_TYPES.find((o) => o.type === t)?.name ?? t;
 
   return (
     <>

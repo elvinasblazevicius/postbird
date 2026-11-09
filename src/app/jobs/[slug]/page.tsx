@@ -13,6 +13,7 @@ import { LISTING_SETTINGS } from "@/config/import";
 import { applyLinkKind } from "@/lib/apply-link";
 import { displayGrade, isLocalOnly } from "@/lib/grades";
 import { similarJobs, type JobDetail } from "@/lib/jobs";
+import { orgInText } from "@/lib/org-names";
 import { extraLocation } from "@/lib/place-text";
 import { titleLanguage } from "@/lib/title-language";
 import { absoluteUrl, categoryName, escapeHtml, jsonLd, deadlineLabel, formatDate, jobPath, locationLabel, NOT_SPECIFIED, siteConfig } from "@/lib/site";
@@ -114,6 +115,20 @@ function GlanceRow({ label, children, className = "" }: { label: string; childre
   );
 }
 
+/** Required languages, then "Desirable: …" on its own line; null when the source names neither. */
+function Languages({ job }: { job: JobDetail }) {
+  const required = job.languages?.length ? job.languages.join(", ") : null;
+  const desirable = job.desirable_languages?.length ? job.desirable_languages.join(", ") : null;
+  if (!required && !desirable) return null;
+  return (
+    <>
+      {required}
+      {required && desirable ? <br /> : null}
+      {desirable ? <span className={required ? "text-sm text-slate" : undefined}>Desirable: {desirable}</span> : null}
+    </>
+  );
+}
+
 export default async function JobPage({ params }: Props) {
   const { slug } = await params;
   const job = await loadJob(slug);
@@ -143,7 +158,7 @@ export default async function JobPage({ params }: Props) {
     where === NOT_SPECIFIED && "location",
     !job.org_name && "organization",
     job.min_experience_years == null && "required experience",
-    !job.languages?.length && "language requirements",
+    !job.languages?.length && !job.desirable_languages?.length && "language requirements",
     !localOnly && "eligibility",
   ].filter((x): x is string => Boolean(x));
   const experience = job.min_experience_years != null ? `${job.min_experience_years}+ ${job.min_experience_years === 1 ? "year" : "years"}` : null;
@@ -155,6 +170,9 @@ export default async function JobPage({ params }: Props) {
       {description ? "." : " for the full description."}
     </p>
   ) : null;
+  // Where Apply goes: "WFP's careers site", "the World Bank's careers site", or "the employer's site".
+  const orgRef = orgInText(job.org_name, job.org_short);
+  const destination = orgRef ? `${orgRef}\u2019s careers site` : "the employer\u2019s site";
   // The free weekly email when it is on; otherwise the paid alerts' trial page.
   const alertHref = `${siteConfig.freeWeeklyEmail ? "/alerts" : "/pricing/trial"}?search=${encodeURIComponent(`category=${job.category}`)}`;
 
@@ -193,10 +211,11 @@ export default async function JobPage({ params }: Props) {
                 {job.org_slug ? <Link href={`/organizations/${job.org_slug}`} className="text-accent hover:underline">{job.org_name}</Link> : <span className="text-slate">Organization not in our source</span>}
               </p>
               {where !== NOT_SPECIFIED ? (
-                <p className="mt-1 flex items-center gap-1.5 text-slate">
-                  <Flag code={job.country_code} className="shadow-[0_0_0_1px_rgba(14,31,61,0.15)]" />
+                <p className="mt-1 text-slate">
+                  {/* Inline, so the published extra ("with frequent travel to the region") wraps as text on phones. */}
+                  <Flag code={job.country_code} className="mr-1.5 align-[-0.1em] shadow-[0_0_0_1px_rgba(14,31,61,0.15)]" />
                   {where}
-                  {publishedPlace ? <span className="text-sm">({publishedPlace})</span> : null}
+                  {publishedPlace ? <span className="text-sm"> ({publishedPlace})</span> : null}
                 </p>
               ) : null}
               <div className="mt-3 flex flex-wrap gap-2">
@@ -231,7 +250,7 @@ export default async function JobPage({ params }: Props) {
                 ) : null}
                 {job.published_at ? <Fact label="Posted">{formatDate(job.published_at)}</Fact> : null}
                 {job.min_experience_years != null ? <Fact label="Experience">{experience}</Fact> : null}
-                {job.languages?.length ? <Fact label="Languages besides English">{job.languages.join(", ")}</Fact> : null}
+                {job.languages?.length || job.desirable_languages?.length ? <Fact label="Languages besides English"><Languages job={job} /></Fact> : null}
                 {job.reference ? <Fact label="Reference"><span className="break-all">{job.reference}</span></Fact> : null}
               </dl>
               {localOnly ? (
@@ -254,7 +273,7 @@ export default async function JobPage({ params }: Props) {
                 ) : null}
                 {job.job_type ? <GlanceRow label="Contract type">{job.job_type}</GlanceRow> : null}
                 {job.min_experience_years != null ? <GlanceRow label="Experience">{experience}</GlanceRow> : null}
-                {job.languages?.length ? <GlanceRow label="Languages besides English">{job.languages.join(", ")}</GlanceRow> : null}
+                {job.languages?.length || job.desirable_languages?.length ? <GlanceRow label="Languages besides English"><Languages job={job} /></GlanceRow> : null}
                 {localOnly ? <GlanceRow label="Who can apply">{whoCanApply}</GlanceRow> : null}
                 {job.published_at ? <GlanceRow label="Posted">{formatDate(job.published_at)}</GlanceRow> : null}
                 {category && category.slug !== "other" ? (
@@ -284,8 +303,11 @@ export default async function JobPage({ params }: Props) {
 
           <div className="mt-8 rounded-xl border border-rule p-4 text-sm lg:hidden">
             <p className="text-slate">
-              <span className="font-medium text-ink">Employer&apos;s page:</span> {job.apply_host}. Listing last updated from our source {formatDate(job.last_seen_at)}. Apply opens it in a new tab. {siteConfig.name} never charges a fee.
+              Apply opens {destination}
+              <span className="mt-0.5 block break-all text-xs text-slate">{job.apply_host}</span>
             </p>
+            <p className="mt-1 text-slate">Applying is free. {siteConfig.name} never charges a fee to apply.</p>
+            <p className="mt-1 text-xs text-slate">Listing last updated from our source {formatDate(job.last_seen_at)}.</p>
             {job.deadline ? (
               <a href={`/api/calendar/${job.id}`} className="mt-2 inline-block font-medium text-accent underline" rel="nofollow">Add closing date to calendar</a>
             ) : null}
@@ -313,11 +335,13 @@ export default async function JobPage({ params }: Props) {
             <p className="font-display text-2xl font-semibold text-ink">{job.deadline ? formatDate(job.deadline) : NOT_SPECIFIED}</p>
             {dl && /in \d|today|tomorrow/.test(dl.text) ? <p className={`text-sm ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>{dl.text}</p> : null}
             <div className="mt-4">{applyButton}</div>
-            <p className="mt-3 text-xs leading-relaxed text-slate">
-              Opens {job.apply_host} in a new tab. {siteConfig.name} never charges a fee.
+            <p className="mt-3 text-sm leading-snug text-slate">
+              Opens {destination}
+              <span className="mt-0.5 block break-all text-xs text-slate">{job.apply_host}</span>
             </p>
+            <p className="mt-2 text-sm leading-snug text-ink">Applying is free. {siteConfig.name} never charges a fee to apply.</p>
             <p className="mt-3 border-t border-rule pt-3 text-xs leading-relaxed text-slate">
-              <span className="font-medium text-ink">Employer&apos;s page:</span> {job.apply_host}. Listing last updated from our source {formatDate(job.last_seen_at)}.
+              Listing last updated from our source {formatDate(job.last_seen_at)}.
             </p>
             {job.deadline ? (
               <a href={`/api/calendar/${job.id}`} className="mt-3 block rounded-lg border border-rule px-3 py-2 text-center text-sm font-medium text-accent hover:bg-tint" rel="nofollow">

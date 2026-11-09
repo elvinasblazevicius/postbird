@@ -58,7 +58,8 @@ export default function TermsPage() {
           <>
             <h2 id="weekly-email" className="scroll-mt-24 pt-2 text-xl font-semibold">Free weekly email</h2>
             <p>
-              The weekly email is free and needs no card or account. Each Monday it lists the past week&apos;s new vacancies that match the one search you chose,
+              The weekly email is free and needs no card or account. It comes on Mondays (or, if a Monday send fails, later that week) and lists the past
+              week&apos;s new vacancies that match the one search you chose,
               or the week&apos;s newest vacancies if you chose none. If nothing new matches, we don&apos;t send it that week. It starts once you confirm your address,
               and every email has a one-click unsubscribe link. It may include one short line about paid daily alerts. While you have a paid plan you get your alerts
               instead of the weekly email. We may change or stop the free email; if we stop it, we&apos;ll tell subscribers first.

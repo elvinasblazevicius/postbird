@@ -1,7 +1,7 @@
 import siteConfig from "@site-config";
 import type { JobListItem } from "@/lib/jobs";
 import { BILLING_LIVE } from "@/lib/billing/live";
-import { EMAIL_TAX_NOTE, planDescription } from "@/lib/early-access-copy";
+import { CARD_STATEMENT_LINE, EMAIL_TAX_NOTE, planDescription } from "@/lib/early-access-copy";
 import { displayGrade } from "@/lib/grades";
 import { absoluteUrl, formatDate, jobPath, locationLabel, NOT_SPECIFIED } from "@/lib/site";
 
@@ -161,17 +161,18 @@ export function welcomeEmail(opts: { accountUrl: string; unsubscribeUrl: string;
   const trial = opts.trialEndsAt
     ? `Your free trial runs until ${formatDate(opts.trialEndsAt)}. After your trial you're charged ${charge} ${EMAIL_TAX_NOTE}, renewing automatically until you cancel. Cancel any time from your account page.`
     : `You're charged ${charge} ${EMAIL_TAX_NOTE}, renewing automatically until you cancel. Cancel any time from your account page.`;
+  const billing = `${trial} ${CARD_STATEMENT_LINE}`;
   const refundHtml = `Refund policy: <a href="${esc(refundsUrl)}" style="color:#566476">${esc(refundsUrl)}</a>`;
   const html = layout(
     subject,
     `<h1 style="font-family:Georgia,serif;font-size:24px;line-height:1.3;margin:0 0 12px">Welcome to ${esc(siteConfig.premium.name.toLowerCase())}</h1>
      <p style="font-size:16px;line-height:1.6;margin:0 0 12px">We'll email you new vacancies that match your saved searches. Your first alert arrives with the next round of new listings.</p>
-     <p style="font-size:15px;line-height:1.6;margin:0 0 20px;color:#566476">${esc(trial)} ${refundHtml}</p>
+     <p style="font-size:15px;line-height:1.6;margin:0 0 20px;color:#566476">${esc(billing)} ${refundHtml}</p>
      <p style="margin:0 0 20px">${button(opts.accountUrl, "Open my account")}</p>
      <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">On your account page you can add up to 5 saved searches, choose daily or weekly emails, and manage billing. Keep this email: the button is your private link.</p>`,
     accountFooter(opts.accountUrl, opts.unsubscribeUrl),
   );
-  const text = `Welcome to ${siteConfig.premium.name.toLowerCase()} on ${siteConfig.name}.\n\nWe'll email you new vacancies that match your saved searches.\n\n${trial} Refund policy: ${refundsUrl}\n\nYour account (keep this link private): ${opts.accountUrl}\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
+  const text = `Welcome to ${siteConfig.premium.name.toLowerCase()} on ${siteConfig.name}.\n\nWe'll email you new vacancies that match your saved searches.\n\n${billing} Refund policy: ${refundsUrl}\n\nYour account (keep this link private): ${opts.accountUrl}\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
   return { subject, html, text };
 }
 

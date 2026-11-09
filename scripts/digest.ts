@@ -7,6 +7,7 @@
 import { runPlanEmails } from "../src/lib/billing/notices";
 import { getSql } from "../src/lib/db";
 import { runAlerts, runDigest } from "../src/lib/digest";
+import { recordOpsEvent } from "../src/lib/ops-events";
 
 async function main() {
   // The weekly digest skips itself when this week's was already sent, so running daily is safe.
@@ -14,6 +15,9 @@ async function main() {
   const alerts = await runAlerts();
   const planEmails = await runPlanEmails();
   console.log(JSON.stringify({ digest, alerts, planEmails }, null, 2));
+  // A run that sent nothing because everything failed is shown on Admin → Overview.
+  if (digest.status === "failed") await recordOpsEvent("emails", `Weekly email failed: ${digest.message ?? "no details"}`);
+  if (alerts.status === "failed") await recordOpsEvent("emails", `Alerts failed: ${alerts.message ?? "no details"}`);
   await getSql().end();
   if ("welcome" in planEmails) {
     const failedPlan = planEmails.welcome.failed + planEmails.confirmations.failed + planEmails.trialReminders.failed;
@@ -27,4 +31,9 @@ async function main() {
   }
 }
 
-main().catch(async (e) => { console.error(e); await getSql().end(); process.exit(1); });
+main().catch(async (e) => {
+  console.error(e);
+  await recordOpsEvent("emails", `Scheduled emails stopped: ${(e as Error)?.message ?? String(e)}`);
+  await getSql().end();
+  process.exit(1);
+});

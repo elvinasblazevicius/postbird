@@ -122,25 +122,40 @@ export function WhereFields({ facets, filters, idPrefix, label = "Where", name =
   );
 }
 
+/** "National Officer, any level" for the group "National Officer (NO-A to NO-E)". */
+export function anyLevelLabel(groupName: string): string {
+  return `${groupName.replace(/ \(.*\)$/, "")}, any level`;
+}
+
 /**
- * Grade: one list, arranged by grade group. Each group starts with "All …" (the whole group,
- * e.g. P-1 to P-5), followed by the single grades in it that have open jobs ("P-3").
- * Grades outside the groups are listed last.
+ * The count for a whole grade group: its single grades plus listings counted under the group itself
+ * (no grade parsed, the title gives the group: "NO", "P", "G"); and the single grades to list.
+ */
+export function gradeGroupCounts(facets: { grades: { grade: string; count: number }[] }, group: string, isSelected: (grade: string) => boolean) {
+  const grades = facets.grades.filter((x) => gradeGroupOf(x.grade) === group);
+  const count = grades.reduce((n, x) => n + x.count, 0);
+  const exact = grades.filter((x) => x.grade !== group && (x.count > 0 || isSelected(x.grade)));
+  return { count, exact };
+}
+
+/**
+ * Grade: one list, arranged by grade group. Each group starts with "{Group}, any level" (the whole
+ * group: its grades, e.g. P-1 to P-5, and listings whose title gives only the group, such as
+ * "National Officer" or IOM's "(P)"), followed by the single grades in it that have open jobs
+ * ("P-3"). Grades outside the groups are listed last.
  */
 function GradeSelect({ facets, filters, idPrefix }: { facets: FacetData; filters: JobFilters; idPrefix: string }) {
   const selected = filters.grade?.[0];
   const groups: Group[] = FILTER_GRADE_GROUPS.map((g) => {
-    const grades = facets.grades.filter((x) => gradeGroupOf(x.grade) === g.value);
-    const count = grades.reduce((n, x) => n + x.count, 0);
-    const exact = grades.filter((x) => x.count > 0 || x.grade === selected);
+    const { count, exact } = gradeGroupCounts(facets, g.value, (grade) => grade === selected);
     return {
       label: g.name,
       options: count > 0 || selected === g.value || exact.length
-        ? [{ value: g.value, label: withCount(`${g.name.replace(/ \(.*\)$/, "")}, all grades`, count) }, ...exact.map((x) => ({ value: x.grade, label: withCount(x.grade, x.count) }))]
+        ? [{ value: g.value, label: withCount(anyLevelLabel(g.name), count) }, ...exact.map((x) => ({ value: x.grade, label: withCount(x.grade, x.count) }))]
         : [],
     };
   });
-  const other = facets.grades.filter((x) => !gradeGroupOf(x.grade) && (x.count > 0 || x.grade === selected));
+  const other = facets.grades.filter((x) => !gradeGroupOf(x.grade) && x.grade !== "entry" && (x.count > 0 || x.grade === selected));
   // An old link may use the "entry" group, which is not offered any more: keep it selectable while chosen.
   const legacy = selected === "entry" ? [{ value: "entry", label: "Entry level (P-1, P-2, NO-A)" }] : [];
   return (
@@ -164,17 +179,15 @@ function GradeSelect({ facets, filters, idPrefix }: { facets: FacetData; filters
 function GradeChecks({ facets, filters, idPrefix }: { facets: FacetData; filters: JobFilters; idPrefix: string }) {
   const selected = new Set(filters.grade ?? []);
   const groups = FILTER_GRADE_GROUPS.map((g) => {
-    const grades = facets.grades.filter((x) => gradeGroupOf(x.grade) === g.value);
-    const count = grades.reduce((n, x) => n + x.count, 0);
-    const exact = grades.filter((x) => x.count > 0 || selected.has(x.grade));
+    const { count, exact } = gradeGroupCounts(facets, g.value, (grade) => selected.has(grade));
     const show = count > 0 || selected.has(g.value) || exact.length > 0;
     return {
       key: g.value,
       label: g.name.replace(/ \(.*\)$/, ""),
-      options: show ? [{ value: g.value, label: "All grades", count }, ...exact.map((x) => ({ value: x.grade, label: x.grade, count: x.count }))] : [],
+      options: show ? [{ value: g.value, label: anyLevelLabel(g.name), count }, ...exact.map((x) => ({ value: x.grade, label: x.grade, count: x.count }))] : [],
     };
   });
-  const other = facets.grades.filter((x) => !gradeGroupOf(x.grade) && (x.count > 0 || selected.has(x.grade)));
+  const other = facets.grades.filter((x) => !gradeGroupOf(x.grade) && x.grade !== "entry" && (x.count > 0 || selected.has(x.grade)));
   // An old link may use the "entry" group, which is not offered any more: keep it while chosen.
   const legacy = selected.has("entry") ? [{ key: "entry", label: "Entry level", options: [{ value: "entry", label: "P-1, P-2, NO-A", count: 0 }] }] : [];
   const all = [...legacy, ...groups, { key: "other", label: "Other grades", options: other.map((x) => ({ value: x.grade, label: x.grade, count: x.count })) }]

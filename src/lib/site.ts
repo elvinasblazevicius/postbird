@@ -128,15 +128,17 @@ for (const o of KNOWN_ORGS) for (const n of [o.name, o.short, ...(o.aliases ?? [
 export function monogram(name: string | null, short: string | null): string {
   const known = KNOWN_BY_NAME.get(foldName(name ?? "")) ?? KNOWN_BY_NAME.get(foldName(short ?? ""));
   if (known?.badge) return known.badge;
-  for (const candidate of [known?.short, short]) {
+  // Badges hold one line: a known organization's short name of up to 6 characters (the well-known
+  // acronyms UNICEF, UNESCO, UNAIDS), any other short name of up to 5; otherwise initials.
+  for (const [candidate, max] of [[known?.short, 6], [short, 5]] as const) {
     const s = (candidate || "").replace(/[^A-Za-z0-9-]/g, "");
-    if (s && s.length <= 6) return s;
+    if (s && s.length <= max) return s;
   }
   // Initials of the meaningful words: "Agency for Technical Cooperation and Development" → "ATCD"
   const small = new Set(["for", "and", "of", "the", "de", "du", "des", "la", "le", "les", "et", "en", "pour", "y", "del", "in", "on"]);
   const words = (name || short || "?").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 ]/g, " ")
     .split(/\s+/).filter((w) => w && !small.has(w.toLowerCase()));
-  if (words.length === 1) return /^[A-Z0-9]{2,6}$/.test(words[0]) ? words[0] : words[0].slice(0, 2).toUpperCase();
+  if (words.length === 1) return /^[A-Z0-9]{2,5}$/.test(words[0]) ? words[0] : words[0].slice(0, 2).toUpperCase();
   return words.slice(0, 4).map((w) => w[0]).join("").toUpperCase() || "?";
 }
 

@@ -5,14 +5,14 @@ import siteConfig from "@site-config";
 /**
  * The "Start free trial" form when billing is live: plan, email, then Paddle's
  * overlay checkout. Paddle.js loads from Paddle's CDN (as Paddle requires)
- * only once someone starts using the form, never on page load.
+ * only once someone starts using the form, never on page load (see usePaddleWarmup).
  */
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { checkoutDoneAction, continueCheckoutAction, startCheckoutAction, type CheckoutState } from "@/app/billing-actions";
 import { PADDLE_CLIENT_TOKEN, PADDLE_ENV, PADDLE_PRICE_MONTHLY, PADDLE_PRICE_QUARTERLY } from "@/lib/billing/live";
 import { NO_TRIAL_CONSENT, noTrialButton, noTrialLine, planOptions, RENEWING, RENEWS, TAX_LINE, TRIAL_CONSENT, trialButton, trialLine } from "@/lib/early-access-copy";
-import { AttributionField, uetEvent } from "./ads";
+import { AttributionField, consentRegion, uetEvent } from "./ads";
 
 // ── Paddle.js loader ─────────────────────────────────────────
 
@@ -66,9 +66,10 @@ export function loadPaddle(): Promise<PaddleGlobal> {
 
 const initial: CheckoutState = { status: "idle", message: "" };
 
-type Phase = { step: "form" } | { step: "checkout" } | { step: "done"; accountUrl: string | null; trial: boolean };
+/** confirmFirst: the address still has to be confirmed from the inbox before alerts start (the public trial form). */
+type Phase = { step: "form" } | { step: "checkout" } | { step: "done"; accountUrl: string | null; trial: boolean; confirmFirst: boolean };
 
-type Launch = { ref: string; email: string; plan: "monthly" | "quarterly"; transactionId: string | null };
+type Launch = { ref: string; email: string; plan: "monthly" | "quarterly"; transactionId: string | null; confirmFirst: boolean };
 
 /**
  * Opens Paddle's overlay. With a transactionId (the continue page, for an
@@ -87,17 +88,20 @@ function openPaddleCheckout(c: Launch, h: { source: string; setPhase: (p: Phase)
           completed = true;
           // "begin_trial" is the Microsoft Ads conversion for a trial; a plan paid straight away is a purchase.
           uetEvent(trial ? "begin_trial" : "purchase", { event_category: "premium", event_label: h.source });
-          h.setPhase({ step: "done", accountUrl: null, trial });
-          // The webhook usually lands within seconds; until then (or if this
-          // checkout didn't create the account) the link comes by email.
-          void (async () => {
-            for (let i = 0; i < 6; i++) {
-              await new Promise((r) => setTimeout(r, 2000));
-              const res = await checkoutDoneAction(c.ref).catch(() => null);
-              if (res?.accountUrl) return h.setPhase({ step: "done", accountUrl: res.accountUrl, trial });
-              if (res?.linked) return;
-            }
-          })();
+          const confirmFirst = c.confirmFirst;
+          h.setPhase({ step: "done", accountUrl: null, trial, confirmFirst });
+          // An address that still has to be confirmed gets its account link by email after confirming.
+          // Otherwise the webhook usually lands within seconds; until then the link comes by email.
+          if (!confirmFirst) {
+            void (async () => {
+              for (let i = 0; i < 6; i++) {
+                await new Promise((r) => setTimeout(r, 2000));
+                const res = await checkoutDoneAction(c.ref).catch(() => null);
+                if (res?.accountUrl) return h.setPhase({ step: "done", accountUrl: res.accountUrl, trial, confirmFirst });
+                if (res?.linked) return;
+              }
+            })();
+          }
         } else if (e.name === "checkout.closed" && !completed) {
           h.setPhase({ step: "form" });
         }
@@ -123,6 +127,18 @@ function openPaddleCheckout(c: Launch, h: { source: string; setPhase: (p: Phase)
 
 /** After checkout: the trial (or plan) has started; the account link, or where it will come from. */
 function DoneBox({ phase, dark }: { phase: Extract<Phase, { step: "done" }>; dark: boolean }) {
+  if (phase.confirmFirst) {
+    // The public form: the address isn't proven yet, so alerts wait for its confirmation.
+    return (
+      <div role="status" className={`rounded-xl p-5 text-[1.02rem] leading-relaxed ${dark ? "bg-white/10 text-white" : "bg-remote-bg text-ink"}`}>
+        <p className="font-semibold">{phase.trial ? "Your trial has started." : "Your plan has started."}</p>
+        <p className="mt-2">Check your inbox and confirm your address to start your alerts.</p>
+        <p className="mt-3">
+          <Link href="/jobs" className={`font-semibold underline ${dark ? "text-white" : "text-accent"}`}>Keep browsing jobs</Link>
+        </p>
+      </div>
+    );
+  }
   return (
     <div role="status" className={`rounded-xl p-5 text-[1.02rem] leading-relaxed ${dark ? "bg-white/10 text-white" : "bg-remote-bg text-ink"}`}>
       <p className="font-semibold">{phase.trial ? "Your free trial has started." : "Your plan has started."}</p>
@@ -212,6 +228,30 @@ function TermsAndButton({ dark, trial, plan, trialEnds, busy, label, type = "sub
   );
 }
 
+/**
+ * When to start fetching Paddle.js ahead of the checkout. In the EEA, the UK and Switzerland (or
+ * when the region is unknown, the same rule as the cookie choice in ./ads) only once the visitor
+ * clicks into the email field or submits (submitting loads it anyway); elsewhere also on pointing
+ * at the form. Returns the handlers for the form and for the email field.
+ */
+function usePaddleWarmup() {
+  const [eager, setEager] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void consentRegion().then((required) => {
+      if (live) setEager(!required);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const warm = () => void loadPaddle().catch(() => {});
+  return {
+    form: eager ? { onFocus: warm, onPointerEnter: warm } : {},
+    email: { onFocus: warm },
+  };
+}
+
 function useTrialEnds() {
   // The trial end date is worked out in the browser (the visitor's own date and time zone).
   const [trialEnds, setTrialEnds] = useState<string | null>(null);
@@ -238,6 +278,7 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
   const dark = tone === "dark";
   const [plan, setPlan] = useState<"monthly" | "quarterly">("quarterly");
   const trialEnds = useTrialEnds();
+  const warmup = usePaddleWarmup();
 
   // Once the server has prepared the checkout, open Paddle's overlay with that reference.
   useEffect(() => {
@@ -270,9 +311,8 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
         opened.current = null;
         action(fd);
       }}
-      // Start fetching Paddle.js as soon as someone shows interest, so the checkout opens without a wait.
-      onFocus={() => void loadPaddle().catch(() => {})}
-      onPointerEnter={() => void loadPaddle().catch(() => {})}
+      // Start fetching Paddle.js once someone shows interest, so the checkout opens without a wait (see usePaddleWarmup).
+      {...warmup.form}
       className="@container w-full"
     >
       <input type="hidden" name="source" value={source} />
@@ -284,7 +324,7 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
       {watch ? <div className="mb-6">{watch}</div> : null}
       <PlanChoice dark={dark} compact={compact} plan={plan} setPlan={setPlan} />
       <label htmlFor={id("email")} className={`mb-1.5 block text-sm font-medium ${dark ? "text-white/90" : "text-ink"}`}>Email address</label>
-      <input id={id("email")} name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} />
+      <input id={id("email")} name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} {...warmup.email} />
       <TermsAndButton dark={dark} trial plan={plan} trialEnds={trialEnds} busy={busy} label={pending ? "Preparing…" : phase.step === "checkout" ? "Checkout open…" : trialButton} />
       {error ? <p role="alert" className={`mt-2 text-sm ${dark ? "text-[#ffd7d7]" : "text-[#9b1c1c]"}`}>{error}</p> : null}
       <ul className={`mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs ${dark ? "text-white/70" : "text-slate"}`}>
@@ -319,6 +359,8 @@ export function ContinueCheckoutForm({ token, trial, defaultPlan }: { token: str
   const [plan, setPlan] = useState<"monthly" | "quarterly">(defaultPlan);
   const trialEnds = useTrialEnds();
   const source = "checkout-link";
+  // No email field here: in consent regions Paddle.js loads when the button is pressed.
+  const warmup = usePaddleWarmup();
 
   // The terms were on screen when the button was pressed, so the checkout opens at once.
   useEffect(() => {
@@ -348,8 +390,7 @@ export function ContinueCheckoutForm({ token, trial, defaultPlan }: { token: str
         setLoadError(null);
         action(fd);
       }}
-      onFocus={() => void loadPaddle().catch(() => {})}
-      onPointerEnter={() => void loadPaddle().catch(() => {})}
+      {...warmup.form}
       className="@container w-full"
     >
       <input type="hidden" name="token" value={token} />

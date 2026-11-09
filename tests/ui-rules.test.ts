@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import siteConfig from "@site-config";
-import { displayGrade, isLocalOnly, isLocalOnlyTitle, LOCAL_ONLY_TITLE_SQL, NATIONAL_OFFICER_TITLE_SQL } from "@/lib/grades";
+import { displayGrade, GENERAL_SERVICE_TITLE_SQL, gradeGroupOf, isLocalOnly, isLocalOnlyTitle, LOCAL_ONLY_TITLE_SQL, NATIONAL_OFFICER_TITLE_SQL, PROFESSIONAL_TITLE_SQL, titleGradeGroup } from "@/lib/grades";
 import { planDescription, trialLine, RENEWS } from "@/lib/early-access-copy";
 import { welcomeEmail } from "@/lib/email-templates";
 import { searchFromSignupForm } from "@/lib/saved-searches";
@@ -46,6 +46,52 @@ describe("local-only posts from the title", () => {
     const re = sqlToJs(NATIONAL_OFFICER_TITLE_SQL);
     expect(re.test("national professional officer (education)")).toBe(true);
     expect(re.test("international officer")).toBe(false);
+  });
+});
+
+describe("IOM's (P) and (G) title suffixes", () => {
+  it("give the grade group when no grade was parsed", () => {
+    expect(titleGradeGroup("Programme Officer (P)")).toBe("P");
+    expect(titleGradeGroup("Senior Driver (G)")).toBe("G");
+    expect(titleGradeGroup("Project Assistant (G) - Nairobi")).toBe("G");
+    expect(titleGradeGroup("Monitoring and Evaluation (M&E) Officer (P)")).toBe("P");
+    expect(titleGradeGroup("National Professional Officer (P)")).toBe("NO"); // counted once, under National Officer
+    expect(titleGradeGroup("Officer (Protection) - Kabul")).toBeNull();
+    expect(titleGradeGroup("Data (P) Analyst")).toBeNull();
+    expect(displayGrade({ grade: null, title: "Programme Officer (P)" })).toBe("Professional");
+    expect(displayGrade({ grade: null, title: "Senior Driver (G)" })).toBe("General Service");
+  });
+
+  it("never replace a parsed grade, so a listing is counted once", () => {
+    expect(displayGrade({ grade: "P-3", title: "Programme Officer (P)" })).toBe("P-3");
+    expect(displayGrade({ grade: "G-5", title: "Senior Driver (G)" })).toBe("G-5");
+  });
+
+  it("use the same rule in SQL as in JavaScript", () => {
+    const p = sqlToJs(PROFESSIONAL_TITLE_SQL);
+    const g = sqlToJs(GENERAL_SERVICE_TITLE_SQL);
+    for (const t of ["Programme Officer (P)", "Assistant (G) - Juba", "Officer (Protection)", "Driver (G)"]) {
+      expect(p.test(t.toLowerCase()), t).toBe(titleGradeGroup(t) === "P");
+      expect(g.test(t.toLowerCase()), t).toBe(titleGradeGroup(t) === "G");
+    }
+  });
+
+  it("count under their group in the grade filter", () => {
+    expect(gradeGroupOf("P")).toBe("P");
+    expect(gradeGroupOf("G")).toBe("G");
+    expect(gradeGroupOf("NO")).toBe("NO");
+  });
+});
+
+describe("grade filter options", () => {
+  it("count the whole group, including listings that give only the group", async () => {
+    const { anyLevelLabel, gradeGroupCounts } = await import("@/components/search-forms");
+    const facets = { grades: [{ grade: "NO", count: 4 }, { grade: "NO-B", count: 2 }, { grade: "NO-C", count: 0 }, { grade: "P-3", count: 5 }] };
+    const no = gradeGroupCounts(facets, "NO", () => false);
+    expect(no.count).toBe(6);
+    expect(no.exact.map((x) => x.grade)).toEqual(["NO-B"]);
+    expect(gradeGroupCounts(facets, "P", () => false).count).toBe(5);
+    expect(anyLevelLabel("National Officer (NO-A to NO-E)")).toBe("National Officer, any level");
   });
 });
 
@@ -171,16 +217,38 @@ describe("job page and card helpers", () => {
     const { extraLocation } = await import("@/lib/place-text");
     expect(extraLocation("Amman, Jordan", "Amman")).toBeNull();
     expect(extraLocation("Amman, Jordan", "Amman, Jordan")).toBeNull();
-    expect(extraLocation("Juba, South Sudan", "Juba; Wau")).toBe("Juba; Wau");
+    expect(extraLocation("Juba, South Sudan", "Juba; Wau")).toBe("also Wau");
   });
 
-  it("keeps badge text to lines of 4 characters", async () => {
-    const { badgeLines } = await import("@/components/job-card");
-    expect(badgeLines("WFP")).toEqual(["WFP"]);
-    expect(badgeLines("UNICEF")).toEqual(["UN", "ICEF"]);
-    expect(badgeLines("UNHCR")).toEqual(["UN", "HCR"]);
-    expect(badgeLines("ACTED")).toEqual(["ACT", "ED"]);
-    for (const l of badgeLines("ABCDEFGHIJ")) expect(l.length).toBeLessThanOrEqual(4);
+  it("shows only the part of the published location that isn't shown already", async () => {
+    const { extraLocation } = await import("@/lib/place-text");
+    expect(extraLocation("Amman, Jordan", "Amman, Jordan with frequent travel to the region")).toBe("with frequent travel to the region");
+    expect(extraLocation("Amman, Jordan", "Jordan with frequent travel to the region")).toBe("with frequent travel to the region");
+    expect(extraLocation("Amman, Jordan", "Amman and Irbid")).toBe("also Irbid");
+    expect(extraLocation("Kenya", "Nairobi or Mombasa, Kenya")).toBe("Nairobi or Mombasa");
+    expect(extraLocation("Geneva, Switzerland", "Geneva, Switzerland (Home-based possible)")).toBe("Home-based possible");
+    expect(extraLocation("Genève, Switzerland", "Geneve")).toBeNull();
+    expect(extraLocation("Addis Ababa, Ethiopia", "Addis Ababa")).toBeNull();
+  });
+
+  it("keeps badge text on one line, smaller for longer monograms", async () => {
+    const { badgeFontSize, badgeText } = await import("@/components/job-card");
+    expect(badgeText("WFP")).toBe("WFP");
+    expect(badgeText("UNICEF")).toBe("UNICEF");
+    expect(badgeText("ABCDEFGHIJ")).toBe("ABCDE");
+    expect(badgeFontSize("WFP", "sm")).toBe("text-[0.75rem]");
+    expect(badgeFontSize("UNHCR", "sm")).toBe("text-[0.6rem]");
+    expect(badgeFontSize("UNICEF", "sm")).toBe("text-[0.5625rem]");
+    expect(badgeFontSize("A", "lg")).toBe("text-base");
+  });
+
+  it("never makes a monogram longer than 5 characters, except a known 6-letter acronym", async () => {
+    const { monogram } = await import("@/lib/site");
+    expect(monogram("UNICEF", "UNICEF")).toBe("UNICEF");
+    expect(monogram("Some Long Name Alliance", "SLNAORG")).toBe("SLNA");
+    expect(monogram("Helpers Network", "HELPNET")).toBe("HN");
+    expect(monogram("Acmeorgs", null)).toBe("AC");
+    expect(monogram("Example Org", "EXORG")).toBe("EXORG");
   });
 
   it("gives every organization a monogram, from the known-organizations list first", async () => {

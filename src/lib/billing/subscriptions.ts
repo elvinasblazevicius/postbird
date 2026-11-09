@@ -3,27 +3,32 @@
  * to subscribers. Server only.
  *
  * Flow:
- *  1. startCheckout() decides what the public form may do with an address,
- *     without telling the visitor anything about it:
+ *  1. startCheckout() decides what the public form may do with an address:
  *      - a new address, or one that never had a plan, gets an opaque reference
  *        that the browser passes to Paddle Checkout as customData, for the
  *        catalog price with its free trial (trial_allowed on the checkout row);
- *      - an address that has or had a plan (or whose deletion left a trial
- *        marker, see trial-markers.ts) gets nothing on the page except "check
- *        your inbox": src/lib/billing/checkout-links.ts emails it either its
- *        account link (a plan is running) or a single-use link to a page with
- *        the terms without a trial (one free trial per email address).
+ *      - an address that has or had a plan (or whose canonical form had one,
+ *        or whose deletion left a trial marker, see trial-markers.ts) gets
+ *        "check your inbox" instead: src/lib/billing/checkout-links.ts emails
+ *        it either its account link (a plan is running) or a single-use link
+ *        to a page with the terms without a trial (one free trial per person).
+ *     The two replies differ (Paddle opens, or "check your inbox"), so the
+ *     form does show whoever types an address whether it can still start a
+ *     trial; see checkout-links.ts for that trade-off.
  *  2. Paddle creates the subscription and sends webhooks; handlePaddleEvent()
  *     finds the subscriber through that reference (Paddle copies a checkout's
  *     customData onto the subscription) and mirrors the subscription's status.
  *     Nothing the browser sends is trusted on its own: a trialing subscription
  *     the checkout didn't allow is canceled in Paddle, and a Paddle customer is
  *     only linked once its email matches the subscriber's address.
- *  3. Only an address created by that checkout (or by an earlier, unfinished
- *     checkout, untouched since), or one whose owner opened the emailed
- *     checkout link, counts as confirmed by paying. Any other address keeps its
- *     email status (pending or unsubscribed) until its owner clicks the link
- *     we email to it, because anyone can type anyone's address at checkout.
+ *  3. Only a checkout opened from the link emailed to the address
+ *     (address_proven: opening it proved the mailbox) confirms the address by
+ *     paying. A checkout from the public form never does, also for a brand-new
+ *     address, because anyone can type anyone's address there: an address
+ *     that isn't confirmed yet gets a confirmation email once the trial (or
+ *     plan) starts, and the welcome email and alerts follow its confirmation.
+ *     Until then the plan doesn't count against the address's one free trial
+ *     (hadTrialBefore needs confirmed_at), and leaves no trial marker.
  */
 import { randomBytes } from "node:crypto";
 import { recordEvent } from "@/lib/analytics";
@@ -31,7 +36,7 @@ import { PADDLE_PRICE_MONTHLY, PADDLE_PRICE_QUARTERLY } from "@/lib/billing/live
 import {
   cancelSubscriptionNow, getCustomer, getSubscription, isPaddleApiConfigured, isPaddleCustomerId, type PaddleSubscription,
 } from "@/lib/billing/paddle";
-import { hasTrialMarker } from "@/lib/billing/trial-markers";
+import { trialUsedElsewhere } from "@/lib/billing/trial-markers";
 import { sql, transaction, type Db, type Tx } from "@/lib/db";
 import { addSavedSearch } from "@/lib/saved-searches";
 import { normalizeEmail } from "@/lib/subscribers";
@@ -67,6 +72,8 @@ export const CHECKOUT_UNAVAILABLE = "We couldn't open checkout. Please try again
 
 /** The subscriber fields that show whether an address has had a plan before. */
 export type PlanHistory = {
+  /** Set once the address was confirmed (by its owner, or by paying through an emailed link); never cleared. */
+  confirmed_at: Date | string | null;
   paddle_subscription_id: string | null;
   billing_status: BillingStatus;
   trial_ends_at: Date | string | null;
@@ -74,31 +81,38 @@ export type PlanHistory = {
 };
 
 /**
- * One free trial per email address: has this address had a Paddle
- * subscription before? Every subscription sold through this site started with
- * a trial unless the address had had one already, so any earlier subscription
- * counts, including a trial canceled before it ended. A row only ever gains
- * these fields from Paddle's webhooks, and the webhook never clears
+ * One free trial per person: has this address had a Paddle subscription
+ * before? Every subscription sold through this site started with a trial
+ * unless the address had had one already, so any earlier subscription counts,
+ * including a trial canceled before it ended. A row only ever gains these
+ * fields from Paddle's webhooks, and the webhook never clears
  * paddle_subscription_id or billing_status, so any one of them is enough.
- * `marked`: the address has a trial marker (it had a plan, and its row was
- * deleted by the retention clean-up; see trial-markers.ts, kept 24 months).
- * Pure, so it is unit-tested.
+ * Only once the address is confirmed (confirmed_at): a plan someone started
+ * with an address its owner never confirmed doesn't use up the owner's trial,
+ * so if it is canceled before confirmation the address may start a trial again.
+ * `elsewhere`: the one-trial rule applies through something other than this
+ * row: a trial marker (the address had a plan and its row was deleted; kept
+ * 24 months) or another row with the same canonical address (trialUsedElsewhere
+ * in trial-markers.ts). Pure, so it is unit-tested.
  */
-export function hadTrialBefore(h: PlanHistory, marked = false): boolean {
-  return marked || Boolean(h.paddle_subscription_id) || (h.billing_status ?? "none") !== "none" || h.trial_ends_at != null || h.canceled_at != null;
+export function hadTrialBefore(h: PlanHistory, elsewhere = false): boolean {
+  if (elsewhere) return true;
+  if (h.confirmed_at == null) return false;
+  return Boolean(h.paddle_subscription_id) || (h.billing_status ?? "none") !== "none" || h.trial_ends_at != null || h.canceled_at != null;
 }
 
 export const priceIdFor = (plan: CheckoutPlan) => (plan === "quarterly" ? PADDLE_PRICE_QUARTERLY : PADDLE_PRICE_MONTHLY);
 
 /**
  * Prepares a checkout from the public form. A new address gets a pending
- * subscriber row (no confirmation email: paying through Paddle confirms it)
- * and its first saved search. An existing address that never had a plan is
- * NOT changed here, because anyone can type any address: its search waits in
- * paddle_checkouts until Paddle reports a subscription for this reference, and
- * even then its email status only changes once the owner confirms (see
- * applySubscription). An address that has or had a plan gets `inbox`: the
- * caller shows the same neutral reply either way and emails the next step.
+ * subscriber row and its first saved search; no email yet (the confirmation
+ * email goes out once Paddle reports the trial, see applySubscription). An
+ * existing address that never had a plan is NOT changed here, because anyone
+ * can type any address: its search waits in paddle_checkouts until Paddle
+ * reports a subscription for this reference, and even then its email status
+ * only changes once the owner confirms. An address that has or had a plan
+ * gets `inbox`: the caller shows the same reply for a running plan and a past
+ * one, and emails the next step.
  */
 export async function startCheckout(opts: {
   email: string;
@@ -112,8 +126,10 @@ export async function startCheckout(opts: {
   if (!email) return { ok: false, error: "Enter a valid email address." };
   const ref = newToken();
   const attribution = opts.attribution ?? null;
-  // A deleted address that had a plan: no second trial (one per email address).
-  const marked = await hasTrialMarker(email);
+  // A deleted address that had a plan, or another form of the same address that
+  // had one: no second trial (one per person). This address has no row yet if the
+  // insert below creates it; otherwise it is checked again without its own row.
+  const marked = await trialUsedElsewhere(email);
 
   // A new address: the subscriber row, its first search and the checkout
   // record are written together or not at all (a half-written row would
@@ -128,8 +144,8 @@ export async function startCheckout(opts: {
     await addSavedSearch(row.id, opts.search ?? "", tx);
     if (!marked) {
       await tx`
-        insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor, trial_allowed)
-        values (${ref}, ${row.id}, ${opts.plan}, ${opts.search}, true, ${opts.visitor ?? null}, true)`;
+        insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor, trial_allowed, address_proven)
+        values (${ref}, ${row.id}, ${opts.plan}, ${opts.search}, true, ${opts.visitor ?? null}, true, false)`;
     }
     return row.id;
   });
@@ -139,43 +155,43 @@ export async function startCheckout(opts: {
   }
 
   // checkout_created: the row was created by an earlier checkout that was never
-  // finished, and nobody has touched it since (no confirmation, no sign-up or
-  // confirmation link, no subscription). Retrying the checkout is the same
-  // payer typing the same new address again, so paying confirms it as well;
-  // otherwise the row would stay pending after payment and alerts never start.
+  // finished, and nobody has touched it since (recorded as new_subscriber on the
+  // checkout, for the record only: paying through the public form never confirms).
   const [existing] = await sql<(PlanHistory & { id: number; checkout_created: boolean })[]>`
-    select s.id::int as id, s.billing_status, s.paddle_subscription_id, s.trial_ends_at, s.canceled_at,
+    select s.id::int as id, s.confirmed_at, s.billing_status, s.paddle_subscription_id, s.trial_ends_at, s.canceled_at,
            (s.status = 'pending' and s.confirmed_at is null and s.confirm_token is null and s.paddle_subscription_id is null
             and exists (select 1 from paddle_checkouts c where c.subscriber_id = s.id and c.new_subscriber)) as checkout_created
     from subscribers s where s.email = ${email}`;
   if (!existing) return { ok: false, error: "Something went wrong on our side. Please try again in a minute." };
-  // One subscription per address, and one free trial per email address: the
-  // page doesn't say which applies (that would tell anyone who typed the
-  // address that it is a customer); the next step goes to the address itself.
+  // One subscription per address, and one free trial per person: the page gives
+  // the same reply for both; the next step goes to the address itself.
   const live = LIVE_STATUSES.includes(existing.billing_status);
-  if (live || hadTrialBefore(existing, marked)) return { ok: true, inbox: true, email, subscriberId: existing.id, live };
+  if (live || hadTrialBefore(existing, await trialUsedElsewhere(email, existing.id))) return { ok: true, inbox: true, email, subscriberId: existing.id, live };
 
   // First-touch attribution only, as in the early-access sign-up.
   if (attribution) await sql`update subscribers set attribution = coalesce(attribution, ${sql.json(attribution)}) where id = ${existing.id}`;
   await sql`
-    insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor, trial_allowed)
-    values (${ref}, ${existing.id}, ${opts.plan}, ${opts.search}, ${existing.checkout_created}, ${opts.visitor ?? null}, true)`;
+    insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor, trial_allowed, address_proven)
+    values (${ref}, ${existing.id}, ${opts.plan}, ${opts.search}, ${existing.checkout_created}, ${opts.visitor ?? null}, true, false)`;
   return { ok: true, ref, email, trial: true };
 }
 
 /**
  * After the browser sees "checkout completed": the account link, but only
- * when this checkout created the subscriber row and the webhook has already
- * linked its subscription. Everyone else gets the link by email.
+ * for a checkout opened from the link emailed to the address (the mailbox is
+ * proven), once the webhook has linked its subscription and the address is
+ * confirmed. Everyone else gets the link by email (the welcome email, after
+ * confirming the address).
  */
 export async function checkoutAccountToken(ref: string): Promise<{ linked: boolean; manageToken: string | null }> {
   if (typeof ref !== "string" || !TOKEN_RE.test(ref)) return { linked: false, manageToken: null };
-  const [row] = await sql<{ new_subscriber: boolean; linked: boolean; manage_token: string }[]>`
-    select c.new_subscriber, (c.subscription_id is not null and s.paddle_subscription_id = c.subscription_id) as linked, s.manage_token
+  const [row] = await sql<{ proven: boolean; linked: boolean; manage_token: string }[]>`
+    select (c.address_proven and s.status = 'confirmed') as proven,
+           (c.subscription_id is not null and s.paddle_subscription_id = c.subscription_id) as linked, s.manage_token
     from paddle_checkouts c join subscribers s on s.id = c.subscriber_id
     where c.ref = ${ref} and c.created_at > now() - interval '2 hours'`;
   if (!row) return { linked: false, manageToken: null };
-  return { linked: row.linked, manageToken: row.linked && row.new_subscriber ? row.manage_token : null };
+  return { linked: row.linked, manageToken: row.linked && row.proven ? row.manage_token : null };
 }
 
 
@@ -261,7 +277,7 @@ export type HandleResult = {
   /** flagged: held back for the owner to look at (Admin → Overview → Billing flags); nothing applied. */
   outcome: "duplicate" | "ignored" | "unmatched" | "applied" | "stale" | "flagged";
   welcome?: WelcomeInfo;
-  /** An existing address got a subscription it hasn't confirmed: email it a confirmation link. */
+  /** A subscription started at an address that isn't confirmed (new or existing): email it a confirmation link. */
   confirm?: ConfirmInfo;
   /** A free trial this address may not have: cancel it in Paddle after the commit (cancelBlockedTrial). */
   cancel?: { subscriptionId: string };
@@ -346,13 +362,13 @@ async function subscriptionForTransaction(data: Record<string, unknown>): Promis
   return { ...sub, custom_data: sub.custom_data ?? (data.custom_data as Record<string, unknown> | null) };
 }
 
-type CheckoutRow = { subscriber_id: number; plan: CheckoutPlan; search: string | null; visitor: string | null; new_subscriber: boolean; trial_allowed: boolean | null };
+type CheckoutRow = { subscriber_id: number; plan: CheckoutPlan; search: string | null; visitor: string | null; address_proven: boolean; trial_allowed: boolean | null };
 
 async function findSubscriber(db: Db, sub: PaddleSubscription) {
   const ref = refOf(sub.custom_data);
   if (ref) {
     const [c] = await db<CheckoutRow[]>`
-      select subscriber_id::int as subscriber_id, plan, search, visitor, new_subscriber, trial_allowed from paddle_checkouts where ref = ${ref}`;
+      select subscriber_id::int as subscriber_id, plan, search, visitor, address_proven, trial_allowed from paddle_checkouts where ref = ${ref}`;
     if (c) return { subscriberId: c.subscriber_id, checkout: { ref, ...c } };
   }
   const [bySub] = await db<{ id: number }[]>`select id::int as id from subscribers where paddle_subscription_id = ${sub.id}`;
@@ -479,16 +495,17 @@ async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: st
     return { result: { outcome: "flagged" } };
   }
 
-  // One free trial per email address. A trial arriving for a checkout that
-  // didn't allow one (a returning customer's reference used with the catalog
-  // price), or for an address that had another subscription, or one with a
-  // trial marker, is canceled in Paddle and never applied.
+  // One free trial per person. A trial arriving for a checkout that didn't
+  // allow one (a returning customer's reference used with the catalog price),
+  // or for a confirmed address that had another subscription, or one whose
+  // canonical form had one or left a trial marker, is canceled in Paddle and
+  // never applied.
   if (b.status === "trialing") {
     const [h] = await tx<(PlanHistory & { email: string })[]>`
-      select email, paddle_subscription_id, billing_status, trial_ends_at, canceled_at from subscribers where id = ${target.subscriberId}`;
+      select email, confirmed_at, paddle_subscription_id, billing_status, trial_ends_at, canceled_at from subscribers where id = ${target.subscriberId}`;
     if (h && h.paddle_subscription_id !== sub.id) {
       const notAllowed = target.checkout?.trial_allowed === false;
-      if (notAllowed || hadTrialBefore(h, await hasTrialMarker(h.email, tx))) {
+      if (notAllowed || hadTrialBefore(h, await trialUsedElsewhere(h.email, target.subscriberId, tx))) {
         await flag(tx, { subscriptionId: sub.id, kind: "trial_blocked", subscriberId: target.subscriberId, customerId, detail: TRIAL_BLOCKED_PENDING });
         console.warn(`paddle webhook: trial ${sub.id} not allowed for this address; canceling`);
         return { result: { outcome: "flagged", cancel: { subscriptionId: sub.id } } };
@@ -499,9 +516,10 @@ async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: st
   const live = LIVE_STATUSES.includes(b.status);
   const alerts = ALERT_STATUSES.includes(b.status);
   const fallbackInterval: PlanInterval | null = target.checkout ? (target.checkout.plan === "quarterly" ? "quarter" : "month") : null;
-  // Paying confirms the address only when this checkout created it (the payer typed a new
-  // address) or came from the link we emailed to it (its owner opened it).
-  const paymentConfirms = live && Boolean(target.checkout?.new_subscriber);
+  // Paying confirms the address only when the checkout came from the link we emailed
+  // to it (its owner opened it). Any other address that isn't confirmed yet, a new
+  // one typed into the public form included, gets a confirmation email instead.
+  const paymentConfirms = live && Boolean(target.checkout?.address_proven);
   // Only a customer whose email is this address is linked (portal sessions open for it).
   const linkCustomer = customer.status === "verified" ? customer.customerId : null;
 
@@ -541,9 +559,9 @@ async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: st
       canceled_at = ${b.canceledAt},
       cancel_at = ${b.cancelAt},
       billing_event_at = ${occurredAt},
-      -- A new address paid for by this checkout is confirmed (the payer typed it).
-      -- An existing address keeps its status; a newly linked running subscription
-      -- gets a confirmation link instead (sent after the commit).
+      -- An address proven by the emailed checkout link is confirmed by paying.
+      -- Any other address keeps its status; a newly linked running subscription
+      -- gets a confirmation link if it isn't confirmed (sent after the commit).
       status = prev.next_status,
       confirmed_at = case when prev.next_status = 'confirmed' then coalesce(s.confirmed_at, now()) else s.confirmed_at end,
       unsubscribed_at = case when prev.next_status = 'confirmed' then null else s.unsubscribed_at end,

@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
+import { StripUrlToken } from "@/components/strip-url-token";
 import { CancelPlanForm, UnsubscribeForm } from "@/components/token-forms";
 import { planRenewal } from "@/lib/billing/notices";
 import { findByUnsubscribeToken } from "@/lib/subscribers";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Unsubscribe", robots: { index: false, follow: false } };
+// The token is in the address: no referrer at all goes to any other site, and the token is taken
+// out of the address bar once the page has loaded (the forms carry it).
+export const metadata: Metadata = { title: "Unsubscribe", robots: { index: false, follow: false }, referrer: "no-referrer" };
+
+const TOKEN_PARAMS = ["token"];
 
 type Props = { searchParams: Promise<{ token?: string | string[] }> };
 
@@ -17,6 +22,7 @@ export default async function UnsubscribePage({ searchParams }: Props) {
   const renewal = sub ? planRenewal(sub) : null;
   return (
     <div className="mx-auto max-w-xl px-4 py-20 sm:px-6">
+      <StripUrlToken params={TOKEN_PARAMS} />
       <h1 className="text-[2rem] font-semibold text-ink">Unsubscribe</h1>
       {!sub ? (
         <p className="mt-3 text-lg text-slate">This unsubscribe link isn&apos;t valid. Use the link at the bottom of any of our emails.</p>

@@ -5,7 +5,7 @@ import { CoverageLine } from "@/components/coverage-line";
 import { PageHeader } from "@/components/page-header";
 import { TrackedLink } from "@/components/tracking";
 import { BILLING_LIVE } from "@/lib/billing/live";
-import { EARLY_ACCESS_BUTTON, earlyAccessLine, ONE_TRIAL_RULE, TAX_LINE } from "@/lib/early-access-copy";
+import { CARD_STATEMENT_LINE, EARLY_ACCESS_BUTTON, earlyAccessLine, ONE_TRIAL_RULE, TAX_LINE } from "@/lib/early-access-copy";
 import { siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +38,10 @@ export default async function PricingPage() {
           "How do I cancel?",
           <>Every alert email links to your account, where &quot;Cancel or manage billing&quot; opens Paddle&apos;s page to cancel. Lost the email? <Link href="/account/login" className="text-accent underline">Get your account link</Link>. You keep alerts until the end of the period you paid for.</>,
         ],
-        ["Who handles the payment?", <>Paddle.com, our reseller and merchant of record. It handles payment, invoices and tax; we never see your card details.</>],
+        [
+          "Who handles the payment?",
+          <>Paddle.com, our reseller and merchant of record. It handles payment, invoices and tax; we never see your card details. {CARD_STATEMENT_LINE}</>,
+        ],
         ["Can I get a refund?", <>Yes. Email us within 14 days of any charge and we&apos;ll refund that charge in full, no questions asked. <Link href="/refunds" className="text-accent underline">Refund policy</Link></>],
       ]
     : [

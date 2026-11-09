@@ -20,6 +20,7 @@ export type Account = {
   current_period_end: Date | null;
   cancel_at: Date | null;
   canceled_at: Date | null;
+  confirmed_at: Date | null;
   paddle_customer_id: string | null;
   /** Set once the Paddle customer was checked against this address (see verifiedCustomerFor). */
   paddle_customer_verified_at: Date | null;
@@ -36,7 +37,7 @@ export function isManageToken(t: unknown): t is string {
 export async function findByManageToken(t: unknown): Promise<Account | null> {
   if (!isManageToken(t)) return null;
   const [row] = await sql<Account[]>`
-    select id::int as id, email, status, weekly_email, frequency, billing_status, plan_interval, trial_ends_at, current_period_end, cancel_at, canceled_at,
+    select id::int as id, email, status, weekly_email, frequency, billing_status, plan_interval, trial_ends_at, current_period_end, cancel_at, canceled_at, confirmed_at,
            paddle_customer_id, paddle_customer_verified_at, paddle_subscription_id, unsubscribe_token, manage_token
     from subscribers where manage_token = ${t}`;
   return row ?? null;

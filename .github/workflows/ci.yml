@@ -45,6 +45,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
+      # Known vulnerabilities in the packages the site runs (not dev tools): fails on high or
+      # critical only; moderate and low ones are listed in the log without failing the build.
+      - name: Dependency audit
+        run: npm audit --omit=dev --audit-level=high
       - name: Type check
         run: npx tsc --noEmit
       - name: Lint

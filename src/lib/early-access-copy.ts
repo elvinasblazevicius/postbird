@@ -24,6 +24,12 @@ export const trialButton = `Start ${siteConfig.premium.trialDays}-day free trial
 export const TAX_LINE = "Prices in US dollars. Depending on where you live, VAT or sales tax is included or added; Paddle shows the exact total before you pay.";
 
 /** After a US-dollar amount in an email ("$19.99 every 3 months (VAT or sales tax included or added, depending on where you live)"). */
+/**
+ * What a card statement shows for a Paddle charge: "PADDLE.NET*" and the seller name set in
+ * Paddle's checkout settings (Paddle help, "What will customers see on their statement?", checked
+ * 9 November 2026). Used on /pricing and in the welcome email.
+ */
+export const CARD_STATEMENT_LINE = "Your card statement will show PADDLE.NET* NUEVANOVA.";
 export const EMAIL_TAX_NOTE = "(VAT or sales tax included or added, depending on where you live)";
 
 /** The words the trial line sets in bold. */
@@ -43,7 +49,7 @@ export function trialLine(plan: "monthly" | "quarterly" = "quarterly", trialEnds
 }
 
 /** One free trial per email address (terms, pricing FAQ). */
-export const ONE_TRIAL_RULE = "One free trial per email address. If you've had a trial before, your plan starts and is charged straight away.";
+export const ONE_TRIAL_RULE = "One free trial per email address, counting forms like name+tag@ and dotted Gmail addresses as the same address. If you've had a trial before, your plan starts and is charged straight away.";
 
 /** Under the button that starts a trial. */
 export const TRIAL_CONSENT = "By starting the trial you agree to automatic renewal as described above.";

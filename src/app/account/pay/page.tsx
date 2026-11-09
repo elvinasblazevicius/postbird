@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { NoCheckoutHere, PaddlePaymentLink } from "@/components/paddle-checkout";
 import { BILLING_LIVE } from "@/lib/billing/live";
 
-export const metadata: Metadata = { title: "Secure checkout", robots: { index: false, follow: false } };
+// The address carries Paddle's transaction id (?_ptxn=), which Paddle.js reads from it, so it stays; no referrer goes elsewhere.
+export const metadata: Metadata = { title: "Secure checkout", robots: { index: false, follow: false }, referrer: "no-referrer" };
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 

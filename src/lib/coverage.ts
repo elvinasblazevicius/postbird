@@ -11,9 +11,25 @@ export const COVERAGE_MIN_ORGS = 5;
 export type Coverage = { count: number; names: string[] };
 
 /**
- * Up to four well-known names: the short names (UNICEF, WHO…) of the
- * organizations with the most open vacancies; topped up with full names when
- * fewer than three have a short name. Pure, so it is unit-tested.
+ * Short names that are widely known and stand for one organization. Others are ambiguous ("DRC"
+ * is also a country, "IRC" and "ADB" are more than one organization) or little known outside their
+ * field, so the line uses the full name for those.
+ */
+const WELL_KNOWN_SHORT = new Set([
+  "UNICEF", "UNDP", "WHO", "UNHCR", "WFP", "FAO", "ILO", "IOM", "UNFPA", "UN Women", "UNESCO", "UNEP", "UN-Habitat", "OCHA",
+  "UNIDO", "UNRWA", "UNODC", "UNAIDS", "UNOPS", "ITU", "IAEA", "WIPO", "IFAD", "World Bank", "IMF", "EBRD", "OECD", "OSCE", "ICRC",
+  "IFRC", "MSF", "NATO", "WTO",
+]);
+
+/** The name to show for an organization in a short list: a well-known short name, otherwise the full name. */
+export function listName(name: string, short: string | null): string {
+  return short && WELL_KNOWN_SHORT.has(short.trim()) ? short.trim() : name;
+}
+
+/**
+ * Up to four names: the well-known short names (UNICEF, WHO…) of the organizations with the most
+ * open vacancies; topped up with full names (not ambiguous acronyms such as "DRC") when fewer than
+ * three are well known. Pure, so it is unit-tested.
  */
 export function coverageFrom(orgs: { name: string; short_name: string | null; count: number }[]): Coverage | null {
   if (orgs.length < COVERAGE_MIN_ORGS) return null;
@@ -23,8 +39,9 @@ export function coverageFrom(orgs: { name: string; short_name: string | null; co
     const v = n?.trim();
     if (v && !names.includes(v) && names.length < 4) names.push(v);
   };
-  for (const o of sorted) if (o.short_name && o.short_name.length <= 12) add(o.short_name);
-  if (names.length < 3) for (const o of sorted) if (names.length < 3) add(o.name);
+  for (const o of sorted) if (o.short_name && WELL_KNOWN_SHORT.has(o.short_name.trim())) add(o.short_name);
+  // Full names are longer: top up to three, skipping very long ones so the line stays short.
+  if (names.length < 3) for (const o of sorted) if (names.length < 3 && o.name.length <= 40 && !(o.short_name && names.includes(o.short_name.trim()))) add(o.name);
   return { count: orgs.length, names };
 }
 

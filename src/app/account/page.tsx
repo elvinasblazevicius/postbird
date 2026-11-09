@@ -7,7 +7,7 @@ import { GRADE_GROUPS, REGIONS } from "@/config/regions";
 import { findByManageToken, type Account } from "@/lib/account";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { hadTrialBefore } from "@/lib/billing/subscriptions";
-import { hasTrialMarker } from "@/lib/billing/trial-markers";
+import { trialUsedElsewhere } from "@/lib/billing/trial-markers";
 import { planDescription } from "@/lib/early-access-copy";
 import { JOB_TYPES } from "@/lib/jobs";
 import { listSavedSearches, MAX_SAVED_SEARCHES, searchLimit } from "@/lib/saved-searches";
@@ -16,7 +16,9 @@ import { formatDate, siteConfig } from "@/lib/site";
 export const dynamic = "force-dynamic";
 
 // Private page: never indexed (the X-Robots-Tag header in next.config.ts says the same) and never tracked (see isPrivatePath).
-export const metadata: Metadata = { title: "Your account", robots: { index: false, follow: false } };
+// The account link (?t=) is in the address, so no referrer goes to any other site. The token stays in the
+// address: the account forms refresh this page, which reads it from there.
+export const metadata: Metadata = { title: "Your account", robots: { index: false, follow: false }, referrer: "no-referrer" };
 
 type Props = { searchParams: Promise<{ t?: string | string[] }> };
 
@@ -62,7 +64,7 @@ export default async function AccountPage({ searchParams }: Props) {
 
   const searches = await listSavedSearches(acct.id);
   // One free trial per email address: only an address that never had a plan is offered it.
-  const hadPlan = hadTrialBefore(acct, await hasTrialMarker(acct.email));
+  const hadPlan = hadTrialBefore(acct, await trialUsedElsewhere(acct.email, acct.id));
   const alertsOn = acct.billing_status === "trialing" || acct.billing_status === "active";
   const paying = ["trialing", "active", "past_due", "paused"].includes(acct.billing_status);
   const limit = searchLimit(acct.billing_status);

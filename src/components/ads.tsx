@@ -72,7 +72,10 @@ export function getAttribution(): Attribution | null {
     const raw = local()?.getItem(ATTR_KEY);
     if (!raw) return null;
     const a = JSON.parse(raw) as Attribution;
-    if (a.at && Date.now() - new Date(a.at).getTime() > 90 * 86_400_000) return null;
+    if (a.at && Date.now() - new Date(a.at).getTime() > 90 * 86_400_000) {
+      local()?.removeItem(ATTR_KEY); // kept for 90 days only (see /privacy)
+      return null;
+    }
     return a;
   } catch {
     return null;
@@ -88,7 +91,10 @@ function captureAttribution() {
 function persistAttribution() {
   if (!storageAllowed || !memoryAttribution) return;
   try {
-    if (!local()?.getItem(ATTR_KEY)) local()?.setItem(ATTR_KEY, JSON.stringify(memoryAttribution));
+    const stored = local()?.getItem(ATTR_KEY);
+    const at = stored ? (JSON.parse(stored) as Attribution).at : undefined;
+    // First touch wins, for 90 days; an older one is replaced.
+    if (!stored || (at && Date.now() - new Date(at).getTime() > 90 * 86_400_000)) local()?.setItem(ATTR_KEY, JSON.stringify(memoryAttribution));
   } catch {
     /* storage blocked: attribution simply isn't kept */
   }
@@ -169,6 +175,15 @@ async function fetchGeo(): Promise<Geo> {
   } catch {
     return { consentRequired: true };
   }
+}
+
+/**
+ * Whether this visitor is where consent is asked before anything optional loads: the EEA, the UK
+ * and Switzerland, or unknown (the same /api/geo answer, cached for the tab, as the cookie choice).
+ * Never rejects; true until known or when the check fails.
+ */
+export function consentRegion(): Promise<boolean> {
+  return fetchGeo().then((g) => g.consentRequired).catch(() => true);
 }
 
 /** Footer link that reopens the cookie choice. */

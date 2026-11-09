@@ -9,11 +9,13 @@ import siteConfig from "@site-config";
 import { CHECK_INBOX, checkoutReply } from "@/lib/billing/checkout-links";
 import { billingSelfCheck, cancelSubscriptionNow, createNoTrialTransaction, getCustomer, noTrialPrice, noTrialTransactionBody, type PaddlePrice } from "@/lib/billing/paddle";
 import { hadTrialBefore, welcomeTrialEnd } from "@/lib/billing/subscriptions";
-import { trialMarker } from "@/lib/billing/trial-markers";
+import { canonicalTrialEmail, trialMarker } from "@/lib/billing/trial-markers";
+import { secretFingerprint, sharedSecret } from "@/lib/server-secret";
 import { NO_TRIAL_CONSENT, noTrialButton, noTrialLine, ONE_TRIAL_RULE, RENEWING, TAX_LINE, TRIAL_CONSENT, trialButton } from "@/lib/early-access-copy";
 import { accountLinkEmail, checkoutLinkEmail, welcomeEmail } from "@/lib/email-templates";
 
-const NEVER = { paddle_subscription_id: null, billing_status: "none" as const, trial_ends_at: null, canceled_at: null };
+/** A confirmed address that never had a plan. */
+const NEVER = { confirmed_at: "2026-09-01T00:00:00Z", paddle_subscription_id: null, billing_status: "none" as const, trial_ends_at: null, canceled_at: null };
 
 describe("returning-customer rule", () => {
   it("an address that never had a Paddle subscription is new", () => {
@@ -26,7 +28,14 @@ describe("returning-customer rule", () => {
     expect(hadTrialBefore({ ...NEVER, billing_status: "canceled" })).toBe(true);
     expect(hadTrialBefore({ ...NEVER, trial_ends_at: new Date("2026-10-01T00:00:00Z") })).toBe(true);
     expect(hadTrialBefore({ ...NEVER, canceled_at: "2026-10-01T00:00:00Z" })).toBe(true);
-    expect(hadTrialBefore({ paddle_subscription_id: "sub_01hv8x29kz0t586xy6zn1a62ny", billing_status: "canceled", trial_ends_at: "2026-10-01T00:00:00Z", canceled_at: "2026-09-25T00:00:00Z" })).toBe(true);
+    expect(hadTrialBefore({ ...NEVER, paddle_subscription_id: "sub_01hv8x29kz0t586xy6zn1a62ny", billing_status: "canceled", trial_ends_at: "2026-10-01T00:00:00Z", canceled_at: "2026-09-25T00:00:00Z" })).toBe(true);
+  });
+
+  it("a plan at an address that was never confirmed doesn't count (its owner never proved it)", () => {
+    const unconfirmed = { ...NEVER, confirmed_at: null, paddle_subscription_id: "sub_01hv8x29kz0t586xy6zn1a62ny", billing_status: "canceled" as const, trial_ends_at: "2026-10-01T00:00:00Z", canceled_at: "2026-09-25T00:00:00Z" };
+    expect(hadTrialBefore(unconfirmed)).toBe(false);
+    // A marker or another form of the address still counts.
+    expect(hadTrialBefore(unconfirmed, true)).toBe(true);
   });
 
   it("an address whose record was deleted after a plan counts through its trial marker", () => {
@@ -38,7 +47,7 @@ describe("returning-customer rule", () => {
 describe("trial markers", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it("are a keyed one-way code of the normalized address, never the address", () => {
+  it("are a keyed one-way code of the canonical address, never the address", () => {
     vi.stubEnv("ANALYTICS_SALT", "salt-one");
     const m = trialMarker("someone@example.org");
     expect(m).toMatch(/^[0-9a-f]{64}$/);
@@ -48,6 +57,52 @@ describe("trial markers", () => {
     // Another secret gives another code (nobody without it can test an address against the table).
     vi.stubEnv("ANALYTICS_SALT", "salt-two");
     expect(trialMarker("someone@example.org")).not.toBe(m);
+  });
+
+  it("are the same for every form of one address (+suffix, Gmail dots, googlemail.com)", () => {
+    vi.stubEnv("ANALYTICS_SALT", "salt-one");
+    expect(trialMarker("Jane.Doe+jobs@googlemail.com")).toBe(trialMarker("janedoe@gmail.com"));
+    expect(trialMarker("someone+x@example.org")).toBe(trialMarker("someone@example.org"));
+    expect(trialMarker("some.one@example.org")).not.toBe(trialMarker("someone@example.org"));
+  });
+
+  it("use ANALYTICS_SALT, else CRON_SECRET, and never a built-in constant", () => {
+    vi.stubEnv("ANALYTICS_SALT", "");
+    vi.stubEnv("CRON_SECRET", "");
+    expect(sharedSecret()).toBeNull();
+    expect(trialMarker("someone@example.org")).toBeNull();
+    expect(secretFingerprint()).toBeNull();
+    vi.stubEnv("CRON_SECRET", "cron-secret-value");
+    expect(sharedSecret()).toBe("cron-secret-value");
+    const viaCron = trialMarker("someone@example.org");
+    expect(viaCron).toMatch(/^[0-9a-f]{64}$/);
+    vi.stubEnv("ANALYTICS_SALT", "salt-value");
+    expect(sharedSecret()).toBe("salt-value");
+    expect(trialMarker("someone@example.org")).not.toBe(viaCron);
+  });
+
+  it("fingerprints tell two secrets apart without revealing them", () => {
+    const a = secretFingerprint("secret-a")!;
+    expect(a).toMatch(/^[0-9a-f]{12}$/);
+    expect(secretFingerprint("secret-a")).toBe(a);
+    expect(secretFingerprint("secret-b")).not.toBe(a);
+    expect(a).not.toContain("secret");
+  });
+});
+
+describe("canonical address for the one-trial rule", () => {
+  it.each([
+    ["Name@Example.org", "name@example.org"],
+    [" name+jobs@example.org ", "name@example.org"],
+    ["name+a+b@example.org", "name@example.org"],
+    ["first.last@example.org", "first.last@example.org"],
+    ["First.Last+x@gmail.com", "firstlast@gmail.com"],
+    ["f.i.r.s.t@googlemail.com", "first@gmail.com"],
+    ["+tag@example.org", "+tag@example.org"],
+    ["...@gmail.com", "...@gmail.com"],
+    ["name@mail.gmail.com", "name@mail.gmail.com"],
+  ])("%s → %s", (input, out) => {
+    expect(canonicalTrialEmail(input)).toBe(out);
   });
 });
 
@@ -60,7 +115,7 @@ describe("the trial form's reply", () => {
     expect(CHECK_INBOX).toBe("Check your inbox: we've emailed this address a link to continue.");
     // A new address goes straight to the trial checkout.
     expect(checkoutReply({ ok: true, ref: "r".repeat(32), email: "c@example.org", trial: true }, "quarterly"))
-      .toEqual({ status: "ready", message: "", ref: "r".repeat(32), email: "c@example.org", plan: "quarterly", trial: true, transactionId: null });
+      .toEqual({ status: "ready", message: "", ref: "r".repeat(32), email: "c@example.org", plan: "quarterly", trial: true, transactionId: null, confirmFirst: true });
   });
 });
 
@@ -173,7 +228,7 @@ describe("copy and emails for someone who has had a trial", () => {
     expect(noTrialLine()).not.toMatch(/\$0|trial ends|trial lasts/);
     expect(noTrialButton).not.toMatch(/trial/i);
     expect(trialButton).toMatch(/trial/i);
-    expect(ONE_TRIAL_RULE).toBe("One free trial per email address. If you've had a trial before, your plan starts and is charged straight away.");
+    expect(ONE_TRIAL_RULE).toBe("One free trial per email address, counting forms like name+tag@ and dotted Gmail addresses as the same address. If you've had a trial before, your plan starts and is charged straight away.");
     expect(TRIAL_CONSENT).toBe("By starting the trial you agree to automatic renewal as described above.");
     expect(NO_TRIAL_CONSENT).toBe("By continuing you agree to automatic renewal as described above.");
     expect(NO_TRIAL_CONSENT).not.toMatch(/trial/i);

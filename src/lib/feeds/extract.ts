@@ -38,7 +38,10 @@ export type NormalizedJob = {
   category: string;
   jobType: string | null;
   grade: string | null;
+  /** Languages (besides English) the posting requires. */
   languages: string[] | null;
+  /** Languages (besides English) the posting calls an advantage or desirable. */
+  desirableLanguages: string[] | null;
   minExperienceYears: number | null;
   reference: string | null;
   summary: string | null;
@@ -188,20 +191,57 @@ export function detectCategory(title: string): string {
 }
 
 const LANGUAGE_NAMES = ["French", "Spanish", "Arabic", "Portuguese", "Russian", "Chinese"];
-const LANG_CONTEXT = /\b(fluen\w*|proficien\w*|knowledge of|command of|written and (?:oral|spoken)|spoken and written|oral and written|bilingual|mother tongue|native speaker|language (?:skills?|requirements?|proficiency)|required|essential|desirable|an asset|advantage)\b|\blanguages?\s*[:：]/i;
+const LANG_CONTEXT = /\b(fluen\w*|proficien\w*|knowledge of|command of|written and (?:oral|spoken)|spoken and written|oral and written|bilingual|mother tongue|native speaker|language (?:skills?|requirements?|proficiency)|required|essential|desirable|an asset|advantage|preferred)\b|\blanguages?\s*[:：]/i;
+/** Words that make a language a plus rather than a requirement ("… is an advantage", "Desirable: French"). */
+const DESIRABLE_MARK = /\b(?:advantage\w*|advantageous|desirable|desired|assets?|preferred|preferabl[ey]|a plus|added value|nice to have|beneficial)\b/gi;
+/** Words that make it a requirement ("… is required", "Essential: French"). */
+const REQUIRED_MARK = /\b(?:required|requirements?|essential|mandatory|must|necessary|indispensable)\b/gi;
+/**
+ * "another official UN language (Arabic, Chinese, French, Russian and Spanish)" and the like: a list
+ * of the UN's official languages, any one of which counts, so it names no language the job needs.
+ * The phrase is removed together with its list (in brackets, or after "such as", "e.g." …, which
+ * detectLanguageRequirements has already written as "eg").
+ */
+const OTHER_UN_LANGUAGE =
+  /\b(?:another|other|an additional|a second|a further|one of the other)\s+(?:official\s+)?(?:UN|U\.N\.|United Nations)\s+(?:official\s+)?languages?\b(?:\s*\([^)]*\)|,?\s*(?:such as|eg|ie|namely|including|like)\s+[^;.()]*?(?=\s+(?:is|are|would|will|an?|as)\b|[;.]|$))?/gi;
 
-/** Languages (other than English) named in a sentence about language requirements. */
-export function detectLanguages(text: string): string[] | null {
-  const found = new Set<string>();
-  for (const sentence of text.split(/(?<=[.;!?])\s+|\n/)) {
-    if (sentence.length > 600 || !LANG_CONTEXT.test(sentence)) continue;
-    if (/\b(working|official) languages?\b/i.test(sentence)) continue; // describes the organization, not the job
+export type LanguageRequirements = { required: string[] | null; desirable: string[] | null };
+
+/**
+ * Languages (other than English) named in sentences about language requirements, split into
+ * required and desirable. A language counts as desirable when the nearest marker after it in its
+ * sentence (or, with none after it, the nearest one before it) is "advantage", "desirable", "an
+ * asset", "preferred" and the like; otherwise it is required. A language named both ways is required.
+ */
+export function detectLanguageRequirements(text: string): LanguageRequirements {
+  const required = new Set<string>();
+  const desirable = new Set<string>();
+  // "e.g." and "i.e." don't end a sentence ("another UN language (e.g. Arabic, Chinese) is desirable").
+  const plain = text.replace(/\be\.g\./gi, "eg").replace(/\bi\.e\./gi, "ie");
+  for (const raw of plain.split(/(?<=[.;!?])\s+|\n/)) {
+    if (raw.length > 600 || !LANG_CONTEXT.test(raw)) continue;
+    if (/\b(working|official) languages?\b/i.test(raw)) continue; // describes the organization, not the job
+    const sentence = raw.replace(OTHER_UN_LANGUAGE, (m) => " ".repeat(m.length));
+    const marks = [
+      ...[...sentence.matchAll(DESIRABLE_MARK)].map((m) => ({ at: m.index ?? 0, desirable: true })),
+      ...[...sentence.matchAll(REQUIRED_MARK)].map((m) => ({ at: m.index ?? 0, desirable: false })),
+    ].sort((a, b) => a.at - b.at);
     for (const lang of LANGUAGE_NAMES) {
       // "French" but not "French Polynesia" / "Spanish-speaking"-style adjectives are still fine
-      if (new RegExp(`\\b${lang}\\b(?! Polynesia| Guiana| Southern|-language)`, "i").test(sentence)) found.add(lang);
+      for (const m of sentence.matchAll(new RegExp(`\\b${lang}\\b(?! Polynesia| Guiana| Southern|-language)`, "gi"))) {
+        const at = m.index ?? 0;
+        const mark = marks.find((k) => k.at > at) ?? [...marks].reverse().find((k) => k.at < at);
+        (mark?.desirable ? desirable : required).add(lang);
+      }
     }
   }
-  return found.size ? [...found].sort() : null;
+  for (const l of required) desirable.delete(l);
+  return { required: required.size ? [...required].sort() : null, desirable: desirable.size ? [...desirable].sort() : null };
+}
+
+/** Required languages (other than English) named in sentences about language requirements. */
+export function detectLanguages(text: string): string[] | null {
+  return detectLanguageRequirements(text).required;
 }
 
 const NUMBER_WORDS: Record<string, number> = {
@@ -380,7 +420,7 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   const reference = refMatch && /\d/.test(refMatch[0]) ? refMatch[0] : null;
 
   // Requirements stated in the text (read even when the description itself isn't republished)
-  const languages = detectLanguages(text);
+  const { required: languages, desirable: desirableLanguages } = detectLanguageRequirements(text);
   const minExperienceYears = detectExperienceYears(text);
 
   // Dates
@@ -440,6 +480,7 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
     jobType,
     grade,
     languages,
+    desirableLanguages,
     minExperienceYears,
     reference,
     summary,

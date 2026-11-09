@@ -3,7 +3,32 @@ import { countriesInLocation, locationPatterns, normalizePlace } from "@/lib/cou
 import { gradeGroupOf, gradeMatches, isLocalOnlyGrade, LOCAL_ONLY_GRADE_SQL } from "@/lib/grades";
 import { activeFilterCount, filtersFromQuery, jobsUrl, parseFilters, wantsLooseMatch, withSearchIntent } from "@/lib/jobs";
 import { alertStepKeep, describeSearch, normalizeSearch, searchFromAlertStep, searchFromSignupForm } from "@/lib/saved-searches";
-import { categoriesForWord, interpretQuery } from "@/lib/search-intent";
+import { categoriesForWord, interpretQuery, placeVariants, searchTerms } from "@/lib/search-intent";
+
+describe("duty-station names", () => {
+  it("finds other spellings and names of common duty stations, with or without accents", () => {
+    expect(placeVariants("geneve")).toContain("geneva");
+    expect(placeVariants("Genève")).toContain("geneva");
+    expect(placeVariants("geneva")).toEqual(expect.arrayContaining(["geneve", "genf"]));
+    expect(placeVariants("kiev")).toEqual(["kyiv"]);
+    expect(placeVariants("Kyiv")).toEqual(["kiev"]);
+    expect(placeVariants("bruxelles")).toContain("brussels");
+    expect(placeVariants("wien")).toEqual(["vienna"]);
+    expect(placeVariants("roma")).toEqual(["rome"]);
+    expect(placeVariants("NY")).toEqual(expect.arrayContaining(["new york"]));
+    expect(placeVariants("addis")).toContain("addis ababa");
+    expect(placeVariants("hague")).toContain("den haag");
+    expect(placeVariants("officer")).toEqual([]);
+  });
+
+  it("keeps place names of several words together as one search term", () => {
+    expect(searchTerms("den haag legal")).toEqual(["den haag", "legal"]);
+    expect(searchTerms("Addis Ababa finance")).toEqual(["addis ababa", "finance"]);
+    expect(interpretQuery("finance officer Den Haag").text).toBe("den haag finance officer");
+    expect(interpretQuery("jobs in the hague").text).toBe("hague");
+    expect(interpretQuery("genève").text).toBe("genève");
+  });
+});
 
 describe("interpretQuery", () => {
   it("reads organization type, contract type and country, and keeps the rest as text", () => {

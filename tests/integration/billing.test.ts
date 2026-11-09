@@ -94,6 +94,8 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
     process.env.NEXT_PUBLIC_PADDLE_PRICE_MONTHLY = "pri_monthly_unused";
     process.env.NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY = "pri_quarterly_unused";
     process.env.PADDLE_API_KEY = API_KEY;
+    // The secret that keys trial markers (the site and the scheduled jobs must share it).
+    process.env.ANALYTICS_SALT = "test-analytics-salt-0123456789";
 
     // Resend stub: records every message instead of sending it. Paddle stub: customers and cancels.
     vi.stubGlobal("fetch", async (url: string | URL, init?: RequestInit) => {
@@ -165,26 +167,49 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(await billing.checkoutAccountToken(ref)).toEqual({ linked: false, manageToken: null });
     });
 
-    it("subscription.created links the subscription through customData and confirms the address", async () => {
-      const res = await billing.handlePaddleEvent(subEvent("subscription.created", { custom_data: { ref } }));
-      expect(res.outcome).toBe("applied");
-      expect(res.welcome?.email).toBe("new.person@example.org");
+    it("subscription.created links the subscription through customData; the new address must still be confirmed", async () => {
+      const { POST } = await import("@/app/api/paddle/webhook/route");
+      const body = JSON.stringify(subEvent("subscription.created", { custom_data: { ref } }));
+      const ts = Math.floor(Date.now() / 1000);
+      const res = await POST(new Request("http://localhost/api/paddle/webhook", { method: "POST", body, headers: { "paddle-signature": `ts=${ts};h1=${paddle.signPayload(body, ts, WEBHOOK_SECRET)}` } }));
+      expect(await res.text()).toBe("applied");
+      await settle();
       const [s] = await sql`
-        select status, billing_status, plan, plan_interval, paddle_customer_id, paddle_customer_verified_at, paddle_subscription_id, trial_ends_at, welcome_sent_at, confirmed_at
+        select id::int as id, status, billing_status, plan, plan_interval, paddle_customer_id, paddle_customer_verified_at, paddle_subscription_id, trial_ends_at,
+               welcome_sent_at, confirmed_at, confirm_token, confirm_sent_at, confirm_claimed_at
         from subscribers where email = 'new.person@example.org'`;
-      expect(s).toMatchObject({ status: "confirmed", billing_status: "trialing", plan: "premium", plan_interval: "quarter", paddle_customer_id: CUSTOMER, paddle_subscription_id: SUB_ID });
+      // Anyone can type any address into the public form: paying doesn't confirm it.
+      expect(s).toMatchObject({ status: "pending", billing_status: "trialing", plan: "premium", plan_interval: "quarter", paddle_customer_id: CUSTOMER, paddle_subscription_id: SUB_ID, welcome_sent_at: null, confirmed_at: null, confirm_claimed_at: null });
       // The customer was checked against the address (Paddle's email, compared case-insensitively) before it was linked.
       expect(s.paddle_customer_verified_at).not.toBeNull();
       expect(paddleCalls).toEqual([`GET /customers/${CUSTOMER}`]);
       expect(new Date(s.trial_ends_at).toISOString()).toBe("2026-11-23T10:00:00.000Z");
-      expect(s.welcome_sent_at).not.toBeNull();
-      expect(s.confirmed_at).not.toBeNull();
+      // The confirmation email went out (and its claim was closed), not the welcome.
+      expect(s.confirm_token).toBeTruthy();
+      expect(s.confirm_sent_at).not.toBeNull();
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toMatchObject({ to: "new.person@example.org", key: `paid-confirm:${s.id}:${SUB_ID}` });
+      expect(sent[0].subject).toMatch(/^Confirm your email/);
+      expect(sent[0].text).toContain(`/alerts/confirm?token=${s.confirm_token}`);
+      expect(sent[0].text).not.toContain("/account?t=");
       const [ev] = await sql`select type, visitor, props from events where type = 'trial_started'`;
       expect(ev).toMatchObject({ visitor: "visitor-hash", props: { plan: "quarter", campaign: { msclkid: "abc123", utm_medium: "cpc" } } });
-      // The browser that paid for this new account may now get its link.
-      const token = await billing.checkoutAccountToken(ref);
-      expect(token.linked).toBe(true);
-      expect(token.manageToken).toMatch(/^[0-9a-f]{64}$/);
+      // The browser that paid gets no account link: it comes with the welcome email, after confirming.
+      expect(await billing.checkoutAccountToken(ref)).toEqual({ linked: true, manageToken: null });
+      // No alerts and no welcome until the address is confirmed.
+      sent.length = 0;
+      expect(await notices.runWelcomeRetries()).toEqual({ sent: 0, failed: 0 });
+      expect((await sql`select 1 from subscribers where id = ${s.id} and status = 'confirmed' and billing_status in ('trialing', 'active')`)).toHaveLength(0);
+
+      // The owner confirms: the welcome goes out once, with the account link.
+      expect((await subscribers.confirmSubscriber(s.confirm_token)).ok).toBe(true);
+      const [c] = await sql`select status, confirmed_at, manage_token from subscribers where id = ${s.id}`;
+      expect(c.status).toBe("confirmed");
+      expect(c.confirmed_at).not.toBeNull();
+      expect(await notices.runWelcomeRetries(1, s.id)).toEqual({ sent: 1, failed: 0 });
+      expect(sent[0]).toMatchObject({ to: "new.person@example.org", key: `welcome:${s.id}:${SUB_ID}` });
+      expect(sent[0].text).toContain(`/account?t=${c.manage_token}`);
+      expect(await notices.runWelcomeRetries()).toEqual({ sent: 0, failed: 0 });
     });
 
     it("ignores a repeated event and does not count the trial or send the welcome twice", async () => {
@@ -389,7 +414,8 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       const retry = await billing.handlePaddleEvent(ev);
       expect(retry.outcome).toBe("applied");
       const [after] = await sql`select status, billing_status, paddle_subscription_id from subscribers where email = 'killed@example.org'`;
-      expect(after).toMatchObject({ status: "confirmed", billing_status: "trialing", paddle_subscription_id: KILLED_SUB });
+      // Applied in full; the new address still waits for its owner's confirmation.
+      expect(after).toMatchObject({ status: "pending", billing_status: "trialing", paddle_subscription_id: KILLED_SUB });
       expect((await billing.handlePaddleEvent(ev)).outcome).toBe("duplicate");
     });
   });
@@ -493,9 +519,10 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       const first = "sub_01hv8x29kz0t586xy6zn1a64aa", second = "sub_01hv8x29kz0t586xy6zn1a64ab";
       const customer = "ctm_01hv6y1jedq4p1n0yqn5ba3kb1";
 
-      // First trial: reminded once.
+      // First trial, confirmed by the address's owner: reminded once.
       const start1 = await billing.startCheckout({ email: "returning@example.org", plan: "monthly", search: null });
-      await billing.handlePaddleEvent(subEvent("subscription.created", trial(first, customer, (start1 as { ref: string }).ref, inDays(2))));
+      const created = await billing.handlePaddleEvent(subEvent("subscription.created", trial(first, customer, (start1 as { ref: string }).ref, inDays(2))));
+      expect((await subscribers.confirmSubscriber(created.confirm!.confirmToken)).ok).toBe(true);
       expect(await notices.runTrialReminders()).toEqual({ sent: 1, failed: 0 });
       expect(sent.map((m) => m.to)).toEqual(["returning@example.org"]);
 
@@ -527,6 +554,30 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(after).toEqual({ outcome: "flagged" });
       expect(paddleCalls).toEqual([]);
       expect((await sql`select paddle_subscription_id from subscribers where email = 'returning@example.org'`)[0].paddle_subscription_id).toBe(first);
+    });
+
+    it("a trial canceled before the address was confirmed doesn't use up its trial", async () => {
+      const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString();
+      const first = "sub_01hv8x29kz0t586xy6zn1a64ac", second = "sub_01hv8x29kz0t586xy6zn1a64ad";
+      const start1 = await billing.startCheckout({ email: "never-confirmed@example.org", plan: "monthly", search: null });
+      const created = await billing.handlePaddleEvent(subEvent("subscription.created", { id: first, customer_id: null, custom_data: { ref: (start1 as { ref: string }).ref } }));
+      expect(created.confirm?.email).toBe("never-confirmed@example.org");
+      const at = new Date(Date.now() + 1_000).toISOString();
+      await billing.handlePaddleEvent(subEvent("subscription.canceled", { id: first, customer_id: null, status: "canceled", canceled_at: at, current_billing_period: null }, at));
+      const [s] = await sql`select id::int as id, status, billing_status, confirmed_at from subscribers where email = 'never-confirmed@example.org'`;
+      expect(s).toMatchObject({ status: "pending", billing_status: "canceled", confirmed_at: null });
+
+      // The form opens the trial checkout again, and the new trial is applied, not blocked.
+      const start2 = await billing.startCheckout({ email: "never-confirmed@example.org", plan: "quarterly", search: null });
+      expect(start2).toMatchObject({ ok: true, trial: true });
+      const res = await billing.handlePaddleEvent(subEvent("subscription.created", {
+        id: second, customer_id: null, custom_data: { ref: (start2 as { ref: string }).ref },
+        current_billing_period: { starts_at: inDays(0), ends_at: inDays(14) }, items: [{ price: { id: "pri_test" }, trial_dates: { starts_at: inDays(0), ends_at: inDays(14) } }],
+      }, new Date(Date.now() + 2_000).toISOString()));
+      expect(res.outcome).toBe("applied");
+      expect(res.confirm?.subscriptionId).toBe(second);
+      expect((await sql`select billing_status, paddle_subscription_id from subscribers where id = ${s.id}`)[0]).toMatchObject({ billing_status: "trialing", paddle_subscription_id: second });
+      expect(await sql`select 1 from billing_flags where subscription_id = ${second}`).toHaveLength(0);
     });
 
     it("one-click unsubscribe with a running plan: unsubscribes and sends one notice with the cancel link", async () => {
@@ -667,7 +718,7 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       return POST(new Request("http://localhost/api/paddle/webhook", { method: "POST", body, headers: { "paddle-signature": `ts=${ts};h1=${paddle.signPayload(body, ts, WEBHOOK_SECRET)}` } }));
     };
 
-    it("paying through the second checkout confirms the address and the welcome goes out", async () => {
+    it("paying through the second checkout sends one confirmation email; the welcome follows confirmation", async () => {
       const first = await billing.startCheckout({ email: "twice@example.org", plan: "monthly", search: "q=nurse" });
       const second = await billing.startCheckout({ email: "twice@example.org", plan: "quarterly", search: "q=nurse" });
       const ref2 = (second as { ref: string }).ref;
@@ -679,14 +730,23 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       const res = await postEvent(subEvent("subscription.created", { id: subId, customer_id: "ctm_01hv6y1jedq4p1n0yqn5ba3kc1", custom_data: { ref: ref2 } }));
       expect(await res.text()).toBe("applied");
       await settle();
-      const [s] = await sql`select id::int as id, status, billing_status, confirmed_at, welcome_sent_at, welcome_claimed_at, manage_token from subscribers where email = 'twice@example.org'`;
-      expect(s).toMatchObject({ status: "confirmed", billing_status: "trialing", welcome_claimed_at: null });
-      expect(s.confirmed_at).not.toBeNull();
-      expect(s.welcome_sent_at).not.toBeNull();
+      const [s] = await sql`select id::int as id, status, billing_status, confirmed_at, confirm_token, welcome_sent_at, manage_token from subscribers where email = 'twice@example.org'`;
+      expect(s).toMatchObject({ status: "pending", billing_status: "trialing", confirmed_at: null, welcome_sent_at: null });
       expect(sent).toHaveLength(1);
+      expect(sent[0]).toMatchObject({ to: "twice@example.org", key: `paid-confirm:${s.id}:${subId}` });
+      expect(await billing.checkoutAccountToken(ref2)).toEqual({ linked: true, manageToken: null });
+
+      // A confirmation email that failed to send is retried by the daily job (these rows are covered too).
+      await notices.confirmationNotSent(s.id);
+      sent.length = 0;
+      expect(await notices.runConfirmationRetries()).toEqual({ sent: 1, failed: 0 });
+      expect(sent[0]).toMatchObject({ to: "twice@example.org", key: `paid-confirm:${s.id}:${subId}` });
+
+      expect((await subscribers.confirmSubscriber(s.confirm_token)).ok).toBe(true);
+      sent.length = 0;
+      expect(await notices.runWelcomeRetries()).toEqual({ sent: 1, failed: 0 });
       expect(sent[0]).toMatchObject({ to: "twice@example.org", key: `welcome:${s.id}:${subId}` });
       expect(sent[0].text).toContain(`/account?t=${s.manage_token}`);
-      expect(await billing.checkoutAccountToken(ref2)).toEqual({ linked: true, manageToken: s.manage_token });
     });
 
     it("an address its owner touched in between (a sign-up) is not confirmed by paying", async () => {
@@ -924,16 +984,21 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
     it("deleting an address that had a plan leaves a one-way marker for 24 months; others leave none", async () => {
       const markers = await import("@/lib/billing/trial-markers");
       await sql`
-        insert into subscribers (email, status, billing_status, canceled_at, unsubscribe_token)
-        values ('had-plan-gone@example.org', 'confirmed', 'canceled', now() - interval '40 days', ${tok("had-plan-gone@example.org")}),
-               ('never-paid-gone@example.org', 'pending', 'none', null, ${tok("never-paid-gone@example.org")})`;
-      await sql`update subscribers set created_at = now() - interval '40 days' where email = 'never-paid-gone@example.org'`;
+        insert into subscribers (email, status, confirmed_at, billing_status, canceled_at, unsubscribe_token)
+        values ('had-plan-gone@example.org', 'confirmed', now() - interval '90 days', 'canceled', now() - interval '40 days', ${tok("had-plan-gone@example.org")}),
+               ('never-paid-gone@example.org', 'pending', null, 'none', null, ${tok("never-paid-gone@example.org")}),
+               ('never-confirmed-gone@example.org', 'pending', null, 'canceled', now() - interval '40 days', ${tok("never-confirmed-gone@example.org")})`;
+      await sql`update subscribers set created_at = now() - interval '40 days' where email in ('never-paid-gone@example.org', 'never-confirmed-gone@example.org')`;
       await sql`insert into trial_markers (hash, expires_at) values ('expired-marker', now() - interval '1 day')`;
       await subscribers.purgeStaleSubscribers();
-      expect(await sql`select 1 from subscribers where email in ('had-plan-gone@example.org', 'never-paid-gone@example.org')`).toHaveLength(0);
+      expect(await sql`select 1 from subscribers where email in ('had-plan-gone@example.org', 'never-paid-gone@example.org', 'never-confirmed-gone@example.org')`).toHaveLength(0);
       expect(await markers.hasTrialMarker("had-plan-gone@example.org")).toBe(true);
+      // Another form of the same address is marked too (one trial per person).
+      expect(await markers.hasTrialMarker("Had-Plan-Gone+again@example.org")).toBe(true);
       expect(await markers.hasTrialMarker("never-paid-gone@example.org")).toBe(false);
-      const [m] = await sql`select hash, expires_at from trial_markers where hash = ${markers.trialMarker("had-plan-gone@example.org")}`;
+      // A plan at an address that was never confirmed leaves no marker.
+      expect(await markers.hasTrialMarker("never-confirmed-gone@example.org")).toBe(false);
+      const [m] = await sql`select hash, expires_at from trial_markers where hash = ${markers.trialMarker("had-plan-gone@example.org")!}`;
       expect(m.hash).not.toContain("had-plan-gone");
       const months = (new Date(m.expires_at).getTime() - Date.now()) / (30.44 * 86_400_000);
       expect(months).toBeGreaterThan(23.5);

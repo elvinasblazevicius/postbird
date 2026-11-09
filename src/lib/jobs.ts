@@ -4,8 +4,8 @@ import { GRADE_GROUPS, LANGUAGES, ORG_TYPES, REGIONS, regionBySlug } from "@/con
 import { LISTING_SETTINGS } from "@/config/import";
 import { countriesInLocation, DROP_CHARS, FOLD_FROM, FOLD_TO, locationPatterns } from "@/lib/country-match";
 import { sql, transaction } from "@/lib/db";
-import { LOCAL_ONLY_GRADE_SQL, LOCAL_ONLY_TITLE_SQL, NATIONAL_OFFICER_TITLE_SQL } from "@/lib/grades";
-import { categoriesForWord, foldText, interpretQuery, orgNamesForTerm, searchTerms, wordPattern } from "@/lib/search-intent";
+import { GENERAL_SERVICE_TITLE_SQL, LOCAL_ONLY_GRADE_SQL, LOCAL_ONLY_TITLE_SQL, NATIONAL_OFFICER_TITLE_SQL, PROFESSIONAL_TITLE_SQL } from "@/lib/grades";
+import { categoriesForWord, foldText, interpretQuery, orgNamesForTerm, placeVariants, searchTerms, wordPattern } from "@/lib/search-intent";
 
 export type JobListItem = {
   id: number;
@@ -31,7 +31,10 @@ export type JobListItem = {
 };
 
 export type JobDetail = JobListItem & {
+  /** Languages (besides English) the posting requires; the language filter uses only these. */
   languages: string[] | null;
+  /** Languages (besides English) the posting calls desirable or an advantage. */
+  desirable_languages: string[] | null;
   min_experience_years: number | null;
   summary: string | null;
   description_html: string | null;
@@ -173,7 +176,8 @@ export function jobsUrl(f: JobFilters, base = "/jobs"): string {
   if (f.posted) p.set("posted", f.posted);
   if (f.closing) p.set("closing", f.closing);
   if (f.hidelocal) p.set("hidelocal", "1");
-  if (f.sort && f.sort !== "newest") p.set("sort", f.sort);
+  // With keywords "Best match" is the default order, so "Newest" has to be in the URL then.
+  if (f.sort && (f.sort !== "newest" || f.q)) p.set("sort", f.sort);
   if (f.page && f.page > 1) p.set("page", String(f.page));
   const s = p.toString();
   return s ? `${base}?${s}` : base;
@@ -272,7 +276,28 @@ function wordCondition(t: string): Frag {
   const cats = categoriesForWord(t);
   if (cats.length) c = sql`${c} or j.category = any(${cats})`;
   if (/[\p{L}\p{N}]/u.test(t)) c = sql`${c} or j.search_folded @@ plainto_tsquery('simple', ${foldText(t)})`;
+  const places = placeTsQuery([t]);
+  if (places) c = sql`${c} or j.search_folded @@ to_tsquery('simple', ${places})`;
   return sql`${c})`;
+}
+
+/**
+ * The other names of the duty stations among these terms (placeVariants: "geneve" → Geneva, Genf…)
+ * as a tsquery matched against the location part of the search text only (weight B: location,
+ * city, grade, type), so "roma" finds Rome but not "Roma inclusion" in a title. Null when no term
+ * is a known duty station. The names come from a fixed list of plain lower-case words.
+ */
+function placeTsQuery(terms: string[]): string | null {
+  const names = [...new Set(terms.flatMap(placeVariants))].filter((n) => /^[a-z]+( [a-z]+)*$/.test(n));
+  if (!names.length) return null;
+  return names.map((n) => `(${n.split(" ").map((w) => `${w}:B`).join(" <-> ")})`).join(" | ");
+}
+
+/** The tsquery the "Best match" order ranks by: the search words, or any other name of a duty station in them. */
+function rankQuery(q: string): Frag {
+  const places = placeTsQuery(searchWords(q));
+  const words = sql`websearch_to_tsquery('simple', ${foldText(q)})`;
+  return places ? sql`(${words} || to_tsquery('simple', ${places}))` : words;
 }
 
 /**
@@ -296,11 +321,21 @@ function textCondition(q: string, mode: MatchMode): Frag {
   return sql`(j.search_folded @@ websearch_to_tsquery('simple', ${foldText(q)}) or (${parts.reduce((a, b) => sql`${a} and ${b}`)}))`;
 }
 
+/**
+ * The grade, or for a listing without one the grade group its title names (titleGradeGroup in
+ * src/lib/grades.ts): "NO" for National Officer titles, "P" / "G" for IOM's "(P)" / "(G)" suffixes.
+ * Used for the grade counts, so such a listing counts once, under its group.
+ */
+const gradeKey = () => sql`coalesce(j.grade, case
+  when lower(j.title) ~ ${NATIONAL_OFFICER_TITLE_SQL} then 'NO'
+  when lower(j.title) ~ ${PROFESSIONAL_TITLE_SQL} then 'P'
+  when lower(j.title) ~ ${GENERAL_SERVICE_TITLE_SQL} then 'G' end)`;
+
 function gradeCondition(grade: string): Frag {
   const group = GRADE_GROUPS.find((g) => g.value === grade);
   if (group?.value === "SC") return sql`j.grade ~ '^(SB|SC|LICA|NPSA|IPSA|ICS)-'`;
-  // A title naming the National Officer category counts as grade NO when no grade was parsed (displayGrade in src/lib/grades.ts).
-  if (group?.value === "NO") return sql`(j.grade = any(${group.grades}) or (j.grade is null and lower(j.title) ~ ${NATIONAL_OFFICER_TITLE_SQL}))`;
+  // A title naming the group counts as that group when no grade was parsed (titleGradeGroup in src/lib/grades.ts).
+  if (group?.value === "NO" || group?.value === "P" || group?.value === "G") return sql`(${gradeKey()} = any(${[...group.grades, group.value]}))`;
   if (group) return sql`j.grade = any(${group.grades})`;
   return sql`j.grade = ${grade}`;
 }
@@ -363,7 +398,7 @@ export async function searchJobs(input: JobFilters, pageSize: number = LISTING_S
       sort === "deadline" ? sql`j.deadline asc nulls last, coalesce(j.published_at, j.first_seen_at) desc` :
       sort === "relevance" && f.q && mode === "any"
         ? sql`(${searchWords(f.q).map((t) => sql`(${wordCondition(t)})::int * 2 + (${looseWordCondition(t)})::int`).reduce((a, b) => sql`${a} + ${b}`)}) desc, coalesce(j.published_at, j.first_seen_at) desc` :
-      sort === "relevance" && f.q ? sql`ts_rank(j.search_folded, websearch_to_tsquery('simple', ${foldText(f.q)})) desc, coalesce(j.published_at, j.first_seen_at) desc` :
+      sort === "relevance" && f.q ? sql`ts_rank(j.search_folded, ${rankQuery(f.q)}) desc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
       sql`coalesce(j.published_at, j.first_seen_at) desc, j.id desc`;
     // Each in its own short transaction, which carries the statement time limit (see
     // transaction() in src/lib/db.ts); two of them, so the queries still run side by side.
@@ -447,6 +482,41 @@ export async function latestJobs(limit = 8) {
     limit ${limit}`;
 }
 
+export type WeekInReview = {
+  /** Open listings (no demo data) posted in the past 7 days: the same rule as the "Posted: past week" filter. */
+  total: number;
+  /** The same, by organization type (ORG_TYPES type names), largest first. */
+  types: { type: string; count: number }[];
+  /** The three organizations with the most of them. */
+  orgs: { slug: string; name: string; short_name: string | null; count: number }[];
+};
+
+/**
+ * Counts for "This week in international jobs" on the home page, computed from the open listings
+ * posted in the past 7 days (coalesce(published_at, first_seen_at), as the posted=7 filter, so each
+ * number matches the page it links to). Demo listings are left out.
+ */
+export async function weekInReview(): Promise<WeekInReview> {
+  const [r] = await transaction(async (tx) => await tx<{ total: number; types: { k: string; n: number }[]; orgs: { slug: string; name: string; short_name: string | null; n: number }[] }[]>`
+    with recent as materialized (
+      select o.org_type, o.slug, o.name, o.short_name
+      from jobs j left join organizations o on o.id = j.organization_id
+      where ${isOpen()} and not j.is_demo and coalesce(j.published_at, j.first_seen_at) >= now() - make_interval(days => 7)
+    )
+    select
+      (select count(*)::int from recent) as total,
+      (select coalesce(json_agg(json_build_object('k', k, 'n', n) order by n desc, k), '[]'::json)
+         from (select org_type as k, count(*)::int as n from recent where org_type is not null group by 1) x) as types,
+      (select coalesce(json_agg(json_build_object('slug', slug, 'name', name, 'short_name', short_name, 'n', n) order by n desc, name), '[]'::json)
+         from (select slug, min(name) as name, min(short_name) as short_name, count(*)::int as n from recent where slug is not null
+               group by 1 order by count(*) desc, min(name) limit 3) x) as orgs`);
+  return {
+    total: r.total,
+    types: r.types.map((t) => ({ type: t.k, count: t.n })),
+    orgs: r.orgs.map((o) => ({ slug: o.slug, name: o.name, short_name: o.short_name, count: o.n })),
+  };
+}
+
 /** Open jobs with the nearest published closing dates (from today). */
 export async function closingSoonJobs(limit = 6) {
   return sql<JobListItem[]>`
@@ -457,7 +527,7 @@ export async function closingSoonJobs(limit = 6) {
 
 export async function getJob(id: number): Promise<JobDetail | null> {
   const rows = await sql<JobDetail[]>`
-    select ${listColumns()}, j.languages, j.min_experience_years, j.summary, j.description_html, j.content_policy, j.apply_url, j.apply_host, j.reference,
+    select ${listColumns()}, j.languages, j.desirable_languages, j.min_experience_years, j.summary, j.description_html, j.content_policy, j.apply_url, j.apply_host, j.reference,
            o.org_type, j.updated_at, j.last_seen_at
     from jobs j left join organizations o on o.id = j.organization_id
     where j.id = ${id}`;
@@ -531,7 +601,7 @@ async function queryFacetSnapshot(includeDemo: boolean): Promise<FacetSnapshot> 
   // In a transaction for its statement time limit (see transaction() in src/lib/db.ts).
   const [r] = await transaction(async (tx) => await tx<FacetSnapshot[]>`
     with open as materialized (
-      select j.country_code, j.location_text, j.category, j.grade, j.languages, j.min_experience_years, j.job_type, j.is_remote,
+      select j.country_code, j.location_text, j.category, ${gradeKey()} as grade, j.languages, j.min_experience_years, j.job_type, j.is_remote,
              j.organization_id, coalesce(j.published_at, j.first_seen_at) as posted, o.org_type
       from jobs j left join organizations o on o.id = j.organization_id
       where ${isOpen()} and (${includeDemo} or not j.is_demo)
@@ -670,7 +740,7 @@ export async function filteredFacets(input: JobFilters, mode: MatchMode = "all")
     without: Partial<Record<FilterKey, number>> | null;
   }[]>`
     with base as materialized (
-      select j.country_code, j.location_text, j.category, j.grade, j.languages, j.min_experience_years, j.job_type,
+      select j.country_code, j.location_text, j.category, ${gradeKey()} as grade, j.languages, j.min_experience_years, j.job_type,
              o.slug as org_slug, o.name as org_name, o.org_type,
              (${flag("q")}) as c_q, (${flag("org")}) as c_org, (${flag("where")}) as c_where, (${flag("grade")}) as c_grade,
              (${flag("orgtype")}) as c_orgtype, (${flag("lang")}) as c_lang, (${flag("exp")}) as c_exp, (${flag("category")}) as c_category,

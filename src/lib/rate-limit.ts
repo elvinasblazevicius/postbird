@@ -7,13 +7,15 @@
  * scheduled sync).
  */
 import { createHash } from "node:crypto";
-import { sql } from "@/lib/db";
+import { sql, transaction } from "@/lib/db";
+import { sharedSecret } from "@/lib/server-secret";
 
 /** Hash rows are kept at most this long (the privacy policy promises 24 hours). */
 export const RATE_LIMIT_RETENTION_HOURS = 24;
 
+/** The shared server secret (ANALYTICS_SALT, else CRON_SECRET); a constant only when neither is set (local development). */
 function salt(): string {
-  return process.env.ANALYTICS_SALT || process.env.CRON_SECRET || "postbird-rate-limit";
+  return sharedSecret() ?? "postbird-rate-limit";
 }
 
 /** Salted one-way hash used for every stored key (rate limits and failed admin sign-ins). */
@@ -65,16 +67,25 @@ export async function cleanupRateLimits(): Promise<void> {
  * rolling 24 hours, unlike rateLimit's fixed windows. Stored in rate_limits as
  * a salted hash of the key, one row per email, and deleted after 24 hours
  * like every rate-limit row.
+ *
+ * Atomic: the count and the insert run in one transaction that first takes a
+ * transaction-level advisory lock on the key, so calls for the same key at
+ * the same moment run one after the other and can't both see room for one
+ * more (the lock ends with the transaction, which also works through
+ * Supabase's transaction pooler).
  */
 export async function takeDailyQuota(key: string, perDay: number): Promise<boolean> {
   const hashed = hashKey(key);
-  const rows = await sql`
-    insert into rate_limits (key, window_start, count)
-    select ${hashed}, clock_timestamp(), 1
-    where (select count(*) from rate_limits where key = ${hashed} and window_start > now() - interval '24 hours') < ${perDay}
-    on conflict (key, window_start) do nothing
-    returning 1`;
-  return rows.length === 1;
+  return transaction(async (tx) => {
+    await tx`select pg_advisory_xact_lock(hashtext(${`daily-quota|${hashed}`}))`;
+    const rows = await tx`
+      insert into rate_limits (key, window_start, count)
+      select ${hashed}, clock_timestamp(), 1
+      where (select count(*) from rate_limits where key = ${hashed} and window_start > now() - interval '24 hours') < ${perDay}
+      on conflict (key, window_start) do nothing
+      returning 1`;
+    return rows.length === 1;
+  });
 }
 
 /**

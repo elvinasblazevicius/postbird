@@ -106,7 +106,12 @@ export function AlertsButton({ className, children }: { className: string; child
   const pathname = usePathname() ?? "";
   const here = isActive(pathname, "/alerts");
   return (
-    <Link href="/alerts" aria-current={here ? "page" : undefined} className={`${className} ${here ? "ring-2 ring-ink/70 ring-offset-2 ring-offset-paper" : ""}`}>
+    // Marked like the other header links: the brand underline at the header's edge, not a ring.
+    <Link
+      href="/alerts"
+      aria-current={here ? "page" : undefined}
+      className={`${className} relative ${here ? "after:absolute after:inset-x-1 after:-bottom-[21px] after:h-[2px] after:bg-brand max-md:after:-bottom-[22px]" : ""}`}
+    >
       {children}
     </Link>
   );

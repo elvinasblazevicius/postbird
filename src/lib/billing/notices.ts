@@ -15,7 +15,7 @@
 import siteConfig from "@site-config";
 import { accountUrl } from "@/lib/account";
 import { BILLING_LIVE } from "@/lib/billing/live";
-import { markedEmails } from "@/lib/billing/trial-markers";
+import { trialUsedElsewhereIds } from "@/lib/billing/trial-markers";
 import { LIVE_STATUSES, welcomeTrialEnd, type BillingStatus, type ConfirmInfo, type PlanInterval, type WelcomeInfo } from "@/lib/billing/subscriptions";
 import { sql } from "@/lib/db";
 import { planDescription } from "@/lib/early-access-copy";
@@ -111,9 +111,10 @@ export async function sendWelcomeEmail(w: WelcomeInfo): Promise<SendResult> {
 /**
  * Daily job: the welcome email for subscribers in trial or paying whose
  * welcome was never sent (sending failed, the address was confirmed later, or
- * a claim was left open for more than CLAIM_LEASE_MINUTES).
+ * a claim was left open for more than CLAIM_LEASE_MINUTES). With `onlyId`,
+ * just that subscriber (right after its owner confirmed the address).
  */
-export async function runWelcomeRetries(limit = 200): Promise<{ sent: number; failed: number }> {
+export async function runWelcomeRetries(limit = 200, onlyId: number | null = null): Promise<{ sent: number; failed: number }> {
   // Claim the rows first, so a run started at the same time can't send them too.
   const rows = await sql<{ id: number; email: string; manage_token: string; unsubscribe_token: string; paddle_subscription_id: string; billing_status: BillingStatus; trial_ends_at: Date | null; plan_interval: PlanInterval | null }[]>`
     update subscribers set welcome_sent_at = now(), welcome_claimed_at = now()
@@ -121,6 +122,7 @@ export async function runWelcomeRetries(limit = 200): Promise<{ sent: number; fa
       select id from subscribers
       where (welcome_sent_at is null or welcome_claimed_at < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES}))
         and status = 'confirmed' and billing_status in ('trialing', 'active') and paddle_subscription_id is not null
+        and (${onlyId}::bigint is null or id = ${onlyId}::bigint)
       order by id limit ${limit}
     ) and (welcome_sent_at is null or welcome_claimed_at < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES}))
     returning id::int as id, email, manage_token, unsubscribe_token, paddle_subscription_id, billing_status, trial_ends_at, plan_interval`;
@@ -142,7 +144,7 @@ export async function runWelcomeRetries(limit = 200): Promise<{ sent: number; fa
   return { sent, failed };
 }
 
-// ── Confirmation for an address the checkout didn't create ───
+// ── Confirmation for an address a checkout didn't prove ──────
 
 export async function sendPaidConfirmation(c: ConfirmInfo): Promise<SendResult> {
   return sendEmail({
@@ -162,7 +164,12 @@ export async function confirmationSent(subscriberId: number): Promise<void> {
   await sql`update subscribers set confirm_claimed_at = null where id = ${subscriberId}`;
 }
 
-/** Daily job: confirmation links that failed to send (see confirmationNotSent) or whose claim was left open. */
+/**
+ * Daily job: confirmation links that failed to send (see confirmationNotSent)
+ * or whose claim was left open, for every address with a running plan that
+ * isn't confirmed: new addresses from the public trial form as well as
+ * existing ones.
+ */
 export async function runConfirmationRetries(limit = 200): Promise<{ sent: number; failed: number }> {
   const rows = await sql<{ id: number; email: string; confirm_token: string; paddle_subscription_id: string }[]>`
     update subscribers set confirm_sent_at = now(), confirm_claimed_at = now()
@@ -277,10 +284,11 @@ export async function notifyWaitlist(limit = 300): Promise<WaitlistNoticeResult>
     returning id::int as id, email, unsubscribe_token`;
   let sent = 0, failed = 0;
   const trialUrl = absoluteUrl("/pricing/trial?utm_source=early-access&utm_medium=email");
-  // An address that had a plan before its row was deleted keeps a trial marker: no trial offer
-  // (it stays marked as notified, so it isn't picked again).
-  const marked = await markedEmails(rows.map((r) => r.email));
-  const toSend = rows.filter((r) => !marked.has(r.email));
+  // An address that had a plan before its row was deleted keeps a trial marker, and another form
+  // of the same address (name+x@, Gmail dots) may have had a plan: no trial offer (one per person;
+  // it stays marked as notified, so it isn't picked again).
+  const elsewhere = await trialUsedElsewhereIds(rows);
+  const toSend = rows.filter((r) => !elsewhere.has(r.id));
   for (let i = 0; i < toSend.length; i += 100) {
     const chunk = toSend.slice(i, i + 100);
     const msgs: OutgoingEmail[] = chunk.map((r) => ({

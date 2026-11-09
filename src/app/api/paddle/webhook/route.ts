@@ -2,11 +2,13 @@ import { after } from "next/server";
 import { verifyPaddleSignature } from "@/lib/billing/paddle";
 import { confirmationNotSent, confirmationSent, sendPaidConfirmation, sendWelcomeEmail } from "@/lib/billing/notices";
 import { cancelBlockedTrial, handlePaddleEvent, welcomeNotSent, welcomeSent, type PaddleEvent } from "@/lib/billing/subscriptions";
+import { recordOpsEvent } from "@/lib/ops-events";
+import { readCapped } from "@/lib/read-capped";
 
 export const dynamic = "force-dynamic";
 
 /** Larger bodies are not Paddle events this site needs (subscription events are a few KB). */
-const MAX_BODY_BYTES = 512_000;
+const MAX_BODY_BYTES = 512 * 1024;
 
 const reply = (status: number, body = "") => new Response(body, { status, headers: { "cache-control": "no-store" } });
 
@@ -20,15 +22,19 @@ const reply = (status: number, body = "") => new Response(body, { status, header
  * (welcome, or a confirmation link for an address the checkout didn't create)
  * and canceling a trial the address may not have happen after the response.
  * Status codes: 200 handled or ignored, 401 bad signature, 400 unreadable
- * body, 500 processing failed (Paddle retries).
+ * body, 413 body over 512 KB, 500 processing failed (Paddle retries; it is
+ * also recorded for Admin → Overview).
  */
 export async function POST(req: Request) {
   if (!process.env.PADDLE_WEBHOOK_SECRET) {
     console.warn("paddle webhook: PADDLE_WEBHOOK_SECRET is not set");
     return reply(503);
   }
-  const raw = await req.text();
-  if (raw.length > MAX_BODY_BYTES) return reply(413);
+  // Refused before reading when the declared size is too large; otherwise read with the same cap.
+  const declared = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return reply(413);
+  const raw = await readCapped(req, MAX_BODY_BYTES);
+  if (raw === null) return reply(413);
   const check = verifyPaddleSignature(raw, req.headers.get("paddle-signature"));
   if (!check.ok) {
     console.warn(`paddle webhook: signature rejected (${check.reason})`);
@@ -78,7 +84,9 @@ export async function POST(req: Request) {
     return reply(200, res.outcome);
   } catch (e) {
     // Only the event type and the error message (no payload: it holds personal data).
-    console.error(`paddle webhook: ${event?.event_type ?? "event"} failed`, (e as Error).message);
+    const type = typeof event?.event_type === "string" ? event.event_type.slice(0, 60) : "event";
+    console.error(`paddle webhook: ${type} failed`, (e as Error).message);
+    await recordOpsEvent("webhook", `${type} failed: ${(e as Error).message}`);
     return reply(500);
   }
 }
