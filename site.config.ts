@@ -52,6 +52,15 @@ const siteConfig = {
    */
   freeWeeklyEmail: false,
 
+  /**
+   * Concept test (decided 9 Nov 2026, before any ad spend). Measured on visitors
+   * who arrive from ads (Microsoft Ads auto-tagging or utm_ parameters):
+   * share who click "Start free trial" AND leave their email.
+   * Passed at or above successRate, failed below failRate, with at least
+   * minVisitors ad visitors. Admin → Overview shows the verdict.
+   */
+  conceptTest: { successRate: 0.03, failRate: 0.01, minVisitors: 300 },
+
   premium: {
     name: "Email alerts",
     trialDays: 14,

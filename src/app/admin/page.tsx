@@ -1,3 +1,4 @@
+import siteConfig from "@site-config";
 import Link from "next/link";
 import { categoryName } from "@/lib/site";
 import { sql } from "@/lib/db";
@@ -77,7 +78,34 @@ export default async function AdminHome({ searchParams }: Props) {
       group by referrer order by visitors desc limit 10`,
   ]);
 
-  const campaigns = await campaignStats(days);
+  const [campaigns, [ct]] = await Promise.all([
+    campaignStats(days),
+    // Concept test: each ad visitor counted once, "converted" if that same visitor later left an email via the trial form.
+    sql<{ visitors: number; converted: number }[]>`
+      with landings as (
+        select distinct on (visitor) visitor, created_at from events
+        where type = 'pageview' and props ? 'campaign' and visitor is not null
+        order by visitor, created_at
+      )
+      select count(*)::int as visitors,
+             count(*) filter (where exists (
+               select 1 from events e where e.type = 'waitlist_signup' and e.visitor = l.visitor and e.created_at >= l.created_at
+             ))::int as converted
+      from landings l`,
+  ]);
+  const test = siteConfig.conceptTest;
+  const adVisitors = ct.visitors;
+  const adSignups = ct.converted;
+  const adRate = adVisitors ? adSignups / adVisitors : 0;
+  const pct = (x: number) => `${(x * 100).toFixed(1).replace(/\.0$/, "")}%`;
+  const verdict =
+    adVisitors < test.minVisitors
+      ? { tone: "bg-mist text-ink", title: "Collecting data", text: `${adVisitors} of ${test.minVisitors} ad visitors so far. Current rate ${pct(adRate)}; no verdict yet.` }
+      : adRate >= test.successRate
+        ? { tone: "bg-remote-bg text-remote", title: "Passed", text: `${pct(adRate)} of ${adVisitors} ad visitors clicked "Start free trial" and left an email (target ${pct(test.successRate)}). Worth building real billing.` }
+        : adRate < test.failRate
+          ? { tone: "bg-[#fde8e8] text-[#9b1c1c]", title: "Failed", text: `${pct(adRate)} of ${adVisitors} ad visitors (below ${pct(test.failRate)}). People don't want to pay for alerts at this price or with this message.` }
+          : { tone: "bg-signal-bg text-signal", title: "Unclear", text: `${pct(adRate)} of ${adVisitors} ad visitors, between ${pct(test.failRate)} and ${pct(test.successRate)}. Try a different ad message or price before deciding.` };
   const lastOk = lastRuns.find((r) => r.status === "success" || r.status === "partial");
   const warnings: React.ReactNode[] = [];
   if (feeds.active === 0) warnings.push(<>No active feeds. <Link href="/admin/feeds" className="underline">Add your Inoreader feed</Link>.</>);
@@ -120,6 +148,13 @@ export default async function AdminHome({ searchParams }: Props) {
           {[7, 30, 90].map((d) => (
             <Link key={d} href={`/admin?days=${d}`} className={`rounded-md px-3 py-1 ${d === days ? "bg-brand text-white" : "text-slate hover:bg-paper"}`}>{d} days</Link>
           ))}
+        </div>
+      </div>
+      <div className={`mt-4 rounded-xl p-4 ${verdict.tone}`}>
+        <div className="text-sm font-medium">Concept test (all time): {verdict.title}</div>
+        <div className="mt-1 text-sm">{verdict.text}</div>
+        <div className="mt-1 text-xs opacity-80">
+          Rule set before launch: pass at {pct(test.successRate)} or more, fail below {pct(test.failRate)}, from at least {test.minVisitors} visitors arriving from ads. Change it in site.config.ts.
         </div>
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -115,6 +115,9 @@ Every results page has an **Email me jobs like these** button, and every job wit
 
 ## 4. Microsoft Ads (Bing) quick start
 
+**Concept test rule (decided before any ad spend, 9 Nov 2026):** at least 300 visitors arriving from ads; **passed** if 3% or more of them click "Start free trial" and leave their email, **failed** below 1%, **unclear** in between (try another ad message or price). Admin → Overview shows the verdict automatically. The thresholds are in `site.config.ts` (`conceptTest`).
+
+
 1. **Tag.** In Microsoft Advertising, open **Tools → UET tag → Create** and copy the Tag ID. On Netlify, add `NEXT_PUBLIC_MS_UET_TAG_ID=<id>` and redeploy. Visitors from the EEA, UK and Switzerland see a small cookie choice, which Microsoft requires there; nobody else does.
 2. **Conversion goals.** Create goals of type **Event**, each with *Action equals*:
    - `trial_signup`: free-trial sign-up for email alerts (primary). This is the conversion that matters while alerts are paid.
