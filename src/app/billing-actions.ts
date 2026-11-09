@@ -10,12 +10,13 @@ import { refresh } from "next/cache";
 import { cleanCampaign, visitorFromHeaders } from "@/lib/analytics";
 import { accountUrl, findByManageToken, sendAccountLink } from "@/lib/account";
 import { BILLING_LIVE } from "@/lib/billing/live";
+import { planRenewal } from "@/lib/billing/notices";
 import { createPortalSession, isPaddleApiConfigured } from "@/lib/billing/paddle";
 import { checkoutAccountToken, startCheckout, type CheckoutPlan } from "@/lib/billing/subscriptions";
 import { sql } from "@/lib/db";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { addSavedSearch, normalizeSearch, removeSavedSearch } from "@/lib/saved-searches";
-import { normalizeEmail } from "@/lib/subscribers";
+import { findByUnsubscribeToken, normalizeEmail } from "@/lib/subscribers";
 import { jobsUrl, parseFilters } from "@/lib/jobs";
 import type { FormState } from "@/app/actions";
 
@@ -147,6 +148,11 @@ export async function accountUnsubscribeAction(_prev: FormState, form: FormData)
     update subscribers set status = 'unsubscribed', unsubscribed_at = now(), confirm_token = null, pending_changes = null
     where id = ${acct.id} and status <> 'unsubscribed'`;
   refresh();
+  // Unsubscribing stops alerts, not payments: say so when the plan still charges.
+  const renewal = planRenewal(acct);
+  if (renewal?.chargesAhead) {
+    return { status: "success", message: `You're unsubscribed from alerts. ${renewal.sentence} To stop payments, cancel the plan under “Manage billing or cancel”.` };
+  }
   return { status: "success", message: "You're unsubscribed. We won't email you again." };
 }
 
@@ -161,22 +167,37 @@ export async function resubscribeAction(_prev: FormState, form: FormData): Promi
   return { status: "success", message: "Emails are back on." };
 }
 
-/** "Manage billing or cancel": sends the customer to a fresh Paddle customer portal session. */
-export async function portalAction(_prev: FormState, form: FormData): Promise<FormState> {
-  const acct = await accountFrom(form);
-  if (!acct) return INVALID_LINK;
-  if (!acct.paddle_customer_id) return { status: "error", message: "There's no billing account for this address yet." };
+/** Opens a fresh Paddle customer portal session (rate-limited per connection). */
+async function openPortal(customerId: string | null, subscriptionId: string | null): Promise<FormState> {
+  if (!customerId) return { status: "error", message: "There's no billing account for this address yet." };
   if (!isPaddleApiConfigured()) return { status: "error", message: "Billing management isn't available right now. Please email us and we'll help." };
   const h = await headers();
   if (!(await rateLimit(`portal:${clientIp(h)}`, 20, 3600))) return { status: "error", message: "Too many attempts. Please try again later." };
   let url: string;
   try {
-    url = await createPortalSession(acct.paddle_customer_id, acct.paddle_subscription_id);
+    url = await createPortalSession(customerId, subscriptionId);
   } catch (e) {
     console.error("portal session failed", (e as Error).message);
     return { status: "error", message: "We couldn't open billing just now. Please try again in a minute." };
   }
   redirect(url); // outside try: redirect() works by throwing
+}
+
+/** "Manage billing or cancel": sends the customer to a fresh Paddle customer portal session. */
+export async function portalAction(_prev: FormState, form: FormData): Promise<FormState> {
+  const acct = await accountFrom(form);
+  if (!acct) return INVALID_LINK;
+  return openPortal(acct.paddle_customer_id, acct.paddle_subscription_id);
+}
+
+/**
+ * "Cancel my plan" on the unsubscribe page, which only has the unsubscribe
+ * link's token: the same Paddle portal session, where the plan is canceled.
+ */
+export async function unsubscribePortalAction(_prev: FormState, form: FormData): Promise<FormState> {
+  const sub = await findByUnsubscribeToken(String(form.get("token") ?? ""));
+  if (!sub) return { status: "error", message: "This link isn't valid any more. Use the link in your latest email from us." };
+  return openPortal(sub.paddle_customer_id, sub.paddle_subscription_id);
 }
 
 const LOGIN_MESSAGE = "If this address has an account with us, we've emailed it the link. It can take a minute or two to arrive; check your spam folder too.";

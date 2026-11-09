@@ -106,10 +106,10 @@ export function accountLinkEmail(opts: { accountUrl: string; unsubscribeUrl: str
     subject,
     `<p style="font-size:16px;line-height:1.6;margin:0 0 16px">Here is the link to your ${esc(siteConfig.name)} account, where you can change your saved searches, choose daily or weekly emails and manage billing.</p>
      <p style="margin:0 0 20px">${button(opts.accountUrl, "Open my account")}</p>
-     <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">If you didn't ask for this, you can ignore this email. The link only works for this address.</p>`,
+     <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">This is a new link: account links in older emails no longer work. If you didn't ask for this, you can ignore this email; the link only works for this address.</p>`,
     accountFooter(opts.accountUrl, opts.unsubscribeUrl),
   );
-  const text = `Your ${siteConfig.name} account: ${opts.accountUrl}\n\nIf you didn't ask for this, ignore this email.\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
+  const text = `Your ${siteConfig.name} account: ${opts.accountUrl}\n\nThis is a new link: account links in older emails no longer work. If you didn't ask for this, ignore this email.\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
   return { subject, html, text };
 }
 
@@ -152,5 +152,93 @@ export function alertEmail(opts: { groups: AlertGroup[]; frequency: "daily" | "w
         (g.total > g.jobs.length ? `\n\nSee all ${g.total}: ${g.url}` : ""))
       .join("\n\n---\n\n") +
     `\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
+  return { subject, html, text };
+}
+
+// ── Plan notices (transactional) ─────────────────────────────
+// Sent because the address has a plan, so they go out even after the address
+// unsubscribed from alerts; that's why their footer has no unsubscribe link.
+
+const planFooter = (accountUrl: string) =>
+  `You're receiving this because this address has a ${esc(siteConfig.name)} ${esc(siteConfig.premium.name.toLowerCase())} plan. It is not a marketing email.
+    <br><a href="${esc(accountUrl)}" style="color:#566476">Your account</a>: change searches, manage billing or cancel.`;
+
+const planFooterText = (accountUrl: string) =>
+  `You're receiving this because this address has a ${siteConfig.name} ${siteConfig.premium.name.toLowerCase()} plan. Your account: ${accountUrl}\n\n${postal()}`;
+
+/** About 3 days before a free trial turns into the first payment (sent once). */
+export function trialReminderEmail(opts: { plan: string; price: string; chargeDate: string; accountUrl: string }) {
+  const date = formatDate(opts.chargeDate);
+  const subject = `Your ${siteConfig.name} free trial ends on ${date}`;
+  const lines = [
+    `Your free trial of ${siteConfig.name} ${siteConfig.premium.name.toLowerCase()} ends on ${date}.`,
+    `On that day your first payment of ${opts.price} is taken for your plan: ${opts.plan}. After that the plan renews automatically until you cancel.`,
+    `If you don't want to pay, cancel before ${date} on your account page. If you cancel before then, you pay nothing.`,
+  ];
+  const html = layout(
+    subject,
+    `<h1 style="font-family:Georgia,serif;font-size:24px;line-height:1.3;margin:0 0 12px">Your free trial ends on ${esc(date)}</h1>
+     ${lines.map((l) => `<p style="font-size:16px;line-height:1.6;margin:0 0 12px">${esc(l)}</p>`).join("")}
+     <p style="margin:8px 0 20px">${button(opts.accountUrl, "Cancel or manage my plan")}</p>
+     <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">Billing is handled by Paddle, our reseller. Keep this email private: the button is your account link.</p>`,
+    planFooter(opts.accountUrl),
+  );
+  const text = `${lines.join("\n\n")}\n\nCancel or manage your plan: ${opts.accountUrl}\n\n${planFooterText(opts.accountUrl)}`;
+  return { subject, html, text };
+}
+
+/**
+ * After a one-click unsubscribe from an address whose plan is still running:
+ * unsubscribing stops emails, not payments.
+ */
+export function planStillActiveEmail(opts: { renewal: string; accountUrl: string }) {
+  const subject = `You've unsubscribed from ${siteConfig.name} alerts`;
+  const first = `You've unsubscribed from ${siteConfig.name} alerts. ${opts.renewal}`;
+  const html = layout(
+    subject,
+    `<p style="font-size:16px;line-height:1.6;margin:0 0 12px">${esc(first)}</p>
+     <p style="font-size:16px;line-height:1.6;margin:0 0 20px">To stop being charged, cancel here:</p>
+     <p style="margin:0 0 20px">${button(opts.accountUrl, "Cancel my plan")}</p>
+     <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">This is the only email about it. Keep it private: the button is your account link.</p>`,
+    planFooter(opts.accountUrl),
+  );
+  const text = `${first}\n\nTo stop being charged, cancel here: ${opts.accountUrl}\n\n${planFooterText(opts.accountUrl)}`;
+  return { subject, html, text };
+}
+
+/**
+ * A plan was started at checkout with an address that was already on our
+ * list (pending or unsubscribed). Nothing is sent to it until its owner confirms.
+ */
+export function paidConfirmationEmail(opts: { confirmUrl: string }) {
+  const subject = `Confirm your email for ${siteConfig.name} alerts`;
+  const html = layout(
+    subject,
+    `<p style="font-size:16px;line-height:1.6;margin:0 0 16px">A ${esc(siteConfig.name)} ${esc(siteConfig.premium.name.toLowerCase())} plan was started with this email address. Before we send any alerts here, please confirm that it was you.</p>
+     <p style="margin:0 0 20px">${button(opts.confirmUrl, "Confirm my email")}</p>
+     <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">If it wasn't you, ignore this email: we won't send alerts to this address. The plan is billed to whoever paid for it, not to you.</p>`,
+    `You received this because this address was entered at checkout on ${esc(siteConfig.name)}.`,
+  );
+  const text = `A ${siteConfig.name} ${siteConfig.premium.name.toLowerCase()} plan was started with this email address. Before we send any alerts here, please confirm that it was you.\n\nConfirm: ${opts.confirmUrl}\n\nIf it wasn't you, ignore this email: we won't send alerts to this address. The plan is billed to whoever paid for it, not to you.\n\n${postal()}`;
+  return { subject, html, text };
+}
+
+/** The one email promised to the early-access list: alerts are open. */
+export function alertsOpenEmail(opts: { trialUrl: string; unsubscribeUrl: string }) {
+  const p = siteConfig.premium;
+  const subject = `${siteConfig.name} ${p.name.toLowerCase()} are open`;
+  const lines = [
+    `You joined the early-access list for ${siteConfig.name} ${p.name.toLowerCase()}. They're open now: new vacancies that match your saved searches, by email, daily or weekly.`,
+    `You can start with a ${p.trialDays}-day free trial. A card is needed to start it. If you don't cancel during the trial, the plan costs ${p.priceSummary} and renews until you cancel.`,
+    `This is the one email we said we'd send. We won't email you about it again, and we'll delete your address from the early-access list 30 days from now unless you start a trial.`,
+  ];
+  const html = layout(
+    subject,
+    `<h1 style="font-family:Georgia,serif;font-size:24px;line-height:1.3;margin:0 0 12px">${esc(p.name)} are open</h1>
+     ${lines.map((l) => `<p style="font-size:16px;line-height:1.6;margin:0 0 12px">${esc(l)}</p>`).join("")}
+     <p style="margin:8px 0 0">${button(opts.trialUrl, `Start my ${p.trialDays}-day free trial`)}</p>`,
+    `You received this because you joined the early-access list on ${esc(siteConfig.name)}. <a href="${esc(opts.unsubscribeUrl)}" style="color:#566476">Unsubscribe</a>.`,
+  );
+  const text = `${lines.join("\n\n")}\n\nStart your free trial: ${opts.trialUrl}\n\nUnsubscribe: ${opts.unsubscribeUrl}\n\n${postal()}`;
   return { subject, html, text };
 }

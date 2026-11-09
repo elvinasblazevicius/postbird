@@ -4,6 +4,7 @@ import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { confirmationEmail } from "@/lib/email-templates";
 import { absoluteUrl } from "@/lib/site";
 import { recordEvent } from "@/lib/analytics";
+import type { BillingStatus, PlanInterval } from "@/lib/billing/subscriptions";
 
 export type SignupKind = "alerts" | "waitlist";
 
@@ -88,11 +89,11 @@ export async function findByConfirmToken(t: string) {
 }
 
 /** Confirms the address and applies any changes that were waiting for confirmation. */
-export type ConfirmResult = { ok: false } | { ok: true; waitlist: boolean; alerts: boolean };
+export type ConfirmResult = { ok: false } | { ok: true; waitlist: boolean; alerts: boolean; paidPlan: boolean };
 
 export async function confirmSubscriber(t: string): Promise<ConfirmResult> {
   if (!t || t.length > 100) return { ok: false };
-  const rows = await sql<{ id: number; premium_waitlist: boolean; wants_alerts: boolean }[]>`
+  const rows = await sql<{ id: number; premium_waitlist: boolean; wants_alerts: boolean; paid_plan: boolean }[]>`
     update subscribers set
       wants_alerts = case when status = 'unsubscribed' then coalesce((pending_changes->>'wants_alerts')::boolean, wants_alerts)
                           else wants_alerts or coalesce((pending_changes->>'wants_alerts')::boolean, false) end,
@@ -107,40 +108,76 @@ export async function confirmSubscriber(t: string): Promise<ConfirmResult> {
       unsubscribed_at = null,
       confirm_token = null
     where confirm_token = ${t}
-    returning id, premium_waitlist, wants_alerts`;
+    returning id, premium_waitlist, wants_alerts, billing_status in ('trialing', 'active') as paid_plan`;
   if (rows.length !== 1) return { ok: false };
   await recordEvent({ type: "alert_confirmed" });
-  return { ok: true, waitlist: rows[0].premium_waitlist, alerts: rows[0].wants_alerts };
+  return { ok: true, waitlist: rows[0].premium_waitlist, alerts: rows[0].wants_alerts, paidPlan: rows[0].paid_plan };
 }
 
 /**
- * Privacy-policy retention: sign-ups never confirmed and unsubscribed
- * addresses are deleted after 30 days. Run by the scheduled job.
+ * Privacy-policy retention, run by the scheduled job (every 2 hours):
+ *  - sign-ups never confirmed, and unsubscribed addresses: 30 days;
+ *  - canceled plans: 30 days after the cancellation took effect (Paddle, the
+ *    reseller, keeps the payment records);
+ *  - early-access-only addresses: 30 days after the "alerts are open" email,
+ *    unless they started a trial.
+ * Saved searches and checkout references go with the subscriber (on delete cascade).
  */
 export async function purgeStaleSubscribers(): Promise<number> {
   // Never deletes someone with a running Paddle subscription (they still pay,
   // even if they unsubscribed from the emails) or one canceled in the last 30 days.
-  const rows = await sql`
+  const stale = await sql`
     delete from subscribers
     where coalesce(confirm_sent_at, created_at) < now() - interval '30 days'
       and (status = 'pending' or (status = 'unsubscribed' and unsubscribed_at < now() - interval '30 days'))
       and billing_status in ('none', 'canceled')
       and (canceled_at is null or canceled_at < now() - interval '30 days')
     returning id`;
-  // Checkout references are only needed until Paddle's webhooks arrive; webhook ids for a year (late retries).
+  const canceled = await sql`
+    delete from subscribers
+    where billing_status = 'canceled'
+      and coalesce(canceled_at, billing_event_at) < now() - interval '30 days'
+    returning id`;
+  // Early access only: on the list, never asked for the free weekly email, never had a plan.
+  const waitlist = await sql`
+    delete from subscribers
+    where premium_waitlist and not wants_alerts
+      and billing_status = 'none' and paddle_subscription_id is null
+      and waitlist_notified_at < now() - interval '30 days'
+    returning id`;
+  // Checkout references (they link a daily visitor hash to a subscriber) are only
+  // needed until Paddle's webhooks arrive; webhook ids for a year (late retries).
   await sql`delete from paddle_checkouts where created_at < now() - interval '30 days'`;
   await sql`delete from paddle_events where received_at < now() - interval '365 days'`;
-  return rows.length;
+  return stale.length + canceled.length + waitlist.length;
 }
 
-export async function findByUnsubscribeToken(t: string) {
+export type UnsubscribeTarget = {
+  id: number;
+  email: string;
+  status: string;
+  billing_status: BillingStatus;
+  plan_interval: PlanInterval | null;
+  trial_ends_at: Date | null;
+  current_period_end: Date | null;
+  cancel_at: Date | null;
+  paddle_customer_id: string | null;
+  paddle_subscription_id: string | null;
+};
+
+export async function findByUnsubscribeToken(t: string): Promise<UnsubscribeTarget | null> {
   if (!t || t.length > 100) return null;
-  return (await sql<{ id: number; email: string; status: string }[]>`select id, email, status from subscribers where unsubscribe_token = ${t}`)[0] ?? null;
+  return (await sql<UnsubscribeTarget[]>`
+    select id::int as id, email, status, billing_status, plan_interval, trial_ends_at, current_period_end, cancel_at,
+           paddle_customer_id, paddle_subscription_id
+    from subscribers where unsubscribe_token = ${t}`)[0] ?? null;
 }
 
-export async function unsubscribe(t: string): Promise<boolean> {
-  const rows = await sql`
+/** Stops all alert emails. Returns the subscriber's id when this changed something, else null. */
+export async function unsubscribe(t: string): Promise<number | null> {
+  if (!t || t.length > 100) return null;
+  const rows = await sql<{ id: number }[]>`
     update subscribers set status = 'unsubscribed', unsubscribed_at = now(), confirm_token = null, pending_changes = null
-    where unsubscribe_token = ${t} and status <> 'unsubscribed' returning id`;
-  return rows.length === 1;
+    where unsubscribe_token = ${t} and status <> 'unsubscribed' returning id::int as id`;
+  return rows.length === 1 ? rows[0].id : null;
 }

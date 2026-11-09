@@ -7,10 +7,14 @@ import { absoluteUrl, jobPath } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
-/** Only pages worth indexing: open, non-demo jobs and landing pages with enough jobs. */
+/**
+ * Only pages worth indexing: open, non-demo jobs and landing pages with enough jobs.
+ * lastModified is given only where it is a real date: each job's last change,
+ * and for the homepage and /jobs (which list every job) the newest of those.
+ * Other pages have no lastmod rather than an invented one.
+ */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const min = LISTING_SETTINGS.minJobsForIndexedLandingPage;
-  const now = new Date();
   const [jobs, orgs, cats, countries, remote, regions] = await Promise.all([
     sql<{ id: number; slug: string; updated_at: Date }[]>`
       select id, slug, updated_at from jobs
@@ -24,25 +28,27 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     countFor({ remote: true }, false),
     regionFacets(false),
   ]);
+  const newest = jobs.reduce<Date | undefined>((max, j) => (!max || j.updated_at > max ? j.updated_at : max), undefined);
 
   const staticPages: MetadataRoute.Sitemap = [
-    { url: absoluteUrl("/"), lastModified: now, changeFrequency: "hourly", priority: 1 },
-    { url: absoluteUrl("/jobs"), lastModified: now, changeFrequency: "hourly", priority: 0.9 },
-    { url: absoluteUrl("/organizations"), lastModified: now, changeFrequency: "daily", priority: 0.6 },
-    { url: absoluteUrl("/categories"), lastModified: now, changeFrequency: "daily", priority: 0.6 },
-    { url: absoluteUrl("/locations"), lastModified: now, changeFrequency: "daily", priority: 0.5 },
+    { url: absoluteUrl("/"), lastModified: newest, changeFrequency: "hourly", priority: 1 },
+    { url: absoluteUrl("/jobs"), lastModified: newest, changeFrequency: "hourly", priority: 0.9 },
+    { url: absoluteUrl("/organizations"), changeFrequency: "daily", priority: 0.6 },
+    { url: absoluteUrl("/categories"), changeFrequency: "daily", priority: 0.6 },
+    { url: absoluteUrl("/locations"), changeFrequency: "daily", priority: 0.5 },
     { url: absoluteUrl("/alerts"), changeFrequency: "monthly", priority: 0.4 },
     { url: absoluteUrl("/pricing"), changeFrequency: "monthly", priority: 0.3 },
     { url: absoluteUrl("/about"), changeFrequency: "monthly", priority: 0.3 },
   ];
-  if (remote >= min) staticPages.push({ url: absoluteUrl("/remote-jobs"), lastModified: now, changeFrequency: "daily", priority: 0.8 });
+  if (remote >= min) staticPages.push({ url: absoluteUrl("/remote-jobs"), changeFrequency: "daily", priority: 0.8 });
 
   return [
     ...staticPages,
-    ...orgs.filter((o) => o.count >= min).map((o) => ({ url: absoluteUrl(`/organizations/${o.slug}`), lastModified: now, changeFrequency: "daily" as const, priority: 0.7 })),
-    ...cats.filter((c) => c.count >= min).map((c) => ({ url: absoluteUrl(`/categories/${c.slug}`), lastModified: now, changeFrequency: "daily" as const, priority: 0.7 })),
-    ...regions.filter((r) => r.count >= min).map((r) => ({ url: absoluteUrl(`/locations/${r.slug}`), lastModified: now, changeFrequency: "daily" as const, priority: 0.6 })),
-    ...countries.filter((c) => c.count >= min).map((c) => ({ url: absoluteUrl(`/locations/${c.slug}`), lastModified: now, changeFrequency: "daily" as const, priority: 0.6 })),
+    ...orgs.filter((o) => o.count >= min).map((o) => ({ url: absoluteUrl(`/organizations/${o.slug}`), changeFrequency: "daily" as const, priority: 0.7 })),
+    // "Other" is noindex (see categories/[slug]), so it isn't listed.
+    ...cats.filter((c) => c.count >= min && c.slug !== "other").map((c) => ({ url: absoluteUrl(`/categories/${c.slug}`), changeFrequency: "daily" as const, priority: 0.7 })),
+    ...regions.filter((r) => r.count >= min).map((r) => ({ url: absoluteUrl(`/locations/${r.slug}`), changeFrequency: "daily" as const, priority: 0.6 })),
+    ...countries.filter((c) => c.count >= min).map((c) => ({ url: absoluteUrl(`/locations/${c.slug}`), changeFrequency: "daily" as const, priority: 0.6 })),
     ...jobs.map((j) => ({ url: absoluteUrl(jobPath(j)), lastModified: j.updated_at, changeFrequency: "weekly" as const, priority: 0.5 })),
   ];
 }

@@ -14,7 +14,7 @@ type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<s
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { slug } = await params;
   const org = await getOrganization(slug);
-  if (!org) return { title: "Organization not found", robots: { index: false } };
+  if (!org) return { title: "Organization not found" }; // the 404 page adds the noindex tag
   const count = await countFor({ org: slug }, false);
   const label = org.short_name && org.short_name !== org.name ? `${org.name} (${org.short_name})` : org.name;
   return landingMetadata({

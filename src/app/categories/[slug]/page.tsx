@@ -13,7 +13,7 @@ type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<s
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { slug } = await params;
   const cat = categoryBySlug(slug);
-  if (!cat) return { title: "Category not found", robots: { index: false } };
+  if (!cat) return { title: "Category not found" }; // the 404 page adds the noindex tag
   const count = await countFor({ category: slug }, false);
   const name = cat.slug === "other" ? "Other international" : cat.name;
   return landingMetadata({
@@ -22,6 +22,8 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     path: `/categories/${slug}`,
     count,
     filters: parseFilters(await searchParams),
+    // "Other" is a catch-all with no clear topic: useful to browse, not a search landing page.
+    noindex: cat.slug === "other",
   });
 }
 

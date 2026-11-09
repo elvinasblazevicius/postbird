@@ -20,16 +20,19 @@ export async function countFor(fixed: Partial<JobFilters>, includeDemo = true): 
 /**
  * Metadata for a landing page. Pages with too few jobs, or with extra
  * filters applied, are kept out of search indexes to avoid thin/duplicate pages.
+ * Filtered views get no canonical (it would point elsewhere and contradict the
+ * noindex); the others point to themselves. noindex: true forces noindex
+ * (e.g. the catch-all "Other" category).
  */
-export function landingMetadata(opts: { title: string; description: string; path: string; count: number; filters: JobFilters }): Metadata {
+export function landingMetadata(opts: { title: string; description: string; path: string; count: number; filters: JobFilters; noindex?: boolean }): Metadata {
   const hasExtra = Object.entries(opts.filters).some(([k, v]) => k !== "page" && v);
   const thin = opts.count < LISTING_SETTINGS.minJobsForIndexedLandingPage;
-  const canonical = opts.filters.page && !hasExtra ? jobsUrl({ page: opts.filters.page }, opts.path) : opts.path;
+  const canonical = opts.filters.page ? jobsUrl({ page: opts.filters.page }, opts.path) : opts.path;
   return {
     title: opts.title,
     description: opts.description,
-    alternates: { canonical },
-    robots: thin || hasExtra ? { index: false, follow: true } : undefined,
+    alternates: hasExtra ? undefined : { canonical },
+    robots: thin || hasExtra || opts.noindex ? { index: false, follow: true } : undefined,
     openGraph: { title: opts.title, description: opts.description, url: opts.path },
   };
 }

@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import siteConfig from "@site-config";
 import { parseSignatureHeader, signPayload, verifyPaddleSignature, paddleApiBase } from "@/lib/billing/paddle";
+import { planRenewal } from "@/lib/billing/notices";
 import { billingFromSubscription, transitionEffects } from "@/lib/billing/subscriptions";
 import type { PaddleSubscription } from "@/lib/billing/paddle";
 import { planDescription, planOptions, planPriceNumber, trialButton, trialLine } from "@/lib/early-access-copy";
@@ -101,17 +102,42 @@ describe("subscription state", () => {
 
   it("starts the trial, sends the welcome and counts a cancellation exactly once", () => {
     const fresh = { subscriptionId: null, status: "none" as const, welcomeSent: false };
-    expect(transitionEffects(fresh, { subscriptionId: "sub_a", status: "trialing" })).toEqual({ trialStarted: true, canceled: false, sendWelcome: true });
+    expect(transitionEffects(fresh, { subscriptionId: "sub_a", status: "trialing", confirmed: true }))
+      .toEqual({ trialStarted: true, canceled: false, sendWelcome: true, askConfirm: false });
     // The same trial again (subscription.trialing after subscription.created).
-    expect(transitionEffects({ subscriptionId: "sub_a", status: "trialing", welcomeSent: true }, { subscriptionId: "sub_a", status: "trialing" }))
-      .toEqual({ trialStarted: false, canceled: false, sendWelcome: false });
+    expect(transitionEffects({ subscriptionId: "sub_a", status: "trialing", welcomeSent: true }, { subscriptionId: "sub_a", status: "trialing", confirmed: true }))
+      .toEqual({ trialStarted: false, canceled: false, sendWelcome: false, askConfirm: false });
     // Trial converts to paying: no new trial, no second welcome.
-    expect(transitionEffects({ subscriptionId: "sub_a", status: "trialing", welcomeSent: true }, { subscriptionId: "sub_a", status: "active" }))
-      .toEqual({ trialStarted: false, canceled: false, sendWelcome: false });
-    expect(transitionEffects({ subscriptionId: "sub_a", status: "active", welcomeSent: true }, { subscriptionId: "sub_a", status: "canceled" }).canceled).toBe(true);
-    expect(transitionEffects({ subscriptionId: "sub_a", status: "canceled", welcomeSent: true }, { subscriptionId: "sub_a", status: "canceled" }).canceled).toBe(false);
+    expect(transitionEffects({ subscriptionId: "sub_a", status: "trialing", welcomeSent: true }, { subscriptionId: "sub_a", status: "active", confirmed: true }))
+      .toEqual({ trialStarted: false, canceled: false, sendWelcome: false, askConfirm: false });
+    expect(transitionEffects({ subscriptionId: "sub_a", status: "active", welcomeSent: true }, { subscriptionId: "sub_a", status: "canceled", confirmed: true }).canceled).toBe(true);
+    expect(transitionEffects({ subscriptionId: "sub_a", status: "canceled", welcomeSent: true }, { subscriptionId: "sub_a", status: "canceled", confirmed: true }).canceled).toBe(false);
     // Past due or paused don't trigger a welcome.
-    expect(transitionEffects(fresh, { subscriptionId: "sub_a", status: "past_due" }).sendWelcome).toBe(false);
+    expect(transitionEffects(fresh, { subscriptionId: "sub_a", status: "past_due", confirmed: true }).sendWelcome).toBe(false);
+  });
+
+  it("an address that isn't confirmed gets a confirmation link instead of the welcome, once per subscription", () => {
+    const fresh = { subscriptionId: null, status: "none" as const, welcomeSent: false };
+    expect(transitionEffects(fresh, { subscriptionId: "sub_a", status: "trialing", confirmed: false }))
+      .toEqual({ trialStarted: true, canceled: false, sendWelcome: false, askConfirm: true });
+    // Later events for the same subscription don't ask again.
+    expect(transitionEffects({ subscriptionId: "sub_a", status: "trialing", welcomeSent: false }, { subscriptionId: "sub_a", status: "active", confirmed: false }).askConfirm).toBe(false);
+    // A canceled subscription asks nothing.
+    expect(transitionEffects(fresh, { subscriptionId: "sub_a", status: "canceled", confirmed: false }).askConfirm).toBe(false);
+  });
+
+  it("describes what happens next with a running plan, in plain words", () => {
+    const base = { plan_interval: "quarter" as const, trial_ends_at: "2026-11-23T10:00:00Z", current_period_end: "2027-02-23T10:00:00Z", cancel_at: null };
+    expect(planRenewal({ ...base, billing_status: "none" })).toBeNull();
+    expect(planRenewal({ ...base, billing_status: "canceled" })).toBeNull();
+    expect(planRenewal({ ...base, billing_status: "trialing" })).toEqual({
+      sentence: `Your plan is still active: your free trial ends on 23 Nov 2026, and then your first payment of ${siteConfig.premium.plans[1].price} is taken.`,
+      chargesAhead: true, canCancel: true,
+    });
+    expect(planRenewal({ ...base, billing_status: "active", plan_interval: "month" })?.sentence)
+      .toBe(`Your plan is still active and renews on 23 Feb 2027 for ${siteConfig.premium.plans[0].price}.`);
+    expect(planRenewal({ ...base, billing_status: "active", cancel_at: "2027-02-23T10:00:00Z" })).toMatchObject({ chargesAhead: false, canCancel: false });
+    expect(planRenewal({ ...base, billing_status: "paused" })).toMatchObject({ chargesAhead: false, canCancel: true });
   });
 });
 
@@ -121,8 +147,9 @@ describe("paid-alert copy", () => {
   it("builds the trial button and line from site.config.ts", () => {
     expect(trialButton).toBe(`Start ${siteConfig.premium.trialDays}-day free trial`);
     expect(trialLine()).toBe(
-      `Card required. $0 today, then ${m.price}/${m.per} or ${q.price} every ${q.per} unless you cancel before day ${siteConfig.premium.trialDays}. Cancel any time.`,
+      `Card required. $0 today. Your free trial lasts ${siteConfig.premium.trialDays} days; then ${q.price} every ${q.per}, renewing automatically until you cancel. Cancel any time before then and you pay nothing.`,
     );
+    expect(trialLine("monthly", "23 Nov 2026")).toContain(`Your free trial ends on 23 Nov 2026; then ${m.price} a month`);
     expect(trialLine()).not.toMatch(/\$\d+\.\d\d\/3 months/);
   });
 

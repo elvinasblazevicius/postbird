@@ -76,8 +76,42 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: 'camera=(), microphone=(), geolocation=(), payment=(self "https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=()' },
 ];
 
+/**
+ * CDN caching for public pages (Netlify).
+ *
+ * The pages stay dynamic (rendered on request, so `next build` never needs the
+ * database), but the same answer is good for everyone for a few minutes: none
+ * of these pages reads cookies, request headers or anything about the visitor
+ * (page views are counted in the browser through /api/track, not here).
+ *  - Netlify-CDN-Cache-Control: Netlify's CDN keeps a page for 5 minutes and
+ *    may serve it up to 10 more minutes while it fetches a fresh copy. Only
+ *    Netlify reads this header. Next.js keeps a Cache-Control set here instead
+ *    of its "private, no-store" (see send-payload.js), and Netlify's Next.js
+ *    runtime keeps both when Netlify-CDN-Cache-Control is present.
+ *  - Netlify-Vary: query: every query string is its own cache entry
+ *    (/jobs?q=nurse and /jobs?q=pilot). Without it the runtime's default would
+ *    key only on _rsc, and filtered pages would share one entry.
+ *  - Cache-Control: browsers always check back (the CDN answers quickly).
+ * GET and HEAD only: Netlify never caches POST (server actions). Each deploy
+ * empties the CDN cache.
+ * Never listed here: /account, /alerts/*, /admin, /api/* (except the sitemap
+ * and robots.txt, which are pages in disguise), /account/login.
+ * /pricing/trial is cached: it reads only its own query string (?search=,
+ * ?remind=), which is part of the cache key, and shows nothing about the visitor.
+ */
+const CDN_CACHED_PAGES = [
+  "/", "/jobs", "/jobs/:slug", "/organizations", "/organizations/:slug", "/locations", "/locations/:slug",
+  "/categories", "/categories/:slug", "/remote-jobs", "/pricing", "/pricing/trial", "/about", "/sitemap.xml", "/robots.txt",
+];
+const cdnCacheHeaders = [
+  { key: "Cache-Control", value: "public, max-age=0, must-revalidate" },
+  { key: "Netlify-CDN-Cache-Control", value: "public, s-maxage=300, stale-while-revalidate=600" },
+  { key: "Netlify-Vary", value: "query" },
+];
+
 const nextConfig: NextConfig = {
-  // Pages read live data from the database on each request (see README → "How it works").
+  // Pages read live data from the database on each request (see README → "How it works");
+  // public pages are cached by the CDN for a few minutes (headers() below).
   cacheComponents: false,
   poweredByHeader: false,
   // sanitize-html (used only by the feed import) is bundled, not left as an
@@ -100,6 +134,7 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
+      ...CDN_CACHED_PAGES.map((source) => ({ source, headers: cdnCacheHeaders })),
       { source: "/admin/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/account", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/account/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },

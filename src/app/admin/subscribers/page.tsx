@@ -1,6 +1,7 @@
 import { sql } from "@/lib/db";
 import { isEmailConfigured } from "@/lib/email";
-import { resendConfirmationsAction, sendDigestNowAction } from "../actions";
+import { BILLING_LIVE } from "@/lib/billing/live";
+import { notifyWaitlistAction, resendConfirmationsAction, sendDigestNowAction } from "../actions";
 import { requireAdmin } from "../guard";
 import { AdminShell, Card, fmtDateTime, Stat, StatusPill, Table } from "../ui";
 
@@ -12,8 +13,10 @@ export default async function SubscribersPage({ searchParams }: Props) {
   await requireAdmin();
   const msg = (await searchParams).msg;
   const [[c], recent, digests] = await Promise.all([
-    sql<{ alerts: number; pending: number; waitlist: number; waitlist_all: number; unsub: number; total: number }[]>`
+    sql<{ alerts: number; pending: number; waitlist: number; waitlist_all: number; waitlist_to_notify: number; unsub: number; total: number }[]>`
       select count(*) filter (where status = 'confirmed' and wants_alerts)::int as alerts,
+             count(*) filter (where status = 'confirmed' and premium_waitlist and waitlist_notified_at is null
+                                and billing_status not in ('trialing', 'active', 'past_due', 'paused'))::int as waitlist_to_notify,
              count(*) filter (where status = 'pending')::int as pending,
              count(*) filter (where status = 'confirmed' and premium_waitlist)::int as waitlist,
              count(*) filter (where premium_waitlist and status <> 'unsubscribed')::int as waitlist_all,
@@ -46,6 +49,22 @@ export default async function SubscribersPage({ searchParams }: Props) {
         </form>
         <a href="/admin/subscribers/export" className="rounded-lg border border-rule bg-paper px-4 py-2 text-sm font-medium text-ink hover:bg-mist">Download CSV</a>
       </div>
+
+      <form action={notifyWaitlistAction} className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-rule bg-paper p-4">
+        <div className="text-sm text-ink">
+          <strong>Email the early-access list: alerts are open.</strong>{" "}
+          One email to each confirmed early-access member not on a plan ({c.waitlist_to_notify} still to email): the
+          free trial, a link to /pricing/trial and an unsubscribe link. Sent once per person, up to 300 per click.
+          Their address is deleted 30 days later unless they start a trial.
+        </div>
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input type="checkbox" name="confirm" required disabled={!emailOn || !BILLING_LIVE || c.waitlist_to_notify === 0} /> Yes, email them now
+        </label>
+        <button disabled={!emailOn || !BILLING_LIVE || c.waitlist_to_notify === 0} className="rounded-lg border border-rule bg-paper px-4 py-2 text-sm font-medium text-ink hover:bg-mist disabled:opacity-50">
+          Email the early-access list
+        </button>
+        {!BILLING_LIVE ? <p className="w-full text-sm text-slate">Turns on once paid alerts are live (the Paddle settings are set).</p> : null}
+      </form>
       {!emailOn ? <p className="mt-2 text-sm text-slate">Email buttons turn on once RESEND_API_KEY is set and your domain is verified in Resend.</p> : null}
 
       <h2 className="mt-10 text-xl font-semibold text-ink">Weekly digests</h2>

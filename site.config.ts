@@ -25,7 +25,7 @@ const siteConfig = {
    * free Vercel address automatically (or NEXT_PUBLIC_SITE_URL
    * if you set it in Vercel's environment variables).
    */
-  url: "https://postbird.nuevanova.com", // move to postbirdjobs.com if the concept test passes
+  url: "https://postbird.nuevanova.com", // NEXT_PUBLIC_SITE_URL overrides this if set. Move to postbirdjobs.com if the concept test passes
 
   /** Address shown as the sender of alert emails (needs a verified domain in Resend). */
   emailFrom: "Postbird <alerts@nuevanova.com>",

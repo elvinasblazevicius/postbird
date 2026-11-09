@@ -24,7 +24,7 @@ function resolve(slug: string): { name: string; fixed: Partial<JobFilters>; isRe
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { slug } = await params;
   const place = resolve(slug);
-  if (!place) return { title: "Location not found", robots: { index: false } };
+  if (!place) return { title: "Location not found" }; // the 404 page adds the noindex tag
   const count = await countFor(place.fixed, false);
   return landingMetadata({
     title: `UN and international organization jobs in ${place.name}`,

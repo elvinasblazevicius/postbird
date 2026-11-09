@@ -37,7 +37,7 @@ function hasDescription(job: JobDetail) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const job = await loadJob((await params).slug);
-  if (!job) return { title: "Vacancy not found", robots: { index: false } };
+  if (!job) return { title: "Vacancy not found" }; // the 404 page adds the noindex tag
   const where = locationLabel(job);
   const title = `${job.title}${job.org_name ? ` — ${job.org_name}` : ""}${where !== NOT_SPECIFIED ? `, ${where}` : ""}`;
   const description = job.summary

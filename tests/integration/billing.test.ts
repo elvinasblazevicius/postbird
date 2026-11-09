@@ -8,6 +8,15 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+// next/server's after() needs a Next.js request; here it runs the task at once
+// and keeps its promise, so a test can wait for the emails a route sends.
+const afterTasks = vi.hoisted(() => [] as Promise<unknown>[]);
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: (task: () => unknown) => { afterTasks.push(Promise.resolve().then(task)); },
+}));
+const settle = async () => { await Promise.all(afterTasks.splice(0)); };
+
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const WEBHOOK_SECRET = "pdl_ntfset_test_secret_0123456789";
 
@@ -15,7 +24,7 @@ const SUB_ID = "sub_01hv8x29kz0t586xy6zn1a62ny";
 const SUB_ID_2 = "sub_01hv8x29kz0t586xy6zn1a62nz";
 const CUSTOMER = "ctm_01hv6y1jedq4p1n0yqn5ba3ky4";
 
-type Sent = { to: string; subject: string; text: string; headers?: Record<string, string> };
+type Sent = { to: string; subject: string; text: string; headers?: Record<string, string>; replyTo?: string; key?: string };
 
 describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -23,6 +32,9 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
   let billing: typeof import("@/lib/billing/subscriptions");
   let digest: typeof import("@/lib/digest");
   let paddle: typeof import("@/lib/billing/paddle");
+  let notices: typeof import("@/lib/billing/notices");
+  let subscribers: typeof import("@/lib/subscribers");
+  let account: typeof import("@/lib/account");
   const sent: Sent[] = [];
   let eventSeq = 0;
 
@@ -54,6 +66,11 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
     process.env.PADDLE_WEBHOOK_SECRET = WEBHOOK_SECRET;
     process.env.RESEND_API_KEY = "re_test_stub";
     process.env.NEXT_PUBLIC_SITE_URL = "http://localhost:3000";
+    // Billing "live" (for the early-access email). The price ids match no test
+    // subscription, so plans are still recognised by their billing cycle.
+    process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN = "test_client_token";
+    process.env.NEXT_PUBLIC_PADDLE_PRICE_MONTHLY = "pri_monthly_unused";
+    process.env.NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY = "pri_quarterly_unused";
     delete process.env.PADDLE_API_KEY;
 
     // Resend stub: records every message instead of sending it.
@@ -61,7 +78,8 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       const u = String(url);
       if (u.startsWith("https://api.resend.com/")) {
         const body = JSON.parse(String(init?.body ?? "null"));
-        for (const m of Array.isArray(body) ? body : [body]) sent.push({ to: m.to[0], subject: m.subject, text: m.text, headers: m.headers });
+        const key = (init?.headers as Record<string, string> | undefined)?.["Idempotency-Key"];
+        for (const m of Array.isArray(body) ? body : [body]) sent.push({ to: m.to[0], subject: m.subject, text: m.text, headers: m.headers, replyTo: m.reply_to, key });
         return new Response(JSON.stringify({ id: "stub" }), { status: 200, headers: { "content-type": "application/json" } });
       }
       throw new Error(`unexpected fetch in test: ${u}`);
@@ -77,6 +95,9 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
     billing = await import("@/lib/billing/subscriptions");
     digest = await import("@/lib/digest");
     paddle = await import("@/lib/billing/paddle");
+    notices = await import("@/lib/billing/notices");
+    subscribers = await import("@/lib/subscribers");
+    account = await import("@/lib/account");
   });
 
   afterAll(async () => {
@@ -86,6 +107,7 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
 
   beforeEach(async () => {
     sent.length = 0;
+    afterTasks.length = 0;
     await sql`update locks set locked_until = null, holder = null`;
   });
 
@@ -286,6 +308,274 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       await addJob("Logistics officer", 1);
       await digest.runDigest({ force: true });
       expect(sent.filter((m) => ["daily@example.org", "weekly@example.org"].includes(m.to))).toHaveLength(0);
+    });
+  });
+  describe("webhook events survive a killed run (one transaction)", () => {
+    const KILLED_SUB = "sub_01hv8x29kz0t586xy6zn1a63aa";
+
+    it("a run killed after recording the event leaves nothing behind, and Paddle's retry applies it", async () => {
+      const start = await billing.startCheckout({ email: "killed@example.org", plan: "monthly", search: null });
+      const ref = (start as { ref: string }).ref;
+      const ev = subEvent("subscription.created", { id: KILLED_SUB, customer_id: "ctm_01hv6y1jedq4p1n0yqn5ba3ka1", custom_data: { ref }, billing_cycle: { interval: "month", frequency: 1 } });
+
+      // Make the subscriber update hang, so the run can be killed in the middle of the transaction.
+      await sql.unsafe(`
+        create or replace function test_slow_update() returns trigger language plpgsql as $$ begin perform pg_sleep(5); return new; end $$;
+        drop trigger if exists test_slow_update on subscribers;
+        create trigger test_slow_update before update on subscribers for each row
+          when (old.email = 'killed@example.org') execute function test_slow_update();`);
+      try {
+        const run = billing.handlePaddleEvent(ev).then(() => "finished", (e: Error) => e);
+        let pid: number | null = null;
+        for (let i = 0; i < 100 && !pid; i++) {
+          const [row] = await sql`select pid from pg_stat_activity where datname = current_database() and wait_event = 'PgSleep'`;
+          pid = row?.pid ?? null;
+          if (!pid) await new Promise((r) => setTimeout(r, 50));
+        }
+        expect(pid).not.toBeNull();
+        // While the run is inside the transaction, its event record isn't visible (not committed separately).
+        expect((await sql`select count(*)::int as n from paddle_events where event_id = ${ev.event_id}`)[0].n).toBe(0);
+        // Kill it, the way a host stops a function: the connection goes away and no JavaScript clean-up runs.
+        await sql`select pg_terminate_backend(${pid})`;
+        expect(await run).toBeInstanceOf(Error);
+      } finally {
+        await sql.unsafe("drop trigger if exists test_slow_update on subscribers; drop function if exists test_slow_update();");
+      }
+
+      expect((await sql`select count(*)::int as n from paddle_events where event_id = ${ev.event_id}`)[0].n).toBe(0);
+      const [before] = await sql`select billing_status, paddle_subscription_id from subscribers where email = 'killed@example.org'`;
+      expect(before).toMatchObject({ billing_status: "none", paddle_subscription_id: null });
+
+      // Paddle retries the same event: it is applied, not treated as a duplicate.
+      const retry = await billing.handlePaddleEvent(ev);
+      expect(retry.outcome).toBe("applied");
+      const [after] = await sql`select status, billing_status, paddle_subscription_id from subscribers where email = 'killed@example.org'`;
+      expect(after).toMatchObject({ status: "confirmed", billing_status: "trialing", paddle_subscription_id: KILLED_SUB });
+      expect((await billing.handlePaddleEvent(ev)).outcome).toBe("duplicate");
+    });
+  });
+
+  describe("checkout with an address that already exists", () => {
+    beforeAll(async () => {
+      // Earlier subscribers are done with their welcome emails.
+      await sql`update subscribers set welcome_sent_at = coalesce(welcome_sent_at, now())`;
+    });
+
+    it("an unsubscribed address stays unsubscribed and gets a confirmation link, not the welcome", async () => {
+      await sql`
+        insert into subscribers (email, status, unsubscribed_at, unsubscribe_token)
+        values ('gone-away@example.org', 'unsubscribed', now() - interval '3 days', 'unsub-gone-away')`;
+      const start = await billing.startCheckout({ email: "gone-away@example.org", plan: "quarterly", search: "q=water" });
+      const ref = (start as { ref: string }).ref;
+      const subId = "sub_01hv8x29kz0t586xy6zn1a63ab";
+      const { POST } = await import("@/app/api/paddle/webhook/route");
+      const body = JSON.stringify(subEvent("subscription.created", { id: subId, customer_id: "ctm_01hv6y1jedq4p1n0yqn5ba3ka2", custom_data: { ref } }));
+      const ts = Math.floor(Date.now() / 1000);
+      const res = await POST(new Request("http://localhost/api/paddle/webhook", { method: "POST", body, headers: { "paddle-signature": `ts=${ts};h1=${paddle.signPayload(body, ts, WEBHOOK_SECRET)}` } }));
+      expect(await res.text()).toBe("applied");
+      await settle();
+
+      const [s] = await sql`select id::int as id, status, billing_status, paddle_subscription_id, welcome_sent_at, unsubscribed_at, confirm_token from subscribers where email = 'gone-away@example.org'`;
+      expect(s).toMatchObject({ status: "unsubscribed", billing_status: "trialing", paddle_subscription_id: subId, welcome_sent_at: null });
+      expect(s.unsubscribed_at).not.toBeNull();
+      expect(s.confirm_token).toBeTruthy();
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toMatchObject({ to: "gone-away@example.org", key: `paid-confirm:${s.id}:${subId}`, replyTo: "info@nuevanova.com" });
+      expect(sent[0].subject).toMatch(/^Confirm your email/);
+      expect(sent[0].text).toContain(`/alerts/confirm?token=${s.confirm_token}`);
+      expect(sent[0].text).not.toContain("/account?t=");
+
+      // Not confirmed: no welcome from the daily job, no alerts.
+      expect(await notices.runWelcomeRetries()).toEqual({ sent: 0, failed: 0 });
+
+      // The owner confirms; the daily job then sends the welcome, once.
+      expect((await subscribers.confirmSubscriber(s.confirm_token)).ok).toBe(true);
+      const [c] = await sql`select status, unsubscribed_at from subscribers where id = ${s.id}`;
+      expect(c).toMatchObject({ status: "confirmed", unsubscribed_at: null });
+      sent.length = 0;
+      expect(await notices.runWelcomeRetries()).toEqual({ sent: 1, failed: 0 });
+      expect(sent[0]).toMatchObject({ to: "gone-away@example.org", key: `welcome:${s.id}` });
+      expect(sent[0].text).toContain("/account?t=");
+      expect(await notices.runWelcomeRetries()).toEqual({ sent: 0, failed: 0 });
+    });
+
+    it("a pending address stays pending and keeps its confirmation token", async () => {
+      await sql`insert into subscribers (email, status, confirm_token, unsubscribe_token) values ('maybe@example.org', 'pending', 'tok-maybe-0123456789', 'unsub-maybe')`;
+      const start = await billing.startCheckout({ email: "maybe@example.org", plan: "monthly", search: null });
+      const res = await billing.handlePaddleEvent(subEvent("subscription.created", {
+        id: "sub_01hv8x29kz0t586xy6zn1a63ac", customer_id: "ctm_01hv6y1jedq4p1n0yqn5ba3ka3", custom_data: { ref: (start as { ref: string }).ref },
+      }));
+      expect(res.welcome).toBeUndefined();
+      expect(res.confirm).toMatchObject({ email: "maybe@example.org", confirmToken: "tok-maybe-0123456789" });
+      const [s] = await sql`select status, billing_status from subscribers where email = 'maybe@example.org'`;
+      expect(s).toMatchObject({ status: "pending", billing_status: "trialing" });
+    });
+  });
+
+  describe("plan emails", () => {
+    async function mk(email: string, over: { status?: string; billing?: string; trialEndsInDays?: number | null; cancel?: boolean; interval?: string; periodEndInDays?: number } = {}) {
+      const [r] = await sql`
+        insert into subscribers (email, status, wants_alerts, billing_status, plan_interval, trial_ends_at, current_period_end, cancel_at, unsubscribe_token, welcome_sent_at)
+        values (${email}, ${over.status ?? "confirmed"}, true, ${over.billing ?? "trialing"}, ${over.interval ?? "quarter"},
+                ${over.trialEndsInDays == null ? null : sql`now() + make_interval(days => ${over.trialEndsInDays})`},
+                ${over.periodEndInDays == null ? null : sql`now() + make_interval(days => ${over.periodEndInDays})`},
+                ${over.cancel ? sql`now() + interval '2 days'` : null}, ${`unsub-${email}`}, now())
+        returning id::int as id, manage_token`;
+      return r as { id: number; manage_token: string };
+    }
+
+    it("reminds each trialing subscriber once, about 3 days before the first payment", async () => {
+      const due = await mk("trial-ends@example.org", { trialEndsInDays: 2 });
+      const quiet = await mk("trial-quiet@example.org", { status: "unsubscribed", trialEndsInDays: 2, interval: "month" });
+      await mk("trial-later@example.org", { trialEndsInDays: 10 });
+      await mk("trial-canceled@example.org", { trialEndsInDays: 2, cancel: true });
+      const res = await notices.runTrialReminders();
+      expect(res).toEqual({ sent: 2, failed: 0 });
+      const byTo = Object.fromEntries(sent.map((m) => [m.to, m]));
+      expect(Object.keys(byTo).sort()).toEqual(["trial-ends@example.org", "trial-quiet@example.org"]);
+      const m = byTo["trial-ends@example.org"];
+      expect(m.subject).toMatch(/free trial ends on/);
+      expect(m.text).toContain("$19.99");
+      expect(m.text).toContain(`/account?t=${due.manage_token}`);
+      expect(m.key).toMatch(new RegExp(`^trial-reminder:${due.id}:`));
+      expect(byTo["trial-quiet@example.org"].text).toContain("$9.99");
+      expect(byTo["trial-quiet@example.org"].text).toContain(`/account?t=${quiet.manage_token}`);
+      sent.length = 0;
+      expect(await notices.runTrialReminders()).toEqual({ sent: 0, failed: 0 });
+    });
+
+    it("one-click unsubscribe with a running plan: unsubscribes and sends one notice with the cancel link", async () => {
+      const acct = await mk("oneclick@example.org", { billing: "active", interval: "month", periodEndInDays: 20 });
+      const { POST } = await import("@/app/api/unsubscribe/route");
+      const post = () => POST(new Request("http://localhost/api/unsubscribe?token=unsub-oneclick@example.org", { method: "POST" }));
+      expect((await post()).status).toBe(200);
+      await settle();
+      expect((await sql`select status from subscribers where id = ${acct.id}`)[0].status).toBe("unsubscribed");
+      expect(sent).toHaveLength(1);
+      expect(sent[0].subject).toBe("You've unsubscribed from Postbird alerts");
+      expect(sent[0].text).toMatch(/You've unsubscribed from Postbird alerts\. Your plan is still active and renews on .+ for \$9\.99\./);
+      expect(sent[0].text).toContain(`To stop being charged, cancel here: http://localhost:3000/account?t=${acct.manage_token}`);
+      expect(sent[0].key).toMatch(new RegExp(`^unsubscribed-plan:${acct.id}:`));
+      // A second click changes nothing and sends nothing.
+      expect((await post()).status).toBe(200);
+      await settle();
+      expect(sent).toHaveLength(1);
+    });
+
+    it("one-click unsubscribe without a plan sends nothing", async () => {
+      await sql`insert into subscribers (email, status, unsubscribe_token) values ('free@example.org', 'confirmed', 'unsub-free')`;
+      const { POST } = await import("@/app/api/unsubscribe/route");
+      await POST(new Request("http://localhost/api/unsubscribe?token=unsub-free", { method: "POST" }));
+      await settle();
+      expect(sent).toHaveLength(0);
+      expect((await sql`select status from subscribers where email = 'free@example.org'`)[0].status).toBe("unsubscribed");
+    });
+
+    it("emailing the account link replaces it; old links stop working and alerts carry the new one", async () => {
+      const acct = await mk("rotate@example.org", { billing: "active", periodEndInDays: 20 });
+      expect(await account.sendAccountLink("rotate@example.org")).toBe(true);
+      const [{ manage_token: fresh }] = await sql`select manage_token from subscribers where id = ${acct.id}`;
+      expect(fresh).not.toBe(acct.manage_token);
+      expect(account.isManageToken(fresh)).toBe(true);
+      expect(await account.findByManageToken(acct.manage_token)).toBeNull();
+      expect((await account.findByManageToken(fresh))?.email).toBe("rotate@example.org");
+      expect(sent[0].text).toContain(`/account?t=${fresh}`);
+      expect(sent[0].key).toMatch(new RegExp(`^account-link:${acct.id}:[0-9a-f]{16}$`));
+
+      // The next alert links to the current account page.
+      sent.length = 0;
+      await sql`insert into saved_searches (subscriber_id, search, label) values (${acct.id}, '', 'All new vacancies')`;
+      await sql`
+        insert into jobs (slug, title, apply_url, apply_host, url_hash, status, first_seen_at, published_at)
+        values ('rotation-check', 'Rotation check officer', 'https://example.org/rotation-check', 'example.org', 'hash-rotation-check', 'active', now() - interval '1 hour', now() - interval '1 hour')`;
+      await digest.runAlerts();
+      const alert = sent.find((m) => m.to === "rotate@example.org");
+      expect(alert?.text).toContain(`/account?t=${fresh}`);
+      expect(alert?.key).toMatch(/^alerts:[0-9a-f]{40}$/);
+    });
+
+    it("emails the early-access list once, only confirmed members without a plan", async () => {
+      const add = async (email: string, status: string, billing = "none") =>
+        sql`insert into subscribers (email, status, premium_waitlist, billing_status, unsubscribe_token) values (${email}, ${status}, true, ${billing}, ${`unsub-${email}`})`;
+      await add("early1@example.org", "confirmed");
+      await add("early2@example.org", "pending");
+      await add("early3@example.org", "confirmed", "trialing");
+      const res = await notices.notifyWaitlist();
+      expect(res.ok).toBe(true);
+      const to = sent.map((m) => m.to);
+      expect(to).toContain("early1@example.org");
+      expect(to).not.toContain("early2@example.org");
+      expect(to).not.toContain("early3@example.org");
+      const m = sent.find((x) => x.to === "early1@example.org")!;
+      expect(m.subject).toBe("Postbird email alerts are open");
+      expect(m.text).toContain("/pricing/trial");
+      expect(m.text).toContain("/alerts/unsubscribe?token=unsub-early1@example.org");
+      expect(m.text).toContain("Casper, Wyoming");
+      expect(m.headers?.["List-Unsubscribe"]).toContain("/api/unsubscribe?token=");
+      expect((await sql`select waitlist_notified_at from subscribers where email = 'early1@example.org'`)[0].waitlist_notified_at).not.toBeNull();
+      sent.length = 0;
+      expect((await notices.notifyWaitlist()).sent).toBe(0);
+      expect(sent).toHaveLength(0);
+    });
+  });
+
+  describe("retention", () => {
+    it("deletes canceled plans and notified early-access-only addresses after 30 days, with their saved searches", async () => {
+      const ins = async (email: string, o: { billing?: string; canceledDaysAgo?: number; waitlistNotifiedDaysAgo?: number }) =>
+        (await sql`
+          insert into subscribers (email, status, premium_waitlist, billing_status, canceled_at, waitlist_notified_at, unsubscribe_token)
+          values (${email}, 'confirmed', ${o.waitlistNotifiedDaysAgo != null}, ${o.billing ?? "none"},
+                  ${o.canceledDaysAgo == null ? null : sql`now() - make_interval(days => ${o.canceledDaysAgo})`},
+                  ${o.waitlistNotifiedDaysAgo == null ? null : sql`now() - make_interval(days => ${o.waitlistNotifiedDaysAgo})`},
+                  ${`unsub-${email}`})
+          returning id::int as id`)[0].id as number;
+      const oldCancel = await ins("old-cancel@example.org", { billing: "canceled", canceledDaysAgo: 40 });
+      await sql`insert into saved_searches (subscriber_id, search, label) values (${oldCancel}, 'q=old', 'Old')`;
+      await sql`insert into paddle_checkouts (ref, subscriber_id, plan, created_at) values ('ref-old-cancel-0123456789', ${oldCancel}, 'monthly', now() - interval '35 days')`;
+      await ins("new-cancel@example.org", { billing: "canceled", canceledDaysAgo: 10 });
+      await ins("early-old@example.org", { waitlistNotifiedDaysAgo: 40 });
+      await ins("early-new@example.org", { waitlistNotifiedDaysAgo: 10 });
+      // Joined early access, was emailed, started a trial and canceled it 5 days ago: kept for now.
+      await ins("early-trial@example.org", { waitlistNotifiedDaysAgo: 40, billing: "canceled", canceledDaysAgo: 5 });
+
+      await subscribers.purgeStaleSubscribers();
+      const left = (await sql`select email from subscribers where email in ('old-cancel@example.org', 'new-cancel@example.org', 'early-old@example.org', 'early-new@example.org', 'early-trial@example.org') order by email`)
+        .map((r: { email: string }) => r.email);
+      expect(left).toEqual(["early-new@example.org", "early-trial@example.org", "new-cancel@example.org"]);
+      expect(await sql`select 1 from saved_searches where subscriber_id = ${oldCancel}`).toHaveLength(0);
+      expect(await sql`select 1 from paddle_checkouts where created_at < now() - interval '30 days'`).toHaveLength(0);
+    });
+  });
+
+  describe("UN and EU emblems", () => {
+    it("never serves or keeps an icon for a UN system organization or EU institution", async () => {
+      const png = Buffer.from("89504e470d0a1a0a0000000d4948445200000040000000400806000000", "hex");
+      await sql`insert into organizations (slug, name, org_type, logo, logo_type) values
+        ('un-agency', 'UN Agency', 'UN system', ${png}, 'image/png'),
+        ('eu-body', 'EU Body', 'EU institution', ${png}, 'image/png'),
+        ('ngo-x', 'NGO X', 'NGO', ${png}, 'image/png')`;
+      const { GET } = await import("@/app/api/org-logo/[slug]/route");
+      const get = (slug: string) => GET(new Request(`http://localhost/api/org-logo/${slug}`), { params: Promise.resolve({ slug }) });
+      expect((await get("un-agency")).status).toBe(404);
+      expect((await get("eu-body")).status).toBe(404);
+      expect((await get("ngo-x")).status).toBe(200);
+      const { clearProtectedLogos } = await import("@/lib/feeds/logos");
+      expect(await clearProtectedLogos()).toBe(2);
+      const rows = await sql`select slug from organizations where logo is not null and slug in ('un-agency', 'eu-body', 'ngo-x')`;
+      expect(rows.map((r: { slug: string }) => r.slug)).toEqual(["ngo-x"]);
+    });
+  });
+
+  describe("filter counts", () => {
+    it("the shared count query matches direct counts, and calls made together share it", async () => {
+      const jobs = await import("@/lib/jobs");
+      const [stats, countries, regions, categories, langs] = await Promise.all([
+        jobs.siteStats(), jobs.countryFacets(), jobs.regionFacets(), jobs.categoryFacets(), jobs.languageFacets(),
+      ]);
+      const [{ n }] = await sql`select count(*)::int as n from jobs where status = 'active' and (deadline is null or deadline >= (now() at time zone 'utc')::date)`;
+      expect(stats.active).toBe(n);
+      expect(categories.reduce((t, c) => t + c.count, 0)).toBe(n);
+      expect(Array.isArray(countries) && Array.isArray(regions) && Array.isArray(langs)).toBe(true);
     });
   });
 });

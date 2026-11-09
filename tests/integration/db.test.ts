@@ -60,10 +60,13 @@ describe.skipIf(!TEST_DB)("database integration", () => {
     auth = await import("@/lib/admin-auth");
     limiter = await import("@/lib/rate-limit");
 
+    // Built once: dates made per request could differ by a second between two
+    // syncs, and the second sync would then count every listing as updated.
+    const feed = fixtureFeed();
     server = createServer((req, res) => {
       if (req.url === "/feed.xml") {
         res.writeHead(200, { "content-type": "application/rss+xml" });
-        res.end(fixtureFeed());
+        res.end(feed);
       } else if (req.url === "/huge") {
         // 20 MB, streamed without a Content-Length header.
         res.writeHead(200, { "content-type": "application/xml" });

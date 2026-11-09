@@ -274,65 +274,114 @@ export async function organizationFacets(limit = 500, includeDemo = true) {
     where ${isOpen()} and (${includeDemo} or not j.is_demo) group by o.id order by count(*) desc, o.name limit ${limit}`;
 }
 
+type Count<K> = { k: K; n: number };
+type FacetSnapshot = {
+  countries: Count<string>[];
+  categories: Count<string>[];
+  grades: Count<string>[];
+  languages: Count<string>[];
+  experience: Count<number>[];
+  org_types: Count<string>[];
+  job_types: Count<string>[];
+  stats: { active: number; orgs: number; countries: number; remote: number; this_week: number };
+};
+
+/** Snapshot queries still running, so callers at the same moment share one. */
+const snapshotsInFlight = new Map<boolean, Promise<FacetSnapshot>>();
+
+/**
+ * Every count the filters and the homepage show, in ONE query over the open
+ * listings. The facet functions below all read it, and calls made while it is
+ * running share it: a page that asks for eight kinds of counts at once (the
+ * homepage, the job lists) runs one query instead of eight (see the pool-size
+ * note in src/lib/db.ts). Nothing is kept once the query has finished.
+ */
+function facetSnapshot(includeDemo: boolean): Promise<FacetSnapshot> {
+  let p = snapshotsInFlight.get(includeDemo);
+  if (!p) {
+    p = queryFacetSnapshot(includeDemo).finally(() => snapshotsInFlight.delete(includeDemo));
+    snapshotsInFlight.set(includeDemo, p);
+  }
+  return p;
+}
+
+async function queryFacetSnapshot(includeDemo: boolean): Promise<FacetSnapshot> {
+  const [r] = await sql<FacetSnapshot[]>`
+    with open as materialized (
+      select j.country_code, j.category, j.grade, j.languages, j.min_experience_years, j.job_type, j.is_remote,
+             j.organization_id, coalesce(j.published_at, j.first_seen_at) as posted, o.org_type
+      from jobs j left join organizations o on o.id = j.organization_id
+      where ${isOpen()} and (${includeDemo} or not j.is_demo)
+    )
+    select
+      (select coalesce(json_agg(json_build_object('k', k, 'n', n) order by n desc, k), '[]'::json)
+         from (select country_code as k, count(*)::int as n from open where country_code is not null group by 1) x) as countries,
+      (select coalesce(json_agg(json_build_object('k', k, 'n', n)), '[]'::json)
+         from (select category as k, count(*)::int as n from open group by 1) x) as categories,
+      (select coalesce(json_agg(json_build_object('k', k, 'n', n) order by k), '[]'::json)
+         from (select grade as k, count(*)::int as n from open where grade is not null group by 1) x) as grades,
+      (select coalesce(json_agg(json_build_object('k', k, 'n', n) order by n desc, k), '[]'::json)
+         from (select l as k, count(*)::int as n from open, unnest(open.languages) l group by 1) x) as languages,
+      (select coalesce(json_agg(json_build_object('k', k, 'n', n)), '[]'::json)
+         from (select min_experience_years as k, count(*)::int as n from open where min_experience_years is not null group by 1) x) as experience,
+      (select coalesce(json_agg(json_build_object('k', k, 'n', n)), '[]'::json)
+         from (select org_type as k, count(*)::int as n from open where org_type is not null group by 1) x) as org_types,
+      (select coalesce(json_agg(json_build_object('k', k, 'n', n) order by n desc, k), '[]'::json)
+         from (select job_type as k, count(*)::int as n from open where job_type is not null group by 1) x) as job_types,
+      (select json_build_object(
+                'active', count(*)::int,
+                'orgs', count(distinct organization_id)::int,
+                'countries', count(distinct country_code)::int,
+                'remote', (count(*) filter (where is_remote))::int,
+                'this_week', (count(*) filter (where posted >= now() - interval '7 days'))::int)
+         from open) as stats`;
+  return r;
+}
+
 export async function countryFacets(includeDemo = true) {
-  const rows = await sql<{ country_code: string; count: number }[]>`
-    select j.country_code, count(*)::int as count from jobs j
-    where ${isOpen()} and j.country_code is not null and (${includeDemo} or not j.is_demo) group by j.country_code order by count(*) desc`;
-  return rows
-    .map((r) => ({ ...r, country: countryByCode(r.country_code) }))
+  const { countries } = await facetSnapshot(includeDemo);
+  return countries
+    .map((r) => ({ ...r, country: countryByCode(r.k) }))
     .filter((r) => r.country)
-    .map((r) => ({ code: r.country_code, slug: r.country!.slug, name: r.country!.name, count: r.count }));
+    .map((r) => ({ code: r.k, slug: r.country!.slug, name: r.country!.name, count: r.n }));
 }
 
 export async function categoryFacets(includeDemo = true) {
-  const rows = await sql<{ category: string; count: number }[]>`
-    select j.category, count(*)::int as count from jobs j where ${isOpen()} and (${includeDemo} or not j.is_demo) group by j.category`;
-  const counts = new Map(rows.map((r) => [r.category, r.count]));
+  const { categories } = await facetSnapshot(includeDemo);
+  const counts = new Map(categories.map((r) => [r.k, r.n]));
   return ALL_CATEGORIES.map((c) => ({ ...c, count: counts.get(c.slug) ?? 0 }));
 }
 
+/** Region counts, added up from the country counts (the same snapshot, no extra query). */
 export async function regionFacets(includeDemo = true) {
   const countries = await countryFacets(includeDemo);
   return REGIONS.map((r) => ({ slug: r.slug, name: r.name, count: countries.filter((c) => r.codes.includes(c.code)).reduce((n, c) => n + c.count, 0) }));
 }
 
 export async function gradeFacets() {
-  return sql<{ grade: string; count: number }[]>`
-    select j.grade, count(*)::int as count from jobs j where ${isOpen()} and j.grade is not null group by j.grade order by j.grade`;
+  return (await facetSnapshot(true)).grades.map((r) => ({ grade: r.k, count: r.n }));
 }
 
 export async function languageFacets() {
-  return sql<{ lang: string; count: number }[]>`
-    select l as lang, count(*)::int as count from jobs j, unnest(j.languages) l where ${isOpen()} group by l order by count(*) desc`;
+  return (await facetSnapshot(true)).languages.map((r) => ({ lang: r.k, count: r.n }));
 }
 
 export async function experienceFacets() {
-  const rows = await sql<{ y: number; count: number }[]>`
-    select j.min_experience_years as y, count(*)::int as count from jobs j where ${isOpen()} and j.min_experience_years is not null group by 1`;
-  return EXPERIENCE_BANDS.map((b) => ({ ...b, count: rows.filter((r) => r.y >= b.min && r.y <= b.max).reduce((n, r) => n + r.count, 0) }));
+  const rows = (await facetSnapshot(true)).experience;
+  return EXPERIENCE_BANDS.map((b) => ({ ...b, count: rows.filter((r) => r.k >= b.min && r.k <= b.max).reduce((n, r) => n + r.n, 0) }));
 }
 
 export async function orgTypeFacets() {
-  const rows = await sql<{ org_type: string; count: number }[]>`
-    select o.org_type, count(*)::int as count from jobs j join organizations o on o.id = j.organization_id
-    where ${isOpen()} and o.org_type is not null group by o.org_type`;
-  return ORG_TYPES.map((t) => ({ ...t, count: rows.find((r) => r.org_type === t.type)?.count ?? 0 }));
+  const rows = (await facetSnapshot(true)).org_types;
+  return ORG_TYPES.map((t) => ({ ...t, count: rows.find((r) => r.k === t.type)?.n ?? 0 }));
 }
 
 export async function jobTypeFacets() {
-  return sql<{ job_type: string; count: number }[]>`
-    select j.job_type, count(*)::int as count from jobs j where ${isOpen()} and j.job_type is not null group by j.job_type order by count(*) desc`;
+  return (await facetSnapshot(true)).job_types.map((r) => ({ job_type: r.k, count: r.n }));
 }
 
 export async function siteStats() {
-  const [r] = await sql<{ active: number; orgs: number; countries: number; remote: number; this_week: number }[]>`
-    select count(*)::int as active,
-           count(distinct j.organization_id)::int as orgs,
-           count(distinct j.country_code)::int as countries,
-           count(*) filter (where j.is_remote)::int as remote,
-           count(*) filter (where coalesce(j.published_at, j.first_seen_at) >= now() - interval '7 days')::int as this_week
-    from jobs j where ${isOpen()}`;
-  return r;
+  return (await facetSnapshot(true)).stats;
 }
 
 export async function getOrganization(slug: string) {

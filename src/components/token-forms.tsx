@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect } from "react";
 import { confirmAction, signupAction, unsubscribeAction, type FormState } from "@/app/actions";
+import { unsubscribePortalAction } from "@/app/billing-actions";
 import siteConfig from "@site-config";
 import { AttributionField, uetEvent } from "./ads";
 import { EarlyAccessDone } from "./early-access";
@@ -33,15 +34,34 @@ export function ConfirmForm({ token }: { token: string }) {
   );
 }
 
-export function UnsubscribeForm({ token }: { token: string }) {
+export function UnsubscribeForm({ token, label = "Unsubscribe", secondary = false }: { token: string; label?: string; secondary?: boolean }) {
   const [state, action, pending] = useActionState(unsubscribeAction, initial);
   if (state.status !== "idle") return <Result state={state} />;
   return (
     <form action={action}>
       <input type="hidden" name="token" value={token} />
-      <button disabled={pending} className="rounded-lg bg-brand px-6 py-3 text-base font-semibold text-white hover:bg-accent disabled:opacity-60">
-        {pending ? "Unsubscribing…" : "Unsubscribe"}
+      <button
+        disabled={pending}
+        className={secondary
+          ? "rounded-lg border border-rule bg-paper px-6 py-3 text-base font-semibold text-ink hover:border-accent hover:text-accent disabled:opacity-60"
+          : "rounded-lg bg-brand px-6 py-3 text-base font-semibold text-white hover:bg-accent disabled:opacity-60"}
+      >
+        {pending ? "Unsubscribing…" : label}
       </button>
+    </form>
+  );
+}
+
+/** "Cancel my plan" on the unsubscribe page: opens a fresh Paddle customer portal session. */
+export function CancelPlanForm({ token }: { token: string }) {
+  const [state, action, pending] = useActionState(unsubscribePortalAction, initial);
+  return (
+    <form action={action}>
+      <input type="hidden" name="token" value={token} />
+      <button disabled={pending} className="rounded-lg bg-brand px-6 py-3 text-base font-semibold text-white hover:bg-accent disabled:opacity-60">
+        {pending ? "Opening billing…" : "Cancel my plan"}
+      </button>
+      {state.status === "error" ? <p role="alert" className="mt-2 text-sm text-[#9b1c1c]">{state.message}</p> : null}
     </form>
   );
 }

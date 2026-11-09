@@ -1,0 +1,40 @@
+# Applies new database migrations (db/migrations) whenever main changes, so
+# the database is ready for the code Netlify is deploying from the same push.
+# Migrations are safe to run more than once (already-applied ones are
+# skipped); the scheduled workflow applies them again before each task.
+#
+# Repository secret needed: DATABASE_URL (the same one the scheduled jobs use).
+name: Deploy migrations
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Reads the repository only; no token permissions beyond that.
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Apply migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then echo "::error::Add the DATABASE_URL repository secret."; exit 1; fi
+          npm run db:migrate

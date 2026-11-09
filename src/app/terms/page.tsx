@@ -42,7 +42,7 @@ export default function TermsPage() {
             <ul className="list-disc space-y-1 pl-6">
               <li>
                 <strong>Free trial:</strong> new subscriptions start with a {p.trialDays}-day free trial. A card is required. If you don&apos;t cancel before the trial
-                ends, the plan you chose starts and you are charged automatically.
+                ends, the plan you chose starts and you are charged automatically. We email you a reminder about 3 days before the trial ends.
               </li>
               <li><strong>Renewal:</strong> plans renew automatically at the end of each period (every month or every 3 months) until you cancel.</li>
             </ul>

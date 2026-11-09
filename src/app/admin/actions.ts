@@ -25,7 +25,9 @@ export type AdminState = { ok: boolean; message: string } | null;
 // ── Auth ──
 const LOCK_MINUTES = 15;
 const MAX_FAILURES_PER_IP = 8; // per 15 minutes
-const MAX_FAILURES_GLOBAL = 50; // from all sources per 15 minutes; above this every sign-in is refused
+// No limit across all connections: it would let anyone lock the owner out by
+// guessing from many addresses. The per-connection limits, the delay and a
+// long password are the protection.
 
 export async function loginAction(_prev: AdminState, form: FormData): Promise<AdminState> {
   if (!isAdminConfigured()) {
@@ -37,14 +39,10 @@ export async function loginAction(_prev: AdminState, form: FormData): Promise<Ad
   const who = hashKey(`admin-login|${ip}`);
   const locked = { ok: false, message: `Too many wrong passwords. Try again in ${LOCK_MINUTES} minutes.` };
   if (!(await rateLimit(`admin-login|${ip}`, 30, LOCK_MINUTES * 60))) return locked;
-  const [{ mine, total }] = await sql<{ mine: number; total: number }[]>`
-    select count(*) filter (where who = ${who})::int as mine, count(*)::int as total
-    from admin_login_failures where at > now() - make_interval(mins => ${LOCK_MINUTES})`;
+  const [{ mine }] = await sql<{ mine: number }[]>`
+    select count(*)::int as mine from admin_login_failures
+    where who = ${who} and at > now() - make_interval(mins => ${LOCK_MINUTES})`;
   if (mine >= MAX_FAILURES_PER_IP) return locked;
-  if (total > MAX_FAILURES_GLOBAL) {
-    console.warn(`admin login: more than ${MAX_FAILURES_GLOBAL} wrong passwords in ${LOCK_MINUTES} minutes; sign-in is paused`);
-    return { ok: false, message: `Sign-in is paused for ${LOCK_MINUTES} minutes after many wrong passwords. Try again later.` };
-  }
   if (!checkPassword(String(form.get("password") ?? ""))) {
     await sql`insert into admin_login_failures (who) values (${who})`;
     await sql`delete from admin_login_failures where at < now() - interval '24 hours'`;
@@ -195,4 +193,18 @@ export async function sendDigestNowAction(): Promise<void> {
   const { runDigest } = await import("@/lib/digest");
   const r = await runDigest();
   redirect(`/admin/subscribers?msg=${encodeURIComponent(`digest: ${r.status}${r.message ? ` — ${r.message}` : ` — sent ${r.sent} of ${r.recipients}`}`)}`);
+}
+
+/**
+ * "Email the early-access list: alerts are open": the one email promised to
+ * the early-access list (src/lib/billing/notices.ts → notifyWaitlist). Needs
+ * the confirmation tick box; sends up to 300 per click.
+ */
+export async function notifyWaitlistAction(form: FormData): Promise<void> {
+  await requireAdmin();
+  if (!isEmailConfigured()) redirect("/admin/subscribers?msg=email-not-configured");
+  if (form.get("confirm") !== "on") redirect(`/admin/subscribers?msg=${encodeURIComponent("Tick the box to confirm, then click again.")}`);
+  const { notifyWaitlist } = await import("@/lib/billing/notices");
+  const r = await notifyWaitlist();
+  redirect(`/admin/subscribers?msg=${encodeURIComponent(`Early access email: ${r.message}`)}`);
 }

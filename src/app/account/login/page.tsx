@@ -11,7 +11,7 @@ export default function AccountLoginPage() {
       <h1 className="text-[2rem] font-semibold text-ink">Manage or cancel your subscription</h1>
       <p className="mb-6 mt-3 text-lg text-slate">
         There&apos;s no password. Enter the address you get alerts at and we&apos;ll email you a private link to your account. There you can change your
-        searches, or choose &quot;Manage billing or cancel&quot; to cancel your plan.
+        searches, or choose &quot;Manage billing or cancel&quot; to cancel your plan. Each new link replaces the old one.
       </p>
       <AccountLinkForm />
       <p className="mt-6 text-sm leading-relaxed text-slate">

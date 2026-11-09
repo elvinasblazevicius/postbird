@@ -5,14 +5,19 @@ import { LISTING_SETTINGS } from "@/config/import";
 
 export const NOT_SPECIFIED = "Not stated";
 
-/** Public base URL: site.config.ts → NEXT_PUBLIC_SITE_URL → Netlify/Vercel address → localhost. */
+/**
+ * Public base URL: NEXT_PUBLIC_SITE_URL → site.config.ts → Netlify/Vercel
+ * address → localhost. The environment variable wins so a test run, preview
+ * or the scheduled job (SITE_URL secret) can point links elsewhere without a
+ * code change.
+ */
 export function siteUrl(): string {
-  const fromConfig = siteConfig.url?.trim();
   const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  const fromConfig = siteConfig.url?.trim();
   const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
   // Netlify sets URL to the site's main address (custom domain or *.netlify.app).
   const netlify = process.env.NETLIFY ? process.env.URL : undefined;
-  const url = fromConfig || fromEnv || netlify || (vercel ? `https://${vercel}` : `http://localhost:${process.env.PORT || 3000}`);
+  const url = fromEnv || fromConfig || netlify || (vercel ? `https://${vercel}` : `http://localhost:${process.env.PORT || 3000}`);
   return url.replace(/\/+$/, "");
 }
 

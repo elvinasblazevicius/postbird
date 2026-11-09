@@ -5,8 +5,26 @@
  * own website; small or missing icons are ignored and the site shows the
  * organization's initials instead. Organizations with logo_blocked = true
  * (for example because the organization objected) are never fetched.
+ * UN system organizations and EU institutions are never fetched or stored
+ * either: their emblems are protected (UN and EU rules on the use of the
+ * emblem), so they always show initials.
  */
 import { sql } from "@/lib/db";
+
+/** Organization types whose emblem is never fetched, stored or served. */
+export const NO_LOGO_ORG_TYPES = ["UN system", "EU institution"] as const;
+
+/**
+ * Removes any stored icon of a UN or EU organization (e.g. stored before this
+ * rule, or for an organization whose type changed). Run by every scheduled import.
+ */
+export async function clearProtectedLogos(): Promise<number> {
+  const rows = await sql`
+    update organizations set logo = null, logo_type = null
+    where org_type = any(${[...NO_LOGO_ORG_TYPES]}) and logo is not null
+    returning id`;
+  return rows.length;
+}
 
 const MIN_SIZE = 32; // px; smaller icons look blurry in the badge
 const PER_RUN = 15; // keep each sync short
@@ -44,9 +62,12 @@ async function fetchIcon(domain: string, timeoutMs: number): Promise<Uint8Array 
 
 /** Fetch icons for organizations that have a website but no (recent) icon check. Returns how many were saved. */
 export async function refreshOrgLogos(timeLeftMs: () => number): Promise<number> {
+  await clearProtectedLogos();
   const orgs = await sql<{ id: number; website: string }[]>`
     select id, website from organizations
-    where website is not null and not logo_blocked and (
+    where website is not null and not logo_blocked
+      and coalesce(org_type, '') <> all(${[...NO_LOGO_ORG_TYPES]})
+      and (
       logo_checked_at is null
       or (logo is null and logo_checked_at < now() - make_interval(days => ${RECHECK_MISSING_DAYS}))
       or logo_checked_at < now() - make_interval(days => ${REFRESH_DAYS}))
@@ -61,7 +82,7 @@ export async function refreshOrgLogos(timeLeftMs: () => number): Promise<number>
     await sql`
       update organizations set logo = coalesce(${icon ? Buffer.from(icon) : null}::bytea, logo),
         logo_type = coalesce(${icon ? "image/png" : null}::text, logo_type), logo_checked_at = now()
-      where id = ${o.id} and not logo_blocked`;
+      where id = ${o.id} and not logo_blocked and coalesce(org_type, '') <> all(${[...NO_LOGO_ORG_TYPES]})`;
   }
   return saved;
 }

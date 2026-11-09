@@ -5,7 +5,7 @@
 import { categoryBySlug } from "@/config/categories";
 import { countryBySlug } from "@/config/countries";
 import { GRADE_GROUPS, regionBySlug } from "@/config/regions";
-import { sql } from "@/lib/db";
+import { sql, type Db } from "@/lib/db";
 import { getOrganization, jobsUrl, parseFilters } from "@/lib/jobs";
 
 export const MAX_SAVED_SEARCHES = 5;
@@ -70,14 +70,15 @@ export type AddSearchResult = { ok: true; added: boolean } | { ok: false; error:
 /**
  * Adds a saved search (already normalized). Adding one that exists is not an
  * error. The 5-per-subscriber limit is enforced by the database as well.
+ * db: a transaction to run in (the Paddle webhook), otherwise the pool.
  */
-export async function addSavedSearch(subscriberId: number, search: string): Promise<AddSearchResult> {
+export async function addSavedSearch(subscriberId: number, search: string, db: Db = sql): Promise<AddSearchResult> {
   // Checked first: the limit trigger runs before "on conflict", so a duplicate would hit the limit message.
-  const [dupe] = await sql`select 1 from saved_searches where subscriber_id = ${subscriberId} and search = ${search}`;
+  const [dupe] = await db`select 1 from saved_searches where subscriber_id = ${subscriberId} and search = ${search}`;
   if (dupe) return { ok: true, added: false };
   const label = (await describeSearch(search)) ?? "All new vacancies";
   try {
-    const rows = await sql`
+    const rows = await db`
       insert into saved_searches (subscriber_id, search, label) values (${subscriberId}, ${search}, ${label})
       on conflict (subscriber_id, search) do nothing returning id`;
     return { ok: true, added: rows.length === 1 };

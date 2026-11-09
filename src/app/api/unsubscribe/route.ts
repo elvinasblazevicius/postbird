@@ -1,10 +1,24 @@
+import { after } from "next/server";
+import { sendPlanStillActiveNotice } from "@/lib/billing/notices";
 import { unsubscribe } from "@/lib/subscribers";
 
 export const dynamic = "force-dynamic";
 
-/** One-click unsubscribe (RFC 8058) used by Gmail/Outlook "Unsubscribe" buttons. */
+/**
+ * One-click unsubscribe (RFC 8058) used by Gmail/Outlook "Unsubscribe" buttons.
+ * It always unsubscribes. Unsubscribing stops emails, not a paid plan, so a
+ * subscriber whose plan will still charge them gets ONE email saying so, with
+ * the link to cancel (sent after the response; only when this request
+ * actually unsubscribed them, and with an idempotency key).
+ */
 export async function POST(req: Request) {
   const token = new URL(req.url).searchParams.get("token") ?? "";
-  if (token) await unsubscribe(token);
-  return new Response("Unsubscribed", { status: 200 });
+  const id = token ? await unsubscribe(token) : null;
+  if (id !== null) {
+    after(async () => {
+      const sent = await sendPlanStillActiveNotice(id).catch((e: Error) => ({ ok: false, skipped: false, error: e.message }));
+      if (sent && !sent.ok && !sent.skipped) console.warn("unsubscribe: plan notice not sent", sent.error);
+    });
+  }
+  return new Response("Unsubscribed", { status: 200, headers: { "cache-control": "no-store" } });
 }

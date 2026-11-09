@@ -9,7 +9,7 @@
  */
 import siteConfig from "@site-config";
 import { sql } from "@/lib/db";
-import { isEmailConfigured, sendBatch } from "@/lib/email";
+import { batchKey, isEmailConfigured, sendBatch, type OutgoingEmail } from "@/lib/email";
 import { alertEmail, digestEmail, type AlertGroup } from "@/lib/email-templates";
 import { acquireLock, releaseLock } from "@/lib/feeds/sync";
 import { jobsUrl, parseFilters, searchJobs, type JobListItem } from "@/lib/jobs";
@@ -73,7 +73,8 @@ export async function runDigest(opts: { force?: boolean } = {}): Promise<DigestR
           headers: { "List-Unsubscribe": `<${oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
         };
       });
-      const res = await sendBatch(msgs);
+      // Same week and chunk, same key: a retry of a chunk that already went out is not sent twice.
+      const res = await sendBatch(msgs, () => `digest:${periodKey}:${i / 100}`);
       sent += res.sent;
       failed += res.failed;
       errors.push(...res.errors);
@@ -106,7 +107,7 @@ const MAX_WINDOW_HOURS = { daily: 7 * 24, weekly: 14 * 24 } as const;
 
 export type AlertsResult = { status: "sent" | "skipped" | "failed"; due: number; sent: number; failed: number; empty: number; message: string | null };
 
-type DueRow = { id: number; email: string; frequency: "daily" | "weekly"; manage_token: string; unsubscribe_token: string };
+type DueRow = { id: number; email: string; frequency: "daily" | "weekly" };
 type SearchRow = { id: number; subscriber_id: number; search: string; label: string | null; last_sent_at: Date | null };
 
 /**
@@ -117,6 +118,10 @@ type SearchRow = { id: number; subscriber_id: number; search: string; label: str
  * Subscribers with no new matches get nothing and stay due. After a
  * successful send every search of that subscriber gets last_sent_at = the
  * run's start time, so nothing is sent twice and nothing falls between runs.
+ * The account and unsubscribe links are read just before each batch is sent,
+ * so they are always the subscriber's current ones (the account link changes
+ * when someone asks for it by email), and anyone who unsubscribed or stopped
+ * paying during the run is skipped.
  */
 export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsResult> {
   const base: AlertsResult = { status: "skipped", due: 0, sent: 0, failed: 0, empty: 0, message: null };
@@ -128,7 +133,7 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
     // One clock for the whole run: the database's.
     const [{ now }] = await sql<{ now: Date }[]>`select now() as now`;
     const due = await sql<DueRow[]>`
-      select s.id::int as id, s.email, s.frequency, s.manage_token, s.unsubscribe_token
+      select s.id::int as id, s.email, s.frequency
       from subscribers s
       where s.status = 'confirmed' and s.billing_status in ('trialing', 'active')
         and exists (select 1 from saved_searches ss where ss.subscriber_id = s.id)
@@ -144,12 +149,31 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
 
     let sent = 0, failed = 0, empty = 0;
     const errors: string[] = [];
-    const outbox: { sub: DueRow; msg: Parameters<typeof sendBatch>[0][number] }[] = [];
+    const outbox: { sub: DueRow; groups: AlertGroup[] }[] = [];
 
     const flush = async () => {
       if (!outbox.length) return;
-      const chunk = outbox.splice(0, outbox.length);
-      const res = await sendBatch(chunk.map((o) => o.msg));
+      const pending = outbox.splice(0, outbox.length);
+      // Current links and status at send time.
+      const current = await sql<{ id: number; email: string; manage_token: string; unsubscribe_token: string }[]>`
+        select id::int as id, email, manage_token, unsubscribe_token from subscribers
+        where id = any(${pending.map((o) => o.sub.id)}) and status = 'confirmed' and billing_status in ('trialing', 'active')`;
+      const byId = new Map(current.map((c) => [c.id, c]));
+      const chunk = pending.filter((o) => byId.has(o.sub.id));
+      if (!chunk.length) return;
+      const msgs: OutgoingEmail[] = chunk.map((o) => {
+        const c = byId.get(o.sub.id)!;
+        const unsubscribeUrl = absoluteUrl(`/alerts/unsubscribe?token=${c.unsubscribe_token}`);
+        const oneClick = absoluteUrl(`/api/unsubscribe?token=${c.unsubscribe_token}`);
+        return {
+          to: c.email,
+          ...alertEmail({ groups: o.groups, frequency: o.sub.frequency, accountUrl: absoluteUrl(`/account?t=${c.manage_token}`), unsubscribeUrl }),
+          headers: { "List-Unsubscribe": `<${oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+        };
+      });
+      // Resend takes one idempotency key per batch: built from each message's
+      // key alert:{subscriberId}:{run start}, so a retry within this run can't send twice.
+      const res = await sendBatch(msgs, () => batchKey("alerts", chunk.map((o) => `alert:${o.sub.id}:${now.toISOString()}`)));
       sent += res.sent;
       failed += res.failed;
       errors.push(...res.errors);
@@ -180,17 +204,7 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
         });
       }
       if (groups.length === 0) { empty++; continue; }
-      const accountUrl = absoluteUrl(`/account?t=${sub.manage_token}`);
-      const unsubscribeUrl = absoluteUrl(`/alerts/unsubscribe?token=${sub.unsubscribe_token}`);
-      const oneClick = absoluteUrl(`/api/unsubscribe?token=${sub.unsubscribe_token}`);
-      outbox.push({
-        sub,
-        msg: {
-          to: sub.email,
-          ...alertEmail({ groups, frequency: sub.frequency, accountUrl, unsubscribeUrl }),
-          headers: { "List-Unsubscribe": `<${oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
-        },
-      });
+      outbox.push({ sub, groups });
       if (outbox.length >= 100) await flush();
     }
     await flush();

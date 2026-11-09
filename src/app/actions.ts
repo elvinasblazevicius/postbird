@@ -4,7 +4,8 @@ import { headers } from "next/headers";
 import siteConfig from "@site-config";
 import { cleanCampaign, recordEvent, visitorFromHeaders } from "@/lib/analytics";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
-import { confirmSubscriber, signup, unsubscribe, type SignupKind } from "@/lib/subscribers";
+import { planRenewal } from "@/lib/billing/notices";
+import { confirmSubscriber, findByUnsubscribeToken, signup, unsubscribe, type SignupKind } from "@/lib/subscribers";
 
 export type FormState = { status: "idle" | "success" | "error"; message: string };
 
@@ -68,6 +69,8 @@ export async function confirmAction(_prev: FormState, form: FormData): Promise<F
   const t = String(form.get("token") ?? "");
   const res = await confirmSubscriber(t);
   if (!res.ok) return { status: "error", message: "This link has already been used or has expired. If you meant to sign up, please do so again." };
+  // A plan started at checkout with an address that was already on our list (see applySubscription).
+  if (res.paidPlan) return { status: "success", message: "Confirmed. Your alerts start with the next daily run, and we'll email you the link to your account page." };
   if (res.alerts) return { status: "success", message: "Confirmed. Your first email arrives with the next weekly round-up." };
   return { status: "success", message: `Confirmed: you're on the early-access list. ${earlyAccess()}` };
 }
@@ -86,5 +89,11 @@ export async function planChoiceAction(choice: string, source: string): Promise<
 export async function unsubscribeAction(_prev: FormState, form: FormData): Promise<FormState> {
   const t = String(form.get("token") ?? "");
   await unsubscribe(t);
+  // Unsubscribing stops emails, not a paid plan: say so when the plan will still charge.
+  const sub = await findByUnsubscribeToken(t);
+  const renewal = sub ? planRenewal(sub) : null;
+  if (renewal?.chargesAhead) {
+    return { status: "success", message: `You're unsubscribed from alerts. ${renewal.sentence} To stop payments, use “Cancel my plan” above.` };
+  }
   return { status: "success", message: "You're unsubscribed. We won't email you again." };
 }

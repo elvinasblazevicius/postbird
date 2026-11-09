@@ -34,8 +34,10 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
   return {
     title: f.page && !filtered ? `${title} — page ${f.page}` : title,
     description: "Search open vacancies from UN agencies and international organizations. Filter by organization, country, category, remote work and deadline.",
-    // Filtered views are useful to share but would duplicate landing pages in search engines.
-    alternates: { canonical: filtered ? "/jobs" : f.page ? `/jobs?page=${f.page}` : "/jobs" },
+    // Filtered views are useful to share but would duplicate landing pages in search engines,
+    // so they are noindex and have no canonical (a canonical pointing elsewhere would
+    // contradict the noindex). Unfiltered pages point to themselves.
+    alternates: filtered ? undefined : { canonical: f.page ? `/jobs?page=${f.page}` : "/jobs" },
     robots: filtered ? { index: false, follow: true } : undefined,
   };
 }

@@ -1,4 +1,5 @@
 /** The subscriber's account page (/account?t=<manage_token>): lookups and the "email me my link" message. */
+import { createHash, randomBytes } from "node:crypto";
 import { sql } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { accountLinkEmail } from "@/lib/email-templates";
@@ -38,10 +39,19 @@ export async function findByManageToken(t: unknown): Promise<Account | null> {
 
 export const accountUrl = (manageToken: string) => absoluteUrl(`/account?t=${manageToken}`);
 
-/** Emails the account link to the address (only ever to the address itself). Returns false if sending failed. */
+/** A new account token: 64 hex characters, like the database default (see isManageToken). */
+const newManageToken = () => randomBytes(32).toString("hex");
+
+/**
+ * Emails the account link to the address (only ever to the address itself).
+ * The link is replaced by a new one first, so links from older emails (or a
+ * forwarded one) stop working. Emails sent later (alerts, reminders) read the
+ * current link when they are sent. Returns false if sending failed.
+ */
 export async function sendAccountLink(email: string): Promise<boolean> {
-  const [row] = await sql<{ manage_token: string; unsubscribe_token: string }[]>`
-    select manage_token, unsubscribe_token from subscribers where email = ${email}`;
+  const [row] = await sql<{ id: number; manage_token: string; unsubscribe_token: string }[]>`
+    update subscribers set manage_token = ${newManageToken()} where email = ${email}
+    returning id::int as id, manage_token, unsubscribe_token`;
   if (!row) {
     console.info("account link: no subscriber with that address"); // the address itself is never logged
     return true; // nothing to send; callers reply the same either way
@@ -51,6 +61,8 @@ export async function sendAccountLink(email: string): Promise<boolean> {
     to: email,
     ...accountLinkEmail({ accountUrl: accountUrl(row.manage_token), unsubscribeUrl: absoluteUrl(`/alerts/unsubscribe?token=${row.unsubscribe_token}`) }),
     headers: { "List-Unsubscribe": `<${oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+    // One key per new link (a hash, so the token itself never leaves in the key).
+    idempotencyKey: `account-link:${row.id}:${createHash("sha256").update(row.manage_token).digest("hex").slice(0, 16)}`,
   });
   return res.ok || Boolean(res.skipped);
 }

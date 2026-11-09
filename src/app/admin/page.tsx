@@ -20,7 +20,8 @@ export default async function AdminHome({ searchParams }: Props) {
   const daysRaw = Number(sp.days);
   const days = [7, 30, 90].includes(daysRaw) ? daysRaw : 30;
 
-  const [[jobs], [subs], lastRuns, [feeds], [ev], daily, topCats, topOrgs, topSearches, topJobs, referrers] = await Promise.all([
+  // Two batches of at most 6 queries: the connection pool has 6 connections (see src/lib/db.ts).
+  const [[jobs], [subs], lastRuns, [feeds], [ev], daily] = await Promise.all([
     sql<{ active: number; closed: number; removed: number; new7: number; demo: number }[]>`
       select count(*) filter (where status = 'active')::int as active,
              count(*) filter (where status in ('expired', 'archived'))::int as closed,
@@ -59,6 +60,8 @@ export default async function AdminHome({ searchParams }: Props) {
              (select count(*)::int from events e where e.type = 'apply_click' and e.created_at >= d and e.created_at < d + interval '1 day') as apply
       from generate_series(date_trunc('day', now()) - make_interval(days => ${days - 1}), date_trunc('day', now()), interval '1 day') d
       order by d`,
+  ]);
+  const [topCats, topOrgs, topSearches, topJobs, referrers] = await Promise.all([
     sql<{ category: string; views: number; applies: number }[]>`
       select j.category, count(*) filter (where e.type = 'job_view')::int as views, count(*) filter (where e.type = 'apply_click')::int as applies
       from events e join jobs j on j.id = e.job_id
@@ -83,8 +86,9 @@ export default async function AdminHome({ searchParams }: Props) {
       group by referrer order by visitors desc limit 10`,
   ]);
 
-  const [campaigns, [ct], [adConfirmed], planChoices, [bill], [adTrials]] = await Promise.all([
-    campaignStats(days),
+  // campaignStats runs two queries itself, so it goes first (at most 6 queries at once).
+  const campaigns = await campaignStats(days);
+  const [[ct], [adConfirmed], planChoices, [bill], [adTrials]] = await Promise.all([
     // Concept test: each paid-ad visitor (Microsoft click id, or utm_medium=cpc) counted once,
     // "converted" if that same visitor later joined early access the same day (the visitor code changes daily).
     sql<{ visitors: number; converted: number }[]>`

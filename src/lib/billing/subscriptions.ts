@@ -8,12 +8,16 @@
  *  2. Paddle creates the subscription and sends webhooks; handlePaddleEvent()
  *     finds the subscriber through that reference (Paddle copies a checkout's
  *     customData onto the subscription) and mirrors the subscription's status.
+ *  3. Only an address created by that checkout counts as confirmed by paying
+ *     (the payer typed it). An address that already existed keeps its email
+ *     status (pending or unsubscribed) until its owner clicks the link we
+ *     email to it, because anyone can type anyone's address at checkout.
  */
 import { randomBytes } from "node:crypto";
 import { recordEvent } from "@/lib/analytics";
 import { PADDLE_PRICE_MONTHLY, PADDLE_PRICE_QUARTERLY } from "@/lib/billing/live";
 import { getSubscription, isPaddleApiConfigured, type PaddleSubscription } from "@/lib/billing/paddle";
-import { sql } from "@/lib/db";
+import { sql, transaction, type Db, type Tx } from "@/lib/db";
 import { addSavedSearch } from "@/lib/saved-searches";
 import { normalizeEmail } from "@/lib/subscribers";
 
@@ -40,7 +44,8 @@ export type StartCheckoutResult =
  * confirmation email: paying through Paddle confirms it) and its first saved
  * search. An existing address is NOT changed here, because anyone can type
  * any address: its search waits in paddle_checkouts until Paddle reports a
- * subscription for this reference.
+ * subscription for this reference, and even then its email status only
+ * changes once the owner confirms (see applySubscription).
  */
 export async function startCheckout(opts: {
   email: string;
@@ -137,20 +142,38 @@ export function billingFromSubscription(
   };
 }
 
-/** What a status change means for emails and analytics. Pure, so it is unit-tested. */
-export function transitionEffects(prev: { subscriptionId: string | null; status: BillingStatus; welcomeSent: boolean }, next: { subscriptionId: string; status: BillingStatus }) {
+/**
+ * What a status change means for emails and analytics. Pure, so it is unit-tested.
+ * next.confirmed: the address is confirmed after this change (only confirmed
+ * addresses get the welcome email; the others get a confirmation link first).
+ */
+export function transitionEffects(
+  prev: { subscriptionId: string | null; status: BillingStatus; welcomeSent: boolean },
+  next: { subscriptionId: string; status: BillingStatus; confirmed: boolean },
+) {
   const sameSub = prev.subscriptionId === next.subscriptionId;
   return {
     /** A new subscription in trial (re-sent snapshots of the same trial don't count twice). */
     trialStarted: next.status === "trialing" && !(sameSub && prev.status === "trialing"),
     canceled: next.status === "canceled" && !(sameSub && prev.status === "canceled"),
-    /** The welcome email with the account link goes out once, when alerts first start. */
-    sendWelcome: ALERT_STATUSES.includes(next.status) && !prev.welcomeSent,
+    /** The welcome email with the account link goes out once, when alerts first start at a confirmed address. */
+    sendWelcome: ALERT_STATUSES.includes(next.status) && next.confirmed && !prev.welcomeSent,
+    /** A running subscription newly linked to an address that isn't confirmed: ask its owner to confirm. */
+    askConfirm: LIVE_STATUSES.includes(next.status) && !sameSub && !next.confirmed,
   };
 }
 
-export type WelcomeInfo = { email: string; manageToken: string; unsubscribeToken: string; trialEndsAt: string | null; planInterval: PlanInterval | null };
-export type HandleResult = { outcome: "duplicate" | "ignored" | "unmatched" | "applied" | "stale"; welcome?: WelcomeInfo };
+export type WelcomeInfo = { subscriberId: number; email: string; manageToken: string; unsubscribeToken: string; trialEndsAt: string | null; planInterval: PlanInterval | null };
+export type ConfirmInfo = { subscriberId: number; email: string; confirmToken: string; subscriptionId: string };
+export type HandleResult = {
+  outcome: "duplicate" | "ignored" | "unmatched" | "applied" | "stale";
+  welcome?: WelcomeInfo;
+  /** An existing address got a subscription it hasn't confirmed: email it a confirmation link. */
+  confirm?: ConfirmInfo;
+};
+
+/** Analytics recorded after the transaction commits. */
+type Effects = { trialStarted: boolean; canceled: boolean; visitor: string | null; props: Record<string, unknown> };
 
 const SUBSCRIPTION_EVENTS = new Set([
   "subscription.created", "subscription.updated", "subscription.activated", "subscription.trialing",
@@ -158,26 +181,46 @@ const SUBSCRIPTION_EVENTS = new Set([
 ]);
 
 /**
- * Applies one verified webhook event. Each event_id is processed once: it is
- * recorded first, and the record is removed again if processing fails, so
- * Paddle's retry can run it.
+ * Applies one verified webhook event, once per event_id.
+ *
+ * The event_id record and the subscriber change are written in ONE
+ * transaction: they commit together or not at all. If the function is killed
+ * half-way, Postgres rolls both back and Paddle's retry applies the event
+ * again. A second delivery arriving while the first is still running waits
+ * for it (the event_id is the primary key) and is then seen as a duplicate.
+ * Emails and analytics happen only after the commit.
  */
 export async function handlePaddleEvent(event: PaddleEvent): Promise<HandleResult> {
   if (!event?.event_id || typeof event.event_type !== "string") return { outcome: "ignored" };
-  const relevant = SUBSCRIPTION_EVENTS.has(event.event_type) || event.event_type === "transaction.completed";
+  const eventId = event.event_id.slice(0, 100);
   const occurredAt = isoOrNull(event.occurred_at) ?? new Date().toISOString();
-  const fresh = await sql`
-    insert into paddle_events (event_id, event_type, occurred_at) values (${event.event_id.slice(0, 100)}, ${event.event_type.slice(0, 60)}, ${occurredAt})
-    on conflict (event_id) do nothing returning event_id`;
-  if (fresh.length === 0) return { outcome: "duplicate" };
-  if (!relevant) return { outcome: "ignored" };
-  try {
-    if (event.event_type === "transaction.completed") return await applyTransaction(event.data, occurredAt);
-    return await applySubscription(event.data as unknown as PaddleSubscription, occurredAt);
-  } catch (e) {
-    await sql`delete from paddle_events where event_id = ${event.event_id.slice(0, 100)}`.catch(() => {});
-    throw e;
+
+  // The subscription snapshot to apply, if any. Fetching it from Paddle's API
+  // (transaction.completed only) happens before the transaction, so no
+  // transaction stays open while waiting for Paddle.
+  let sub: PaddleSubscription | null = null;
+  if (SUBSCRIPTION_EVENTS.has(event.event_type)) {
+    sub = event.data as unknown as PaddleSubscription;
+  } else if (event.event_type === "transaction.completed") {
+    const [seen] = await sql`select 1 from paddle_events where event_id = ${eventId}`;
+    if (seen) return { outcome: "duplicate" };
+    sub = await subscriptionForTransaction(event.data);
   }
+
+  const res = await transaction(async (tx): Promise<{ result: HandleResult; effects?: Effects }> => {
+    const fresh = await tx`
+      insert into paddle_events (event_id, event_type, occurred_at) values (${eventId}, ${event.event_type.slice(0, 60)}, ${occurredAt})
+      on conflict (event_id) do nothing returning event_id`;
+    if (fresh.length === 0) return { result: { outcome: "duplicate" } };
+    if (!sub) return { result: { outcome: "ignored" } };
+    return applySubscription(tx, sub, occurredAt);
+  });
+
+  // Committed. Analytics failures are only logged: the event is applied.
+  const fx = res.effects;
+  if (fx?.trialStarted) await recordEvent({ type: "trial_started", visitor: fx.visitor, props: fx.props });
+  if (fx?.canceled) await recordEvent({ type: "subscription_canceled", props: fx.props });
+  return res.result;
 }
 
 function isoOrNull(v: unknown): string | null {
@@ -193,59 +236,65 @@ function refOf(customData: unknown): string | null {
  * transaction.completed: the subscription events normally carry everything.
  * This only matters when no subscription event has linked the subscription
  * yet; then the subscription is fetched from the API (if a key is set).
+ * Returns null when there is nothing to apply.
  */
-async function applyTransaction(data: Record<string, unknown>, occurredAt: string): Promise<HandleResult> {
-  const subId = typeof data.subscription_id === "string" ? data.subscription_id : null;
-  if (!subId) return { outcome: "ignored" };
+async function subscriptionForTransaction(data: Record<string, unknown>): Promise<PaddleSubscription | null> {
+  const subId = typeof data?.subscription_id === "string" ? data.subscription_id : null;
+  if (!subId) return null;
   const [known] = await sql`select 1 from subscribers where paddle_subscription_id = ${subId}`;
-  if (known || !isPaddleApiConfigured()) return { outcome: "ignored" };
+  if (known || !isPaddleApiConfigured()) return null;
   const sub = await getSubscription(subId);
   // The fetched snapshot is current, so it may stand in for any event up to now.
-  return applySubscription({ ...sub, custom_data: sub.custom_data ?? (data.custom_data as Record<string, unknown> | null) }, occurredAt);
+  return { ...sub, custom_data: sub.custom_data ?? (data.custom_data as Record<string, unknown> | null) };
 }
 
-async function findSubscriber(sub: PaddleSubscription) {
+async function findSubscriber(db: Db, sub: PaddleSubscription) {
   const ref = refOf(sub.custom_data);
   if (ref) {
-    const [c] = await sql<{ subscriber_id: number; plan: CheckoutPlan; search: string | null; visitor: string | null }[]>`
-      select subscriber_id::int as subscriber_id, plan, search, visitor from paddle_checkouts where ref = ${ref}`;
+    const [c] = await db<{ subscriber_id: number; plan: CheckoutPlan; search: string | null; visitor: string | null; new_subscriber: boolean }[]>`
+      select subscriber_id::int as subscriber_id, plan, search, visitor, new_subscriber from paddle_checkouts where ref = ${ref}`;
     if (c) return { subscriberId: c.subscriber_id, checkout: { ref, ...c } };
   }
-  const [bySub] = await sql<{ id: number }[]>`select id::int as id from subscribers where paddle_subscription_id = ${sub.id}`;
+  const [bySub] = await db<{ id: number }[]>`select id::int as id from subscribers where paddle_subscription_id = ${sub.id}`;
   if (bySub) return { subscriberId: bySub.id, checkout: null };
   if (typeof sub.customer_id === "string" && sub.customer_id) {
-    const [byCustomer] = await sql<{ id: number }[]>`
+    const [byCustomer] = await db<{ id: number }[]>`
       select id::int as id from subscribers where paddle_customer_id = ${sub.customer_id} order by id desc limit 1`;
     if (byCustomer) return { subscriberId: byCustomer.id, checkout: null };
   }
   return null;
 }
 
-async function applySubscription(sub: PaddleSubscription, occurredAt: string): Promise<HandleResult> {
-  if (typeof sub?.id !== "string" || !/^sub_[a-z\d]{26}$/.test(sub.id)) return { outcome: "ignored" };
-  const target = await findSubscriber(sub);
+async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: string): Promise<{ result: HandleResult; effects?: Effects }> {
+  if (typeof sub?.id !== "string" || !/^sub_[a-z\d]{26}$/.test(sub.id)) return { result: { outcome: "ignored" } };
+  const target = await findSubscriber(tx, sub);
   if (!target) {
     // E.g. a simulated event, or a subscription created outside this site.
     console.warn(`paddle webhook: no subscriber for ${sub.id}`);
-    return { outcome: "unmatched" };
+    return { result: { outcome: "unmatched" } };
   }
   const b = billingFromSubscription(sub);
-  if (b.status === "none") return { outcome: "ignored" };
+  if (b.status === "none") return { result: { outcome: "ignored" } };
   const live = LIVE_STATUSES.includes(b.status);
   const alerts = ALERT_STATUSES.includes(b.status);
   const fallbackInterval: PlanInterval | null = target.checkout ? (target.checkout.plan === "quarterly" ? "quarter" : "month") : null;
+  // Paying confirms the address only when this checkout created it (the payer typed a new address).
+  const paymentConfirms = live && Boolean(target.checkout?.new_subscriber);
 
   // One statement: lock the row, keep its previous values, apply the change.
   // Skipped when the event is older than the last one applied for this
   // subscription, or when it would overwrite a different subscription that
   // is still running with a canceled one.
-  const [row] = await sql<{
+  const [row] = await tx<{
     prev_sub: string | null; prev_status: BillingStatus; prev_welcome: boolean;
-    email: string; manage_token: string; unsubscribe_token: string; attribution: Record<string, string> | null;
-    trial_ends_at: Date | null; plan_interval: PlanInterval | null;
+    email: string; status: string; manage_token: string; unsubscribe_token: string; confirm_token: string | null;
+    attribution: Record<string, string> | null; trial_ends_at: Date | null; plan_interval: PlanInterval | null;
   }[]>`
     with prev as (
-      select id, paddle_subscription_id, billing_status, welcome_sent_at is not null as welcome
+      select id, paddle_subscription_id, billing_status, welcome_sent_at is not null as welcome,
+             -- A running subscription this row didn't have before.
+             (${live}::boolean and paddle_subscription_id is distinct from ${sub.id}) as live_link,
+             case when ${paymentConfirms}::boolean and paddle_subscription_id is distinct from ${sub.id} then 'confirmed' else status end as next_status
       from subscribers where id = ${target.subscriberId} for update
     )
     update subscribers s set
@@ -259,44 +308,58 @@ async function applySubscription(sub: PaddleSubscription, occurredAt: string): P
       canceled_at = ${b.canceledAt},
       cancel_at = ${b.cancelAt},
       billing_event_at = ${occurredAt},
-      -- A newly linked, running subscription confirms the address (the person paid with it at checkout).
-      status = case when ${live} and s.paddle_subscription_id is distinct from ${sub.id} then 'confirmed' else s.status end,
-      confirmed_at = case when ${live} and s.paddle_subscription_id is distinct from ${sub.id} then coalesce(s.confirmed_at, now()) else s.confirmed_at end,
-      unsubscribed_at = case when ${live} and s.paddle_subscription_id is distinct from ${sub.id} then null else s.unsubscribed_at end,
-      confirm_token = case when ${live} and s.paddle_subscription_id is distinct from ${sub.id} then null else s.confirm_token end,
+      -- A new address paid for by this checkout is confirmed (the payer typed it).
+      -- An existing address keeps its status; a newly linked running subscription
+      -- gets a confirmation link instead (sent after the commit).
+      status = prev.next_status,
+      confirmed_at = case when prev.next_status = 'confirmed' then coalesce(s.confirmed_at, now()) else s.confirmed_at end,
+      unsubscribed_at = case when prev.next_status = 'confirmed' then null else s.unsubscribed_at end,
+      confirm_token = case when prev.next_status = 'confirmed' then null
+                           when prev.live_link then coalesce(s.confirm_token, ${newToken()})
+                           else s.confirm_token end,
+      confirm_sent_at = case when prev.live_link and prev.next_status <> 'confirmed' then now() else s.confirm_sent_at end,
       wants_alerts = case when ${live} then true else s.wants_alerts end,
-      welcome_sent_at = case when ${alerts} then coalesce(s.welcome_sent_at, now()) else s.welcome_sent_at end
+      -- Claimed here, sent after the commit; reset if sending fails (welcomeNotSent).
+      welcome_sent_at = case when ${alerts} and prev.next_status = 'confirmed' then coalesce(s.welcome_sent_at, now()) else s.welcome_sent_at end
     from prev
     where s.id = prev.id
       and (prev.paddle_subscription_id is distinct from ${sub.id} or s.billing_event_at is null or s.billing_event_at <= ${occurredAt})
       and (prev.paddle_subscription_id is null or prev.paddle_subscription_id = ${sub.id} or ${live}
            or prev.billing_status not in ('trialing', 'active', 'past_due', 'paused'))
     returning prev.paddle_subscription_id as prev_sub, prev.billing_status as prev_status, prev.welcome as prev_welcome,
-              s.email, s.manage_token, s.unsubscribe_token, s.attribution, s.trial_ends_at, s.plan_interval`;
-  if (!row) return { outcome: "stale" };
+              s.email, s.status, s.manage_token, s.unsubscribe_token, s.confirm_token, s.attribution, s.trial_ends_at, s.plan_interval`;
+  if (!row) return { result: { outcome: "stale" } };
 
   if (target.checkout) {
-    await sql`update paddle_checkouts set subscription_id = ${sub.id} where ref = ${target.checkout.ref}`;
+    await tx`update paddle_checkouts set subscription_id = ${sub.id} where ref = ${target.checkout.ref}`;
     // The search picked at checkout (already saved for brand-new subscribers).
+    // In a savepoint: a failure here (e.g. the 5-search limit) must not undo the event.
     if (live && row.prev_sub !== sub.id) {
-      await addSavedSearch(target.subscriberId, target.checkout.search ?? "").catch((e) => console.warn("paddle webhook: saved search not added", (e as Error).message));
+      const search = target.checkout.search ?? "";
+      await tx.savepoint((sp) => addSavedSearch(target.subscriberId, search, sp))
+        .catch((e: Error) => console.warn("paddle webhook: saved search not added", (e as Error).message));
     }
   }
 
-  const fx = transitionEffects({ subscriptionId: row.prev_sub, status: row.prev_status, welcomeSent: row.prev_welcome }, { subscriptionId: sub.id, status: b.status });
+  const confirmed = row.status === "confirmed";
+  const fx = transitionEffects({ subscriptionId: row.prev_sub, status: row.prev_status, welcomeSent: row.prev_welcome }, { subscriptionId: sub.id, status: b.status, confirmed });
   const props = { plan: row.plan_interval, ...(row.attribution ? { campaign: row.attribution } : {}) };
-  if (fx.trialStarted) await recordEvent({ type: "trial_started", visitor: target.checkout?.visitor ?? null, props });
-  if (fx.canceled) await recordEvent({ type: "subscription_canceled", props });
 
   return {
-    outcome: "applied",
-    welcome: fx.sendWelcome
-      ? { email: row.email, manageToken: row.manage_token, unsubscribeToken: row.unsubscribe_token, trialEndsAt: row.trial_ends_at ? new Date(row.trial_ends_at).toISOString() : null, planInterval: row.plan_interval }
-      : undefined,
+    result: {
+      outcome: "applied",
+      welcome: fx.sendWelcome
+        ? { subscriberId: target.subscriberId, email: row.email, manageToken: row.manage_token, unsubscribeToken: row.unsubscribe_token, trialEndsAt: row.trial_ends_at ? new Date(row.trial_ends_at).toISOString() : null, planInterval: row.plan_interval }
+        : undefined,
+      confirm: fx.askConfirm && row.confirm_token
+        ? { subscriberId: target.subscriberId, email: row.email, confirmToken: row.confirm_token, subscriptionId: sub.id }
+        : undefined,
+    },
+    effects: { trialStarted: fx.trialStarted, canceled: fx.canceled, visitor: target.checkout?.visitor ?? null, props },
   };
 }
 
-/** Called when sending the welcome email failed, so a later event can try again. */
-export async function welcomeNotSent(email: string): Promise<void> {
-  await sql`update subscribers set welcome_sent_at = null where email = ${email}`;
+/** Called when sending the welcome email failed, so the daily job (or a later event) can try again. */
+export async function welcomeNotSent(subscriberId: number): Promise<void> {
+  await sql`update subscribers set welcome_sent_at = null where id = ${subscriberId}`;
 }

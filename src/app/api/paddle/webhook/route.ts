@@ -1,10 +1,7 @@
 import { after } from "next/server";
 import { verifyPaddleSignature } from "@/lib/billing/paddle";
+import { confirmationNotSent, sendPaidConfirmation, sendWelcomeEmail } from "@/lib/billing/notices";
 import { handlePaddleEvent, welcomeNotSent, type PaddleEvent } from "@/lib/billing/subscriptions";
-import { sendEmail } from "@/lib/email";
-import { welcomeEmail } from "@/lib/email-templates";
-import { planDescription } from "@/lib/early-access-copy";
-import { absoluteUrl } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +13,11 @@ const reply = (status: number, body = "") => new Response(body, { status, header
 /**
  * Paddle Billing webhook (notification destination URL /api/paddle/webhook).
  * Verifies the Paddle-Signature header on the raw body, then records the
- * event once (by event_id) and mirrors the subscription onto the subscriber.
+ * event once (by event_id) and mirrors the subscription onto the subscriber,
+ * both in one transaction (see handlePaddleEvent).
  * Answers within Paddle's 5-second limit: the database work is a few small
- * queries, and the welcome email is sent after the response.
+ * queries, and emails (welcome, or a confirmation link for an address the
+ * checkout didn't create) are sent after the response.
  * Status codes: 200 handled or ignored, 401 bad signature, 400 unreadable
  * body, 500 processing failed (Paddle retries).
  */
@@ -46,17 +45,21 @@ export async function POST(req: Request) {
     if (res.welcome) {
       const w = res.welcome;
       after(async () => {
-        const accountUrl = absoluteUrl(`/account?t=${w.manageToken}`);
-        const unsubscribeUrl = absoluteUrl(`/alerts/unsubscribe?token=${w.unsubscribeToken}`);
-        const oneClick = absoluteUrl(`/api/unsubscribe?token=${w.unsubscribeToken}`);
-        const sent = await sendEmail({
-          to: w.email,
-          ...welcomeEmail({ accountUrl, unsubscribeUrl, trialEndsAt: w.trialEndsAt, plan: planDescription(w.planInterval) }),
-          headers: { "List-Unsubscribe": `<${oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
-        });
+        const sent = await sendWelcomeEmail(w);
         if (!sent.ok && !sent.skipped) {
+          // The daily job sends it again (welcome_sent_at is null again).
           console.warn("paddle webhook: welcome email not sent", sent.error);
-          await welcomeNotSent(w.email).catch(() => {});
+          await welcomeNotSent(w.subscriberId).catch(() => {});
+        }
+      });
+    }
+    if (res.confirm) {
+      const c = res.confirm;
+      after(async () => {
+        const sent = await sendPaidConfirmation(c);
+        if (!sent.ok && !sent.skipped) {
+          console.warn("paddle webhook: confirmation email not sent", sent.error);
+          await confirmationNotSent(c.subscriberId).catch(() => {});
         }
       });
     }
