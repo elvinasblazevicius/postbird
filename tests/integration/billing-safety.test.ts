@@ -19,6 +19,10 @@ vi.mock("next/server", async (importOriginal) => ({
   after: (task: () => unknown) => { afterTasks.push(Promise.resolve().then(task)); },
 }));
 const settle = async () => { await Promise.all(afterTasks.splice(0)); };
+// The admin's "Mark dealt with" action, called directly: signed in, no redirect or cache to refresh.
+vi.mock("@/app/admin/guard", () => ({ requireAdmin: async () => {} }));
+vi.mock("next/navigation", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/navigation")>()), redirect: () => {} }));
+vi.mock("next/cache", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/cache")>()), revalidatePath: () => {} }));
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const WEBHOOK_SECRET = "pdl_ntfset_test_secret_0123456789";
@@ -672,6 +676,50 @@ describe.skipIf(!TEST_DB)("billing safety (database)", () => {
       paddleCalls.length = 0;
       expect(await billing.runBillingSafety()).toMatchObject({ cancelRetries: { canceled: 0, failed: 0 } });
       expect(paddleCalls).toEqual([]);
+    });
+
+    it("a cancel marked dealt with is still retried until Paddle confirms it, and can't be marked dealt with while pending", async () => {
+      const blocked = "sub_01hv8x29kz0t586xy6zn1a7v11", dup = "sub_01hv8x29kz0t586xy6zn1a7v12", unconf = "sub_01hv8x29kz0t586xy6zn1a7v13";
+      const [r] = await sql`
+        insert into subscribers (email, status, confirm_token, billing_status, plan, plan_interval, paddle_subscription_id, trial_ends_at, unsubscribe_token)
+        values ('resolved-unconfirmed@example.org', 'pending', ${"confirm-resolved-unconfirmed".padEnd(24, "x")}, 'active', 'premium', 'month', ${unconf},
+                now() - interval '1 day', ${tok("resolved-unconfirmed@example.org")})
+        returning id::int as id`;
+      // Marked dealt with (before this rule, or by hand in the database) while the cancel hadn't gone through.
+      await sql`
+        insert into billing_flags (subscription_id, kind, subscriber_id, detail, resolved_at) values
+          (${blocked}, 'trial_blocked', null, 'Cancel in Paddle failed (timeout).', now()),
+          (${dup}, 'duplicate_subscription', null, 'Cancel in Paddle failed (timeout).', now()),
+          (${unconf}, 'trial_unconfirmed', ${r.id}, 'Cancel in Paddle failed (timeout).', now())`;
+      expect((await billing.pendingCancels()).map((p) => p.subscription_id).sort()).toEqual([blocked, dup, unconf].sort());
+
+      // The webhook still holds a held-back subscription back and asks for the cancel again.
+      const ref = "held-back-checkout-ref-000001";
+      await sql`insert into paddle_checkouts (ref, subscriber_id, plan) values (${ref}, ${r.id}, 'monthly')`;
+      paddleDown = true;
+      expect(await postEvent(subEvent("subscription.updated", trialing(blocked, "", ref)))).toBe("flagged");
+      await settle();
+      expect(paddleCalls).toContain(`POST /subscriptions/${blocked}/cancel`);
+
+      // The admin can't mark a pending cancel dealt with.
+      const { resolveBillingFlagAction } = await import("@/app/admin/actions");
+      await sql`update billing_flags set resolved_at = null where subscription_id = ${dup}`;
+      const form = new FormData();
+      form.set("subscription_id", dup);
+      form.set("kind", "duplicate_subscription");
+      await resolveBillingFlagAction(form);
+      expect((await sql`select resolved_at from billing_flags where subscription_id = ${dup}`)[0].resolved_at).toBeNull();
+
+      // The daily job retries all three; once done, they're no longer pending and can be marked dealt with.
+      paddleDown = false;
+      paddleCalls.length = 0;
+      expect(await billing.runBillingSafety()).toMatchObject({ cancelRetries: { canceled: 3, failed: 0 } });
+      expect(paddleCalls.sort()).toEqual([blocked, dup, unconf].map((id) => `POST /subscriptions/${id}/cancel`).sort());
+      expect(await billing.pendingCancels({ only: [blocked, dup, unconf] })).toEqual([]);
+      await resolveBillingFlagAction(form);
+      expect((await sql`select resolved_at from billing_flags where subscription_id = ${dup}`)[0].resolved_at).not.toBeNull();
+      await sql`delete from billing_flags where subscription_id in (${blocked}, ${dup}, ${unconf})`;
+      await sql`delete from subscribers where id = ${r.id}`;
     });
 
     it("re-checks Paddle customers that couldn't be checked: a match is linked, a mismatch is flagged", async () => {

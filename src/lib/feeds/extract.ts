@@ -8,7 +8,7 @@ import { CATEGORIES, OTHER_CATEGORY } from "@/config/categories";
 import { COUNTRIES, countryByCode } from "@/config/countries";
 import { DUTY_STATIONS } from "@/config/cities";
 import { KNOWN_ORGS, type KnownOrg } from "@/config/organizations";
-import { LANGUAGES } from "@/config/regions";
+import { LANGUAGE_ALIASES, LANGUAGES } from "@/config/regions";
 import { IMPORT_SETTINGS } from "@/config/import";
 import { escapeRegExp, excerpt, htmlToText, normalizeForCompare, oneLine, sanitizeDescriptionMax, slugify } from "@/lib/text";
 import { extractDeadline, parseFeedDate } from "./dates";
@@ -229,14 +229,19 @@ export function detectCategory(title: string): string {
   return OTHER_CATEGORY.slug;
 }
 
-const LANGUAGE_NAMES: readonly string[] = LANGUAGES;
+/** Each language with every name it is written with (LANGUAGE_ALIASES: "Farsi" is Persian). */
+const LANGUAGE_NAMES: readonly { lang: string; names: string[] }[] = LANGUAGES.map((lang) => ({
+  lang,
+  names: [lang, ...Object.entries(LANGUAGE_ALIASES).filter(([, l]) => l === lang).map(([alias]) => alias)],
+}));
+const ALL_LANGUAGE_NAMES = LANGUAGE_NAMES.flatMap((l) => l.names);
 /**
  * What may follow a language name when it names something else: a place ("French Polynesia",
  * "Czech Republic"), an organization or government ("Danish Refugee Council", "German Agency for
  * International Cooperation", "Swedish Embassy"), people ("Polish nationals"), or a place where a
  * language is spoken ("Spanish-speaking countries").
  */
-const NOT_A_LANGUAGE_AFTER = "(?! Polynesia| Guiana| Southern| Republic| Refugee| Red Cross| Church| Government| Ministry| Embassy| Agency| Council| Institute| International| Development| Relief| Humanitarian| Aid\\b| Cooperation| Presidency| authorities| nationals?\\b| citizens?\\b| nationality|-language|[- ]speaking (?:countr|region|area|world|communit|populat|context|environment|africa|west|east|central|north|south|nation|state|people))";
+const NOT_A_LANGUAGE_AFTER = "(?! Polynesia| Guiana| Southern| Republic| Refugee| Red Cross| Red Crescent| Church| Government| Ministry| Embassy| Agency| Council| Institute| International| Development| Relief| Humanitarian| Aid\\b| Cooperation| Presidency| authorities| nationals?\\b| citizens?\\b| nationality| National\\b| Region| regional| State\\b| communit| population| people| Cypriot| lira| Gulf| encephalitis| Army| Armed| Forces| Police|-language|[- ]speaking (?:countr|region|area|world|communit|populat|context|environment|africa|west|east|central|north|south|nation|state|people))";
 /** Languages named as alternatives: "one of the following: French, Spanish", "either French or Spanish". */
 const ANY_OF_MARK = /\b(?:(?:one|any) of the following|(?:one|any) of|either)\b/gi;
 const LANG_CONTEXT = /\b(fluen\w*|proficien\w*|knowledge of|command of|written and (?:oral|spoken)|spoken and written|oral and written|bilingual|mother tongue|native speaker|language (?:skills?|requirements?|proficiency)|required|essential|mandatory|obligatory|must\s+(?:be\s+able\s+to\s+)?(?:speak|read|write|understand|communicate|be fluent|be proficient|have)|speak|speaks|speaking|spoken|desirable|an asset|advantage|preferred)\b|\blanguages?\s*[:：]/i;
@@ -257,7 +262,7 @@ export type LanguageRequirements = { required: string[] | null; desirable: strin
 
 /** "French or Spanish", "English, French and/or Spanish": languages joined by "or" (English included, so "English or French" counts). */
 const OR_CHAIN = (() => {
-  const lang = `(?:English|${LANGUAGES.join("|")})`;
+  const lang = `(?:English|${ALL_LANGUAGE_NAMES.join("|")})`;
   return new RegExp(`\\b${lang}(?:\\s*,\\s*${lang})*\\s*,?\\s+(?:and\\/or|or)\\s+${lang}\\b`, "gi");
 })();
 
@@ -287,9 +292,9 @@ export function detectLanguageRequirements(text: string): LanguageRequirements {
     const anyOfFrom = [...sentence.matchAll(ANY_OF_MARK)].map((m) => m.index ?? 0);
     const orChains = [...sentence.matchAll(OR_CHAIN)].map((m) => [m.index ?? 0, (m.index ?? 0) + m[0].length]);
     const isAlternative = (at: number) => anyOfFrom.some((from) => from < at) || orChains.some(([a, b]) => at >= a && at < b);
-    for (const lang of LANGUAGE_NAMES) {
+    for (const { lang, names } of LANGUAGE_NAMES) {
       // "French" but not "French Polynesia", nor "Spanish-speaking countries" (a place, not a language the job needs)
-      for (const m of sentence.matchAll(new RegExp(`\\b${lang}\\b${NOT_A_LANGUAGE_AFTER}`, "gi"))) {
+      for (const m of sentence.matchAll(new RegExp(`\\b(?:${names.join("|")})\\b${NOT_A_LANGUAGE_AFTER}`, "gi"))) {
         const at = m.index ?? 0;
         const mark = marks.find((k) => k.at > at) ?? [...marks].reverse().find((k) => k.at < at);
         (mark?.desirable || isAlternative(at) ? desirable : required).add(lang);

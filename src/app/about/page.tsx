@@ -52,7 +52,7 @@ export default async function AboutPage() {
           <h2 className="text-2xl font-semibold leading-tight">What we show</h2>
           <p className="mt-3">
             For each vacancy we show the details the source publishes: title, organization, location, dates and, where the source allows it, a summary or the full description.
-            When our source doesn&apos;t give a detail, the listing says &quot;Not in our source&quot; rather than guessing; the employer&apos;s page may still have it. Categories are assigned from the job title.
+            Details a posting doesn&apos;t give are left out, never guessed; the employer&apos;s page may still have them. Categories are assigned from the job title.
           </p>
           <p className="mt-3">
             The same vacancy often appears on several websites. We combine those copies into a single listing that links to the employer&apos;s own website. Listings without a link to the employer aren&apos;t shown.

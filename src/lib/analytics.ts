@@ -55,3 +55,25 @@ export function visitorFromHeaders(h: Headers): string | null {
   if (isBot(ua)) return null;
   return visitorHash(clientIp(h), ua ?? "");
 }
+
+/** How long a Microsoft click id (msclkid) value is kept with the visit counts before it is reduced to "present". */
+export const CLICK_ID_DAYS = 90;
+
+/**
+ * Privacy-policy retention, run by the scheduled clean-up: in events older than CLICK_ID_DAYS,
+ * the Microsoft click id stored with consent (in the page address, msclkid=…, and in the
+ * campaign tags, props.campaign.msclkid) becomes "present", so the visit still counts as an ad
+ * visit but the click can no longer be identified. Returns how many events were changed.
+ */
+export async function reduceOldClickIds(days = CLICK_ID_DAYS): Promise<number> {
+  const rows = await sql`
+    update events set
+      path = case when path ~* '[?&]msclkid=' then regexp_replace(path, '([?&]msclkid=)[^&]*', '\\1present', 'gi') else path end,
+      props = case when props->'campaign'->>'msclkid' is not null and props->'campaign'->>'msclkid' <> 'present'
+                   then jsonb_set(props, '{campaign,msclkid}', '"present"') else props end
+    where created_at < now() - make_interval(days => ${days})
+      and ((path ~* '[?&]msclkid=' and regexp_replace(path, '([?&]msclkid=)[^&]*', '\\1present', 'gi') <> path)
+           or (props->'campaign'->>'msclkid' is not null and props->'campaign'->>'msclkid' <> 'present'))
+    returning 1`;
+  return rows.length;
+}

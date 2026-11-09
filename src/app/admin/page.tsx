@@ -6,6 +6,7 @@ import { isEmailConfigured } from "@/lib/email";
 import { BILLING_LIVE, PADDLE_ENV } from "@/lib/billing/live";
 import { planPriceNumber } from "@/lib/early-access-copy";
 import { checkMarkerKey } from "@/lib/billing/trial-markers";
+import { pendingCancels, type PendingCancel } from "@/lib/billing/subscriptions";
 import { openOpsEvents } from "@/lib/ops-events";
 import { DAILY_JOB_STALE_HOURS, dailyJobFresh, readDailyJob, type DailyJobStatus } from "@/lib/heartbeat";
 import { resolveBillingFlagAction, resolveOpsEventAction, sendTestEmailAction, syncNowAction } from "./actions";
@@ -131,10 +132,15 @@ export default async function AdminHome({ searchParams }: Props) {
         and (props->'campaign' ? 'msclkid' or lower(props->'campaign'->>'utm_medium') in ('cpc', 'ppc', 'paid'))`,
   ]);
   // Subscriptions the webhook held back or couldn't fully check (see db/migrations/010_billing_integrity.sql).
+  // A cancel the daily job still retries shows "Cancel still pending" instead of "Mark dealt with",
+  // and stays listed even if it was marked dealt with before.
+  const pending = await pendingCancels({ limit: 50 }).catch((): PendingCancel[] => []);
+  const pendingKeys = new Set(pending.map((p) => `${p.subscription_id}|${p.kind}`));
   const flags = await sql<{ subscription_id: string; kind: string; customer_id: string | null; detail: string | null; updated_at: Date; email: string | null }[]>`
     select f.subscription_id, f.kind, f.customer_id, f.detail, f.updated_at, s.email
     from billing_flags f left join subscribers s on s.id = f.subscriber_id
-    where f.resolved_at is null order by f.updated_at desc limit 20`.catch(() => []);
+    where f.resolved_at is null or f.subscription_id || '|' || f.kind = any(${[...pendingKeys]}::text[])
+    order by f.updated_at desc limit 20`.catch(() => []);
   // Unexpected errors from the webhook and the scheduled jobs, and whether the scheduled jobs
   // use the same trial-marker secret as this site (see src/lib/billing/trial-markers.ts).
   // The daily job's heartbeat (src/lib/heartbeat.ts): stored at the end of each successful run.
@@ -266,11 +272,15 @@ export default async function AdminHome({ searchParams }: Props) {
                 <td className="px-4 py-2 font-mono text-xs">{f.subscription_id}{f.customer_id ? <><br />{f.customer_id}</> : null}</td>
                 <td className="px-4 py-2">{f.detail}</td>
                 <td className="px-4 py-2">
-                  <form action={resolveBillingFlagAction}>
-                    <input type="hidden" name="subscription_id" value={f.subscription_id} />
-                    <input type="hidden" name="kind" value={f.kind} />
-                    <button className="text-accent hover:underline">Mark dealt with</button>
-                  </form>
+                  {pendingKeys.has(`${f.subscription_id}|${f.kind}`) ? (
+                    <span className="whitespace-nowrap text-slate">Cancel still pending</span>
+                  ) : (
+                    <form action={resolveBillingFlagAction}>
+                      <input type="hidden" name="subscription_id" value={f.subscription_id} />
+                      <input type="hidden" name="kind" value={f.kind} />
+                      <button className="text-accent hover:underline">Mark dealt with</button>
+                    </form>
+                  )}
                 </td>
               </tr>
             ))}

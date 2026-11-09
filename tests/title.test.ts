@@ -4,6 +4,24 @@ import { slugify } from "@/lib/text";
 import { interpretQuery } from "@/lib/search-intent";
 import { applyLinkKind } from "@/lib/apply-link";
 
+describe("cleanTitle: gender tags", () => {
+  test("strips (F/M), (H/F), (M/F), (m/w/d), (f/m/x) and the like, with a separator they leave behind", () => {
+    expect(cleanTitle("Data Analyst (F/M)")).toBe("Data Analyst");
+    expect(cleanTitle("Chargé de projet (H/F)")).toBe("Chargé de projet");
+    expect(cleanTitle("Project Manager (M/F)")).toBe("Project Manager");
+    expect(cleanTitle("Referent (m/w/d) Projektsteuerung")).toBe("Referent Projektsteuerung");
+    expect(cleanTitle("Logistics Coordinator (f/m/x)")).toBe("Logistics Coordinator");
+    expect(cleanTitle("Advisor (w/m/d) - Berlin")).toBe("Advisor – Berlin");
+    expect(cleanTitle("Programme Officer - (m/f/d)")).toBe("Programme Officer");
+    expect(cleanTitle("Programme Officer [M/W/D]")).toBe("Programme Officer");
+    expect(cleanTitle("Programme Officer ( m / w / d )")).toBe("Programme Officer");
+    // Other brackets stay.
+    expect(cleanTitle("Monitoring and Evaluation (M&E) Officer (P)")).toBe("Monitoring and Evaluation (M&E) Officer (P)");
+    expect(cleanTitle("Officer (WASH/Health)")).toBe("Officer (WASH/Health)");
+    expect(cleanTitle("Engineer (M/E)")).toBe("Engineer (M/E)");
+  });
+});
+
 describe("cleanTitle", () => {
   test("all caps becomes title case, acronyms kept", () => {
     expect(cleanTitle("CLINICAL TRIAL PROJECT MANAGEMENT CONSULTANT")).toBe("Clinical Trial Project Management Consultant");
@@ -23,6 +41,8 @@ describe("cleanTitle", () => {
     expect(cleanTitle("Non-Food Items Assistant")).toBe("Non-Food Items Assistant");
     expect(cleanTitle("Pre- and Post-Deployment Adviser")).toBe("Pre- and Post-Deployment Adviser");
     expect(cleanTitle("Officer – Health")).toBe("Officer – Health");
+    expect(cleanTitle("Finance Officer -Nairobi")).toBe("Finance Officer – Nairobi");
+    expect(cleanTitle("Finance Officer-  Nairobi")).toBe("Finance Officer – Nairobi");
   });
   test("ordinary titles are unchanged", () => {
     expect(cleanTitle("Research Manager")).toBe("Research Manager");

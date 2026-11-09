@@ -48,15 +48,19 @@ export function Breadcrumbs({ items, dark = false, back }: { items: Crumb[]; dar
  * `compact`: on phones a smaller title and no intro, so results start near the top (search pages).
  * `width`: the max-width class of the page body below, so the heading and the text share one left
  * edge (prose pages use "max-w-3xl"). `note`: a small line under the intro (e.g. non-affiliation).
+ * `subline`: a short line right under the title (an organization page's "Open vacancies").
  */
-export function PageHeader({ title, intro, crumbs, badge, compact = false, width = "max-w-6xl", note, children }: { title: string; intro?: React.ReactNode; crumbs?: Crumb[]; badge?: React.ReactNode; compact?: boolean; width?: string; note?: React.ReactNode; children?: React.ReactNode }) {
+export function PageHeader({ title, subline, intro, crumbs, badge, compact = false, width = "max-w-6xl", note, children }: { title: string; subline?: string; intro?: React.ReactNode; crumbs?: Crumb[]; badge?: React.ReactNode; compact?: boolean; width?: string; note?: React.ReactNode; children?: React.ReactNode }) {
   return (
     <header className="brand-band">
       <div className={`mx-auto ${width} px-4 sm:px-6 ${compact ? "pb-4 pt-4 sm:pb-9 sm:pt-7" : "pb-9 pt-7"}`}>
         {crumbs ? <div className={compact ? "hidden sm:block" : undefined}><Breadcrumbs items={crumbs} /></div> : null}
         <div className={`flex items-center gap-4 ${compact ? "sm:mt-4" : "mt-4"}`}>
           {badge}
-          <h1 className={`font-semibold leading-tight text-ink ${compact ? "text-[1.45rem] sm:text-[2.5rem]" : "text-[2rem] sm:text-[2.5rem]"}`}>{title}</h1>
+          <div className="min-w-0">
+            <h1 className={`font-semibold leading-tight text-ink ${compact ? "text-[1.45rem] sm:text-[2.5rem]" : "text-[2rem] sm:text-[2.5rem]"}`}>{title}</h1>
+            {subline ? <p className="mt-1 text-[1.05rem] font-medium text-slate">{subline}</p> : null}
+          </div>
         </div>
         {intro ? <div className={`mt-3 max-w-3xl text-[1.05rem] leading-relaxed text-slate ${compact ? "hidden sm:block" : ""}`}>{intro}</div> : null}
         {note ? <p className={`max-w-3xl text-sm text-slate ${compact ? "mt-1.5 sm:mt-3" : "mt-3"}`}>{note}</p> : null}

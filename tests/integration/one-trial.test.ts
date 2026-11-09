@@ -85,9 +85,10 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
     const m = [...sent].reverse().find((x) => x.to === to);
     return m?.text.match(/\/account\/continue\?token=([\w-]+)/)?.[1] ?? null;
   };
+  /** A checkout form as the browser sends it: the "renews automatically" box ticked unless renewal_ack is given. */
   const form = (fields: Record<string, string>) => {
     const fd = new FormData();
-    for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+    for (const [k, v] of Object.entries({ renewal_ack: "on", ...fields })) if (v !== "") fd.set(k, v);
     return fd;
   };
 
@@ -340,13 +341,41 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
     const toLive = sent.find((m) => m.to === "paying@example.org")!;
     expect(toLive.subject).toBe("You already have Postbird daily alerts");
     const [{ manage_token }] = await sql`select manage_token from subscribers where id = ${live.id}`;
-    expect(manage_token).not.toBe(live.manage_token); // a new account link, replacing the old one once sent
+    expect(manage_token).toBe(live.manage_token); // anyone can type the address here: the current link, not replaced
     expect(toLive.text).toContain(`/account?t=${manage_token}`);
     expect(toLive.text).not.toContain("/account/continue");
     expect(linkToken("down@example.org")).toMatch(/^[\w-]{32}$/);
     // A new address goes straight to the trial checkout.
     const c = await actions.startCheckoutAction({ status: "idle", message: "" }, form({ email: "brand-new@example.org", plan: "quarterly" }));
     expect(c).toMatchObject({ status: "ready", trial: true, transactionId: null, email: "brand-new@example.org" });
+  });
+
+  it("the renewal box must be ticked on both forms; the checkout records when, and which wording", async () => {
+    await sql`delete from rate_limits`;
+    const { RENEWAL_ACK_REQUIRED, renewalTermsVersion } = await import("@/lib/billing/renewal-consent");
+    const refused = { status: "error", message: "Please tick the box to agree to automatic renewal." };
+    expect(RENEWAL_ACK_REQUIRED).toBe(refused.message);
+    expect(await actions.startCheckoutAction({ status: "idle", message: "" }, form({ email: "no-tick@example.org", plan: "monthly", renewal_ack: "" }))).toEqual(refused);
+    expect(await actions.startCheckoutAction({ status: "idle", message: "" }, form({ email: "no-tick@example.org", plan: "monthly", renewal_ack: "yes" }))).toEqual(refused);
+    expect(await sql`select 1 from subscribers where email = 'no-tick@example.org'`).toHaveLength(0);
+
+    const ok = await actions.startCheckoutAction({ status: "idle", message: "" }, form({ email: "ticked@example.org", plan: "monthly" }));
+    expect(ok).toMatchObject({ status: "ready", trial: true });
+    const [c] = await sql`select renewal_consent_at, renewal_terms_version from paddle_checkouts where ref = ${(ok as { ref: string }).ref}`;
+    expect(c.renewal_consent_at).not.toBeNull();
+    expect(c.renewal_terms_version).toBe(renewalTermsVersion(true, "monthly"));
+    expect(c.renewal_terms_version).toMatch(/^trial-[0-9a-f]{12}$/);
+    // The no-trial wording is another version.
+    expect(renewalTermsVersion(false, "monthly")).toMatch(/^plan-[0-9a-f]{12}$/);
+    expect(renewalTermsVersion(false, "monthly")).not.toBe(renewalTermsVersion(false, "quarterly"));
+
+    // The continue page: refused without the box, and the link stays unused.
+    const [row] = await sql`select id::int as id from subscribers where email = 'ticked@example.org'`;
+    const token = await links.createCheckoutLink(row.id, { plan: "monthly", search: null });
+    expect(await actions.continueCheckoutAction({ status: "idle", message: "" }, form({ token, plan: "monthly", renewal_ack: "" }))).toEqual(refused);
+    expect(await links.findCheckoutLink(token)).not.toBeNull();
+    await sql`delete from paddle_checkouts where subscriber_id = ${row.id}`;
+    await sql`delete from subscribers where id = ${row.id}`;
   });
 
   it("checkout emails to one address are capped per hour and per day; the reply doesn't change", async () => {
@@ -380,6 +409,11 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
     await sql`update paddle_checkouts set created_at = now() - interval '6 minutes' where subscriber_id = ${row.id}`;
     const res = await actions.continueCheckoutAction({ status: "idle", message: "" }, form({ token, plan: "quarterly" }));
     expect(res).toMatchObject({ status: "ready", trial: false, transactionId: TXN, plan: "quarterly", email: "down@example.org" });
+    // The agreement recorded is the no-trial wording this address was shown.
+    const { renewalTermsVersion } = await import("@/lib/billing/renewal-consent");
+    const [c] = await sql`select renewal_consent_at, renewal_terms_version from paddle_checkouts where ref = ${(res as { ref: string }).ref}`;
+    expect(c.renewal_consent_at).not.toBeNull();
+    expect(c.renewal_terms_version).toBe(renewalTermsVersion(false, "quarterly"));
     const again = await actions.continueCheckoutAction({ status: "idle", message: "" }, form({ token, plan: "quarterly" }));
     expect(again).toEqual({ status: "error", message: links.LINK_USED });
   });

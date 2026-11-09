@@ -203,6 +203,7 @@ describe("parseFeed", () => {
 });
 
 import { detectExperienceYears, detectLanguageRequirements, detectLanguages } from "@/lib/feeds/extract";
+import { LANGUAGES } from "@/config/regions";
 
 describe("requirements", () => {
   it("finds languages only in language-requirement sentences", () => {
@@ -244,6 +245,41 @@ describe("requirements", () => {
     // Durations are still not requirements.
     expect(detectExperienceYears("Duration: 2 years contract with experience in GIS an asset")).toBeNull();
     expect(detectExperienceYears("A 2 years assignment; experience in GIS")).toBeNull();
+  });
+
+  it("reads the field languages (Dari, Pashto, Swahili, Persian and others), with their other names", () => {
+    expect(detectLanguageRequirements("Must speak Dari or Pashto.")).toEqual({ required: null, desirable: ["Dari", "Pashto"] });
+    expect(detectLanguageRequirements("Knowledge of local languages (Swahili) is preferred.")).toEqual({ required: null, desirable: ["Swahili"] });
+    expect(detectLanguageRequirements("Fluency in Farsi is required.")).toEqual({ required: ["Persian"], desirable: null });
+    expect(detectLanguageRequirements("Fluency in Persian and Dari is essential.")).toEqual({ required: ["Dari", "Persian"], desirable: null });
+    expect(detectLanguageRequirements("Fluency in Kiswahili is required; Amharic is an asset.")).toEqual({ required: ["Swahili"], desirable: ["Amharic"] });
+    expect(detectLanguageRequirements("Proficiency in Ukrainian is mandatory. Knowledge of Turkish is an advantage.")).toEqual({ required: ["Ukrainian"], desirable: ["Turkish"] });
+    expect(detectLanguageRequirements("Fluency in Somali is required. Hausa is desirable.")).toEqual({ required: ["Somali"], desirable: ["Hausa"] });
+    expect(detectLanguageRequirements("Must speak Bangla or Urdu.")).toEqual({ required: null, desirable: ["Bengali", "Urdu"] });
+    expect(detectLanguageRequirements("Fluency in Burmese is required; Japanese or Bahasa Indonesia is an asset.")).toEqual({ required: ["Burmese"], desirable: ["Indonesian", "Japanese"] });
+    for (const l of ["Ukrainian", "Turkish", "Swahili", "Dari", "Pashto", "Persian", "Somali", "Amharic", "Hausa", "Bengali", "Urdu", "Burmese", "Indonesian", "Japanese"]) {
+      expect(LANGUAGES as readonly string[], l).toContain(l);
+      // The filter accepts each one (and its links keep it).
+      expect(parseFilters({ lang: l }).lang, l).toBe(l);
+    }
+  });
+
+  it("doesn't take organizations, places or people named after a language for a language requirement", () => {
+    for (const t of [
+      "Experience working with the Turkish Red Crescent is required.",
+      "Experience in the Somali Region of Ethiopia is required.",
+      "Experience working with the Bengali community is an advantage.",
+      "Knowledge of the Persian Gulf region is desirable.",
+      "Prior work with the Indonesian Red Cross is an asset.",
+      "Experience supporting Ukrainian refugees is required.",
+      "Experience with the Japanese International Cooperation Agency is an asset.",
+      "Somali nationals are encouraged to apply; experience in Somali regional administrations is required.",
+      "Must have worked with Hausa communities in northern Nigeria.",
+      "Experience with the Burmese population in Thailand is an advantage.",
+      "Japanese encephalitis vaccination is required before travel.",
+    ]) expect(detectLanguageRequirements(t), t).toEqual({ required: null, desirable: null });
+    // Only in language-requirement sentences, as for every other language.
+    expect(detectLanguages("The office covers Somali and Afar communities. We value diversity.")).toBeNull();
   });
 
   it("reads languages written as mandatory, must or speak", () => {

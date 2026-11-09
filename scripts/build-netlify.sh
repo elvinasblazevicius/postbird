@@ -11,9 +11,9 @@
 # for it while it runs (up to CI_WAIT_SECONDS). CI failed: the build fails, so
 # code that didn't pass its checks never goes live. CI's result can't be found
 # out (private repository without a token, API limit, CI still running after the
-# wait, run canceled): migrations are skipped with a notice and the Deploy
-# migrations workflow applies them once CI passes. A public repository needs no
-# token; for a private one, GITHUB_TOKEN (read access to Actions) is used if set.
+# wait, run canceled): the build fails too, with a message saying what to do, so
+# nothing is published unchecked. A public repository needs no token; a private
+# one needs GITHUB_TOKEN (read access to Actions) in Netlify's build environment.
 set -euo pipefail
 
 CI_WORKFLOW="ci.yml"
@@ -54,7 +54,7 @@ ci_state() {
     });'
 }
 
-if [ "${CONTEXT:-}" = "production" ] && [ -n "${DATABASE_URL:-}" ]; then
+if [ "${CONTEXT:-}" = "production" ]; then
   repo="$(github_repo)"
   state=unknown
   if [ -n "$repo" ] && [ -n "${COMMIT_REF:-}" ]; then
@@ -70,8 +70,14 @@ if [ "${CONTEXT:-}" = "production" ] && [ -n "${DATABASE_URL:-}" ]; then
   fi
   case "$state" in
     success)
-      echo "CI passed for ${COMMIT_REF:0:7}. Applying database migrations (production build)."
-      npm run db:migrate
+      if [ -n "${DATABASE_URL:-}" ]; then
+        echo "CI passed for ${COMMIT_REF:0:7}. Applying database migrations (production build)."
+        npm run db:migrate
+      else
+        echo "CI passed for ${COMMIT_REF:0:7}."
+        echo "Notice: DATABASE_URL isn't available to the build, so migrations were not applied here."
+        echo "Give DATABASE_URL the Builds scope in Netlify (README Step 3), or rely on the Deploy migrations workflow."
+      fi
       ;;
     failure)
       echo "Error: CI failed for ${COMMIT_REF:0:7}, so this deploy stops here (no migrations, no new code); the site keeps running the previous deploy."
@@ -79,13 +85,12 @@ if [ "${CONTEXT:-}" = "production" ] && [ -n "${DATABASE_URL:-}" ]; then
       exit 1
       ;;
     *)
-      echo "Notice: couldn't find out whether CI passed for ${COMMIT_REF:-this commit} (${state}), so migrations were not applied here."
-      echo "The Deploy migrations workflow applies them once CI passes on main (README, Database migrations)."
+      echo "Error: couldn't find out whether CI passed for ${COMMIT_REF:-this commit} (${state}), so this deploy stops here (no migrations, no new code); the site keeps running the previous deploy."
+      echo "For a private repository, set GITHUB_TOKEN in Netlify's build environment (a token with read access to Actions; README Step 3)."
+      echo "If CI was still running or was canceled, retry this deploy in Netlify once CI has passed."
+      exit 1
       ;;
   esac
-elif [ "${CONTEXT:-}" = "production" ]; then
-  echo "Notice: DATABASE_URL isn't available to the build, so migrations were not applied here."
-  echo "Give DATABASE_URL the Builds scope in Netlify (README Step 3), or rely on the Deploy migrations workflow."
 else
   echo "Notice: ${CONTEXT:-local} build, so migrations are not applied (production builds only)."
 fi

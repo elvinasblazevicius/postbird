@@ -70,11 +70,17 @@ export const CONFIRM_FIRST_DONE = `Confirm your address within ${CONFIRM_WITHIN_
 export const ONE_TRIAL_RULE = "One free trial per email address, counting forms like name+tag@ and dotted Gmail addresses as the same address. If you've had a trial before, your plan starts and is charged straight away.";
 
 /**
- * Before the "renews automatically" checkbox on the public trial form, where the address isn't
- * proven yet (the trial page and the pricing FAQ say the same). Not on the emailed continue page:
+ * In the visible terms above the "renews automatically" checkbox on the public trial form, where
+ * the address isn't proven yet (the pricing FAQ says the same). Not on the emailed continue page:
  * opening that link already confirmed the address.
  */
-export const TRIAL_CONFIRM_NOTE = `Your ${siteConfig.premium.trialDays} days start today. We'll email you a link to confirm your address; your alerts start once you confirm. One free trial per email address.`;
+export const TRIAL_CONFIRM_NOTE = `Your ${siteConfig.premium.trialDays} days start today. We'll email you a link to confirm your address; your alerts start once you confirm.`;
+
+/** In the trial form's "Details", with tax and the card statement line. */
+export const ONE_TRIAL_SHORT = "One free trial per email address.";
+
+/** First in the box shown after a trial checkout on the public form. */
+export const CHECK_INBOX_FIRST = "Check your inbox now to confirm your address and start your alerts.";
 
 /**
  * The checkbox that must be ticked before a trial checkout opens. It states the consent itself, so

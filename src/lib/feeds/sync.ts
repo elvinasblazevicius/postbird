@@ -11,6 +11,7 @@ import { refreshOrgLogos } from "./logos";
 import { cleanupRateLimits } from "@/lib/rate-limit";
 import { purgeStaleSubscribers } from "@/lib/subscribers";
 import { purgeOpsEvents } from "@/lib/ops-events";
+import { reduceOldClickIds } from "@/lib/analytics";
 import { canonicalizeUrl, isAggregatorUrl } from "./url";
 import { knownOrgByHost } from "./extract";
 
@@ -515,6 +516,8 @@ async function retentionCleanup(): Promise<void> {
   await sql`delete from sync_items where created_at < now() - make_interval(days => ${IMPORT_SETTINGS.keepImportLogsDays})`;
   await sql`delete from sync_runs where started_at < now() - make_interval(days => ${IMPORT_SETTINGS.keepImportLogsDays * 3})`;
   await sql`delete from events where created_at < now() - make_interval(days => ${IMPORT_SETTINGS.keepAnalyticsDays})`;
+  // Privacy policy: a Microsoft click id kept with the visit counts becomes "present" after 90 days.
+  await reduceOldClickIds();
   // Organizations whose icon was blocked are kept, so the block survives while they have no listings.
   await sql`delete from organizations o where not o.logo_blocked and not exists (select 1 from jobs j where j.organization_id = o.id)`;
   // Hashed abuse-protection keys are kept at most 24 hours.

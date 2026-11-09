@@ -1,6 +1,7 @@
 /**
  * Tidying vacancy titles as published: leading requisition numbers,
- * ALL-CAPS titles and bilingual "English || Arabic" titles.
+ * ALL-CAPS titles, bilingual "English || Arabic" titles, gender tags such as
+ * "(m/w/d)" and hyphens used as separators.
  */
 const SMALL = new Set(["a", "an", "and", "as", "at", "by", "for", "in", "of", "on", "or", "the", "to", "with", "de", "du", "des", "la", "le", "et", "y", "en"]);
 
@@ -11,6 +12,13 @@ function titleCaseWord(w: string, first: boolean): string {
   if (/^[A-Z&]{2,3}$/.test(w)) return w;
   return lower.replace(/(^|[-/(])([a-zà-ÿ])/g, (_, p: string, c: string) => p + c.toUpperCase());
 }
+
+/**
+ * Gender tags some employers add to every title (German "m/w/d", French "H/F", "f/m/x" …): two or
+ * three of the letters f, m, h, w, d, x between slashes, in brackets. Said once on the employer's
+ * page; in a list of titles they are noise.
+ */
+const GENDER_TAG = /\s*[([]\s*[fmhwdx]\s*[/|]\s*[fmhwdx](?:\s*[/|]\s*[fmhwdx])?\s*[)\]]/gi;
 
 export function cleanTitle(raw: string): string {
   let t = raw.trim();
@@ -27,6 +35,8 @@ export function cleanTitle(raw: string): string {
   if (letters.length >= 8 && upper.length / letters.length > 0.85) {
     t = t.split(/(\s+)/).map((w, i) => (/\s/.test(w) ? w : titleCaseWord(w, i === 0))).join("");
   }
+  // "Data Analyst (m/w/d)", "Chargé de projet (H/F) - Paris": the tag goes, and a separator it leaves at the end too.
+  t = t.replace(GENDER_TAG, "").replace(/\s*[-–—:|,]\s*$/u, "");
   // A hyphen with a space on one or both sides separates parts of the title: "Officer- TVET",
   // "Officer -TVET" and "Officer - TVET" all become "Officer – TVET" (en dash). Hyphens inside
   // words ("Non-Food") and suspended hyphens before "and/or/to" ("pre- and post-") are left alone.

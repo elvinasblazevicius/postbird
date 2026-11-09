@@ -217,6 +217,8 @@ export function withSearchIntent(f: JobFilters): JobFilters {
     grade: f.grade?.length ? f.grade : i.grade ? [i.grade] : undefined,
     lang: f.lang ?? i.lang,
     country: f.country?.length ? f.country : f.region?.length || !i.country ? undefined : [i.country],
+    // A region read from the words ("africa"), unless a place is already chosen in the filter.
+    region: f.region?.length ? f.region : f.country?.length || !i.region ? undefined : [i.region],
     sort: !i.text && f.sort === "relevance" ? undefined : f.sort,
   };
 }

@@ -4,7 +4,7 @@ import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { confirmationEmail } from "@/lib/email-templates";
 import { absoluteUrl } from "@/lib/site";
 import { recordEvent } from "@/lib/analytics";
-import { takeDailyQuota } from "@/lib/rate-limit";
+import { releaseDailyQuota, takeDailyQuotaSlot, type QuotaSlot } from "@/lib/rate-limit";
 import { replaceWithWeeklySearch } from "@/lib/saved-searches";
 import { storeMarkerFingerprint, writeTrialMarkers } from "@/lib/billing/trial-markers";
 import { sharedSecret } from "@/lib/server-secret";
@@ -108,18 +108,33 @@ export const CONFIRMATIONS_PER_DAY = 3;
  * CONFIRMATIONS_PER_DAY in the last 24 hours (then false: don't send). See
  * takeDailyQuota in src/lib/rate-limit.ts.
  */
-async function takeDailyConfirmation(email: string): Promise<boolean> {
-  return takeDailyQuota(`confirm-email|${email}`, CONFIRMATIONS_PER_DAY);
+async function takeDailyConfirmation(email: string): Promise<QuotaSlot | null> {
+  return takeDailyQuotaSlot(`confirm-email|${email}`, CONFIRMATIONS_PER_DAY);
 }
 
+/** The sign-up form waits this long for Resend at most (the default is longer), so the visitor isn't left waiting. */
+export const SIGNUP_SEND_TIMEOUT_MS = 5_000;
+
+/**
+ * Sends the confirmation email. Only a sent email counts: confirm_sent_at (the 5-minute gap) is
+ * stamped, and the daily quota keeps its use, only when Resend accepted it; a failed send gives
+ * the use back, so a try again a minute later works.
+ */
 async function sendConfirmation(id: number, email: string, confirmToken: string, waitlist: boolean, alerts: boolean): Promise<SignupResult> {
-  // Same reply as a sent email, so the form doesn't reveal anything about the address.
-  if (isEmailConfigured() && !(await takeDailyConfirmation(email))) return { ok: true, state: "check_email" };
+  let slot: QuotaSlot | null = null;
+  if (isEmailConfigured()) {
+    slot = await takeDailyConfirmation(email);
+    // Same reply as a sent email, so the form doesn't reveal anything about the address.
+    if (!slot) return { ok: true, state: "check_email" };
+  }
   const confirmUrl = absoluteUrl(`/alerts/confirm?token=${encodeURIComponent(confirmToken)}`);
-  const sent = await sendEmail({ to: email, ...confirmationEmail({ confirmUrl, waitlist, alerts }) });
-  await sql`update subscribers set confirm_sent_at = now() where id = ${id}`;
+  const sent = await sendEmail({ to: email, ...confirmationEmail({ confirmUrl, waitlist, alerts }) }, { timeoutMs: SIGNUP_SEND_TIMEOUT_MS });
   if (sent.skipped) return { ok: true, state: "email_not_configured" };
-  if (!sent.ok) return { ok: false, error: "We couldn't send the confirmation email. Please try again in a few minutes." };
+  if (!sent.ok) {
+    if (slot) await releaseDailyQuota(slot);
+    return { ok: false, error: "We couldn't send the confirmation email. Please try again in a few minutes." };
+  }
+  await sql`update subscribers set confirm_sent_at = now() where id = ${id}`;
   return { ok: true, state: "check_email" };
 }
 
@@ -257,8 +272,15 @@ export async function purgeStaleSubscribers(): Promise<number> {
       and (${canMark}::boolean or not had_plan(subscribers))
     returning email, had_plan(subscribers) as had_plan`);
   // Checkout references (they link a daily visitor code to a subscriber) are only
-  // needed until Paddle's webhooks arrive; webhook ids for a year (late retries).
-  await sql`delete from paddle_checkouts where created_at < now() - interval '30 days'`;
+  // needed until Paddle's webhooks arrive; webhook ids for a year (late retries). A checkout
+  // that led to a subscription keeps only its record of the agreement to automatic renewal
+  // (migration 019), and goes when the subscriber's address is deleted (on delete cascade).
+  await sql`
+    delete from paddle_checkouts where created_at < now() - interval '30 days'
+      and (subscription_id is null or renewal_consent_at is null)`;
+  await sql`
+    update paddle_checkouts set visitor = null, search = null
+    where created_at < now() - interval '30 days' and (visitor is not null or search is not null)`;
   await sql`delete from paddle_events where received_at < now() - interval '365 days'`;
   // Emailed checkout links work for 24 hours; trial markers are kept 24 months.
   await sql`delete from checkout_links where expires_at < now()`;

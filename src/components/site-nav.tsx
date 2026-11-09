@@ -102,7 +102,7 @@ export function FindJobsMenu({ employers }: { employers: NavItem[] }) {
   );
 }
 
-/** The "Get email alerts" button in the desktop header, marked when you are on /alerts. */
+/** The email button in the header ("Free weekly email"), marked when you are on /alerts. */
 export function AlertsButton({ className, children }: { className: string; children: React.ReactNode }) {
   const pathname = usePathname() ?? "";
   const here = isActive(pathname, "/alerts");

@@ -209,6 +209,33 @@ describe.skipIf(!TEST_DB)("database integration", () => {
     });
   });
 
+  describe("analytics retention", () => {
+    it("reduces Microsoft click ids older than 90 days to \"present\" in stored paths and campaign tags, and leaves newer ones", async () => {
+      const { reduceOldClickIds } = await import("@/lib/analytics");
+      await sql`delete from events`;
+      await sql`
+        insert into events (type, path, props, created_at) values
+          ('pageview', '/jobs?utm_source=bing&msclkid=abc123&utm_medium=cpc', ${sql.json({ campaign: { utm_source: "bing", msclkid: "abc123" } })}, now() - interval '91 days'),
+          ('pageview', '/?MSCLKID=Xyz', null, now() - interval '120 days'),
+          ('trial_started', null, ${sql.json({ plan: "month", campaign: { msclkid: "def456", landing: "/" } })}, now() - interval '100 days'),
+          ('pageview', '/jobs?msclkid=present', ${sql.json({ campaign: { msclkid: "present" } })}, now() - interval '200 days'),
+          ('pageview', '/jobs?msclkid=recent1', ${sql.json({ campaign: { msclkid: "recent1" } })}, now() - interval '89 days'),
+          ('pageview', '/jobs?utm_source=x', ${sql.json({ campaign: { utm_source: "x" } })}, now() - interval '100 days')`;
+      expect(await reduceOldClickIds()).toBe(3);
+      const rows = await sql`select path, props from events order by id`;
+      expect(rows).toEqual([
+        { path: "/jobs?utm_source=bing&msclkid=present&utm_medium=cpc", props: { campaign: { utm_source: "bing", msclkid: "present" } } },
+        { path: "/?MSCLKID=present", props: null },
+        { path: null, props: { plan: "month", campaign: { msclkid: "present", landing: "/" } } },
+        { path: "/jobs?msclkid=present", props: { campaign: { msclkid: "present" } } },
+        { path: "/jobs?msclkid=recent1", props: { campaign: { msclkid: "recent1" } } },
+        { path: "/jobs?utm_source=x", props: { campaign: { utm_source: "x" } } },
+      ]);
+      // Nothing left to change.
+      expect(await reduceOldClickIds()).toBe(0);
+    });
+  });
+
   describe("rate limiting", () => {
     it("allows up to the limit in a window, then refuses", async () => {
       const key = `test|${Math.random()}`;

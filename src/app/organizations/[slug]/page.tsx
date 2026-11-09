@@ -9,7 +9,7 @@ import { ORG_TYPES } from "@/config/regions";
 import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
 import { getOrganization, organizationPostingMix, parseFilters, POSTING_MIX_DAYS } from "@/lib/jobs";
 import { countFor, jobTypesFor, landingMetadata } from "@/lib/landing";
-import { isAcronym, nonAffiliationLine, orgInText, withArticle } from "@/lib/org-names";
+import { nonAffiliationLine, orgInText, withArticle } from "@/lib/org-names";
 import { usuallyPosts } from "@/lib/org-profile";
 import { officialSite } from "@/lib/recruitment-system";
 import { siteConfig } from "@/lib/site";
@@ -49,13 +49,15 @@ export default async function OrganizationPage({ params, searchParams }: Props) 
   return (
     <>
       <PageHeader
-        title={isAcronym(org.short_name) ? `${org.short_name}: open vacancies` : `Vacancies at ${withArticle(org.name)}`}
+        // One pattern for every organization, always with the full name: "World Food Programme (WFP)".
+        title={org.short_name && org.short_name !== org.name ? `${org.name} (${org.short_name})` : org.name}
+        subline="Open vacancies"
         badge={<OrgBadge name={org.name} short={org.short_name} size="lg" />}
         crumbs={[{ href: "/", label: "Home" }, { href: "/organizations", label: "Organizations" }, { href: `/organizations/${slug}`, label: org.short_name ?? org.name }]}
         intro={
           <>
             {count === 1 ? "1 open vacancy" : `${count} open vacancies`}
-            {org.org_type ? ` at this ${org.org_type === "UN system" ? "UN system organization" : org.org_type.replace(/^[A-Z][a-z]/, (c) => c.toLowerCase())}` : ""}.
+            {typePage ? ` at this ${typePage.singular.replace(/^[A-Z][a-z]/, (c) => c.toLowerCase())}` : ""}.
           </>
         }
         note={nonAffiliationLine(siteConfig.name, orgInText(org.name, org.short_name))}
@@ -65,7 +67,7 @@ export default async function OrganizationPage({ params, searchParams }: Props) 
             {typePage ? (
               <div>
                 <dt className="text-xs text-slate">Employer type</dt>
-                <dd className="mt-0.5"><Link href={typePage.path} className="text-accent underline-offset-2 hover:underline">{typePage.label}</Link></dd>
+                <dd className="mt-0.5"><Link href={typePage.path} className="text-accent underline-offset-2 hover:underline">{typePage.singular}</Link></dd>
               </div>
             ) : null}
             {site ? (

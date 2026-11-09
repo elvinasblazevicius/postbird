@@ -1,7 +1,7 @@
 /**
  * scripts/build-netlify.sh: a production build applies migrations only when CI passed for the
- * commit (asked from GitHub's API, waiting while CI runs), stops when CI failed, and builds without
- * migrating when CI's result can't be found out. curl, npm and sleep are replaced by stubs; nothing
+ * commit (asked from GitHub's API, waiting while CI runs), and stops when CI failed or its result
+ * can't be found out (nothing is published unchecked). curl, npm and sleep are replaced by stubs; nothing
  * is built, migrated or fetched. No database needed.
  */
 import { execFile } from "node:child_process";
@@ -77,12 +77,13 @@ describe("Netlify production build and CI", () => {
     expect(read("npm-calls")).toEqual([]);
   });
 
-  it("CI's result can't be found out (API unreachable, run canceled, still running after the wait): builds without migrating", async () => {
+  it("CI's result can't be found out (API unreachable, run canceled, still running after the wait): the build stops and says why", async () => {
     github(null);
     let r = await build(production);
-    expect(r.code).toBe(0);
-    expect(r.out).toContain("migrations were not applied here");
-    expect(read("npm-calls")).toEqual(["run build"]);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("couldn't find out whether CI passed");
+    expect(r.out).toContain("set GITHUB_TOKEN in Netlify's build environment");
+    expect(read("npm-calls")).toEqual([]);
 
     rmSync(stubs, { recursive: true, force: true });
     stubs = mkdtempSync(path.join(tmpdir(), "pb-build-"));
@@ -91,16 +92,34 @@ describe("Netlify production build and CI", () => {
     stub("curl", 'cat "$d/response.json"');
     writeFileSync(path.join(stubs, "response.json"), JSON.stringify(runs({ status: "completed", conclusion: "cancelled" })));
     r = await build(production);
-    expect(r.code).toBe(0);
-    expect(read("npm-calls")).toEqual(["run build"]);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("(unknown)");
+    expect(read("npm-calls")).toEqual([]);
 
     writeFileSync(path.join(stubs, "response.json"), JSON.stringify(runs({ status: "queued", conclusion: null })));
-    rmSync(path.join(stubs, "npm-calls"));
     r = await build(production);
-    expect(r.code).toBe(0);
+    expect(r.code).toBe(1);
     expect(read("sleeps").length).toBeGreaterThan(5); // waited (sleep is a stub), then gave up
     expect(r.out).toContain("(pending)");
+    expect(r.out).toContain("retry this deploy in Netlify once CI has passed");
+    expect(read("npm-calls")).toEqual([]);
+  });
+
+  it("without DATABASE_URL, a production build still waits for CI: builds without migrating once it passed, stops otherwise", async () => {
+    const { DATABASE_URL: _unused, ...noDb } = production;
+    void _unused;
+    github(runs({ status: "completed", conclusion: "success" }));
+    let r = await build(noDb);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("migrations were not applied here");
     expect(read("npm-calls")).toEqual(["run build"]);
+
+    // No repository to ask: CI's result can't be found out.
+    rmSync(path.join(stubs, "npm-calls"));
+    r = await build({ ...noDb, REPOSITORY_URL: "" });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("couldn't find out whether CI passed");
+    expect(read("npm-calls")).toEqual([]);
   });
 
   it("previews and branch deploys never ask GitHub or migrate", async () => {

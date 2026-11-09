@@ -75,13 +75,25 @@ export const ORG_TYPES: { value: string; name: string; type: string }[] = [
 
 /**
  * Languages detected in a vacancy's language requirements (besides English): the UN's official
- * languages, then the other official languages of the EU.
+ * languages, the other official languages of the EU, then other languages field posts often ask for.
  */
 export const LANGUAGES = [
   "French", "Spanish", "Arabic", "Portuguese", "Russian", "Chinese",
   "German", "Italian", "Dutch", "Polish", "Bulgarian", "Croatian", "Czech", "Danish", "Estonian", "Finnish", "Greek", "Hungarian",
   "Irish", "Latvian", "Lithuanian", "Maltese", "Romanian", "Slovak", "Slovenian", "Swedish",
+  "Ukrainian", "Turkish", "Swahili", "Dari", "Pashto", "Persian", "Somali", "Amharic", "Hausa", "Bengali", "Urdu", "Burmese",
+  "Indonesian", "Japanese",
 ] as const;
+
+/** Other names a posting may use for a language in LANGUAGES ("Farsi" is stored as Persian). */
+export const LANGUAGE_ALIASES: Record<string, (typeof LANGUAGES)[number]> = {
+  Farsi: "Persian",
+  Kiswahili: "Swahili",
+  Bangla: "Bengali",
+  Pushto: "Pashto",
+  Pashtu: "Pashto",
+  "Bahasa Indonesia": "Indonesian",
+};
 
 /**
  * The languages a single search word turns into the language filter ("german" → German). Names that

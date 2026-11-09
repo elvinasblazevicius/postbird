@@ -13,6 +13,7 @@ import { accountUrl, findByManageToken, sendAccountLink } from "@/lib/account";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { checkoutReply, continueCheckout, createCheckoutLink, sendCheckoutLink, type CheckoutState } from "@/lib/billing/checkout-links";
 import { planRenewal } from "@/lib/billing/notices";
+import { renewalAcknowledged, RENEWAL_ACK_REQUIRED } from "@/lib/billing/renewal-consent";
 import { createPortalSession, isPaddleApiConfigured, userPaddleBudget } from "@/lib/billing/paddle";
 import { checkoutAccountToken, LIVE_STATUSES, startCheckout, verifiedCustomerFor, type BillingTarget, type CheckoutPlan } from "@/lib/billing/subscriptions";
 import { sql } from "@/lib/db";
@@ -52,6 +53,7 @@ export async function startCheckoutAction(_prev: CheckoutState, form: FormData):
   if (!email) return { status: "error", message: "Enter a valid email address." };
   const plan = planFrom(form);
   if (!plan) return { status: "error", message: "Choose a plan." };
+  if (!renewalAcknowledged(form)) return { status: "error", message: RENEWAL_ACK_REQUIRED };
   // The saved search: a search started on the jobs page, with the form's "What should we watch for?" answers.
   const search = searchFromSignupForm(form);
   let attribution: Record<string, string> | null = null;
@@ -62,7 +64,7 @@ export async function startCheckoutAction(_prev: CheckoutState, form: FormData):
   }
   try {
     const visitor = visitorFromHeaders(h);
-    const res = await startCheckout({ email, plan, search: search || null, source: String(form.get("source") ?? "").slice(0, 40) || undefined, attribution, visitor });
+    const res = await startCheckout({ email, plan, search: search || null, source: String(form.get("source") ?? "").slice(0, 40) || undefined, attribution, visitor, renewalConsent: true });
     if (res.ok && "inbox" in res) {
       // Per address too (like the account link), so nobody can flood someone's inbox from many connections.
       if (await rateLimit(`checkout-link:${res.email}`, 3, 3600)) {
@@ -87,6 +89,7 @@ export async function continueCheckoutAction(_prev: CheckoutState, form: FormDat
   if (!BILLING_LIVE) return { status: "error", message: "Daily alerts aren't open yet." };
   const plan = planFrom(form);
   if (!plan) return { status: "error", message: "Choose a plan." };
+  if (!renewalAcknowledged(form)) return { status: "error", message: RENEWAL_ACK_REQUIRED };
   const h = await headers();
   const limit = await safeRateLimit(`checkout:${clientIp(h)}`, 8, 3600);
   if (limit === "error") return { status: "error", message: SERVER_ERROR };
@@ -94,7 +97,7 @@ export async function continueCheckoutAction(_prev: CheckoutState, form: FormDat
     return { status: "error", message: "Too many attempts from this connection. Please try again in an hour." };
   }
   try {
-    const res = await continueCheckout(form.get("token"), plan);
+    const res = await continueCheckout(form.get("token"), plan, { renewalConsent: true });
     if (!res.ok) return { status: "error", message: res.error };
     return { status: "ready", message: "", ref: res.ref, email: res.email, plan, trial: res.trial, transactionId: res.transactionId, confirmFirst: false };
   } catch (e) {

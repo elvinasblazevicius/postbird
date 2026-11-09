@@ -19,7 +19,7 @@ export const metadata: Metadata = { title: "Manage or cancel your subscription",
 export default function AccountLoginPage() {
   const privacy = (
     <p className="mt-3 text-sm text-slate">
-      We use your address only to send these emails. <Link href="/privacy" className="underline underline-offset-2 hover:text-accent">Privacy policy</Link>
+      We use your address to send these emails and never sell it. <Link href="/privacy" className="underline underline-offset-2 hover:text-accent">Privacy policy</Link>
     </p>
   );
   return (

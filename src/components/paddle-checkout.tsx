@@ -12,8 +12,8 @@ import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { checkoutDoneAction, continueCheckoutAction, startCheckoutAction, type CheckoutState } from "@/app/billing-actions";
 import { PADDLE_CLIENT_TOKEN, PADDLE_ENV, PADDLE_PRICE_MONTHLY, PADDLE_PRICE_QUARTERLY } from "@/lib/billing/live";
 import {
-  CARD_STATEMENT_LINE, CONFIRM_FIRST_DONE, NO_TRIAL_RENEWAL_ACK, noTrialButton, noTrialLine, planOptions, RENEWING, RENEWS, TAX_LINE,
-  TRIAL_CONFIRM_NOTE, TRIAL_RENEWAL_ACK, TRIAL_TERMS, trialButton, trialSummary,
+  CARD_STATEMENT_LINE, CHECK_INBOX_FIRST, CONFIRM_FIRST_DONE, NO_TRIAL_RENEWAL_ACK, noTrialButton, noTrialLine, ONE_TRIAL_SHORT, planOptions, RENEWING, RENEWS,
+  TAX_LINE, TRIAL_CONFIRM_NOTE, TRIAL_RENEWAL_ACK, TRIAL_TERMS, trialButton, trialSummary,
 } from "@/lib/early-access-copy";
 import { AttributionField, consentRegion, uetEvent } from "./ads";
 
@@ -134,8 +134,8 @@ function DoneBox({ phase, dark }: { phase: Extract<Phase, { step: "done" }>; dar
     // The public form: the address isn't proven yet, so alerts wait for its confirmation.
     return (
       <div role="status" className={`rounded-xl p-5 text-[1.02rem] leading-relaxed ${dark ? "bg-white/10 text-white" : "bg-remote-bg text-ink"}`}>
-        <p className="font-semibold">{phase.trial ? `Your ${siteConfig.premium.trialDays}-day trial is running now.` : "Your plan has started."}</p>
-        <p className="mt-2">{phase.trial ? CONFIRM_FIRST_DONE : "Check your inbox and confirm your address to start your alerts."} The link is in your inbox.</p>
+        <p className="font-semibold">{CHECK_INBOX_FIRST}</p>
+        <p className="mt-2">{phase.trial ? `Your ${siteConfig.premium.trialDays}-day trial is running now. ${CONFIRM_FIRST_DONE}` : "Your plan has started."}</p>
         <p className="mt-3">
           <Link href="/jobs" className={`font-semibold underline ${dark ? "text-white" : "text-accent"}`}>Keep browsing jobs</Link>
         </p>
@@ -206,8 +206,8 @@ function PlanChoice({ dark, compact, plan, setPlan, locked = false }: { dark: bo
  * The terms, then the required "renews automatically" checkbox (the browser won't submit the form
  * without it; the button stays enabled; its label is the consent), then the button. With a trial:
  * one summary line ("$0 today · trial ends … · then … until you cancel"), the renewal and
- * cancellation facts in view, and the smaller print (tax, address confirmation, one trial per
- * address, card statement) in a "Details" disclosure.
+ * cancellation facts in view (and, on the public form, that the address must be confirmed), and
+ * the smaller print (tax, one trial per address, card statement) in a "Details" disclosure.
  * `confirmNote`: the public trial form, where the address still has to be confirmed (TRIAL_CONFIRM_NOTE).
  */
 function TermsAndButton({ dark, trial, plan, trialEnds, busy, label, type = "submit", onClick, confirmNote = false }: {
@@ -235,7 +235,7 @@ function TermsAndButton({ dark, trial, plan, trialEnds, busy, label, type = "sub
         <>
           <p className={`mt-3 text-[0.95rem] font-semibold ${strong}`} aria-live="polite">{trialSummary(plan, trialEnds)}</p>
           <p className={`mt-1 text-sm ${muted}`}>
-            {bolded(TRIAL_TERMS, RENEWS)} {links}
+            {bolded(TRIAL_TERMS, RENEWS)}{confirmNote ? ` ${TRIAL_CONFIRM_NOTE}` : ""} {links}
           </p>
         </>
       ) : (
@@ -250,7 +250,7 @@ function TermsAndButton({ dark, trial, plan, trialEnds, busy, label, type = "sub
         </summary>
         <ul className="mt-1 list-disc space-y-1 pl-4">
           <li>{TAX_LINE}</li>
-          {trial && confirmNote ? <li>{TRIAL_CONFIRM_NOTE}</li> : null}
+          {trial ? <li>{ONE_TRIAL_SHORT}</li> : null}
           <li>{CARD_STATEMENT_LINE}</li>
         </ul>
       </details>

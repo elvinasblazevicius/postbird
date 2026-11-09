@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Fragment } from "react";
 import type { JobListItem } from "@/lib/jobs";
 import { countryByCode } from "@/config/countries";
-import { displayGrade, isLocalOnly } from "@/lib/grades";
+import { displayGrade, localOnlyLabel } from "@/lib/grades";
 import { titleLanguage } from "@/lib/title-language";
 import { Flag } from "./flag";
 import { SaveButton } from "./job-tools";
@@ -85,9 +85,10 @@ export function closingChip(deadline: string | null): { date: string; left: stri
 }
 
 /**
- * The closing date in a list row as a small inline postmark: the big stamp's ring (a double ring
- * in the postmark ink, see .postmark-chip in globals.css) around "Closes 12 Nov · 3 days", red
- * only when it closes within a week. Read as "Closes 12 Nov, 3 days left".
+ * The closing date in a list row: an upright chip of one width with tabular figures (see
+ * .postmark-chip in globals.css: the postmark ink and a light double ring, no tilt) around
+ * "Closes 12 Nov · 3 days", red only when it closes within a week. Read as "Closes 12 Nov, 3 days
+ * left". The round, tilted postmark stays on job pages and in "Closing soon".
  */
 function StampChip({ chip }: { chip: NonNullable<ReturnType<typeof closingChip>> }) {
   const [, label, date] = chip.date.match(/^(Closes) (.*)$/) ?? [null, "", chip.date];
@@ -145,12 +146,8 @@ export function JobCard({ job, headingLevel = 3, stamp = false }: { job: JobList
   const lang = titleLanguage(job.title);
   const grade = displayGrade(job);
   const where = locationLabel(job);
-  const local = isLocalOnly(job);
-  const localCountry = local ? countryByCode(job.country_code)?.name : undefined;
-  // "Nationals of Kenya only" is said only for National Officer grades; other local posts (General
-  // Service, service contracts) are usually open to legal residents too, so they are "Local post".
-  const nationalOfficer = Boolean(grade?.startsWith("National Officer"));
-  const localLabel = !local ? null : nationalOfficer && localCountry ? `Nationals of ${localCountry} only` : localCountry ? `Local post · ${localCountry}` : "Local post";
+  // "Nationals of Kenya only" for National Officer posts, "Local post · Kenya" for other local posts (localOnlyLabel).
+  const localLabel = localOnlyLabel(job, countryByCode(job.country_code)?.name);
   const posted = postedMarker(job);
   const chip = closingChip(job.deadline);
   // Each detail ends with its own separator, glued to its last word by a no-break space, so a

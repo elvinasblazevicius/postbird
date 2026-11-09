@@ -75,17 +75,31 @@ export async function cleanupRateLimits(): Promise<void> {
  * Supabase's transaction pooler).
  */
 export async function takeDailyQuota(key: string, perDay: number): Promise<boolean> {
+  return (await takeDailyQuotaSlot(key, perDay)) !== null;
+}
+
+/** A counted use of a daily quota (takeDailyQuotaSlot), which releaseDailyQuota can give back. */
+export type QuotaSlot = { hashed: string; at: string };
+
+/** Like takeDailyQuota, but returns the use it counted (null: no room left), so a send that failed can give it back. */
+export async function takeDailyQuotaSlot(key: string, perDay: number): Promise<QuotaSlot | null> {
   const hashed = hashKey(key);
   return transaction(async (tx) => {
     await tx`select pg_advisory_xact_lock(hashtext(${`daily-quota|${hashed}`}))`;
-    const rows = await tx`
+    const rows = await tx<{ at: string }[]>`
       insert into rate_limits (key, window_start, count)
       select ${hashed}, clock_timestamp(), 1
       where (select count(*) from rate_limits where key = ${hashed} and window_start > now() - interval '24 hours') < ${perDay}
       on conflict (key, window_start) do nothing
-      returning 1`;
-    return rows.length === 1;
+      -- As text: a JavaScript Date would drop the microseconds and match nothing later.
+      returning window_start::text as at`;
+    return rows.length === 1 ? { hashed, at: rows[0].at } : null;
   });
+}
+
+/** Gives back one use counted by takeDailyQuotaSlot (e.g. the email it was for wasn't sent). Never throws. */
+export async function releaseDailyQuota(slot: QuotaSlot): Promise<void> {
+  await sql`delete from rate_limits where key = ${slot.hashed} and window_start = ${slot.at}::timestamptz`.catch(() => {});
 }
 
 /**

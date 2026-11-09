@@ -12,12 +12,14 @@
  */
 import { randomBytes } from "node:crypto";
 import { recordEvent } from "@/lib/analytics";
+import { recordOpsEvent } from "@/lib/ops-events";
 import { ALERT_STATUSES, BILLING_FLAG_KINDS, LIVE_STATUSES, type BillingFlagKind, type BillingStatus } from "@/lib/billing/statuses";
 import { PADDLE_PRICE_MONTHLY, PADDLE_PRICE_QUARTERLY } from "@/lib/billing/live";
 import {
   cancelSubscriptionNow, getCustomer, getSubscription, isPaddleApiConfigured, isPaddleCustomerId, WEBHOOK_PADDLE_TIMEOUT_MS,
   type PaddleCallOptions, type PaddleSubscription,
 } from "@/lib/billing/paddle";
+import { renewalTermsVersion } from "@/lib/billing/renewal-consent";
 import { trialUsedElsewhere } from "@/lib/billing/trial-markers";
 import { UNCONFIRMED_CANCEL_DAYS } from "@/lib/early-access-copy";
 import { sql, transaction, type Db, type Tx } from "@/lib/db";
@@ -117,10 +119,14 @@ export async function startCheckout(opts: {
   source?: string;
   attribution?: Record<string, string> | null;
   visitor?: string | null;
+  /** The "renews automatically" box was ticked (checked by startCheckoutAction): recorded on the checkout. */
+  renewalConsent?: boolean;
 }): Promise<StartCheckoutResult> {
   const email = normalizeEmail(opts.email);
   if (!email) return { ok: false, error: "Enter a valid email address." };
   const ref = newToken();
+  // The public form always offers the trial, so the trial wording is what was agreed to.
+  const consentVersion = opts.renewalConsent ? renewalTermsVersion(true, opts.plan) : null;
   const attribution = opts.attribution ?? null;
   const marked = await trialUsedElsewhere(email);
 
@@ -135,8 +141,9 @@ export async function startCheckout(opts: {
     await addSavedSearch(row.id, opts.search ?? "", tx);
     if (!marked) {
       await tx`
-        insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor, trial_allowed, address_proven)
-        values (${ref}, ${row.id}, ${opts.plan}, ${opts.search}, true, ${opts.visitor ?? null}, true, false)`;
+        insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor, trial_allowed, address_proven, renewal_consent_at, renewal_terms_version)
+        values (${ref}, ${row.id}, ${opts.plan}, ${opts.search}, true, ${opts.visitor ?? null}, true, false,
+                case when ${consentVersion}::text is not null then now() end, ${consentVersion})`;
     }
     return row.id;
   });
@@ -165,7 +172,11 @@ export async function startCheckout(opts: {
     order by created_at desc limit 1`;
   if (open) {
     if (opts.visitor && open.visitor === opts.visitor) {
-      await sql`update paddle_checkouts set plan = ${opts.plan}, search = ${opts.search} where ref = ${open.ref} and subscription_id is null`;
+      await sql`
+        update paddle_checkouts set plan = ${opts.plan}, search = ${opts.search},
+          renewal_consent_at = case when ${consentVersion}::text is not null then now() else renewal_consent_at end,
+          renewal_terms_version = coalesce(${consentVersion}, renewal_terms_version)
+        where ref = ${open.ref} and subscription_id is null`;
       return { ok: true, ref: open.ref, email, trial: true };
     }
     return { ok: false, error: CHECKOUT_ALREADY_OPEN };
@@ -174,8 +185,9 @@ export async function startCheckout(opts: {
   // First-touch attribution only, as in the early-access sign-up.
   if (attribution) await sql`update subscribers set attribution = coalesce(attribution, ${sql.json(attribution)}) where id = ${existing.id}`;
   await sql`
-    insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor, trial_allowed, address_proven)
-    values (${ref}, ${existing.id}, ${opts.plan}, ${opts.search}, ${existing.checkout_created}, ${opts.visitor ?? null}, true, false)`;
+    insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor, trial_allowed, address_proven, renewal_consent_at, renewal_terms_version)
+    values (${ref}, ${existing.id}, ${opts.plan}, ${opts.search}, ${existing.checkout_created}, ${opts.visitor ?? null}, true, false,
+            case when ${consentVersion}::text is not null then now() end, ${consentVersion})`;
   return { ok: true, ref, email, trial: true };
 }
 
@@ -571,7 +583,9 @@ function customerFor(subscriberId: number, check: CustomerCheck | null, customer
 async function stillHeld(tx: Tx, subId: string, status: BillingStatus): Promise<HandleResult | null> {
   const [held] = await tx<{ kind: BillingFlagKind; done: boolean }[]>`
     select kind, cancel_done_at is not null as done from billing_flags
-    where subscription_id = ${subId} and kind in ('trial_blocked', 'duplicate_subscription', 'customer_mismatch') and resolved_at is null
+    where subscription_id = ${subId} and kind in ('trial_blocked', 'duplicate_subscription', 'customer_mismatch')
+      -- A cancel that hasn't gone through holds the subscription back even if its flag was marked dealt with.
+      and (resolved_at is null or (kind <> 'customer_mismatch' and cancel_done_at is null))
     order by kind = 'customer_mismatch', kind limit 1`;
   if (!held) return null;
   const retry = !held.done && (held.kind === "trial_blocked" ? status === "trialing" : held.kind === "duplicate_subscription" && LIVE_STATUSES.includes(status));
@@ -719,12 +733,22 @@ async function linkCheckout(tx: Tx, subId: string, target: Target, newlyLive: bo
     .catch((e: Error) => console.warn("paddle webhook: saved search not added", (e as Error).message));
 }
 
+/** The Admin → Overview error for a running Paddle subscription that matches no subscriber (no personal data: the subscription id only). */
+export function unmatchedLiveMessage(subscriptionId: string, status: BillingStatus): string {
+  return `Paddle subscription ${subscriptionId} is running (${status}) but matches no subscriber here, so nobody gets alerts for it. Check it in Paddle and cancel or refund it if it shouldn't run.`;
+}
+
 async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: string, check: CustomerCheck | null): Promise<Applied> {
   if (typeof sub?.id !== "string" || !SUB_ID_RE.test(sub.id)) return { result: { outcome: "ignored" } };
   const target = await findSubscriber(tx, sub);
   if (!target) {
     // E.g. a simulated event, or a subscription created outside this site.
     console.warn(`paddle webhook: no subscriber for ${sub.id}`);
+    // A running one may charge someone who gets nothing here: shown on Admin → Overview (the id only).
+    const status = billingFromSubscription(sub).status;
+    if (LIVE_STATUSES.includes(status)) {
+      await recordOpsEvent("webhook", unmatchedLiveMessage(sub.id, status));
+    }
     return { result: { outcome: "unmatched" } };
   }
   const b = billingFromSubscription(sub);
@@ -774,6 +798,33 @@ export async function welcomeSent(subscriberId: number): Promise<void> {
 
 // ── Daily safety checks ──────────────────────────────────────
 
+export type PendingCancel = { subscription_id: string; kind: CancelKind; converted: boolean };
+
+/**
+ * Cancels the daily job still retries: every blocked trial or second subscription whose cancel
+ * Paddle hasn't confirmed (cancel_done_at), and every unconfirmed trial's failed cancel while the
+ * address stays unconfirmed and the subscription still runs. Whether the flag was marked dealt
+ * with (resolved_at) doesn't matter: only a cancel that went through ends the retries, so the
+ * admin offers "Mark dealt with" for these flags only once this list no longer has them.
+ * only: limit the answer to these subscriptions (the admin's list).
+ */
+export async function pendingCancels(opts: { exclude?: string[]; only?: string[]; limit?: number } = {}): Promise<PendingCancel[]> {
+  const { exclude = [], only = null, limit = 200 } = opts;
+  return sql<PendingCancel[]>`
+    select subscription_id, kind, converted from (
+      select f.subscription_id, f.kind, false as converted, f.updated_at from billing_flags f
+      where f.kind in ('trial_blocked', 'duplicate_subscription') and f.cancel_done_at is null
+      union all
+      select f.subscription_id, f.kind, s.billing_status <> 'trialing' as converted, f.updated_at
+      from billing_flags f join subscribers s on s.paddle_subscription_id = f.subscription_id
+      where f.kind = 'trial_unconfirmed' and f.cancel_done_at is null
+        and awaiting_confirmation(s) and s.billing_status = any(${LIVE_STATUSES})
+    ) p
+    where p.subscription_id <> all(${exclude}::text[])
+      and (${only}::text[] is null or p.subscription_id = any(${only}::text[]))
+    order by p.updated_at limit ${limit}`;
+}
+
 /** A trial at an address nobody confirmed is canceled once it ends within this many days (the daily job runs once a day). */
 export { UNCONFIRMED_CANCEL_DAYS };
 
@@ -819,16 +870,7 @@ export async function runBillingSafety(limit = 200): Promise<BillingSafetyResult
   // subscription still runs, in any running status: a trial that turned into a paid plan
   // meanwhile is canceled at once, and its flag says the payment must be refunded.
   const cancelRetries = { canceled: 0, failed: 0 };
-  const pending = await sql<{ subscription_id: string; kind: CancelKind; converted: boolean }[]>`
-    select f.subscription_id, f.kind, false as converted, f.updated_at from billing_flags f
-    where f.kind in ('trial_blocked', 'duplicate_subscription') and f.resolved_at is null and f.cancel_done_at is null
-    union all
-    select f.subscription_id, f.kind, s.billing_status <> 'trialing' as converted, f.updated_at
-    from billing_flags f join subscribers s on s.paddle_subscription_id = f.subscription_id
-    where f.kind = 'trial_unconfirmed' and f.resolved_at is null and f.cancel_done_at is null
-      and awaiting_confirmation(s) and s.billing_status = any(${LIVE_STATUSES})
-      and f.subscription_id <> all(${triedNow}::text[])
-    order by updated_at limit ${limit}`;
+  const pending = await pendingCancels({ exclude: triedNow, limit });
   for (const f of pending) {
     if (await cancelFlaggedSubscription(f.subscription_id, f.kind, { converted: f.converted })) cancelRetries.canceled++;
     else cancelRetries.failed++;

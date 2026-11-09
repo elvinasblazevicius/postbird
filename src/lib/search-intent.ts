@@ -19,6 +19,8 @@ export type SearchIntent = {
   grade?: string;
   /** A language the language filter knows ("french" → "French"; see languageFromWord). */
   lang?: string;
+  /** A world region the "Where" filter knows ("africa", "latin america" → its slug in REGIONS, src/config/regions.ts). */
+  region?: string;
 };
 
 const STOP_WORDS = new Set([
@@ -45,6 +47,44 @@ const INTERNSHIP_WORDS = new Set(["intern", "interns", "internship", "internship
 const CONSULTANCY_WORDS = new Set(["consultancy", "consultancies", "consultant", "consultants"]);
 const VOLUNTEER_WORDS = new Set(["volunteer", "volunteers", "volunteering"]);
 const FELLOWSHIP_WORDS = new Set(["fellowship", "fellowships"]);
+
+/**
+ * Region words and the "Where" filter's region they pick (slugs of REGIONS in src/config/regions.ts).
+ * Longest first, so "central asia" is read before "asia" and "north africa" before "africa".
+ * Countries are read first, so "south africa" stays a country. Parts of a region pick the region
+ * that holds them ("west africa" → Africa), so no stray word is left to match as text.
+ */
+const REGION_PHRASES: [string, string][] = ([
+  ["latin america and the caribbean", "latin-america-caribbean"],
+  ["middle east and north africa", "middle-east-north-africa"],
+  ["europe and central asia", "europe-central-asia"],
+  ["asia and the pacific", "asia-pacific"],
+  ["sub-saharan africa", "africa"],
+  ["latin america", "latin-america-caribbean"],
+  ["asia pacific", "asia-pacific"],
+  ["asia-pacific", "asia-pacific"],
+  ["middle east", "middle-east-north-africa"],
+  ["north africa", "middle-east-north-africa"],
+  ["west africa", "africa"],
+  ["east africa", "africa"],
+  ["southern africa", "africa"],
+  ["central africa", "africa"],
+  ["central asia", "europe-central-asia"],
+  ["eastern europe", "europe-central-asia"],
+  ["western europe", "europe-central-asia"],
+  ["southeast asia", "asia-pacific"],
+  ["south asia", "asia-pacific"],
+  ["east asia", "asia-pacific"],
+  ["caribbean", "latin-america-caribbean"],
+  ["mena", "middle-east-north-africa"],
+  ["africa", "africa"],
+  ["europe", "europe-central-asia"],
+  ["asia", "asia-pacific"],
+  ["pacific", "asia-pacific"],
+] as [string, string][]).sort((a, b) => b[0].length - a[0].length);
+
+/** The region slugs REGION_PHRASES names (a test checks each is a REGIONS slug). */
+export const SEARCH_REGION_SLUGS = [...new Set(REGION_PHRASES.map(([, slug]) => slug))];
 
 const COUNTRY_NAMES: [string, string][] = COUNTRIES.flatMap((c) =>
   [c.name, ...c.aliases]
@@ -224,6 +264,15 @@ export function interpretQuery(q: string | undefined | null): SearchIntent {
       intent.country ??= slug;
       s = s.replace(re, " ");
       break;
+    }
+  }
+  // One region (after countries: "south africa" is a country). A second region word, or one next
+  // to a country, is taken out too: the more specific place, or the first region, is the filter.
+  for (const [phrase, slug] of REGION_PHRASES) {
+    const re = wordRe(phrase);
+    if (re.test(s)) {
+      if (!intent.country) intent.region ??= slug;
+      s = s.replace(re, " ");
     }
   }
 

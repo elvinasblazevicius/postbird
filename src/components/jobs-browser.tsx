@@ -65,7 +65,7 @@ function filterChips(filters: JobFilters, fixed: Partial<JobFilters>, base: stri
     const rest = (list ?? []).filter((x) => x !== v);
     return rest.length ? rest : undefined;
   };
-  const fromSearch = (k: "orgtype" | "remote" | "type" | "country" | "grade" | "lang") => {
+  const fromSearch = (k: "orgtype" | "remote" | "type" | "country" | "region" | "grade" | "lang") => {
     const set = filters[k];
     return Boolean(intent && intent[k] !== undefined && !(Array.isArray(set) ? set.length : set) && Boolean(read[k]));
   };
@@ -83,7 +83,7 @@ function filterChips(filters: JobFilters, fixed: Partial<JobFilters>, base: stri
   if (orgs.length) removals.push({ key: "org", label: orgs.length > 1 ? `Organization: ${orList(orgs.map(orgName))}` : chips[chips.length - 1].label, href: href({ org: undefined }) });
   const regions = own.region ?? [];
   const countries = own.country ?? [];
-  for (const r of regions) chips.push({ key: "where", label: `Region: ${regionBySlug(r)?.name ?? r}`, href: href({ region: without(regions, r) }), fromSearch: false });
+  for (const r of regions) chips.push({ key: "where", label: `Region: ${regionBySlug(r)?.name ?? r}`, href: href({ region: without(regions, r) }), fromSearch: fromSearch("region") });
   for (const c of countries) chips.push({ key: "where", label: `Country: ${countryBySlug(c)?.name ?? c}`, href: href({ country: without(countries, c) }), fromSearch: fromSearch("country") });
   if (regions.length + countries.length) {
     removals.push({ key: "where", label: regions.length + countries.length > 1 ? `Location: ${orList(placeNames(own))}` : chips[chips.length - 1].label, href: href({ country: undefined, region: undefined }) });
@@ -170,6 +170,8 @@ export async function JobsBrowser({
   base = "/jobs",
   emptyHint,
   alertNoun,
+  emptyTitle,
+  generalAlert = false,
 }: {
   filters: JobFilters;
   fixed?: Partial<JobFilters>;
@@ -177,6 +179,10 @@ export async function JobsBrowser({
   emptyHint?: React.ReactNode;
   /** What the empty-results email offer calls these vacancies: "Get an email when new {UNICEF} vacancies are posted". */
   alertNoun?: string;
+  /** The empty state's heading when no filter is set (instead of "No open vacancies are listed right now."). */
+  emptyTitle?: string;
+  /** The empty-results email offer is the general one (no search, no noun): e.g. a landing page with no listings at all. */
+  generalAlert?: boolean;
 }) {
   // A landing page fixed to a place (/locations/kenya) replaces every place in the URL rather than adding to them.
   const effective: JobFilters = { ...filters, ...fixed, ...(fixed.country || fixed.region ? { country: fixed.country, region: fixed.region } : {}) };
@@ -202,8 +208,9 @@ export async function JobsBrowser({
   const showTotal = base === "/jobs" || userFilters > 0 || result.total >= siteConfig.showVacancyCountFrom;
   const to = from + result.items.length - 1;
   const alertSearch = jobsUrl({ ...effective, page: undefined, sort: undefined }).replace(/^\/jobs\??/, "");
-  const alertHref = `${siteConfig.freeWeeklyEmail ? "/alerts" : "/pricing/trial"}?search=${encodeURIComponent(alertSearch)}`;
-  const noun = [userFilters > 0 ? "matching" : null, alertNoun].filter(Boolean).join(" ");
+  const alertPage = siteConfig.freeWeeklyEmail ? "/alerts" : "/pricing/trial";
+  const alertHref = generalAlert ? alertPage : `${alertPage}?search=${encodeURIComponent(alertSearch)}`;
+  const noun = generalAlert ? "" : [userFilters > 0 ? "matching" : null, alertNoun].filter(Boolean).join(" ");
   const removals = removalList
     .map((c) => ({ ...c, count: facets.without[c.key] ?? 0 }))
     .sort((a, b) => b.count - a.count);
@@ -217,8 +224,9 @@ export async function JobsBrowser({
     : 0;
   const unstatedHref = unstatedMore ? jobsUrl({ ...filters, unstated: true, page: undefined }, base) : null;
 
+  // grid-cols-1 (minmax(0, 1fr)): on 320px phones the search field's own width can't widen the column past the screen.
   return (
-    <div className="grid gap-6 lg:grid-cols-[18rem_1fr] lg:gap-8">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[18rem_1fr] lg:gap-8">
       <aside>
         <MobileKeyword filters={filters} formId="filters-mobile" />
         <details className="group/panel rounded-xl border border-rule p-4 lg:hidden" open={false}>
@@ -335,7 +343,7 @@ export async function JobsBrowser({
                 ? "No open vacancies match all of these filters together."
                 : removals.length === 1
                   ? `No open vacancies match ${removals[0].phrase ?? removals[0].label}.`
-                  : "No open vacancies are listed right now."}
+                  : emptyTitle ?? "No open vacancies are listed right now."}
             </p>
             {suggestion && suggestionHref ? (
               <p className="mt-2 text-ink">

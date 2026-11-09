@@ -272,9 +272,18 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(again).toEqual({ ok: true, inbox: true, email: "waiting@example.org", subscriberId: Number(before.id), live: true });
     });
 
-    it("leaves unknown subscriptions alone", async () => {
+    it("leaves unknown subscriptions alone, and shows a running one on Admin → Overview (its id only)", async () => {
+      await sql`delete from ops_events`;
       const res = await billing.handlePaddleEvent(subEvent("subscription.created", { id: "sub_01hv8x29kz0t586xy6zn1a6zzz", customer_id: "ctm_01hv6y1jedq4p1n0yqn5ba3kzz" }));
       expect(res.outcome).toBe("unmatched");
+      const ops = await sql`select source, message, count from ops_events where resolved_at is null`;
+      expect(ops).toEqual([{ source: "webhook", message: billing.unmatchedLiveMessage("sub_01hv8x29kz0t586xy6zn1a6zzz", "trialing"), count: 1 }]);
+      expect(ops[0].message).not.toMatch(/@|ctm_/);
+      // A canceled one that matches nobody: nothing to look at.
+      await sql`delete from ops_events`;
+      const gone = await billing.handlePaddleEvent(subEvent("subscription.canceled", { id: "sub_01hv8x29kz0t586xy6zn1a6zzy", customer_id: null, status: "canceled", canceled_at: new Date().toISOString() }));
+      expect(gone.outcome).toBe("unmatched");
+      expect(await sql`select 1 from ops_events`).toHaveLength(0);
     });
 
     it("the webhook route rejects a bad signature and accepts a signed event", async () => {
@@ -687,6 +696,50 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       await subscribers.signup({ email: "other-flood@example.org", kind: "waitlist" });
       expect(sent.filter((m) => m.to === "other-flood@example.org")).toHaveLength(1);
     });
+
+    it("a send that failed isn't counted: no 5-minute gap, the daily use is given back, and it waits 5 seconds at most", async () => {
+      await sql`delete from rate_limits`;
+      const email = "send-failed@example.org";
+      const stub = globalThis.fetch;
+      const signals: (AbortSignal | null | undefined)[] = [];
+      vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) => {
+        signals.push(init?.signal);
+        return new Response(JSON.stringify({ name: "application_error", message: "down" }), { status: 500 });
+      });
+      try {
+        for (let i = 0; i < subscribers.CONFIRMATIONS_PER_DAY + 1; i++) {
+          expect(await subscribers.signup({ email, kind: "alerts" })).toEqual({ ok: false, error: "We couldn't send the confirmation email. Please try again in a few minutes." });
+        }
+      } finally {
+        vi.stubGlobal("fetch", stub);
+      }
+      expect(signals[0]).toBeInstanceOf(AbortSignal);
+      expect((await sql`select confirm_sent_at from subscribers where email = ${email}`)[0].confirm_sent_at).toBeNull();
+      expect((await sql`select count(*)::int as n from rate_limits`)[0].n).toBe(0);
+      // Resend answers again: the next try goes out at once, and counts.
+      expect(await subscribers.signup({ email, kind: "alerts" })).toEqual({ ok: true, state: "check_email" });
+      expect(sent.filter((m) => m.to === email)).toHaveLength(1);
+      expect((await sql`select confirm_sent_at from subscribers where email = ${email}`)[0].confirm_sent_at).not.toBeNull();
+      expect((await sql`select count(*)::int as n from rate_limits`)[0].n).toBe(1);
+    });
+
+    it("gives Resend at most 5 seconds while the visitor waits", async () => {
+      expect(subscribers.SIGNUP_SEND_TIMEOUT_MS).toBe(5_000);
+      const stub = globalThis.fetch;
+      vi.stubGlobal("fetch", (_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+      }));
+      const { sendEmail } = await import("@/lib/email");
+      try {
+        const started = Date.now();
+        const res = await sendEmail({ to: "slow@example.org", subject: "s", html: "h", text: "t" }, { timeoutMs: 50 });
+        expect(res.ok).toBe(false);
+        expect(res.error).toMatch(/timeout|abort/i);
+        expect(Date.now() - started).toBeLessThan(2_000);
+      } finally {
+        vi.stubGlobal("fetch", stub);
+      }
+    });
   });
 
   describe("retention", () => {
@@ -714,6 +767,23 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(left).toEqual(["early-new@example.org", "early-trial@example.org", "new-cancel@example.org"]);
       expect(await sql`select 1 from saved_searches where subscriber_id = ${oldCancel}`).toHaveLength(0);
       expect(await sql`select 1 from paddle_checkouts where created_at < now() - interval '30 days'`).toHaveLength(0);
+    });
+
+    it("a checkout that led to a subscription keeps only its record of the renewal agreement, until the address is deleted", async () => {
+      const [r] = await sql`
+        insert into subscribers (email, status, confirmed_at, billing_status, paddle_subscription_id, unsubscribe_token)
+        values ('kept-consent@example.org', 'confirmed', now() - interval '60 days', 'active', 'sub_01hv8x29kz0t586xy6zn1a7k01', ${tok("kept-consent@example.org")})
+        returning id::int as id`;
+      await sql`
+        insert into paddle_checkouts (ref, subscriber_id, plan, search, visitor, subscription_id, renewal_consent_at, renewal_terms_version, created_at) values
+          ('ref-kept-consent-0123456789', ${r.id}, 'monthly', 'q=pilot', 'visitor-hash', 'sub_01hv8x29kz0t586xy6zn1a7k01', now() - interval '45 days', 'trial-0123456789ab', now() - interval '45 days'),
+          ('ref-unlinked-consent-012345', ${r.id}, 'monthly', 'q=pilot', 'visitor-hash', null, now() - interval '45 days', 'trial-0123456789ab', now() - interval '45 days')`;
+      await subscribers.purgeStaleSubscribers();
+      const rows = await sql`select ref, search, visitor, renewal_consent_at is not null as agreed, renewal_terms_version from paddle_checkouts where subscriber_id = ${r.id}`;
+      expect(rows).toEqual([{ ref: "ref-kept-consent-0123456789", search: null, visitor: null, agreed: true, renewal_terms_version: "trial-0123456789ab" }]);
+      // Deleted with the address.
+      await sql`delete from subscribers where id = ${r.id}`;
+      expect(await sql`select 1 from paddle_checkouts where ref = 'ref-kept-consent-0123456789'`).toHaveLength(0);
     });
   });
 
@@ -987,6 +1057,30 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       const m = sent.find((x) => x.to === "keep-link@example.org")!;
       expect(m.subject).toBe("Your link to cancel your Postbird plan");
       expect(m.text).toContain(`/account?t=${fresh}`);
+    });
+
+    it("the trial form with an address that has a plan resends the current link and never replaces it", async () => {
+      await sql`delete from rate_limits`;
+      const email = "has-plan-already@example.org";
+      const [r] = await sql`
+        insert into subscribers (email, status, confirmed_at, billing_status, plan, plan_interval, unsubscribe_token)
+        values (${email}, 'confirmed', now(), 'active', 'premium', 'month', ${tok(email)}) returning id::int as id, manage_token`;
+      const links = await import("@/lib/billing/checkout-links");
+      for (let i = 0; i < 2; i++) expect(await links.sendCheckoutLink({ subscriberId: r.id, email, live: true }, { plan: "monthly", search: null })).toBe(true);
+      expect((await sql`select manage_token from subscribers where id = ${r.id}`)[0].manage_token).toBe(r.manage_token);
+      const mails = sent.filter((x) => x.to === email);
+      expect(mails).toHaveLength(2);
+      for (const m of mails) {
+        expect(m.subject).toBe("You already have Postbird daily alerts");
+        expect(m.text).toContain(`/account?t=${r.manage_token}`);
+        expect(m.text).toContain("same link as in your earlier emails");
+        expect(m.text).not.toContain("no longer work");
+      }
+      // Each send has its own key, so the second isn't taken for a repeat of the first.
+      expect(new Set(mails.map((m) => m.key)).size).toBe(2);
+      // The "email me my account link" form still replaces it.
+      expect(await account.sendAccountLink(email)).toBe(true);
+      expect((await sql`select manage_token from subscribers where id = ${r.id}`)[0].manage_token).not.toBe(r.manage_token);
     });
   });
 

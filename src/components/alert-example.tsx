@@ -1,7 +1,7 @@
 import Link from "next/link";
 import siteConfig from "@site-config";
 import { closingSoonJobs, searchJobs, type JobListItem } from "@/lib/jobs";
-import { displayGrade, isLocalOnly } from "@/lib/grades";
+import { displayGrade, isLocalOnly, localOnlyShort } from "@/lib/grades";
 import { daysUntil, formatDate, jobPath, locationLabel, NOT_SPECIFIED } from "@/lib/site";
 
 /** Paid alerts' "Closing in the next 3 days" (CLOSING_SOON_DAYS in src/lib/email-templates.ts, not imported here: that module is server-email code). */
@@ -17,7 +17,7 @@ const ILLUSTRATIVE = [
 /** "UNICEF · Nairobi, Kenya · P-3 · Closes 30 Nov 2026": the same compact line as the emails (jobMeta in src/lib/email-templates.ts). */
 function jobMeta(j: JobListItem): string {
   const where = locationLabel(j);
-  return [j.org_name ?? "Organization not in our source", where === NOT_SPECIFIED ? null : where, displayGrade(j), j.deadline ? `Closes ${formatDate(j.deadline)}` : null]
+  return [j.org_name ?? "Organization not in our source", where === NOT_SPECIFIED ? null : where, displayGrade(j), localOnlyShort(j), j.deadline ? `Closes ${formatDate(j.deadline)}` : null]
     .filter(Boolean)
     .join(" · ");
 }
@@ -69,7 +69,9 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
   const pick = (posted: "1" | "7") =>
     searchJobs({ posted, sort: "newest", hidelocal: kind === "daily" || undefined, excludeDemo: true }, 30).catch(() => ({ items: [] as JobListItem[], total: 0 }));
   const [first, closing] = await Promise.all([pick(kind === "daily" ? "1" : "7"), kind === "daily" ? closingSoonJobs(12).catch(() => []) : Promise.resolve([])]);
-  const found = kind === "daily" && first.total < EXAMPLE_ROWS ? await pick("7") : first;
+  // A quiet day: the daily example is built from the past week instead, and says so.
+  const pastWeek = kind === "daily" && first.total < EXAMPLE_ROWS;
+  const found = pastWeek ? await pick("7") : first;
   const jobs = pickRows(found.items);
   const soon = closing
     .filter((j) => !j.is_demo && (daysUntil(j.deadline) ?? 99) <= CLOSING_SOON_DAYS && !jobs.some((x) => x.id === j.id) && !isLocalOnly(j))
@@ -80,7 +82,14 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
   const label = kind === "daily" ? "All new vacancies, without local-only posts" : "All new vacancies";
   const subject = kind === "weekly"
     ? `${cappedCount(n)} new international ${n === 1 ? "vacancy" : "vacancies"} this week`
-    : `${cappedCount(n)} new ${n === 1 ? "vacancy matches" : "vacancies match"} your search`;
+    : pastWeek && real
+      ? `Example: ${cappedCount(n)} new ${n === 1 ? "vacancy" : "vacancies"} this week`
+      : `${cappedCount(n)} new ${n === 1 ? "vacancy matches" : "vacancies match"} your search`;
+  const intro = !real
+    ? "Illustrative example"
+    : pastWeek
+      ? "An example built from the past week’s listings (a quiet day had too few to show)."
+      : "Example built from current listings";
   const rows = real
     ? jobs.map((j) => ({ key: j.id, title: j.title, meta: jobMeta(j), href: jobPath(j) }))
     : ILLUSTRATIVE.map((j) => ({ key: j.title, title: j.title, meta: j.meta }));
@@ -88,7 +97,7 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
   return (
     <section aria-labelledby="sample-heading">
       <h2 id="sample-heading" className="text-xl font-semibold text-ink">{heading}</h2>
-      <p className="mt-1 text-sm text-slate">{real ? "Example built from current listings" : "Illustrative example"}</p>
+      <p className="mt-1 text-sm text-slate">{intro}</p>
       <figure className="mt-3 rounded-xl border border-rule bg-mist p-2 sm:p-3">
         <figcaption className="px-2 pb-2 pt-1 text-[0.8125rem] leading-relaxed text-slate">
           <span className="block"><span className="text-ink">From:</span> {siteConfig.name}</span>
@@ -103,7 +112,9 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
             <p className="mt-1 text-sm text-slate">
               {kind === "weekly"
                 ? "The newest vacancies of the past week. Apply on each employer’s own website."
-                : `New on ${siteConfig.name} since yesterday’s email. Apply on each employer’s own website.`}
+                : pastWeek && real
+                  ? `New on ${siteConfig.name} in the past week. Apply on each employer’s own website.`
+                  : `New on ${siteConfig.name} since yesterday’s email. Apply on each employer’s own website.`}
             </p>
             {kind === "daily" ? (
               <p className="mt-4 text-[0.95rem] font-semibold text-ink">

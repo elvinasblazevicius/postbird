@@ -3,7 +3,8 @@ import { countriesInLocation, locationPatterns, normalizePlace } from "@/lib/cou
 import { gradeGroupOf, gradeMatches, isLocalOnlyGrade, LOCAL_ONLY_GRADE_SQL } from "@/lib/grades";
 import { activeFilterCount, derivedFilters, filtersFromQuery, jobsUrl, parseFilters, wantsLooseMatch, withSearchIntent } from "@/lib/jobs";
 import { alertStepKeep, describeSearch, normalizeSearch, searchFromAlertStep, searchFromSignupForm } from "@/lib/saved-searches";
-import { categoriesForWord, interpretQuery, languageFromWord, placeVariants, searchTerms } from "@/lib/search-intent";
+import { categoriesForWord, interpretQuery, languageFromWord, placeVariants, SEARCH_REGION_SLUGS, searchTerms } from "@/lib/search-intent";
+import { regionBySlug } from "@/config/regions";
 
 describe("duty-station names", () => {
   it("finds other spellings and names of common duty stations, with or without accents", () => {
@@ -86,6 +87,53 @@ describe("interpretQuery", () => {
     expect(f).toMatchObject({ q: undefined, country: ["uganda"], type: "Consultancy" });
     expect(withSearchIntent({ q: "kenya", region: ["africa"] }).country).toBeUndefined();
     expect(withSearchIntent({ q: "kenya" }).country).toEqual(["kenya"]);
+  });
+});
+
+describe("region words in a search", () => {
+  it("picks the region filter for each region word, with the word taken out of the keywords", () => {
+    const cases: [string, string][] = [
+      ["africa", "africa"],
+      ["Europe", "europe-central-asia"],
+      ["asia", "asia-pacific"],
+      ["Asia and the Pacific", "asia-pacific"],
+      ["pacific", "asia-pacific"],
+      ["latin america", "latin-america-caribbean"],
+      ["Latin America and the Caribbean", "latin-america-caribbean"],
+      ["middle east", "middle-east-north-africa"],
+      ["MENA", "middle-east-north-africa"],
+      ["north africa", "middle-east-north-africa"],
+      ["central asia", "europe-central-asia"],
+      ["Caribbean", "latin-america-caribbean"],
+    ];
+    for (const [q, region] of cases) {
+      expect(interpretQuery(`${q} jobs`), q).toEqual({ text: null, region });
+      expect(regionBySlug(region), region).toBeDefined();
+    }
+    for (const slug of SEARCH_REGION_SLUGS) expect(regionBySlug(slug), slug).toBeDefined();
+    expect(interpretQuery("health officer in Africa")).toEqual({ text: "health officer", region: "africa" });
+    expect(interpretQuery("un internship latin america")).toEqual({ text: null, orgtype: "un", type: "Internship", region: "latin-america-caribbean" });
+  });
+
+  it("leaves countries, organizations and other words alone", () => {
+    // A country wins, and the region word next to it isn't left as a keyword.
+    expect(interpretQuery("south africa")).toEqual({ text: null, country: "south-africa" });
+    expect(interpretQuery("kenya africa")).toEqual({ text: null, country: "kenya" });
+    expect(interpretQuery("Central African Republic").country).toBe("central-african-republic");
+    expect(interpretQuery("Central African Republic").region).toBeUndefined();
+    // Organization names and other words that only contain a region word.
+    expect(interpretQuery("council of europe")).toEqual({ text: "council of europe" });
+    expect(interpretQuery("african development bank").region).toBeUndefined();
+    expect(interpretQuery("asian studies").region).toBeUndefined();
+    expect(interpretQuery("european affairs").region).toBeUndefined();
+  });
+
+  it("becomes the region filter, unless a place is already chosen (withSearchIntent)", () => {
+    expect(withSearchIntent({ q: "africa nutrition" })).toMatchObject({ q: "nutrition", region: ["africa"] });
+    expect(withSearchIntent({ q: "africa nutrition", region: ["asia-pacific"] })).toMatchObject({ q: "nutrition", region: ["asia-pacific"] });
+    expect(withSearchIntent({ q: "africa", country: ["kenya"] }).region).toBeUndefined();
+    // parseFilters keeps the slug, so the chip's links keep it.
+    expect(parseFilters({ region: "middle-east-north-africa" }).region).toEqual(["middle-east-north-africa"]);
   });
 });
 

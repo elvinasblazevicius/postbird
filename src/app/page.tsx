@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertSignup } from "@/components/alert-signup";
-import { JobGrid, OrgBadge } from "@/components/job-card";
+import { JobGrid, JobList, OrgBadge } from "@/components/job-card";
 import { Flag } from "@/components/flag";
 import { HeroSearch } from "@/components/search-forms";
 import { TrackedLink } from "@/components/tracking";
@@ -194,7 +194,8 @@ export default async function HomePage() {
         <div className="mt-5">
           {latest.length ? (
             <>
-              <JobGrid jobs={latest} mobileLimit={5} />
+              {/* One column, like /jobs: titles keep the row's width and the date chips line up. */}
+              <JobList jobs={latest} mobileLimit={5} />
               <Link href="/jobs" className="mt-4 block rounded-lg border border-rule bg-paper px-4 py-3 text-center font-medium text-accent hover:bg-mist sm:hidden">
                 {showTotal ? `See all ${stats.active.toLocaleString("en-US")} jobs` : "See all jobs"}
               </Link>

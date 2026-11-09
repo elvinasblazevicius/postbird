@@ -116,7 +116,7 @@ const siteConfig = {
      * src/lib/jobs.ts). The last line assumes freeWeeklyEmail is on.
      */
     features: [
-      "A reminder of matching vacancies that close in the next 3 days",
+      "A reminder of matching vacancies that close in the next 3 days (when the employer publishes a closing date)",
       "Up to 5 searches instead of one, with the same filters",
       "New matches every day, up to 6 days before the weekly email",
     ],

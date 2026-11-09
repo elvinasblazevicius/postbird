@@ -8,7 +8,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import siteConfig from "@site-config";
 import { KNOWN_ORGS } from "@/config/organizations";
-import { TRIAL_CONFIRM_NOTE } from "@/lib/early-access-copy";
+import { CHECK_INBOX_FIRST, ONE_TRIAL_SHORT, TRIAL_CONFIRM_NOTE } from "@/lib/early-access-copy";
 import { duplicatePlanEmail } from "@/lib/email-templates";
 import { defaultSiteCopy, homeCopy } from "@/lib/eu-claim";
 import { EMBLEM_DOMAIN_RE, EMBLEM_NAME_RE, isLogoProtected } from "@/lib/feeds/logos";
@@ -72,8 +72,20 @@ describe("customer-facing copy", () => {
     expect(m.html).toContain("reply to this email and we&#39;ll refund the charge");
   });
 
-  it("the public trial form says the address must be confirmed, and that there is one trial per address", () => {
-    expect(TRIAL_CONFIRM_NOTE).toBe("Your 14 days start today. We'll email you a link to confirm your address; your alerts start once you confirm. One free trial per email address.");
+  it("the public trial form says in its visible terms that the address must be confirmed; one trial per address stays in Details", () => {
+    expect(TRIAL_CONFIRM_NOTE).toBe("Your 14 days start today. We'll email you a link to confirm your address; your alerts start once you confirm.");
+    expect(ONE_TRIAL_SHORT).toBe("One free trial per email address.");
+    expect(CHECK_INBOX_FIRST).toBe("Check your inbox now to confirm your address and start your alerts.");
+    const src = readFileSync(path.join(__dirname, "..", "src", "components", "paddle-checkout.tsx"), "utf8");
+    const details = src.slice(src.indexOf("<details"), src.indexOf("</details>"));
+    expect(details).not.toContain("TRIAL_CONFIRM_NOTE");
+    expect(details).toContain("ONE_TRIAL_SHORT");
+    expect(details).toContain("TAX_LINE");
+    expect(details).toContain("CARD_STATEMENT_LINE");
+    // After checkout, the inbox comes first.
+    const done = src.slice(src.indexOf("function DoneBox"), src.indexOf("/** The plan choice"));
+    expect(done.indexOf("CHECK_INBOX_FIRST")).toBeGreaterThan(-1);
+    expect(done.indexOf("CHECK_INBOX_FIRST")).toBeLessThan(done.indexOf("trial is running now"));
   });
 });
 

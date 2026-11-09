@@ -279,7 +279,12 @@ export async function resolveBillingFlagAction(form: FormData): Promise<void> {
   const subscriptionId = String(form.get("subscription_id") ?? "").slice(0, 100);
   const kind = String(form.get("kind") ?? "");
   if (/^sub_[a-z\d]{26}$/.test(subscriptionId) && isBillingFlagKind(kind)) {
-    await sql`update billing_flags set resolved_at = now(), updated_at = now() where subscription_id = ${subscriptionId} and kind = ${kind} and resolved_at is null`;
+    // A cancel the daily job still retries can't be marked dealt with (the admin shows "Cancel still pending").
+    const { pendingCancels } = await import("@/lib/billing/subscriptions");
+    const pending = await pendingCancels({ only: [subscriptionId] });
+    if (!pending.some((p) => p.kind === kind)) {
+      await sql`update billing_flags set resolved_at = now(), updated_at = now() where subscription_id = ${subscriptionId} and kind = ${kind} and resolved_at is null`;
+    }
   }
   revalidatePath("/admin");
   redirect("/admin");

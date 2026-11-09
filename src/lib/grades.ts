@@ -116,6 +116,35 @@ export function displayGrade(job: { grade: string | null | undefined; title: str
   return group ? GROUP_DISPLAY[group] : null;
 }
 
+/** A National Officer post (by grade, or a title that names the category): open only to nationals of the duty-station country. */
+export function isNationalOfficerPost(job: { grade: string | null | undefined; title: string | null | undefined }): boolean {
+  return Boolean(displayGrade(job)?.startsWith("National Officer"));
+}
+
+/**
+ * The label of a local-only post in job lists: "Nationals of Kenya only" for National Officer
+ * posts; other local posts (General Service, service contracts) are usually open to legal
+ * residents too, so they are "Local post · Kenya". Null for other posts.
+ */
+export function localOnlyLabel(job: { grade: string | null | undefined; title: string | null | undefined }, country: string | null | undefined): string | null {
+  if (!isLocalOnly(job)) return null;
+  if (isNationalOfficerPost(job) && country) return `Nationals of ${country} only`;
+  return country ? `Local post · ${country}` : "Local post";
+}
+
+/** The same in an email row, where the place is already in the line: "Nationals only" or "Local post". */
+export function localOnlyShort(job: { grade: string | null | undefined; title: string | null | undefined }): string | null {
+  if (!isLocalOnly(job)) return null;
+  return isNationalOfficerPost(job) ? "Nationals only" : "Local post";
+}
+
+/** "Who can apply" on a job page, matching localOnlyLabel. Null for posts that aren't local-only. */
+export function whoCanApplyLine(job: { grade: string | null | undefined; title: string | null | undefined }, country: string | null | undefined): string | null {
+  if (!isLocalOnly(job)) return null;
+  if (isNationalOfficerPost(job)) return `Only nationals of ${country ?? "the duty-station country"}.`;
+  return `Usually only nationals or legal residents of ${country ?? "the duty-station country"}.`;
+}
+
 /**
  * Official pay sources, linked (no figures: they change every year and by duty station). Used on
  * /grades and on job pages. Checked on 9 November 2026: ICSC salary scales (Professional and higher,

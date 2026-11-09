@@ -12,7 +12,7 @@ import { categoryBySlug } from "@/config/categories";
 import { countryByCode } from "@/config/countries";
 import { LISTING_SETTINGS } from "@/config/import";
 import { applyLinkKind } from "@/lib/apply-link";
-import { displayGrade, isLocalOnly, payScaleFor } from "@/lib/grades";
+import { displayGrade, isLocalOnly, payScaleFor, whoCanApplyLine } from "@/lib/grades";
 import { ORG_TYPES, regionOf } from "@/config/regions";
 import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
 import { moreInCategory, organizationPostingMix, POSTING_MIX_DAYS, searchJobs, type JobDetail, type JobListItem } from "@/lib/jobs";
@@ -196,7 +196,8 @@ export default async function JobPage({ params }: Props) {
   // "Who can apply" only where we know the usual rule: local-only posts. For any other post we make
   // no general claim (eligibility differs by employer: EU citizenship, member-country nationality,
   // work permits); that advice is part of the one note below instead.
-  const whoCanApply = localOnly ? `Usually only nationals or legal residents of ${dutyCountry ?? "the duty-station country"}.` : null;
+  // National Officer posts: only nationals (as the list badge says); other local posts usually also legal residents.
+  const whoCanApply = localOnly ? whoCanApplyLine(job, dutyCountry) : null;
   // One quiet line for everything the page doesn't show (it makes no claim about what the employer's page has beyond the full details).
   const detailsLine = (
     <p className="mt-3 text-sm text-slate">
@@ -344,12 +345,14 @@ export default async function JobPage({ params }: Props) {
     </p>
   );
   const updated = <>Listing last updated from our source {formatDate(job.last_seen_at)}.</>;
-  const stickyApply = (
-    <div className="sticky bottom-0 z-30 -mx-4 flex items-center gap-3 border-t border-rule bg-paper/95 px-4 py-3 backdrop-blur lg:hidden">
+  // `hideFrom`: the breakpoint from which the page shows Apply in view without it.
+  const stickyBar = (hideFrom: "sm:hidden" | "lg:hidden") => (
+    <div className={`sticky bottom-0 z-30 -mx-4 flex items-center gap-3 border-t border-rule bg-paper/95 px-4 py-3 backdrop-blur ${hideFrom}`}>
       {dl ? <p className={`shrink-0 text-sm ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>{dl.text}</p> : null}
       <div className="min-w-0 flex-1">{applyButton}</div>
     </div>
   );
+  const stickyApply = stickyBar("lg:hidden");
 
   if (!description) {
     // ── No description: one centred column. Header (with the employer type folded into its meta), the
@@ -373,7 +376,7 @@ export default async function JobPage({ params }: Props) {
                     <span className="text-[0.95rem] text-slate">
                       <span aria-hidden="true">{" · "}</span>
                       <span className="sr-only">, </span>
-                      <Link href={typePage.path} className="text-slate underline decoration-rule underline-offset-2 hover:text-accent">{typePage.label}</Link>
+                      <Link href={typePage.path} className="text-slate underline decoration-rule underline-offset-2 hover:text-accent">{typePage.singular}</Link>
                     </span>
                   ) : null}
                 </p>
@@ -462,8 +465,11 @@ export default async function JobPage({ params }: Props) {
             </section>
           ) : null}
 
-          {/* No sticky Apply bar here: the Apply card is right under the header. */}
           <div className="mt-8">{alertLink}</div>
+          {/* With the Key facts table above it, the Apply card starts below the first screen on phones:
+              the closing date and Apply stay at the bottom of the screen there. A thin page has no table,
+              so its Apply card is right under the header. */}
+          {!thin ? stickyBar("sm:hidden") : null}
         </div>
       </>
     );

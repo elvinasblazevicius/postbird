@@ -67,10 +67,13 @@ export type AccountLinkPurpose = "manage" | "cancel" | "already";
 
 /**
  * Emails the account link to the address (only ever to the address itself).
- * The email carries a NEW link, which replaces the old one once the email has
+ * Asked for on the "email me my account link" forms ("manage", "cancel"): the
+ * email carries a NEW link, which replaces the old one once the email has
  * been sent: links from older emails (or a forwarded one) then stop working.
  * If sending fails, nothing is replaced, so the links already in the
- * subscriber's inbox keep working. Emails sent later (alerts, reminders) read
+ * subscriber's inbox keep working. "already" (anyone can type the address into
+ * the public trial form) resends the current link and never replaces it, so a
+ * stranger can't make the owner's emailed links stop working. Emails sent later (alerts, reminders) read
  * the current link when they are sent. Returns false if sending failed. Over
  * the daily cap nothing is sent or replaced, and it returns true like a send,
  * so callers reply the same either way (nothing about the address is revealed).
@@ -89,16 +92,20 @@ export async function sendAccountLink(email: string, purpose: AccountLinkPurpose
     console.info("account link: no subscriber with that address"); // the address itself is never logged
     return true; // nothing to send; callers reply the same either way
   }
-  const next = newManageToken();
+  const rotate = purpose !== "already";
+  const link = rotate ? newManageToken() : row.manage_token;
   const oneClick = absoluteUrl(`/api/unsubscribe?token=${row.unsubscribe_token}`);
   const res = await sendEmail({
     to: email,
-    ...accountLinkEmail({ accountUrl: accountUrl(next), unsubscribeUrl: absoluteUrl(`/alerts/unsubscribe?token=${row.unsubscribe_token}`), purpose }),
+    ...accountLinkEmail({ accountUrl: accountUrl(link), unsubscribeUrl: absoluteUrl(`/alerts/unsubscribe?token=${row.unsubscribe_token}`), purpose }),
     headers: { "List-Unsubscribe": `<${oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
-    // One key per new link (a hash, so the token itself never leaves in the key).
-    idempotencyKey: `account-link:${row.id}:${createHash("sha256").update(next).digest("hex").slice(0, 16)}`,
+    // One key per new link (a hash, so the token itself never leaves in the key); a resent
+    // current link gets its own key per send, so Resend doesn't take it for a repeat.
+    idempotencyKey: rotate
+      ? `account-link:${row.id}:${createHash("sha256").update(link).digest("hex").slice(0, 16)}`
+      : `account-link-again:${row.id}:${randomBytes(8).toString("hex")}`,
   });
-  // Only a link that reached the inbox replaces the old one.
-  if (res.ok) await sql`update subscribers set manage_token = ${next} where id = ${row.id}`;
+  // Only a new link that reached the inbox replaces the old one.
+  if (res.ok && rotate) await sql`update subscribers set manage_token = ${link} where id = ${row.id}`;
   return res.ok || Boolean(res.skipped);
 }

@@ -29,7 +29,12 @@ export async function EmployerTypeListing({ orgtype, searchParams }: { orgtype: 
   const filters = parseFilters(await searchParams);
   delete filters.orgtype;
   // What this type of employer posts, from its open listings (a page-specific intro; nothing when the counts can't be read).
-  const profile = await filteredFacets({ orgtype }).then(postingProfile).catch(() => null);
+  const [profile, open] = await Promise.all([
+    filteredFacets({ orgtype }).then(postingProfile).catch(() => null),
+    countFor({ orgtype }).catch(() => null),
+  ]);
+  // No listings of this type at all: say so plainly, and offer the general email rather than one for this type.
+  const empty = open === 0;
   return (
     <>
       <PageHeader
@@ -40,7 +45,14 @@ export async function EmployerTypeListing({ orgtype, searchParams }: { orgtype: 
         compact
       />
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-        <JobsBrowser filters={filters} fixed={{ orgtype }} base={page.path} alertNoun={page.alertNoun} />
+        <JobsBrowser
+          filters={filters}
+          fixed={{ orgtype }}
+          base={page.path}
+          alertNoun={empty ? undefined : page.alertNoun}
+          emptyTitle={empty ? `We don't list any vacancies from ${page.emptyName} right now.` : undefined}
+          generalAlert={empty}
+        />
       </div>
     </>
   );

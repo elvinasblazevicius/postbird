@@ -287,3 +287,24 @@ describe("job page and card helpers", () => {
     expect(postedMarker(at(24 * 40), now)).toBeNull();
   });
 });
+
+describe("who can apply (local-only posts)", () => {
+  it("says only nationals for National Officer posts, as the list badge does; usually nationals or residents for other local posts", async () => {
+    const { localOnlyLabel, localOnlyShort, whoCanApplyLine } = await import("@/lib/grades");
+    const no = { grade: "NO-B", title: "Programme Analyst" };
+    const npoTitle = { grade: null, title: "National Professional Officer (Health)" };
+    const gs = { grade: "G-5", title: "Programme Assistant" };
+    const intl = { grade: "P-3", title: "Programme Officer" };
+    expect(whoCanApplyLine(no, "Kenya")).toBe("Only nationals of Kenya.");
+    expect(localOnlyLabel(no, "Kenya")).toBe("Nationals of Kenya only");
+    expect(whoCanApplyLine(npoTitle, "Kenya")).toBe("Only nationals of Kenya.");
+    expect(localOnlyLabel(npoTitle, "Kenya")).toBe("Nationals of Kenya only");
+    expect(whoCanApplyLine(gs, "Kenya")).toBe("Usually only nationals or legal residents of Kenya.");
+    expect(localOnlyLabel(gs, "Kenya")).toBe("Local post · Kenya");
+    expect(whoCanApplyLine(gs, null)).toBe("Usually only nationals or legal residents of the duty-station country.");
+    expect(localOnlyShort(no)).toBe("Nationals only");
+    expect(localOnlyShort(gs)).toBe("Local post");
+    for (const f of [whoCanApplyLine, localOnlyLabel]) expect(f(intl, "Kenya")).toBeNull();
+    expect(localOnlyShort(intl)).toBeNull();
+  });
+});

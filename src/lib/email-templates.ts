@@ -2,7 +2,7 @@ import siteConfig from "@site-config";
 import type { JobListItem } from "@/lib/jobs";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { CARD_STATEMENT_LINE, EMAIL_TAX_NOTE, planDescription } from "@/lib/early-access-copy";
-import { displayGrade } from "@/lib/grades";
+import { displayGrade, localOnlyShort } from "@/lib/grades";
 import { absoluteUrl, formatDate, jobPath, locationLabel, NOT_SPECIFIED } from "@/lib/site";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -78,6 +78,8 @@ function jobMeta(j: JobListItem): string {
     j.org_name ?? "Organization not in our source",
     where === NOT_SPECIFIED ? null : where,
     displayGrade(j),
+    // "Nationals only" or "Local post", as the badge in the site's lists says.
+    localOnlyShort(j),
     j.deadline ? `Closes ${formatDate(j.deadline)}` : null,
   ].filter(Boolean).join(" · ");
 }
@@ -206,14 +208,18 @@ export function accountLinkEmail(opts: { accountUrl: string; unsubscribeUrl: str
           lead: `Here is the link to your ${siteConfig.name} account, where you can change your saved searches, choose daily or weekly emails and, if you have a plan, cancel it (“Cancel plan”) or manage billing.`,
           button: "Open my account",
         };
+  // "already" resends the current link (sendAccountLink): links in older emails keep working.
+  const note = purpose === "already"
+    ? { html: "This is the same link as in your earlier emails. If you didn't start a checkout, you can ignore this email: nothing changes, and the link only works for this address.", text: "This is the same link as in your earlier emails. If you didn't start a checkout, ignore this email: nothing changes." }
+    : { html: "This is a new link: account links in older emails no longer work. If you didn't ask for this, you can ignore this email; the link only works for this address.", text: "This is a new link: account links in older emails no longer work. If you didn't ask for this, ignore this email." };
   const html = layout(
     copy.subject,
     `<p style="font-size:16px;line-height:1.6;margin:0 0 16px">${esc(copy.lead)}</p>
      <p style="margin:0 0 20px">${button(opts.accountUrl, copy.button)}</p>
-     <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">This is a new link: account links in older emails no longer work. If you didn't ask for this, you can ignore this email; the link only works for this address.</p>`,
+     <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">${esc(note.html)}</p>`,
     accountFooter(opts.accountUrl, opts.unsubscribeUrl),
   );
-  const text = `${copy.lead}\n\n${copy.button}: ${opts.accountUrl}\n\nThis is a new link: account links in older emails no longer work. If you didn't ask for this, ignore this email.\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
+  const text = `${copy.lead}\n\n${copy.button}: ${opts.accountUrl}\n\n${note.text}\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
   return { subject: copy.subject, html, text };
 }
 

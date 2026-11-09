@@ -8,6 +8,9 @@ import { SavedCount } from "./job-tools";
 import { NavLink } from "./nav-link";
 import { AlertsButton, FindJobsMenu, MobileMenu, type NavItem } from "./site-nav";
 
+/** The header's email button: the free weekly email when it is on (/alerts), otherwise the job emails in general. */
+const ALERTS_LABEL = siteConfig.freeWeeklyEmail ? "Free weekly email" : "Job emails";
+
 /** Header links after "Find jobs" (which has its own menu of employer types). */
 const NAV = [
   { href: "/remote-jobs", label: "Remote jobs" },
@@ -54,13 +57,19 @@ export async function SiteHeader() {
           <span className="h-6 w-px bg-rule" aria-hidden="true" />
           {/* Secondary (outline), so blue stays the one colour of primary actions. */}
           <AlertsButton className="rounded-lg border border-rule bg-paper px-4 py-2 text-[0.95rem] font-semibold text-ink hover:border-ink/40 hover:bg-mist">
-            Get email alerts
+            {ALERTS_LABEL}
           </AlertsButton>
         </nav>
 
-        <div className="flex items-center gap-1.5 md:hidden">
+        <div className="flex items-center gap-1 min-[360px]:gap-1.5 md:hidden">
           <SavedCount className="px-1.5" />
-          <AlertsButton className="whitespace-nowrap rounded-lg border border-rule bg-paper px-3 py-2 text-sm font-semibold text-ink hover:bg-mist">Email alerts</AlertsButton>
+          {/* Below 360px wide (e.g. 320px phones) an envelope with the same name for screen readers, so the header never scrolls sideways. */}
+          <AlertsButton className="inline-flex items-center whitespace-nowrap rounded-lg border border-rule bg-paper px-2.5 py-2 text-sm font-semibold text-ink hover:bg-mist min-[360px]:px-3">
+            <svg viewBox="0 0 20 20" className="h-5 w-5 min-[360px]:hidden" aria-hidden="true">
+              <path d="M3 5.5h14v9H3z M3.5 6l6.5 5 6.5-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+            </svg>
+            <span className="max-[359.98px]:sr-only">{ALERTS_LABEL}</span>
+          </AlertsButton>
           <MobileMenu
             main={[{ href: "/jobs", label: "Find jobs" }, ...NAV]}
             employers={employers}

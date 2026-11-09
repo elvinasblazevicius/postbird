@@ -22,6 +22,7 @@ import { sql, transaction } from "@/lib/db";
 import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { checkoutLinkEmail } from "@/lib/email-templates";
 import { takeDailyQuota } from "@/lib/rate-limit";
+import { renewalTermsVersion } from "@/lib/billing/renewal-consent";
 import { sharedSecret } from "@/lib/server-secret";
 import { absoluteUrl } from "@/lib/site";
 
@@ -168,7 +169,7 @@ export const LINK_CLAIM_SECONDS = 30;
  * customer's no-trial transaction can't be created, the trial is never offered instead. The link
  * reached the mailbox, so paying confirms the address (address_proven).
  */
-export async function continueCheckout(token: unknown, plan: CheckoutPlan): Promise<ContinueResult> {
+export async function continueCheckout(token: unknown, plan: CheckoutPlan, opts: { renewalConsent?: boolean } = {}): Promise<ContinueResult> {
   if (typeof token !== "string" || !TOKEN_RE.test(token)) return { ok: false, error: LINK_USED, used: true };
   const hash = hashToken(token);
   const claim = newToken();
@@ -190,9 +191,12 @@ export async function continueCheckout(token: unknown, plan: CheckoutPlan): Prom
       where token_hash = ${hash} and claim = ${claim} and used_at is null returning 1 as ok`;
     if (!used) return false;
     if (checkout) {
+      // The wording agreed to: the trial's, or (no trial for this address) the plan's.
+      const consentVersion = opts.renewalConsent ? renewalTermsVersion(checkout.trialAllowed, plan) : null;
       await tx`
-        insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor, trial_allowed, address_proven)
-        values (${checkout.ref}, ${link.subscriber_id}, ${plan}, ${link.search}, true, ${link.visitor}, ${checkout.trialAllowed}, true)`;
+        insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor, trial_allowed, address_proven, renewal_consent_at, renewal_terms_version)
+        values (${checkout.ref}, ${link.subscriber_id}, ${plan}, ${link.search}, true, ${link.visitor}, ${checkout.trialAllowed}, true,
+                case when ${consentVersion}::text is not null then now() end, ${consentVersion})`;
     }
     return true;
   });

@@ -106,6 +106,17 @@ describe("alert emails", () => {
     expect(email.html).not.toContain("<Regional Hub>");
   });
 
+  it("labels local-only posts in the row as the site's lists do: National Officer posts for nationals only", () => {
+    const email = alertEmail({ groups: [{ ...group(3, 0, 3), jobs: [
+      job(1, { title: "Programme Analyst", grade: "NO-B" }),
+      job(2, { title: "Driver", grade: "G-3" }),
+      job(3, { title: "Data Officer" }),
+    ] }], frequency: "daily", ...links });
+    expect(email.text).toContain("Programme Analyst\nUnited Nations Office for the Coordination of Humanitarian Affairs & Partners · Ouagadougou, Burkina Faso · National Officer B · Nationals only · Closes 1 Dec 2026");
+    expect(email.text).toContain("Driver\nUnited Nations Office for the Coordination of Humanitarian Affairs & Partners · Ouagadougou, Burkina Faso · G-3 · Local post · Closes 1 Dec 2026");
+    expect(email.text).not.toMatch(/Data Officer\n[^\n]*(Local post|Nationals only)/);
+  });
+
   it("the free weekly email lists what it is given (10 at most from the sender), uses the total in the subject and offers daily alerts once", () => {
     const email = weeklyEmail({ group: group(10, 0, 37), search: "q=data", trialUrl: "https://postbird.nuevanova.com/pricing/trial?search=q%3Ddata", ...links });
     expect(email.subject).toBe("37 new vacancies match your search this week");

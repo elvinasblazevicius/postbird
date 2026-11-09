@@ -299,23 +299,27 @@ a {
     font-size: 0.8125rem;
   }
   /*
-   * The stamp chip in list rows (StampChip in src/components/job-card.tsx): the same double ring
-   * and ink as the round stamp, stretched to a short oval around one line. Never below 12px.
+   * The date chip in list rows (StampChip in src/components/job-card.tsx): upright and of one
+   * width, with tabular figures, so the dates line up down a list and read at a glance. The ink and
+   * a light inner ring recall the round stamp, which keeps its tilt on job pages and in "Closing
+   * soon". Never below 12px.
    */
   .postmark-chip {
     position: relative;
     display: inline-flex;
     align-items: baseline;
+    justify-content: center;
     gap: 0.3em;
+    min-width: 14em;
     padding: 0.2rem 0.6rem 0.15rem;
     border: 1.5px solid currentColor;
     border-radius: 9999px;
     color: var(--postmark);
     font-size: 0.75rem;
     font-weight: 500;
+    font-variant-numeric: lining-nums tabular-nums;
     line-height: 1.2;
     white-space: nowrap;
-    transform: rotate(-2deg);
   }
   .postmark-chip::before {
     content: "";
@@ -323,7 +327,7 @@ a {
     inset: 2px;
     border: 1px solid currentColor;
     border-radius: inherit;
-    opacity: 0.45;
+    opacity: 0.25;
     pointer-events: none;
   }
   .postmark-chip.postmark-urgent {

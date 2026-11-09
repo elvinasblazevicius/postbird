@@ -32,8 +32,8 @@ export default function TermsPage() {
 
         <h2 className="pt-2 text-xl font-semibold">Listings</h2>
         <p>
-          Vacancy information is collected automatically from public job feeds and may be incomplete, out of date or changed by the employer. Details our source doesn&apos;t give
-          are shown as &quot;Not in our source&quot;. Always check the employer&apos;s own posting, including the closing date, before applying. Vacancy content remains the property
+          Vacancy information is collected automatically from public job feeds and may be incomplete, out of date or changed by the employer. Details a posting doesn&apos;t give
+          are left out, never guessed. Always check the employer&apos;s own posting, including the closing date, before applying. Vacancy content remains the property
           of the organizations that publish it.
         </p>
 

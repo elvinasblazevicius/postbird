@@ -80,7 +80,7 @@ export function CancelPlanForm({ token }: { token: string }) {
 export function PrivacyNote({ className = "text-sm text-slate" }: { className?: string }) {
   return (
     <p className={className}>
-      We use your address only to send these emails. <Link href="/privacy" className="underline underline-offset-2 hover:text-accent">Privacy policy</Link>
+      We use your address to send these emails and never sell it. <Link href="/privacy" className="underline underline-offset-2 hover:text-accent">Privacy policy</Link>
     </p>
   );
 }

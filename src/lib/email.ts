@@ -85,7 +85,7 @@ function failure(r: ResendReply): string {
  * One POST to Resend. With an idempotency key, a network error, timeout,
  * 429, 5xx or concurrent_idempotent_requests is retried once with the same key.
  */
-async function post(path: "/emails" | "/emails/batch", body: unknown, key: string | undefined): Promise<ResendReply> {
+async function post(path: "/emails" | "/emails/batch", body: unknown, key: string | undefined, timeoutMs = TIMEOUT_MS): Promise<ResendReply> {
   const attempt = async (): Promise<ResendReply> => {
     const res = await fetch(`https://api.resend.com${path}`, {
       method: "POST",
@@ -95,7 +95,7 @@ async function post(path: "/emails" | "/emails/batch", body: unknown, key: strin
         ...(key ? { "Idempotency-Key": key } : {}),
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const data = (await res.json().catch(() => ({}))) as ResendReply["data"];
     return { status: res.status, data };
@@ -110,13 +110,18 @@ async function post(path: "/emails" | "/emails/batch", body: unknown, key: strin
   return attempt();
 }
 
-export async function sendEmail(msg: OutgoingEmail): Promise<SendResult> {
+export type SendOptions = {
+  /** How long each request to Resend may take (default 10 seconds); e.g. shorter while a visitor waits for a form. */
+  timeoutMs?: number;
+};
+
+export async function sendEmail(msg: OutgoingEmail, opts: SendOptions = {}): Promise<SendResult> {
   if (!isEmailConfigured()) {
     console.info("email not sent: RESEND_API_KEY missing");
     return { ok: false, skipped: true, error: "Email sending is not configured" };
   }
   try {
-    const res = await post("/emails", payload(msg), cleanKey(msg.idempotencyKey));
+    const res = await post("/emails", payload(msg), cleanKey(msg.idempotencyKey), opts.timeoutMs);
     if (!isOk(res)) {
       const error = failure(res);
       // Status and Resend's reason only: never the recipient or the body.
