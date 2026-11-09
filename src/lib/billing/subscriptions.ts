@@ -60,19 +60,23 @@ export async function startCheckout(opts: {
   const ref = newToken();
   const attribution = opts.attribution ?? null;
 
-  const [created] = await sql<{ id: number }[]>`
-    insert into subscribers (email, status, wants_alerts, frequency, preferences, unsubscribe_token, source, attribution)
-    values (${email}, 'pending', true, 'daily', '{}'::jsonb, ${newToken()}, ${opts.source ?? null}, ${attribution ? sql.json(attribution) : null})
-    on conflict (email) do nothing
-    returning id::int as id`;
-
-  if (created) {
-    await addSavedSearch(created.id, opts.search ?? "");
-    await sql`
+  // A new address: the subscriber row, its first search and the checkout
+  // record are written together or not at all (a half-written row would
+  // otherwise be treated as an existing address on the next try).
+  const created = await transaction(async (tx) => {
+    const [row] = await tx<{ id: number }[]>`
+      insert into subscribers (email, status, wants_alerts, frequency, preferences, unsubscribe_token, source, attribution)
+      values (${email}, 'pending', true, 'daily', '{}'::jsonb, ${newToken()}, ${opts.source ?? null}, ${attribution ? tx.json(attribution) : null})
+      on conflict (email) do nothing
+      returning id::int as id`;
+    if (!row) return false;
+    await addSavedSearch(row.id, opts.search ?? "", tx);
+    await tx`
       insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor)
-      values (${ref}, ${created.id}, ${opts.plan}, ${opts.search}, true, ${opts.visitor ?? null})`;
-    return { ok: true, ref, email };
-  }
+      values (${ref}, ${row.id}, ${opts.plan}, ${opts.search}, true, ${opts.visitor ?? null})`;
+    return true;
+  });
+  if (created) return { ok: true, ref, email };
 
   const [existing] = await sql<{ id: number; billing_status: BillingStatus; manage_token: string }[]>`
     select id::int as id, billing_status, manage_token from subscribers where email = ${email}`;
@@ -319,6 +323,8 @@ async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: st
                            else s.confirm_token end,
       confirm_sent_at = case when prev.live_link and prev.next_status <> 'confirmed' then now() else s.confirm_sent_at end,
       wants_alerts = case when ${live} then true else s.wants_alerts end,
+      -- A different subscription (e.g. a returning customer's new trial) gets its own trial reminder.
+      trial_reminder_sent_at = case when prev.paddle_subscription_id is distinct from ${sub.id} then null else s.trial_reminder_sent_at end,
       -- Claimed here, sent after the commit; reset if sending fails (welcomeNotSent).
       welcome_sent_at = case when ${alerts} and prev.next_status = 'confirmed' then coalesce(s.welcome_sent_at, now()) else s.welcome_sent_at end
     from prev

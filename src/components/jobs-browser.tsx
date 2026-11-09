@@ -149,6 +149,7 @@ export async function JobsBrowser({
   if (fixed.region) hidden.region = fixed.region;
   if (fixed.category) hidden.category = fixed.category;
   if (fixed.remote) hidden.remote = "1";
+  if (fixed.orgtype) hidden.orgtype = fixed.orgtype;
   // On landing pages the fixed filter is in the path, so don't repeat it in the form.
   const formHidden = base === "/jobs" ? {} : Object.fromEntries(Object.keys(hidden).map((k) => [k, ""]));
   const fallback = result.total === 0 ? await latestJobs(6) : [];
@@ -167,11 +168,11 @@ export async function JobsBrowser({
     <div className="grid gap-6 lg:grid-cols-[18rem_1fr] lg:gap-8">
       <aside>
         <MobileKeyword filters={filters} base={base} />
-        <details className="group rounded-xl border border-rule p-4 lg:hidden" open={false}>
+        <details className="group/panel rounded-xl border border-rule p-4 lg:hidden" open={false}>
           <summary className="flex cursor-pointer list-none items-center justify-between font-medium text-ink [&::-webkit-details-marker]:hidden">
             Filters{userFilters ? ` (${userFilters})` : ""}
-            <span className="text-sm text-accent group-open:hidden">Show</span>
-            <span className="hidden text-sm text-accent group-open:inline">Hide</span>
+            <span className="text-sm text-accent group-open/panel:hidden">Show</span>
+            <span className="hidden text-sm text-accent group-open/panel:inline">Hide</span>
           </summary>
           <div className="mt-4">
             <FilterForm formId="filters-mobile" filters={filters} facets={facets} action={base} hidden={formHidden} />
@@ -202,7 +203,7 @@ export async function JobsBrowser({
                 ? "1 open vacancy"
                 : showTotal
                   ? `${from}–${to} of ${result.total.toLocaleString("en-US")} open vacancies`
-                  : `Open vacancies, ${from}–${to}`}
+                  : `${result.sort === "deadline" ? "Closing soonest first" : result.sort === "relevance" ? "Best match first" : "Newest first"} · ${from}–${to}`}
           </h2>
           {result.total > 0 ? (
             <div className="flex items-center gap-1 text-sm" aria-label="Sort">

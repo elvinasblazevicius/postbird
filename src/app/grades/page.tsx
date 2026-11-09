@@ -137,7 +137,7 @@ export default function GradesPage() {
         </nav>
         {SECTIONS.map((s) => (
           <section key={s.id} id={s.id} aria-labelledby={`${s.id}-h`} className="mt-10 scroll-mt-24 space-y-3">
-            <h2 id={`${s.id}-h`} className="text-2xl font-semibold">{s.title}</h2>
+            <h2 id={`${s.id}-h`} className="text-2xl font-semibold leading-tight">{s.title}</h2>
             {s.body}
           </section>
         ))}

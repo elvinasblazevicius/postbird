@@ -187,6 +187,26 @@ describe.skipIf(!TEST_DB)("database integration", () => {
     it("stops reading a feed body once it passes the size cap", async () => {
       await expect(sync.fetchFeedText(`${base}/huge`, 10_000)).rejects.toThrow(/larger than 15 MB/);
     });
+
+    it("updates a known organization's name, short name and type; keeps names read from feeds", async () => {
+      await sql`insert into organizations (slug, name, short_name, org_type, website, logo_checked_at) values
+        ('unicef', 'Old UNICEF name', null, null, 'unicef.example', now()),
+        ('local-group', 'Local Group', null, 'NGO', null, now())`;
+      type Org = NonNullable<import("@/lib/feeds/extract").NormalizedJob["organization"]>;
+      const job = (organization: Org) => ({ organization }) as import("@/lib/feeds/extract").NormalizedJob;
+      const ids = await sync.upsertOrganizations([
+        job({ slug: "unicef", name: "UNICEF", short: "UNICEF", type: "UN system", website: "unicef.org" }),
+        job({ slug: "local-group", name: "LOCAL GROUP", short: null, type: null, website: "localgroup.org" }),
+        job({ slug: "brand-new", name: "Brand New", short: null, type: null, website: null }),
+      ]);
+      expect([...ids.keys()].sort()).toEqual(["brand-new", "local-group", "unicef"]);
+      const rows = await sql`select slug, name, short_name, org_type, website from organizations where slug in ('unicef', 'local-group', 'brand-new') order by slug`;
+      expect(rows).toEqual([
+        { slug: "brand-new", name: "Brand New", short_name: null, org_type: null, website: null },
+        { slug: "local-group", name: "Local Group", short_name: null, org_type: "NGO", website: "localgroup.org" },
+        { slug: "unicef", name: "UNICEF", short_name: "UNICEF", org_type: "UN system", website: "unicef.example" },
+      ]);
+    });
   });
 
   describe("rate limiting", () => {

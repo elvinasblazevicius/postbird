@@ -3,9 +3,9 @@ import { countryByCode, countryBySlug } from "@/config/countries";
 import { GRADE_GROUPS, LANGUAGES, ORG_TYPES, REGIONS, regionBySlug } from "@/config/regions";
 import { LISTING_SETTINGS } from "@/config/import";
 import { countriesInLocation, DROP_CHARS, FOLD_FROM, FOLD_TO, locationPatterns } from "@/lib/country-match";
-import { sql } from "@/lib/db";
-import { LOCAL_ONLY_GRADE_SQL } from "@/lib/grades";
-import { categoriesForWord, interpretQuery, wordPattern } from "@/lib/search-intent";
+import { sql, transaction } from "@/lib/db";
+import { LOCAL_ONLY_GRADE_SQL, LOCAL_ONLY_TITLE_SQL, NATIONAL_OFFICER_TITLE_SQL } from "@/lib/grades";
+import { categoriesForWord, foldText, interpretQuery, orgNamesForTerm, searchTerms, wordPattern } from "@/lib/search-intent";
 
 export type JobListItem = {
   id: number;
@@ -198,8 +198,9 @@ export type FilterKey = (typeof FILTER_KEYS)[number];
 /** "all": every search word must match (the normal search). "any": at least one word (the fallback when nothing matches all). */
 export type MatchMode = "all" | "any";
 
+/** The search's terms: single words, and organization names of several words kept together (see searchTerms). */
 function searchWords(q: string): string[] {
-  return q.split(" ").filter(Boolean).slice(0, 8);
+  return searchTerms(q);
 }
 
 /** The any-word fallback is tried only when an all-words search of two or more words found nothing. */
@@ -208,16 +209,20 @@ export function wantsLooseMatch(q: string | undefined, total: number): boolean {
 }
 
 /**
- * One search word matches a listing when it appears as a word (not inside another word: "un" never
- * matches "fund") in the title, the organization's name or short name, or the category name, or
- * when it is in the indexed text (title, location, grade, type, summary).
+ * One search term matches a listing when it appears as a word (not inside another word: "un" never
+ * matches "fund") in the title, the organization's name or short name, or the category name, when
+ * it is another name of the organization ("msf", "doctors without borders"), or when it is in the
+ * indexed text (title, location, grade, type, summary). Accents don't matter on either side:
+ * both are folded (pb_fold in db/migrations/007, foldText in src/lib/search-intent.ts).
  */
 function wordCondition(t: string): Frag {
-  const p = wordPattern(t);
-  let c = sql`(j.title ~* ${p} or coalesce(o.name, '') ~* ${p} or coalesce(o.short_name, '') ~* ${p}`;
+  const p = wordPattern(foldText(t));
+  let c = sql`(pb_fold(j.title) ~ ${p} or pb_fold(o.name) ~ ${p} or pb_fold(o.short_name) ~ ${p}`;
+  const orgNames = orgNamesForTerm(t);
+  if (orgNames.length) c = sql`${c} or pb_fold(o.name) = any(${orgNames}) or pb_fold(o.short_name) = any(${orgNames})`;
   const cats = categoriesForWord(t);
   if (cats.length) c = sql`${c} or j.category = any(${cats})`;
-  if (/[\p{L}\p{N}]/u.test(t)) c = sql`${c} or j.search_vector @@ plainto_tsquery('simple', ${t})`;
+  if (/[\p{L}\p{N}]/u.test(t)) c = sql`${c} or j.search_folded @@ plainto_tsquery('simple', ${foldText(t)})`;
   return sql`${c})`;
 }
 
@@ -225,12 +230,14 @@ function textCondition(q: string, mode: MatchMode): Frag {
   const parts = searchWords(q).map(wordCondition);
   if (!parts.length) return sql`true`;
   if (mode === "any") return sql`(${parts.reduce((a, b) => sql`${a} or ${b}`)})`;
-  return sql`(j.search_vector @@ websearch_to_tsquery('simple', ${q}) or (${parts.reduce((a, b) => sql`${a} and ${b}`)}))`;
+  return sql`(j.search_folded @@ websearch_to_tsquery('simple', ${foldText(q)}) or (${parts.reduce((a, b) => sql`${a} and ${b}`)}))`;
 }
 
 function gradeCondition(grade: string): Frag {
   const group = GRADE_GROUPS.find((g) => g.value === grade);
   if (group?.value === "SC") return sql`j.grade ~ '^(SB|SC|LICA|NPSA|IPSA|ICS)-'`;
+  // A title naming the National Officer category counts as grade NO when no grade was parsed (displayGrade in src/lib/grades.ts).
+  if (group?.value === "NO") return sql`(j.grade = any(${group.grades}) or (j.grade is null and lower(j.title) ~ ${NATIONAL_OFFICER_TITLE_SQL}))`;
   if (group) return sql`j.grade = any(${group.grades})`;
   return sql`j.grade = ${grade}`;
 }
@@ -261,7 +268,8 @@ function filterConditions(f: JobFilters, mode: MatchMode = "all"): Partial<Recor
   if (f.type) c.type = sql`j.job_type = ${f.type}`;
   if (f.posted) c.posted = sql`coalesce(j.published_at, j.first_seen_at) >= now() - make_interval(days => ${Number(f.posted)})`;
   if (f.closing) c.closing = sql`j.deadline is not null and j.deadline <= (now() at time zone 'utc')::date + ${Number(f.closing)}::int`;
-  if (f.hidelocal) c.hidelocal = sql`(j.grade is null or j.grade !~ ${LOCAL_ONLY_GRADE_SQL})`;
+  // Same rule as isLocalOnly() in src/lib/grades.ts: the parsed grade, or words in the title.
+  if (f.hidelocal) c.hidelocal = sql`(coalesce(j.grade, '') !~ ${LOCAL_ONLY_GRADE_SQL} and lower(j.title) !~ ${LOCAL_ONLY_TITLE_SQL})`;
   return c;
 }
 
@@ -293,16 +301,18 @@ export async function searchJobs(input: JobFilters, pageSize: number = LISTING_S
       sort === "deadline" ? sql`j.deadline asc nulls last, coalesce(j.published_at, j.first_seen_at) desc` :
       sort === "relevance" && f.q && mode === "any"
         ? sql`(${searchWords(f.q).map((t) => sql`(${wordCondition(t)})::int`).reduce((a, b) => sql`${a} + ${b}`)}) desc, coalesce(j.published_at, j.first_seen_at) desc` :
-      sort === "relevance" && f.q ? sql`ts_rank(j.search_vector, websearch_to_tsquery('simple', ${f.q})) desc, coalesce(j.published_at, j.first_seen_at) desc` :
+      sort === "relevance" && f.q ? sql`ts_rank(j.search_folded, websearch_to_tsquery('simple', ${foldText(f.q)})) desc, coalesce(j.published_at, j.first_seen_at) desc` :
       sql`coalesce(j.published_at, j.first_seen_at) desc, j.id desc`;
+    // Each in its own short transaction, which carries the statement time limit (see
+    // transaction() in src/lib/db.ts); two of them, so the queries still run side by side.
     const [items, [{ count }]] = await Promise.all([
-      sql<JobListItem[]>`
+      transaction(async (tx) => await tx<JobListItem[]>`
         select ${listColumns()}
         from jobs j left join organizations o on o.id = j.organization_id
         where ${where}
         order by ${order}
-        limit ${pageSize} offset ${(page - 1) * pageSize}`,
-      sql<{ count: number }[]>`select count(*)::int as count from jobs j left join organizations o on o.id = j.organization_id where ${where}`,
+        limit ${pageSize} offset ${(page - 1) * pageSize}`),
+      transaction(async (tx) => await tx<{ count: number }[]>`select count(*)::int as count from jobs j left join organizations o on o.id = j.organization_id where ${where}`),
     ]);
     return { items, total: Number(count) };
   };
@@ -347,6 +357,15 @@ export async function getJob(id: number): Promise<JobDetail | null> {
     select s.source_title, f.name as feed_name, s.item_url from job_sources s join feeds f on f.id = s.feed_id
     where s.job_id = ${id} order by s.first_seen_at`;
   return job;
+}
+
+/** The open listings among these ids (the shortlist on /saved; at most 100). */
+export async function openJobsByIds(ids: number[]): Promise<JobListItem[]> {
+  const list = [...new Set(ids.filter((n) => Number.isInteger(n) && n > 0))].slice(0, 100);
+  if (!list.length) return [];
+  return sql<JobListItem[]>`
+    select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
+    where ${isOpen()} and j.id = any(${list})`;
 }
 
 export async function similarJobs(job: JobDetail, limit = 4) {
@@ -398,7 +417,8 @@ function facetSnapshot(includeDemo: boolean): Promise<FacetSnapshot> {
 }
 
 async function queryFacetSnapshot(includeDemo: boolean): Promise<FacetSnapshot> {
-  const [r] = await sql<FacetSnapshot[]>`
+  // In a transaction for its statement time limit (see transaction() in src/lib/db.ts).
+  const [r] = await transaction(async (tx) => await tx<FacetSnapshot[]>`
     with open as materialized (
       select j.country_code, j.location_text, j.category, j.grade, j.languages, j.min_experience_years, j.job_type, j.is_remote,
              j.organization_id, coalesce(j.published_at, j.first_seen_at) as posted, o.org_type
@@ -426,7 +446,7 @@ async function queryFacetSnapshot(includeDemo: boolean): Promise<FacetSnapshot> 
                 'countries', count(distinct country_code)::int,
                 'remote', (count(*) filter (where is_remote))::int,
                 'this_week', (count(*) filter (where posted >= now() - interval '7 days'))::int)
-         from open) as stats`;
+         from open) as stats`);
   return r;
 }
 

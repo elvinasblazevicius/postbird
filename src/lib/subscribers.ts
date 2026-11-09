@@ -4,6 +4,7 @@ import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { confirmationEmail } from "@/lib/email-templates";
 import { absoluteUrl } from "@/lib/site";
 import { recordEvent } from "@/lib/analytics";
+import { hashKey } from "@/lib/rate-limit";
 import type { BillingStatus, PlanInterval } from "@/lib/billing/subscriptions";
 
 export type SignupKind = "alerts" | "waitlist";
@@ -74,7 +75,29 @@ export async function signup(opts: { email: string; kind: SignupKind; source?: s
   return sendConfirmation(row.id, email, confirmToken, isWaitlist, !isWaitlist);
 }
 
+/** At most this many confirmation emails per address in any 24 hours (on top of the 5-minute gap). */
+export const CONFIRMATIONS_PER_DAY = 3;
+
+/**
+ * Counts one confirmation email for this address, unless it already had
+ * CONFIRMATIONS_PER_DAY in the last 24 hours (then false: don't send). Stored
+ * in rate_limits as a salted hash of the address, one row per email, and
+ * deleted after 24 hours like every rate-limit row.
+ */
+async function takeDailyConfirmation(email: string): Promise<boolean> {
+  const key = hashKey(`confirm-email|${email}`);
+  const rows = await sql`
+    insert into rate_limits (key, window_start, count)
+    select ${key}, clock_timestamp(), 1
+    where (select count(*) from rate_limits where key = ${key} and window_start > now() - interval '24 hours') < ${CONFIRMATIONS_PER_DAY}
+    on conflict (key, window_start) do nothing
+    returning 1`;
+  return rows.length === 1;
+}
+
 async function sendConfirmation(id: number, email: string, confirmToken: string, waitlist: boolean, alerts: boolean): Promise<SignupResult> {
+  // Same reply as a sent email, so the form doesn't reveal anything about the address.
+  if (isEmailConfigured() && !(await takeDailyConfirmation(email))) return { ok: true, state: "check_email" };
   const confirmUrl = absoluteUrl(`/alerts/confirm?token=${encodeURIComponent(confirmToken)}`);
   const sent = await sendEmail({ to: email, ...confirmationEmail({ confirmUrl, waitlist, alerts }) });
   await sql`update subscribers set confirm_sent_at = now() where id = ${id}`;

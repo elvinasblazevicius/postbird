@@ -79,6 +79,8 @@ const PLAN_CHOICES = ["monthly", "three_months", "would_not_pay"] as const;
 
 /** One-click "which plan would you choose?" answer after joining early access (anonymous). */
 export async function planChoiceAction(choice: string, source: string): Promise<boolean> {
+  // Server actions take whatever the client sends: check the types and lengths, not just the TypeScript signature.
+  if (typeof choice !== "string" || typeof source !== "string" || choice.length > 40 || source.length > 100) return false;
   if (!(PLAN_CHOICES as readonly string[]).includes(choice)) return false;
   const h = await headers();
   if (!(await rateLimit(`plan:${clientIp(h)}`, 10, 3600))) return false;

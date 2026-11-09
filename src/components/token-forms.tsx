@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useEffect } from "react";
-import { confirmAction, signupAction, unsubscribeAction, type FormState } from "@/app/actions";
+import { confirmAction, unsubscribeAction, type FormState } from "@/app/actions";
+import { alertSignupAction } from "@/app/alert-actions";
 import { unsubscribePortalAction } from "@/app/billing-actions";
 import siteConfig from "@site-config";
 import { AttributionField, uetEvent } from "./ads";
@@ -69,18 +70,18 @@ export function CancelPlanForm({ token }: { token: string }) {
 const field = "w-full rounded-lg border border-rule bg-paper px-4 py-3 text-base text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]";
 
 /**
- * Paid-alerts form on /pricing/trial and /alerts. What to watch for is chosen in the optional step above
- * it (AlertWatchStep) and arrives here as `search`. While billing is off: the early-access
- * form of the concept test (records interest, takes no payment). Once billing
- * is live: plan, email and the Paddle checkout for the free trial.
+ * Paid-alerts form on /pricing/trial and /alerts: ONE form. `watch` is the optional "What should we
+ * watch for?" fields (WatchFields), rendered on the server and sent with this form; `search` is a
+ * search started on the jobs page. While billing is off: the early-access form of the concept test
+ * (records interest, takes no payment). Once billing is live: plan, email and the Paddle checkout.
  */
-export function PremiumInterestForm({ source = "pricing", search, remindJobId }: { source?: string; search?: string; remindJobId?: number }) {
-  if (BILLING_LIVE) return <TrialCheckoutForm source={source} search={search} />;
-  return <EarlyAccessForm source={source} search={search} remindJobId={remindJobId} />;
+export function PremiumInterestForm({ source = "pricing", search, remindJobId, watch }: { source?: string; search?: string; remindJobId?: number; watch?: React.ReactNode }) {
+  if (BILLING_LIVE) return <TrialCheckoutForm source={source} search={search} watch={watch} />;
+  return <EarlyAccessForm source={source} search={search} remindJobId={remindJobId} watch={watch} />;
 }
 
-function EarlyAccessForm({ source = "pricing", search, remindJobId }: { source?: string; search?: string; remindJobId?: number }) {
-  const [state, action, pending] = useActionState(signupAction, initial);
+function EarlyAccessForm({ source = "pricing", search, remindJobId, watch }: { source?: string; search?: string; remindJobId?: number; watch?: React.ReactNode }) {
+  const [state, action, pending] = useActionState(alertSignupAction, initial);
   useEffect(() => {
     if (state.status === "success") uetEvent("trial_signup", { event_category: "premium" });
   }, [state.status]);
@@ -95,6 +96,7 @@ function EarlyAccessForm({ source = "pricing", search, remindJobId }: { source?:
       <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
         <label>Leave empty<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label>
       </div>
+      {watch ? <div className="pb-2">{watch}</div> : null}
       <div>
         <label htmlFor="pi-email" className="mb-1.5 block text-sm font-medium text-ink">Email address</label>
         <input id="pi-email" name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} />

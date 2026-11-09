@@ -11,7 +11,7 @@ import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { checkoutDoneAction, startCheckoutAction, type CheckoutState } from "@/app/billing-actions";
 import { PADDLE_CLIENT_TOKEN, PADDLE_ENV, PADDLE_PRICE_MONTHLY, PADDLE_PRICE_QUARTERLY } from "@/lib/billing/live";
-import { planOptions, trialButton, trialLine } from "@/lib/early-access-copy";
+import { planOptions, RENEWS, TAX_LINE, trialButton, trialLine } from "@/lib/early-access-copy";
 import { AttributionField, uetEvent } from "./ads";
 
 // ── Paddle.js loader ─────────────────────────────────────────
@@ -73,7 +73,7 @@ type Phase = { step: "form" } | { step: "checkout" } | { step: "done"; accountUr
  * "Start 14-day free trial". `compact` is the one-line version used in the
  * small sign-up boxes; `tone="dark"` for coloured backgrounds.
  */
-export function TrialCheckoutForm({ source, search, compact = false, tone = "light" }: { source: string; search?: string; compact?: boolean; tone?: "light" | "dark" }) {
+export function TrialCheckoutForm({ source, search, compact = false, tone = "light", watch }: { source: string; search?: string; compact?: boolean; tone?: "light" | "dark"; watch?: React.ReactNode }) {
   const [state, action, pending] = useActionState(startCheckoutAction, initial);
   const [phase, setPhase] = useState<Phase>({ step: "form" });
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -164,6 +164,8 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
     dark ? "border-white/25 bg-white text-ink focus:ring-white/40" : "border-rule bg-paper text-ink focus:border-accent focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]"
   }`;
   const id = (k: string) => `trial-${k}-${source}`;
+  const [before, after = ""] = trialLine(plan, trialEnds).split(RENEWS);
+  const line = { before, after };
 
   return (
     <form
@@ -183,6 +185,7 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
       <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
         <label>Leave empty<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label>
       </div>
+      {watch ? <div className="mb-6">{watch}</div> : null}
       <fieldset className="mb-4">
         <legend className={`mb-2 block text-sm font-medium ${dark ? "text-white/90" : "text-ink"}`}>Choose your plan</legend>
         <div className={`grid gap-3 ${compact ? "@md:grid-cols-2" : "sm:grid-cols-2"}`}>
@@ -218,21 +221,22 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
         </div>
       </fieldset>
       <label htmlFor={id("email")} className={`mb-1.5 block text-sm font-medium ${dark ? "text-white/90" : "text-ink"}`}>Email address</label>
-      <div className={`flex flex-col gap-3 ${compact ? "@md:flex-row" : ""}`}>
-        <input id={id("email")} name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={`${field} flex-1`} />
+      <input id={id("email")} name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} />
+      {/* The terms come before the button, so they are read before starting. */}
+      <p className={`mt-3 text-sm ${dark ? "text-white/85" : "text-slate"}`} aria-live="polite">
+        {line.before}<strong className={dark ? "text-white" : "text-ink"}>{RENEWS}</strong>{line.after} {TAX_LINE}{" "}
+        <Link href="/terms#subscriptions" className="underline">Subscription terms</Link>
+      </p>
+      <div className="mt-3">
         <button
           type="submit"
           disabled={busy}
-          className={`rounded-lg px-5 py-3 text-base font-semibold disabled:opacity-60 ${compact ? "" : "w-full"} ${dark ? "bg-highlight text-ink hover:brightness-95" : "bg-brand text-white hover:bg-accent"}`}
+          className={`w-full rounded-lg px-5 py-3 text-base font-semibold disabled:opacity-60 ${dark ? "bg-highlight text-ink hover:brightness-95" : "bg-brand text-white hover:bg-accent"}`}
         >
           {pending ? "Preparing…" : phase.step === "checkout" ? "Checkout open…" : trialButton}
         </button>
       </div>
       {error ? <p role="alert" className={`mt-2 text-sm ${dark ? "text-[#ffd7d7]" : "text-[#9b1c1c]"}`}>{error}</p> : null}
-      <p className={`mt-2 text-sm ${dark ? "text-white/80" : "text-slate"}`} aria-live="polite">
-        {trialLine(plan, trialEnds)}{" "}
-        <Link href="/terms#subscriptions" className="underline">Subscription terms</Link>
-      </p>
       <ul className={`mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs ${dark ? "text-white/70" : "text-slate"}`}>
         <li className="flex items-center gap-1.5">
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true"><path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2M3.5 7h9v6.5h-9z" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
@@ -257,13 +261,32 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
  * right checkout by itself once initialized.
  */
 export function PaddlePaymentLink() {
-  const [error, setError] = useState(false);
+  const [state, setState] = useState<"loading" | "open" | "error" | "slow">("loading");
   useEffect(() => {
-    loadPaddle().catch(() => setError(true));
+    eventListener = (e) => {
+      if (e.name === "checkout.loaded") setState("open");
+    };
+    loadPaddle().catch(() => setState("error"));
+    // If nothing has opened after a few seconds, say what to do instead of waiting forever.
+    const t = setTimeout(() => setState((s) => (s === "loading" ? "slow" : s)), 8000);
+    return () => clearTimeout(t);
   }, []);
-  return error ? (
-    <p role="alert" className="text-[#9b1c1c]">The secure checkout couldn&apos;t load. Check your connection or ad blocker, then reload this page.</p>
-  ) : (
-    <p className="text-slate">Opening the secure Paddle checkout…</p>
+  if (state === "error") {
+    return <p role="alert" className="text-[#9b1c1c]">The secure checkout couldn&apos;t load. Check your connection or ad blocker, then reload this page.</p>;
+  }
+  if (state === "slow") return <NoCheckoutHere />;
+  return <p className="text-slate">{state === "open" ? "The secure Paddle checkout is open." : "Opening the secure Paddle checkout…"}</p>;
+}
+
+/** Shown when this page has no checkout to open (no Paddle transaction in the link, or it didn't open). */
+export function NoCheckoutHere() {
+  return (
+    <div role="status" className="space-y-3 text-ink">
+      <p>There&apos;s no payment to open from this link. Payment links come from Paddle&apos;s emails and work for a limited time.</p>
+      <p>
+        To start email alerts, go to the <Link href="/pricing/trial" className="font-semibold text-accent underline">free trial page</Link>. To update your card or
+        see your plan, open your account (<Link href="/account/login" className="font-semibold text-accent underline">get your account link</Link>).
+      </p>
+    </div>
   );
 }

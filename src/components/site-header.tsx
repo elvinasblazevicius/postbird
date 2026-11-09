@@ -7,7 +7,7 @@ const NAV = [
   { href: "/jobs", label: "Find jobs" },
   { href: "/remote-jobs", label: "Remote jobs" },
   { href: "/organizations", label: "Organizations" },
-  { href: "/pricing", label: "Pricing" },
+  { href: "/pricing", label: "Email alerts" },
 ];
 
 export function SiteHeader() {
@@ -47,6 +47,7 @@ export function SiteHeader() {
             {[
               { href: "/locations", label: "Countries" },
               { href: "/categories", label: "Categories" },
+              { href: "/saved", label: "Saved jobs" },
             ].map((n) => (
               <Link key={n.href} href={n.href} className="block rounded-lg px-3 py-2.5 text-ink hover:bg-mist">
                 {n.label}

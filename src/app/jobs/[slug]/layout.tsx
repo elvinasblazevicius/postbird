@@ -46,7 +46,7 @@ function ClosedVacancy({ job, similar }: { job: JobDetail; similar: Awaited<Retu
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         {similar.length ? (
           <section aria-labelledby="similar-heading">
-            <h2 id="similar-heading" className="text-[1.45rem] font-semibold text-ink">Similar open vacancies</h2>
+            <h2 id="similar-heading" className="text-[1.45rem] font-semibold leading-tight text-ink">Similar open vacancies</h2>
             <p className="mt-1 text-slate">{similarLine(job.org_name, category)}</p>
             <div className="mt-5"><JobList jobs={similar} headingLevel={3} /></div>
           </section>

@@ -265,13 +265,14 @@ export function AdsManager({ tagId }: { tagId: string | null }) {
     <div role="dialog" aria-label="Cookie settings" className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-xl rounded-xl border border-rule bg-paper p-4 shadow-lg sm:inset-x-auto sm:right-4">
       <p className="text-sm leading-relaxed text-ink">
         {tagId
-          ? "May we use Microsoft Advertising cookies (_uetsid, _uetvid, MUID) and remember which ad brought you here? It only tells us whether our ads lead to sign-ups."
+          ? "May we use Microsoft Advertising cookies (_uetsid, _uetvid, MUID) and remember which ad brought you here? This tells us whether our ads lead to sign-ups; Microsoft also processes this data under its own privacy statement."
           : "May we remember which ad or link brought you here (stored on your device for up to 90 days)? It only tells us whether our ads lead to sign-ups."}{" "}
         <Link href="/privacy#cookies" className="text-accent underline">Details</Link>
       </p>
-      <div className="mt-3 flex gap-2">
-        <button onClick={() => choose("granted")} className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-accent">Allow</button>
-        <button onClick={() => choose("denied")} className="rounded-md border border-rule px-4 py-2 text-sm font-medium text-ink hover:bg-mist">No thanks</button>
+      {/* Both choices look the same, so neither is pushed. */}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button onClick={() => choose("granted")} className="rounded-md border border-ink/70 bg-paper px-4 py-2 text-sm font-semibold text-ink hover:bg-mist">Allow</button>
+        <button onClick={() => choose("denied")} className="rounded-md border border-ink/70 bg-paper px-4 py-2 text-sm font-semibold text-ink hover:bg-mist">No thanks</button>
       </div>
     </div>
   );

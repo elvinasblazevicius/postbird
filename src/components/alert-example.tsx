@@ -23,7 +23,7 @@ export async function AlertExample({ heading = "What an alert looks like" }: { h
                 <li key={j.id} className="py-2">
                   <p className="font-medium text-ink">{j.title}</p>
                   <p className="text-slate">
-                    {[j.org_name ?? "Organization not stated", locationLabel(j), j.deadline ? `Closes ${formatDate(j.deadline)}` : null].filter(Boolean).join(", ")}
+                    {[j.org_name ?? "Organization not in our source", locationLabel(j), j.deadline ? `Closes ${formatDate(j.deadline)}` : null].filter(Boolean).join(", ")}
                   </p>
                 </li>
               ))

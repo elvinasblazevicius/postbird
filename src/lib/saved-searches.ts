@@ -64,6 +64,30 @@ export function searchFromAlertStep(sp: SP): string | null {
   return raw && raw.length <= 400 ? normalizeSearch(raw) || null : null;
 }
 
+/** The "What should we watch for?" fields inside the alert sign-up form. */
+export const WATCH_FIELDS = { q: "watch_q", org: "watch_org", where: "watch_where" } as const;
+
+type FormLike = { get(name: string): FormDataEntryValue | null; has(name: string): boolean };
+
+/**
+ * The saved search an alert sign-up form sends: its `search` field (a search started on the jobs
+ * page, or ""), with the form's own "What should we watch for?" fields (WATCH_FIELDS) in place of
+ * that search's keywords, organization and location when the form has those fields. Other filters
+ * of the search (category, grade…) are kept. "" means every new vacancy.
+ */
+export function searchFromSignupForm(form: FormLike): string {
+  const raw = String(form.get("search") ?? "");
+  const p = new URLSearchParams(raw.length <= 400 && SEARCH_RE.test(raw) ? raw : "");
+  if (Object.values(WATCH_FIELDS).some((k) => form.has(k))) {
+    for (const k of ["q", "org", "where", "country", "region"]) p.delete(k);
+    for (const [key, field] of Object.entries(WATCH_FIELDS)) {
+      const v = String(form.get(field) ?? "").trim().slice(0, 120);
+      if (v) p.set(key, v);
+    }
+  }
+  return normalizeSearch(p.toString()) ?? "";
+}
+
 /** The parts of a saved search the step's fields don't show, as hidden form fields. */
 export function alertStepKeep(search: string | null): Record<string, string> {
   if (!search) return {};
@@ -71,7 +95,7 @@ export function alertStepKeep(search: string | null): Record<string, string> {
   return Object.fromEntries(STEP_KEEP.filter((k) => p.get(k)).map((k) => [k, p.get(k)!]));
 }
 
-/** Plain-language summary of a saved search, e.g. "Data & Analytics jobs, in Africa, grade P-3". */
+/** Plain-language summary of a saved search, e.g. "Data and analytics jobs, in Africa, grade P-3". */
 export async function describeSearch(query: string): Promise<string | null> {
   const f = parseFilters(Object.fromEntries(new URLSearchParams(query)));
   const parts: string[] = [];

@@ -6,8 +6,12 @@ import { adMeasurementAllowed, attributionFromUrl, isPrivatePath, uetEvent, with
 
 type EventPayload = { type: string; path?: string; jobId?: number; props?: Record<string, unknown> };
 
-/** Events that also count as Microsoft Ads conversions. */
-const UET_EVENTS: Record<string, string> = { apply_click: "apply_click", premium_cta_click: "begin_trial" };
+/**
+ * Events also sent to Microsoft Ads (UET). A click on an email-alert button is only interest, so it
+ * goes as "trial_cta_click", which is not set up as a conversion; "begin_trial" is sent only when a
+ * Paddle checkout completes (src/components/paddle-checkout.tsx).
+ */
+const UET_EVENTS: Record<string, string> = { apply_click: "apply_click", premium_cta_click: "trial_cta_click" };
 
 /** Current path with only campaign parameters kept (never tokens, emails or search text). */
 function safePath(): string {

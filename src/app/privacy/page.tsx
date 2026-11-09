@@ -35,11 +35,20 @@ export default function PrivacyPage() {
 
         <H2>Browsing the site</H2>
         <p>
-          We count page views, searches and clicks on application links to learn which listings are useful. We don&apos;t set cookies for this and we never
-          store your IP address. Each visit is counted with a pseudonymous code made from your IP address and browser type, combined with a secret that changes every
-          day, so visits on different days can&apos;t be linked together. Search terms, the page address (without personal links) and the campaign tags of the link
-          you arrived from are recorded with the count. If you start a free trial, that day&apos;s code is kept with your sign-up for up to 30 days, only to measure
-          which pages lead to sign-ups. For abuse protection (for example limiting repeated sign-ups) we keep a one-way hash of IP addresses for up to 24 hours.
+          To learn which listings and pages are useful, we count page views, vacancy views, searches, clicks on Apply links, clicks on the email-alert (free trial or
+          early access) buttons and clicks on the book link described below, as well as sign-ups and the answer to the optional &quot;which plan would you choose?&quot;
+          question. We don&apos;t set cookies for this and we never store your IP address. Each visit is counted with a pseudonymous code made from your IP address and
+          browser type, combined with the date and a secret key, so visits on different days can&apos;t be linked together. Search terms, the page address (without
+          personal links) and the campaign tags of the link you arrived from are recorded with the count. If you sign up, that day&apos;s pseudonymous code is kept with
+          your sign-up for up to 30 days, only to measure which pages lead to sign-ups. For abuse protection (for example limiting repeated sign-ups) we keep a one-way
+          hash of IP addresses for up to 24 hours.
+        </p>
+        <p>
+          <strong>What is stored on your device.</strong> Before you make a cookie choice, the site stores only a session flag in your browser&apos;s session storage
+          (<code>gch_geo</code>), which notes whether we need to ask for consent where you are and is deleted when you close the tab. When you choose, your choice is
+          remembered in local storage (<code>gch_ads_consent</code>). Other storage depends on that choice, as described below. If you use &quot;Save&quot; on a vacancy,
+          the list of saved vacancies is kept in your browser&apos;s local storage on this device only; to show which saved vacancies are still open, the{" "}
+          <a className="text-accent underline" href="/saved">Saved jobs</a> page sends us their vacancy numbers, and nothing else.
         </p>
 
         <H2 id="cookies">Advertising measurement and cookies</H2>
@@ -49,7 +58,13 @@ export default function PrivacyPage() {
         <ul className="list-disc space-y-1 pl-6">
           <li>record the campaign tags of the ad link you clicked (&quot;utm&quot; tags) with page counts and with any sign-up;</li>
           <li>record Microsoft&apos;s click id (&quot;msclkid&quot;), which identifies one ad click, and remember it on your device for up to 90 days. Without your consent we only note that a click id was present, not its value;</li>
-          <li>load Microsoft&apos;s Universal Event Tracking (UET) tag, which sets the cookies <code>_uetsid</code>, <code>_uetvid</code> and <code>MUID</code> and sends Microsoft the pages you view here, whether you click Apply on a vacancy, and whether you start a trial or sign up. Microsoft processes this under its own <a className="text-accent underline" href="https://privacy.microsoft.com/privacystatement" rel="noopener">privacy statement</a>.</li>
+          <li>
+            load Microsoft&apos;s Universal Event Tracking (UET) tag, which sets the cookies <code>_uetsid</code>, <code>_uetvid</code> and <code>MUID</code> and sends
+            Microsoft these events: the pages you view here (<code>page_view</code>), clicks on Apply (<code>apply_click</code>), clicks on an email-alert button
+            (<code>trial_cta_click</code>), joining early access or the email list (<code>trial_signup</code>, <code>subscribe</code>) and a completed free-trial
+            checkout (<code>begin_trial</code>). Microsoft processes this under its own{" "}
+            <a className="text-accent underline" href="https://privacy.microsoft.com/privacystatement" rel="noopener">privacy statement</a>.
+          </li>
         </ul>
         <p>
           In the European Economic Area, the United Kingdom and Switzerland (and when we can&apos;t tell where you are), nothing is stored on your device and Microsoft&apos;s
@@ -64,14 +79,22 @@ export default function PrivacyPage() {
           If you sign up, we store your email address, what you signed up for, the search or vacancy you were looking at, any note you type in the optional
           &quot;Anything else&quot; box, the campaign tags of the ad or link that brought you here (the click id only if allowed, see above), and when you confirmed. We use this only to send the emails you asked
           for and to measure interest in email alerts. Every email has a one-click unsubscribe link. We never sell or share your address.
+          {mail ? <> If you reply to one of our emails, your reply goes to {mailLink}.</> : null}
+        </p>
+
+        <H2>Our book link</H2>
+        <p>
+          Pages about EU institution vacancies show a test-preparation book published by {op.name}, which runs {siteConfig.name}. Its link goes to books2read, a
+          third-party store-picker that sends you on to the bookshop you choose. books2read and the shops have their own privacy policies. We only count the click,
+          as described above.
         </p>
         {BILLING_LIVE ? (
           <p>
             <strong>Payments.</strong> Subscriptions are sold by Paddle.com, our merchant of record, which collects your payment details, billing address and tax
             information under its own <a className="text-accent underline" href="https://www.paddle.com/legal/privacy" rel="noopener">privacy notice</a>. We never see or
             store your card details. Paddle tells us your email address, country, plan, subscription status and dates, and its customer and subscription IDs, which
-            we use to send your alerts and let you manage your subscription. Paddle&apos;s checkout script is loaded from Paddle&apos;s servers when you start to fill
-            in the trial form, so that the secure checkout opens without a wait.
+            we use to send your alerts and let you manage your subscription. Paddle&apos;s checkout script (Paddle.js) is loaded from Paddle&apos;s servers when you
+            point at or click into the trial form, so that the secure checkout opens without a wait.
           </p>
         ) : null}
 
@@ -90,13 +113,13 @@ export default function PrivacyPage() {
 
         <H2>Legal bases</H2>
         <p>
-          Email sign-ups and advertising cookies: your consent, which you can withdraw at any time. Anonymous visit counting and abuse protection: our legitimate interest in
+          Email sign-ups and advertising cookies: your consent, which you can withdraw at any time. Pseudonymous visit counting and abuse protection: our legitimate interest in
           running a useful and secure site. Paid alerts: performing our contract with you, and keeping records the law requires.
         </p>
 
         <H2>How long we keep it</H2>
         <ul className="list-disc space-y-1 pl-6">
-          <li>Anonymous visit counts: 13 months.</li>
+          <li>Pseudonymous visit counts: 13 months.</li>
           <li>Sign-ups that are never confirmed: deleted after 30 days.</li>
           <li>Unsubscribed addresses: deleted after 30 days, unless you still have a paid plan.</li>
           {BILLING_LIVE ? <li>Cancelled subscriptions: your address, searches and settings are deleted 30 days after the plan ends.</li> : null}
@@ -118,7 +141,10 @@ export default function PrivacyPage() {
         </p>
 
         <H2>Age</H2>
-        <p>{siteConfig.name} is meant for adults looking for work. Email alerts are not for anyone under 16.</p>
+        <p>
+          {siteConfig.name} is meant for adults looking for work. You must be at least 16 to sign up for our emails, and at least 18 to buy a subscription
+          (see the <a className="text-accent underline" href="/terms#age">terms</a>). We don&apos;t knowingly collect data from anyone younger.
+        </p>
       </div>
     </>
   );

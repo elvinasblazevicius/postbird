@@ -4,7 +4,7 @@ import { TrackedLink } from "./tracking";
 /**
  * The owner's EPSO workbook, shown only where it is relevant: EU institution
  * organization pages and job pages of EU institutions. The link is a
- * books2read universal link, which sends each visitor to their local Amazon store.
+ * books2read universal link, a store picker that sends each visitor to Amazon or another store.
  * The disclosure line is required: it is our own product, not an independent recommendation.
  */
 export const EPSO_BOOK = {
@@ -25,16 +25,13 @@ export function EpsoBook({ className = "", source }: { className?: string; sourc
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={EPSO_BOOK.cover} alt="" width={64} height={102} className="h-[102px] w-16 shrink-0 rounded shadow-sm" loading="lazy" />
       <div className="min-w-0">
-        <p className="text-sm font-medium text-slate">Preparing for EPSO tests?</p>
-        <p className="mt-0.5 font-semibold leading-snug text-ink">
+        <p className="text-xs font-medium text-slate">Our own book, published by {siteConfig.operator.name}, which runs {siteConfig.name}</p>
+        <p className="mt-1 font-semibold leading-snug text-ink">
           <TrackedLink href={EPSO_BOOK.url} event="book_click" source={source} target="_blank" rel="sponsored noopener" className="text-accent underline">{EPSO_BOOK.title}</TrackedLink>
-          <span className="font-normal text-slate"> by {EPSO_BOOK.author}, on Amazon</span>
+          <span className="font-normal text-slate"> by {EPSO_BOOK.author}, at Amazon and other stores</span>
         </p>
-        <p className="mt-1 text-sm leading-relaxed text-slate">{EPSO_BOOK.blurb}</p>
-        <p className="mt-1.5 text-xs text-slate">
-          Our own book: published by {siteConfig.operator.name}, which runs {siteConfig.name}, and we earn from each sale. Not affiliated with or endorsed by EPSO
-          or the EU institutions.
-        </p>
+        <p className="mt-1 text-sm leading-relaxed text-slate">Preparing for EPSO tests? {EPSO_BOOK.blurb}</p>
+        <p className="mt-1.5 text-xs text-slate">We earn from each sale. Not affiliated with or endorsed by EPSO or the EU institutions.</p>
       </div>
     </aside>
   );

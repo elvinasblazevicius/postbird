@@ -29,6 +29,7 @@ export function SiteFooter() {
             <li><Link href="/categories" className="hover:text-ink">Categories</Link></li>
             <li><Link href="/locations" className="hover:text-ink">Countries</Link></li>
             <li><Link href="/remote-jobs" className="hover:text-ink">Remote and home-based jobs</Link></li>
+            <li><Link href="/saved" className="hover:text-ink">Saved jobs</Link></li>
           </ul>
         </nav>
         <nav aria-label="About" className="text-sm">
@@ -40,7 +41,7 @@ export function SiteFooter() {
             <li><Link href="/pricing" className="hover:text-ink">Pricing</Link></li>
             <li><Link href="/privacy" className="hover:text-ink">Privacy</Link></li>
             <li><Link href="/terms" className="hover:text-ink">Terms</Link></li>
-            <li><Link href="/terms#refunds" className="hover:text-ink">Refunds</Link></li>
+            <li><Link href="/refunds" className="hover:text-ink">Refunds</Link></li>
             <li><Link href="/account/login" className="hover:text-ink">Manage or cancel a subscription</Link></li>
             {siteConfig.contactEmail ? (
               <li><a href={`mailto:${siteConfig.contactEmail}`} className="hover:text-ink">Contact</a></li>
@@ -51,7 +52,7 @@ export function SiteFooter() {
       </div>
       <div className="border-t border-rule">
         <p className="mx-auto max-w-6xl px-4 py-5 text-xs text-slate sm:px-6">
-          © {year} {siteConfig.name}. Vacancy details belong to the organizations that publish them; always check the employer&apos;s own posting before applying.
+          © {year} {siteConfig.operator.name}. Vacancy details belong to the organizations that publish them; always check the employer&apos;s own posting before applying.
         </p>
       </div>
     </footer>

@@ -200,14 +200,25 @@ export async function fetchFeedText(url: string, timeoutMs: number = IMPORT_SETT
 
 // ── Helpers ──────────────────────────────────────────────────
 
-async function upsertOrganizations(jobs: NormalizedJob[]): Promise<Map<string, number>> {
+/**
+ * Creates missing organizations and returns slug → id. For a known
+ * organization (from src/config/organizations.ts; only those have a type)
+ * the stored name, short name and type follow the built-in list, so a
+ * corrected entry reaches rows created earlier. Names read from feeds don't
+ * overwrite a stored name.
+ */
+export async function upsertOrganizations(jobs: NormalizedJob[]): Promise<Map<string, number>> {
   const bySlug = new Map<string, NormalizedJob["organization"]>();
   for (const j of jobs) if (j.organization) bySlug.set(j.organization.slug, j.organization);
   const map = new Map<string, number>();
   if (bySlug.size === 0) return map;
   const rows = [...bySlug.values()].map((o) => ({ slug: o!.slug, name: o!.name, short_name: o!.short, org_type: o!.type, website: o!.website }));
   await sql`insert into organizations ${sql(rows, "slug", "name", "short_name", "org_type", "website")}
-    on conflict (slug) do update set website = coalesce(organizations.website, excluded.website)`;
+    on conflict (slug) do update set
+      website = coalesce(organizations.website, excluded.website),
+      name = case when excluded.org_type is not null then excluded.name else organizations.name end,
+      short_name = case when excluded.org_type is not null then excluded.short_name else organizations.short_name end,
+      org_type = coalesce(excluded.org_type, organizations.org_type)`;
   const found = await sql<{ id: number; slug: string }[]>`select id, slug from organizations where slug = any(${[...bySlug.keys()]})`;
   for (const r of found) map.set(r.slug, Number(r.id));
   return map;

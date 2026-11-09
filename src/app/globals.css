@@ -154,7 +154,8 @@ a {
   width: 520px;
   right: -230px;
   top: -40px;
-  opacity: 0.14;
+  opacity: 0.1;
+  filter: saturate(0.35);
   transform: rotate(-8deg);
   -webkit-mask-image: radial-gradient(ellipse 60% 60% at 62% 45%, #000 25%, transparent 75%);
   mask-image: radial-gradient(ellipse 60% 60% at 62% 45%, #000 25%, transparent 75%);
@@ -164,7 +165,7 @@ a {
     width: 860px;
     right: -120px;
     top: 10px;
-    opacity: 0.32;
+    opacity: 0.16;
   }
 }
 

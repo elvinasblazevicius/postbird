@@ -6,9 +6,14 @@
  *
  * Double sends: a request can reach Resend and still fail on our side (a
  * timeout, a lost response). Every send can therefore carry an idempotency
- * key: Resend accepts a key once per 24 hours and answers a repeat with the
- * first result instead of sending again. A failed request with a key is
- * retried once with the same key, so the retry can never send twice.
+ * key: Resend accepts a key once per 24 hours and answers a repeat of the same
+ * request with the first result (2xx) instead of sending again. A failed
+ * request with a key is retried once with the same key, so the retry can
+ * never send twice. Only a 2xx answer counts as sent. Resend's 409 answers
+ * mean nothing was sent by this request: concurrent_idempotent_requests (the
+ * first request with this key is still being processed: retried once after a
+ * short wait) and invalid_idempotent_request (the key was used with a
+ * different message: a failure, logged).
  */
 import { createHash } from "node:crypto";
 import siteConfig from "@site-config";
@@ -23,8 +28,7 @@ export type OutgoingEmail = {
   idempotencyKey?: string;
 };
 
-/** duplicate: Resend had already accepted a request with this idempotency key (so it was sent before). */
-export type SendResult = { ok: boolean; skipped?: boolean; duplicate?: boolean; id?: string; error?: string };
+export type SendResult = { ok: boolean; skipped?: boolean; id?: string; error?: string };
 
 /** Each request to Resend gives up after this long. */
 const TIMEOUT_MS = 10_000;
@@ -59,9 +63,23 @@ function payload(m: OutgoingEmail) {
 
 type ResendReply = { status: number; data: { id?: string; message?: string; name?: string } };
 
+const isOk = (r: ResendReply) => r.status >= 200 && r.status < 300;
+
+/** Resend's 409 while the first request with the same idempotency key is still in progress. */
+const isConcurrent = (r: ResendReply) => r.status === 409 && r.data.name === "concurrent_idempotent_requests";
+
+/** Resend's reason for a failed request (its error name and message; never the recipient or body). */
+function failure(r: ResendReply): string {
+  if (r.status === 409 && r.data.name === "invalid_idempotent_request") {
+    return `idempotency key already used for a different message (invalid_idempotent_request)${r.data.message ? `: ${r.data.message}` : ""}`;
+  }
+  if (isConcurrent(r)) return "a request with the same idempotency key is still in progress (concurrent_idempotent_requests)";
+  return r.data.message || `Resend returned HTTP ${r.status}`;
+}
+
 /**
  * One POST to Resend. With an idempotency key, a network error, timeout,
- * 429 or 5xx is retried once with the same key.
+ * 429, 5xx or concurrent_idempotent_requests is retried once with the same key.
  */
 async function post(path: "/emails" | "/emails/batch", body: unknown, key: string | undefined): Promise<ResendReply> {
   const attempt = async (): Promise<ResendReply> => {
@@ -80,16 +98,13 @@ async function post(path: "/emails" | "/emails/batch", body: unknown, key: strin
   };
   try {
     const first = await attempt();
-    if (!key || (first.status !== 429 && first.status < 500)) return first;
+    if (!key || (first.status !== 429 && first.status < 500 && !isConcurrent(first))) return first;
   } catch (e) {
     if (!key) throw e;
   }
   await new Promise((r) => setTimeout(r, 1000));
   return attempt();
 }
-
-/** Resend's answer when the idempotency key was already used: the message went out before. */
-const isDuplicate = (r: ResendReply) => r.status === 409 && /idempot/i.test(`${r.data.name ?? ""} ${r.data.message ?? ""}`);
 
 export async function sendEmail(msg: OutgoingEmail): Promise<SendResult> {
   if (!isEmailConfigured()) {
@@ -98,12 +113,8 @@ export async function sendEmail(msg: OutgoingEmail): Promise<SendResult> {
   }
   try {
     const res = await post("/emails", payload(msg), cleanKey(msg.idempotencyKey));
-    if (isDuplicate(res)) {
-      console.info("email not sent again: its idempotency key was already used");
-      return { ok: true, duplicate: true };
-    }
-    if (res.status < 200 || res.status >= 300) {
-      const error = res.data.message || `Resend returned HTTP ${res.status}`;
+    if (!isOk(res)) {
+      const error = failure(res);
       // Status and Resend's reason only: never the recipient or the body.
       console.warn(`email not sent: Resend ${res.status}: ${error}`);
       return { ok: false, error };
@@ -135,11 +146,13 @@ export async function sendBatch(
     const chunk = msgs.slice(i, i + 100);
     try {
       const res = await post("/emails/batch", chunk.map(payload), cleanKey(keyFor?.(i / 100, chunk)));
-      // A repeated key means this exact batch was accepted before.
-      if ((res.status >= 200 && res.status < 300) || isDuplicate(res)) out.sent += chunk.length;
+      // A repeat of a batch Resend already accepted is answered with its first result (2xx).
+      if (isOk(res)) out.sent += chunk.length;
       else {
+        const error = failure(res);
+        console.warn(`email batch not sent: Resend ${res.status}: ${error}`);
         out.failed += chunk.length;
-        out.errors.push(res.data.message || `Resend returned HTTP ${res.status}`);
+        out.errors.push(error);
       }
     } catch (e) {
       out.failed += chunk.length;

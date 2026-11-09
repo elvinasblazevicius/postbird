@@ -19,7 +19,7 @@ export type Category = {
 export const CATEGORIES: Category[] = [
   {
     slug: "data-analytics",
-    name: "Data & Analytics",
+    name: "Data and analytics",
     blurb: "Data analysts, statisticians, information management and research data roles.",
     keywords: [
       "data", "analytics", "statistic*", "information management",
@@ -34,22 +34,22 @@ export const CATEGORIES: Category[] = [
       "ict", "information technology", "software", "developer", "programmer", "devops", "cyber",
       "cybersecurity", "information security", "network", "systems administrator", "cloud",
       "it officer", "it specialist", "it assistant", "it support", "it manager", "erp", "web developer",
-      "solution architect", "database administrator",
+      "solution architect", "database administrator", "digital transformation", "telecommunication*",
     ],
   },
   {
     slug: "monitoring-evaluation",
-    name: "Monitoring & Evaluation",
+    name: "Monitoring and evaluation",
     blurb: "M&E, evaluation, accountability and learning roles.",
-    keywords: ["monitoring and evaluation", "monitoring & evaluation", "m&e", "meal", "evaluation", "evaluator"],
+    keywords: ["monitoring and evaluation", "monitoring & evaluation", "m&e", "meal", "evaluation", "evaluator", "monitoring", "suivi et evaluation", "seguimiento y evaluacion"],
   },
   {
     slug: "human-resources",
-    name: "Human Resources",
+    name: "Human resources",
     blurb: "HR, recruitment, talent and staff development roles.",
     keywords: [
       "human resources", "human resource", "hr", "recruitment", "recruiter", "talent", "staffing",
-      "people and culture", "learning and development", "payroll",
+      "people and culture", "learning and development", "payroll", "ressources humaines", "recursos humanos",
     ],
   },
   {
@@ -58,28 +58,95 @@ export const CATEGORIES: Category[] = [
     blurb: "Finance, accounting, budget, treasury and audit roles.",
     keywords: [
       "finance", "financial", "accountant", "accounting", "budget", "treasury", "auditor", "audit",
-      "controller", "grants management",
+      "controller", "grants management", "grant*", "investment officer", "credit", "banking", "comptable", "contador*", "finanzas",
     ],
   },
   {
     slug: "procurement-logistics",
-    name: "Procurement & Logistics",
+    name: "Procurement and logistics",
     blurb: "Procurement, supply chain, logistics and fleet roles.",
-    keywords: ["procurement", "supply chain", "supply", "logistics", "logistician", "warehouse", "fleet", "contracts", "cold chain", "compras", "abastecimiento", "adquisiciones", "achats", "approvisionnement"],
+    keywords: ["procurement", "supply chain", "supply", "logistics", "logistician", "warehouse", "fleet", "contracts", "cold chain", "storekeeper", "transport", "compras", "abastecimiento", "adquisiciones", "achats", "approvisionnement", "logistique", "logistica"],
   },
   {
     slug: "legal-compliance",
-    name: "Legal & Compliance",
+    name: "Legal and compliance",
     blurb: "Legal officers, counsel, compliance, ethics and investigation roles.",
-    keywords: ["legal", "lawyer", "counsel", "compliance", "ethics", "investigator", "investigation", "integrity", "safeguarding", "enquêtes"],
+    keywords: ["legal", "lawyer", "counsel", "compliance", "ethics", "investigator", "investigation", "integrity", "safeguarding", "enquêtes", "juriste", "juridique", "jurídico", "abogado", "rule of law"],
+  },
+  {
+    slug: "food-security-agriculture",
+    name: "Food security and agriculture",
+    blurb: "Food security, agriculture, livelihoods, livestock and fisheries roles.",
+    keywords: [
+      "food security", "food systems", "food assistance", "agricultur*", "agronom*", "agri*", "livestock", "veterinar*", "fisheries", "aquaculture",
+      "farming", "farmer*", "crop*", "irrigation", "school feeding", "livelihood*", "rural development", "value chain*", "seguridad alimentaria", "securite alimentaire", "agricola",
+    ],
   },
   {
     slug: "health",
     name: "Health",
     blurb: "Public health, medical, nutrition and epidemiology roles.",
     keywords: [
-      "health", "medical", "nurse", "doctor", "physician", "epidemiolog*", "nutrition", "immunization",
-      "pharmac*", "clinical", "hiv", "malaria",
+      "health", "medical", "nurse", "nursing", "doctor", "physician", "epidemiolog*", "nutrition*", "immunization", "vaccin*",
+      "pharmac*", "clinical", "hiv", "malaria", "tuberculosis", "midwi*", "surgeon", "laboratory", "mental health", "psychosocial", "mhpss",
+      "salud", "sante", "medecin", "medico", "infirmier*", "enfermer*",
+    ],
+  },
+  {
+    slug: "wash",
+    name: "Water, sanitation and hygiene",
+    blurb: "WASH engineers, officers and specialists in water supply, sanitation and hygiene.",
+    keywords: ["wash", "water", "sanitation", "hygiene", "watsan", "eau", "assainissement", "agua", "saneamiento"],
+  },
+  {
+    slug: "education",
+    name: "Education",
+    blurb: "Education specialists, teachers, early childhood and education-in-emergencies roles.",
+    keywords: ["education", "educational", "teacher*", "teaching", "school*", "literacy", "early childhood", "curriculum", "tvet", "educacion", "enseignant*", "docente*"],
+  },
+  {
+    slug: "security",
+    name: "Security",
+    blurb: "Security officers, advisers, analysts and safety and security roles.",
+    keywords: [
+      "security officer", "security assistant", "security associate", "security advisor", "security adviser", "security analyst",
+      "security manager", "security coordinator", "security specialist", "security focal point", "field security", "safety and security",
+      "security and safety", "close protection", "guard", "guards", "seguridad", "securite",
+    ],
+  },
+  {
+    slug: "protection-humanitarian-affairs",
+    name: "Protection and humanitarian affairs",
+    blurb: "Protection, child protection, gender-based violence, refugee and humanitarian affairs roles.",
+    keywords: [
+      "protection", "child protection", "gbv", "gender based violence", "psea", "humanitarian", "refugee*", "resettlement", "asylum",
+      "durable solutions", "camp management", "cccm", "shelter", "civil military", "human rights", "displacement",
+      "proteccion", "proteccion de la infancia", "humanitaire", "humanitaria*", "emergency",
+    ],
+  },
+  {
+    slug: "gender",
+    name: "Gender",
+    blurb: "Gender equality and women's empowerment roles.",
+    keywords: ["gender", "women", "womens", "gender equality", "genero"],
+  },
+  {
+    slug: "environment-climate-energy",
+    name: "Environment, climate and energy",
+    blurb: "Environment, climate change, energy, biodiversity and disaster risk reduction roles.",
+    keywords: [
+      "environment*", "climate", "energy", "renewable*", "biodiversity", "conservation", "forest*", "carbon", "emission*",
+      "sustainability", "sustainable", "natural resource*", "marine", "ocean*", "chemical*", "pollution", "solar", "electricity",
+      "disaster risk", "drr", "resilience", "ecosystem*", "wildlife", "medio ambiente", "environnement", "climat", "clima",
+    ],
+  },
+  {
+    slug: "engineering-infrastructure",
+    name: "Engineering and infrastructure",
+    blurb: "Engineers, infrastructure, construction and architecture roles.",
+    keywords: [
+      "engineer*", "engineering", "infrastructure", "construction", "civil works", "architect", "architecture", "quantity surveyor", "surveyor",
+      "electrical", "mechanical", "urban", "roads", "ingeniero*", "ingenieur*", "infraestructura",
     ],
   },
   {
@@ -88,22 +155,24 @@ export const CATEGORIES: Category[] = [
     blurb: "Communications, media, advocacy, editorial and public information roles.",
     keywords: [
       "communication*", "media", "public information", "advocacy", "editor", "writer",
-      "content", "social media", "press", "outreach", "translator*", "interpreter*",
+      "content", "social media", "press", "outreach", "translator*", "interpreter*", "translation", "reporting officer",
+      "external relations", "fundraising", "resource mobilization", "donor relations", "comunicacion",
     ],
   },
   {
     slug: "policy-research",
-    name: "Policy & Research",
+    name: "Policy and research",
     blurb: "Policy analysts, economists and researchers.",
-    keywords: ["policy", "economist", "economics", "research", "researcher"],
+    keywords: ["policy", "economist", "economics", "research", "researcher", "governance", "political affairs", "political", "peacebuilding"],
   },
   {
     slug: "programme-management",
-    name: "Programme Management",
+    name: "Programme management",
     blurb: "Programme and project officers, managers and coordinators.",
     keywords: [
-      "programme", "program", "project", "coordinator", "coordination", "humanitarian affairs",
-      "partnership", "portfolio", "country director", "head of office", "field officer",
+      "programme", "program", "project", "projects", "coordinator", "coordination", "partnership", "portfolio",
+      "country director", "head of office", "field office", "field officer", "chief of party", "team leader",
+      "head of mission", "head of programme", "area manager", "base manager", "representative", "programa", "proyecto", "projet",
     ],
   },
   {
@@ -113,6 +182,7 @@ export const CATEGORIES: Category[] = [
     keywords: [
       "administrative", "administration", "admin", "office manager", "secretary", "receptionist",
       "operations assistant", "operations associate", "operations officer", "operations manager", "operations director", "head of operations", "facilities", "maintenance", "driver", "clerk",
+      "operations", "assistant", "office", "administrativo", "administratif", "asistente", "chauffeur", "conductor", "cleaner", "cook",
     ],
   },
 ];

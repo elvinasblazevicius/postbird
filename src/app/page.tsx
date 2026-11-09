@@ -4,6 +4,7 @@ import { JobGrid, OrgBadge } from "@/components/job-card";
 import { Flag } from "@/components/flag";
 import { HeroSearch } from "@/components/search-forms";
 import { closingSoonJobs, categoryFacets, countryFacets, experienceFacets, gradeFacets, jobTypeFacets, languageFacets, latestJobs, organizationFacets, orgTypeFacets, regionFacets, siteStats } from "@/lib/jobs";
+import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
 import { absoluteUrl, jsonLd, siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,8 @@ export default async function HomePage() {
   const closingSoon = closingFresh.length === 3 ? closingFresh : [];
 
   const showTotal = stats.active >= siteConfig.showVacancyCountFrom;
+  // Entry points by employer type; a type with no open jobs is left out.
+  const employerTypes = EMPLOYER_TYPE_PAGES.map((t) => ({ ...t, count: orgTypes.find((o) => o.value === t.orgtype)?.count ?? 0 })).filter((t) => t.count > 0);
 
   const websiteLd = {
     "@context": "https://schema.org",
@@ -84,12 +87,17 @@ export default async function HomePage() {
       <div className="dots-soft border-b border-rule pb-14">
       <section className="mx-auto max-w-6xl px-4 pt-8 sm:px-6 sm:pt-12" aria-labelledby="latest-heading">
         <div className="flex items-end justify-between gap-4">
-          <h2 id="latest-heading" className="text-[1.9rem] font-semibold text-ink">Recently posted, UN system first</h2>
-          <Link href="/jobs" className="shrink-0 text-[0.95rem] font-medium text-accent hover:underline">{showTotal ? `See all ${stats.active.toLocaleString("en-US")} jobs` : "See all jobs"}</Link>
+          <h2 id="latest-heading" className="text-[1.6rem] font-semibold leading-tight text-ink sm:text-[1.9rem]">Recently posted, UN system first</h2>
+          <Link href="/jobs" className="hidden shrink-0 text-[0.95rem] font-medium text-accent hover:underline sm:inline">{showTotal ? `See all ${stats.active.toLocaleString("en-US")} jobs` : "See all jobs"}</Link>
         </div>
-        <div className="mt-6">
+        <div className="mt-5">
           {latest.length ? (
-            <JobGrid jobs={latest} />
+            <>
+              <JobGrid jobs={latest} mobileLimit={5} />
+              <Link href="/jobs" className="mt-4 block rounded-lg border border-rule bg-paper px-4 py-3 text-center font-medium text-accent hover:bg-mist sm:hidden">
+                {showTotal ? `See all ${stats.active.toLocaleString("en-US")} jobs` : "See all jobs"}
+              </Link>
+            </>
           ) : (
             <div className="rounded-xl border border-dashed border-rule p-8 text-slate">
               No vacancies have been imported yet. Once the first feed sync runs, the newest openings appear here.
@@ -101,65 +109,65 @@ export default async function HomePage() {
         <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6" aria-labelledby="closing-heading">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <h2 id="closing-heading" className="text-[1.6rem] font-semibold text-ink">Closing soon</h2>
+              <h2 id="closing-heading" className="text-[1.6rem] font-semibold leading-tight text-ink">Closing soon</h2>
               <p className="mt-1 text-[0.95rem] text-slate">Published closing dates in the next two weeks.</p>
             </div>
             <Link href="/jobs?sort=deadline" className="shrink-0 text-[0.95rem] font-medium text-accent hover:underline">All by closing date</Link>
           </div>
-          <div className="mt-6"><JobGrid jobs={closingSoon} /></div>
+          <div className="mt-5"><JobGrid jobs={closingSoon} /></div>
         </section>
       ) : null}
-      {orgs.length || countries.length ? (
-        <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6" aria-label="Hiring now">
-              <div className="space-y-3">
-                {orgs.length ? (
-                  <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
-                    <span className="shrink-0 text-sm font-medium text-slate sm:w-28 sm:pt-1.5">Hiring now</span>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {orgs.slice(0, 10).map((o) => (
-                        <Link
-                          key={o.slug}
-                          href={`/organizations/${o.slug}`}
-                          className="rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm font-semibold tracking-wide text-ink hover:border-accent hover:text-accent"
-                        >
-                          {o.short_name && o.short_name.length <= 12 ? o.short_name : o.name}
-                          <span className="ml-1.5 font-normal text-slate">{o.count}</span>
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                {countries.length ? (
-                  <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
-                    <span className="shrink-0 text-sm font-medium text-slate sm:w-28 sm:pt-1.5">Duty stations</span>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {countries.slice(0, 8).map((c) => (
-                        <Link
-                          key={c.slug}
-                          href={`/locations/${c.slug}`}
-                          className="inline-flex items-center gap-2 rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm font-semibold text-ink hover:border-accent hover:text-accent"
-                        >
-                          <Flag code={c.code} className="shadow-[0_0_0_1px_rgba(14,27,44,0.15)]" />
-                          {c.name}
-                          <span className="font-normal text-slate">{c.count}</span>
-                        </Link>
-                      ))}
-                      <Link href="/locations" className="px-1 text-sm font-medium text-accent underline underline-offset-4">All locations</Link>
-                    </div>
-                  </div>
-                ) : null}
+      {employerTypes.length || countries.length ? (
+        <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6" aria-label="Browse by employer and place">
+          <div className="space-y-3">
+            {employerTypes.length ? (
+              <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+                <span className="shrink-0 text-sm font-medium text-slate sm:w-28 sm:pt-1.5">Employers</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {employerTypes.map((t) => (
+                    <Link
+                      key={t.path}
+                      href={t.path}
+                      className="rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm font-semibold text-ink hover:border-accent hover:text-accent"
+                    >
+                      {t.label}
+                      <span className="ml-1.5 font-normal text-slate">{t.count}</span>
+                    </Link>
+                  ))}
+                </div>
               </div>
+            ) : null}
+            {countries.length ? (
+              <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+                <span className="shrink-0 text-sm font-medium text-slate sm:w-28 sm:pt-1.5">Duty stations</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {countries.slice(0, 8).map((c) => (
+                    <Link
+                      key={c.slug}
+                      href={`/locations/${c.slug}`}
+                      className="inline-flex items-center gap-2 rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm font-semibold text-ink hover:border-accent hover:text-accent"
+                    >
+                      <Flag code={c.code} className="shadow-[0_0_0_1px_rgba(14,27,44,0.15)]" />
+                      {c.name}
+                      <span className="font-normal text-slate">{c.count}</span>
+                    </Link>
+                  ))}
+                  <Link href="/locations" className="px-1 text-sm font-medium text-accent underline underline-offset-4">All locations</Link>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </section>
       ) : null}
       </div>
 
       {/* Why Postbird */}
       <section className="mx-auto mt-16 max-w-6xl px-4 sm:px-6" aria-labelledby="why-heading">
-        <h2 id="why-heading" className="text-[1.6rem] font-semibold text-ink">Why job seekers use {siteConfig.name}</h2>
+        <h2 id="why-heading" className="text-[1.6rem] font-semibold leading-tight text-ink">Why use {siteConfig.name}</h2>
         <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
             ["One search, every kind of employer", "UN agencies, EU institutions, development banks, international organizations and NGOs, side by side."],
-            ["No sign-in, no third-party ads", `Browse and apply without a ${siteConfig.name} account. Every Apply button opens the employer's own website or application form, which may ask you to register.`],
+            ["No sign-in, no third-party ads on the page", `Browse and apply without a ${siteConfig.name} account. Every Apply button opens the employer's own website or application form, which may ask you to register.`],
             ["Closing dates up front", "Each listing shows when it closes, and expired vacancies disappear automatically."],
             ["Filters made for this field", "Grade, duty station, remote work, contract type and language requirements."],
           ].map(([title, body]) => (
@@ -171,7 +179,7 @@ export default async function HomePage() {
           ))}
         </ul>
         <p className="mt-4 text-sm text-slate">
-          Details a posting doesn&apos;t give are shown as &quot;Not stated&quot;, never guessed. <Link href="/about" className="text-accent underline">How it works</Link>
+          Details our source doesn&apos;t give are marked &quot;Not in our source&quot;, never guessed. <Link href="/about" className="text-accent underline">How it works</Link>
         </p>
       </section>
 
@@ -179,7 +187,7 @@ export default async function HomePage() {
       <section className="mx-auto mt-16 grid max-w-6xl gap-12 px-4 sm:px-6 lg:grid-cols-2" aria-label="Browse">
         <div>
           <div className="flex items-end justify-between">
-            <h2 className="text-[1.6rem] font-semibold text-ink">Browse by organization</h2>
+            <h2 className="text-[1.6rem] font-semibold leading-tight text-ink">Browse by organization</h2>
             <Link href="/organizations" className="text-[0.95rem] font-medium text-accent hover:underline">All organizations</Link>
           </div>
           <ul className="mt-5 divide-y divide-rule border-y border-rule">
@@ -197,7 +205,7 @@ export default async function HomePage() {
         </div>
         <div>
           <div className="flex items-end justify-between">
-            <h2 className="text-[1.6rem] font-semibold text-ink">Browse by career category</h2>
+            <h2 className="text-[1.6rem] font-semibold leading-tight text-ink">Browse by career category</h2>
             <Link href="/categories" className="text-[0.95rem] font-medium text-accent hover:underline">All categories</Link>
           </div>
           <ul className="mt-5 grid grid-cols-1 gap-x-6 border-t border-rule sm:grid-cols-2">

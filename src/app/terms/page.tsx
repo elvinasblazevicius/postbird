@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
+import { RefundPolicyText } from "@/components/refund-policy";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { siteConfig } from "@/lib/site";
 
@@ -22,8 +24,8 @@ export default function TermsPage() {
 
         <h2 className="pt-2 text-xl font-semibold">Listings</h2>
         <p>
-          Vacancy information is collected automatically from public job feeds and may be incomplete, out of date or changed by the employer. Details we can&apos;t confirm
-          are shown as &quot;Not stated&quot;. Always check the employer&apos;s own posting, including the closing date, before applying. Vacancy content remains the property
+          Vacancy information is collected automatically from public job feeds and may be incomplete, out of date or changed by the employer. Details our source doesn&apos;t give
+          are shown as &quot;Not in our source&quot;. Always check the employer&apos;s own posting, including the closing date, before applying. Vacancy content remains the property
           of the organizations that publish it.
         </p>
 
@@ -54,13 +56,12 @@ export default function TermsPage() {
               Unsubscribing from our emails does not cancel your plan.
             </p>
             <h3 id="refunds" className="scroll-mt-24 pt-1 text-lg font-semibold">Refunds</h3>
-            <p>
-              If a charge was unexpected, email {mail ? <a className="text-accent underline" href={`mailto:${mail}`}>{mail}</a> : "us"} within 14 days of it and
-              we&apos;ll refund it in full, no questions asked. Customers in the EU and UK also have the statutory right to withdraw set out in Paddle&apos;s buyer terms.
-              Nothing here limits rights you have under consumer law where you live.
-            </p>
+            <RefundPolicyText />
+            <p>The same policy is on our <Link href="/refunds" className="text-accent underline">refunds page</Link>.</p>
             <h3 className="pt-1 text-lg font-semibold">Price changes</h3>
             <p>We&apos;ll email you at least 30 days before any price change takes effect, so you can cancel first.</p>
+            <h3 className="pt-1 text-lg font-semibold">If we stop offering email alerts</h3>
+            <p>If we stop offering email alerts, we&apos;ll tell you at least 30 days ahead, cancel your plan and refund the unused part of any period you&apos;ve paid for.</p>
           </>
         ) : (
           <p>
@@ -68,6 +69,11 @@ export default function TermsPage() {
             {p.priceSummary}, with a {p.trialDays}-day free trial. We will publish the full billing terms here before taking any payment.
           </p>
         )}
+
+        <h2 id="age" className="scroll-mt-24 pt-2 text-xl font-semibold">Age</h2>
+        <p>
+          {siteConfig.name} is meant for adults looking for work. You must be at least 16 to sign up for our emails, and at least 18 to buy a subscription.
+        </p>
 
         <h2 className="pt-2 text-xl font-semibold">Liability</h2>
         <p>
@@ -79,6 +85,12 @@ export default function TermsPage() {
         <p>
           Organizations that want a listing corrected or removed, and anyone who spots an error, can contact us{mail ? <> at <a className="text-accent underline" href={`mailto:${mail}`}>{mail}</a></> : null}.
           We act on removal requests within five working days.
+        </p>
+
+        <h2 id="changes" className="scroll-mt-24 pt-2 text-xl font-semibold">Changes to these terms</h2>
+        <p>
+          We may update these terms; the date at the top shows when they last changed. Before a material change takes effect, we&apos;ll email subscribers
+          to say what is changing.
         </p>
 
         <h2 className="pt-2 text-xl font-semibold">Governing law</h2>

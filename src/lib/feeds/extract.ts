@@ -9,7 +9,7 @@ import { COUNTRIES, countryByCode } from "@/config/countries";
 import { DUTY_STATIONS } from "@/config/cities";
 import { KNOWN_ORGS, type KnownOrg } from "@/config/organizations";
 import { IMPORT_SETTINGS } from "@/config/import";
-import { escapeRegExp, excerpt, htmlToText, normalizeForCompare, oneLine, sanitizeDescription, slugify } from "@/lib/text";
+import { escapeRegExp, excerpt, htmlToText, normalizeForCompare, oneLine, sanitizeDescriptionMax, slugify } from "@/lib/text";
 import { extractDeadline, parseFeedDate } from "./dates";
 import type { RawItem } from "./parse";
 import { cleanTitle } from "./title";
@@ -402,8 +402,9 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
     summary = plain ? excerpt(plain, IMPORT_SETTINGS.excerptLength) : null;
   }
   if (policy === "full" && bodyHtml) {
-    const cleaned = sanitizeDescription(bodyHtml);
-    descriptionHtml = cleaned.length > 20 ? cleaned.slice(0, 60_000) : null;
+    // Capped without breaking the markup (a plain slice could cut a tag in half or leave tags open).
+    const cleaned = sanitizeDescriptionMax(bodyHtml, 60_000);
+    descriptionHtml = cleaned.length > 20 ? cleaned : null;
   }
 
   const category = detectCategory(title);

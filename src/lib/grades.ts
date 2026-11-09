@@ -18,6 +18,63 @@ export function isLocalOnlyGrade(grade: string | null | undefined): boolean {
   return Boolean(grade && LOCAL_ONLY_RE.test(grade.trim().replace(/\s+/g, "")));
 }
 
+/**
+ * Words in a TITLE that say the post is recruited locally, for listings whose grade wasn't parsed:
+ * National (Professional) Officer, NPO, National (Individual) Consultant, National UN Volunteer,
+ * "locally recruited", General Service grades written G-5 / GS-5 / GS5, NO-B, and IOM's "(G)"
+ * suffix for General Service posts. Matched against the lower-cased title, as whole words.
+ * One list for both rules below, so JavaScript and SQL agree.
+ */
+const LOCAL_TITLE_WORDS = [
+  "national (professional )?officers?",
+  "npos?",
+  "national (individual )?consultants?",
+  "national (un )?volunteers?",
+  "locally[- ]recruited",
+  "gs-?[1-7]",
+  "g-[1-7]",
+  "no-[a-e]",
+];
+/** IOM marks General Service vacancies with "(G)" at the end of the title ("(P)" is Professional). */
+const LOCAL_TITLE_SUFFIX = "\\(g\\)\\s*$";
+
+/** Postgres regex (advanced regex: \m and \M are word boundaries) for the lower-cased title. */
+export const LOCAL_ONLY_TITLE_SQL = `\\m(${LOCAL_TITLE_WORDS.join("|")})\\M|${LOCAL_TITLE_SUFFIX}`;
+const LOCAL_ONLY_TITLE_RE = new RegExp(`(?<![a-z0-9])(${LOCAL_TITLE_WORDS.join("|")})(?![a-z0-9])|${LOCAL_TITLE_SUFFIX}`);
+
+/** Titles that name the National Officer category, from which the grade group NO is inferred. */
+const NATIONAL_OFFICER_WORDS = "national (professional )?officers?|npos?";
+export const NATIONAL_OFFICER_TITLE_SQL = `\\m(${NATIONAL_OFFICER_WORDS})\\M`;
+const NATIONAL_OFFICER_TITLE_RE = new RegExp(`(?<![a-z0-9])(${NATIONAL_OFFICER_WORDS})(?![a-z0-9])`);
+
+export function isLocalOnlyTitle(title: string | null | undefined): boolean {
+  return Boolean(title && LOCAL_ONLY_TITLE_RE.test(title.toLowerCase()));
+}
+
+/**
+ * Is the post usually open only to nationals or legal residents of the duty-station country?
+ * From the parsed grade, or else from the title. Same rule as the "Hide local-only posts" filter
+ * (the hidelocal condition in src/lib/jobs.ts).
+ */
+export function isLocalOnly(job: { grade: string | null | undefined; title: string | null | undefined }): boolean {
+  return isLocalOnlyGrade(job.grade) || isLocalOnlyTitle(job.title);
+}
+
+/** Does the title name the National Officer category ("National Professional Officer", "NPO")? */
+export function isNationalOfficerTitle(title: string | null | undefined): boolean {
+  return Boolean(title && NATIONAL_OFFICER_TITLE_RE.test(title.toLowerCase()));
+}
+
+/**
+ * The grade to show: the parsed one, or "NO" when no grade was parsed and the title names the
+ * National Officer category. IOM's "(P)" and "(G)" suffixes give a category, not a grade, so
+ * they only count for the local-only rule.
+ */
+export function displayGrade(job: { grade: string | null | undefined; title: string | null | undefined }): string | null {
+  if (job.grade) return job.grade;
+  return isNationalOfficerTitle(job.title) ? "NO" : null;
+}
+
 /** The grade groups shown in the filter (the overlapping "entry" group is kept only for old links). */
 export const FILTER_GRADE_GROUPS = GRADE_GROUPS.filter((g) => g.value !== "entry");
 

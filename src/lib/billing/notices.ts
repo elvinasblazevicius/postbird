@@ -75,6 +75,14 @@ export function planRenewal(p: PlanState): { sentence: string; chargesAhead: boo
   return { sentence: "Your plan is paused, so nothing is charged while it stays paused, but it is still open until you cancel it.", chargesAhead: false, canCancel: true };
 }
 
+/**
+ * The daily jobs below send one email per request. Spacing the requests keeps
+ * them under Resend's default rate limit (a few requests per second per
+ * account); bulk sends use the batch API instead (see notifyWaitlist).
+ */
+const SEND_SPACING_MS = 500;
+const spaced = (i: number) => (i > 0 ? new Promise((r) => setTimeout(r, SEND_SPACING_MS)) : Promise.resolve());
+
 // ── Welcome ──────────────────────────────────────────────────
 
 /** The welcome email with the account link (once per subscriber). */
@@ -107,7 +115,8 @@ export async function runWelcomeRetries(limit = 200): Promise<{ sent: number; fa
     ) and welcome_sent_at is null
     returning id::int as id, email, manage_token, unsubscribe_token, trial_ends_at, plan_interval`;
   let sent = 0, failed = 0;
-  for (const r of rows) {
+  for (const [i, r] of rows.entries()) {
+    await spaced(i);
     const res = await sendWelcomeEmail({
       subscriberId: r.id, email: r.email, manageToken: r.manage_token, unsubscribeToken: r.unsubscribe_token,
       trialEndsAt: r.trial_ends_at ? new Date(r.trial_ends_at).toISOString() : null, planInterval: r.plan_interval,
@@ -148,7 +157,8 @@ export async function runConfirmationRetries(limit = 200): Promise<{ sent: numbe
     ) and confirm_sent_at is null
     returning id::int as id, email, confirm_token, paddle_subscription_id`;
   let sent = 0, failed = 0;
-  for (const r of rows) {
+  for (const [i, r] of rows.entries()) {
+    await spaced(i);
     const res = await sendPaidConfirmation({ subscriberId: r.id, email: r.email, confirmToken: r.confirm_token, subscriptionId: r.paddle_subscription_id });
     if (res.ok) sent++;
     else {
@@ -182,7 +192,8 @@ export async function runTrialReminders(limit = 500): Promise<{ sent: number; fa
     ) and trial_reminder_sent_at is null
     returning id::int as id, email, manage_token, trial_ends_at, plan_interval`;
   let sent = 0, failed = 0;
-  for (const r of rows) {
+  for (const [i, r] of rows.entries()) {
+    await spaced(i);
     const chargeDate = new Date(r.trial_ends_at).toISOString();
     const res = await sendEmail({
       to: r.email,

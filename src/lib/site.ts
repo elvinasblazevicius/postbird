@@ -3,7 +3,8 @@ import { categoryBySlug } from "@/config/categories";
 import { countryByCode } from "@/config/countries";
 import { LISTING_SETTINGS } from "@/config/import";
 
-export const NOT_SPECIFIED = "Not stated";
+/** Shown for a detail our source doesn't give (it may still be on the employer's page). */
+export const NOT_SPECIFIED = "Not in our source";
 
 /**
  * Public base URL: NEXT_PUBLIC_SITE_URL → site.config.ts → Netlify/Vercel
@@ -41,6 +42,16 @@ export function formatDate(d: Date | string | null | undefined): string {
   if (!d) return NOT_SPECIFIED;
   const date = typeof d === "string" ? new Date(d.length === 10 ? `${d}T00:00:00Z` : d) : d;
   return Number.isNaN(date.getTime()) ? NOT_SPECIFIED : dateFmt.format(date);
+}
+
+const shortFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
+/** "12 Nov" for dates in the current year, "12 Jan 2027" otherwise. */
+export function formatShortDate(d: Date | string | null | undefined, now: Date = new Date()): string {
+  if (!d) return NOT_SPECIFIED;
+  const date = typeof d === "string" ? new Date(d.length === 10 ? `${d}T00:00:00Z` : d) : d;
+  if (Number.isNaN(date.getTime())) return NOT_SPECIFIED;
+  return date.getUTCFullYear() === now.getUTCFullYear() ? shortFmt.format(date) : dateFmt.format(date);
 }
 
 export function daysUntil(deadline: string | null): number | null {

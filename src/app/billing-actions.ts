@@ -15,7 +15,7 @@ import { createPortalSession, isPaddleApiConfigured } from "@/lib/billing/paddle
 import { checkoutAccountToken, startCheckout, type CheckoutPlan } from "@/lib/billing/subscriptions";
 import { sql } from "@/lib/db";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
-import { addSavedSearch, normalizeSearch, removeSavedSearch } from "@/lib/saved-searches";
+import { addSavedSearch, normalizeSearch, removeSavedSearch, searchFromSignupForm } from "@/lib/saved-searches";
 import { findByUnsubscribeToken, normalizeEmail } from "@/lib/subscribers";
 import { jobsUrl, parseFilters } from "@/lib/jobs";
 import type { FormState } from "@/app/actions";
@@ -41,9 +41,8 @@ export async function startCheckoutAction(_prev: CheckoutState, form: FormData):
   const planRaw = String(form.get("plan") ?? "");
   if (planRaw !== "monthly" && planRaw !== "quarterly") return { status: "error", message: "Choose a plan." };
   const plan: CheckoutPlan = planRaw;
-  // The saved search (the /jobs query string) when the trial was started from a search; same rule as signupAction.
-  const rawSearch = String(form.get("search") ?? "");
-  const search = rawSearch && rawSearch.length <= 400 && /^[\w%=&+.,~-]*$/.test(rawSearch) ? normalizeSearch(rawSearch) : null;
+  // The saved search: a search started on the jobs page, with the form's "What should we watch for?" answers.
+  const search = searchFromSignupForm(form);
   let attribution: Record<string, string> | null = null;
   try {
     attribution = cleanCampaign(JSON.parse(String(form.get("attribution") || "null")));

@@ -26,7 +26,7 @@ export default async function LocationsPage() {
         intro={`${countries.length} countries currently have open vacancies. Jobs without a stated location are listed under all jobs.`}
       />
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-        <h2 className="text-[1.5rem] font-semibold text-ink">Regions</h2>
+        <h2 className="text-[1.5rem] font-semibold leading-tight text-ink">Regions</h2>
         <ul className="mt-4 mb-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {regions.filter((r) => r.count > 0).map((r) => (
             <li key={r.slug}>
@@ -37,7 +37,7 @@ export default async function LocationsPage() {
             </li>
           ))}
         </ul>
-        <h2 className="mb-4 text-[1.5rem] font-semibold text-ink">Countries</h2>
+        <h2 className="mb-4 text-[1.5rem] font-semibold leading-tight text-ink">Countries</h2>
         <div className="columns-1 gap-10 sm:columns-2 lg:columns-3">
           {[...byLetter.entries()].map(([letter, list]) => (
             <section key={letter} className="mb-6 break-inside-avoid">

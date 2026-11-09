@@ -4,7 +4,7 @@ import { AlertExample } from "@/components/alert-example";
 import { PageHeader } from "@/components/page-header";
 import { TrackedLink } from "@/components/tracking";
 import { BILLING_LIVE } from "@/lib/billing/live";
-import { EARLY_ACCESS_BUTTON, earlyAccessLine } from "@/lib/early-access-copy";
+import { EARLY_ACCESS_BUTTON, earlyAccessLine, TAX_LINE } from "@/lib/early-access-copy";
 import { siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +36,7 @@ export default function PricingPage() {
           <>Every alert email links to your account, where &quot;Manage billing or cancel&quot; opens Paddle&apos;s page to cancel. Lost the email? <Link href="/account/login" className="text-accent underline">Get your account link</Link>. You keep alerts until the end of the period you paid for.</>,
         ],
         ["Who handles the payment?", <>Paddle.com, our reseller and merchant of record. It handles payment, invoices and tax; we never see your card details.</>],
-        ["Can I get a refund?", <>Yes. If a charge was unexpected, email us within 14 days of it and we&apos;ll refund it in full. <Link href="/terms#refunds" className="text-accent underline">Refund policy</Link></>],
+        ["Can I get a refund?", <>Yes. Email us within 14 days of any charge and we&apos;ll refund that charge in full, no questions asked. <Link href="/refunds" className="text-accent underline">Refund policy</Link></>],
       ]
     : [
         ["Is anything charged now?", <>No. Email alerts aren&apos;t open yet. Joining early access is free and needs no card.</>],
@@ -51,6 +51,7 @@ export default function PricingPage() {
   const trialLine = `Card required. $0 today. After the ${p.trialDays}-day free trial, ${quarterly?.price ?? ""} every 3 months or ${p.plans[0]?.price ?? ""} a month (the plan you choose), renewing automatically until you cancel. Cancel any time before the trial ends and you pay nothing.`;
   const faq: [string, React.ReactNode][] = [
     ...billingFaq,
+    ["Will I get an email every day?", <>Only when there is something new. If none of your searches has a new match, we don&apos;t send an email that day.</>],
     [
       "Where do the listings come from?",
       <>From public job feeds. Every listing links to the employer&apos;s own website, where you apply. We never charge anyone to apply for a job.</>,
@@ -61,15 +62,15 @@ export default function PricingPage() {
   return (
     <>
       <PageHeader
-        title="Pricing"
-        crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Pricing" }]}
+        title="Email alerts"
+        crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Email alerts" }]}
         intro={`Every vacancy, search and filter is free. Paid email alerts${BILLING_LIVE ? "" : ", launching soon,"} bring new matches to your inbox so you don't have to keep checking.`}
       />
       <div className="mx-auto grid max-w-4xl gap-6 px-4 py-12 sm:px-6 md:grid-cols-2">
-        <section className="flex flex-col rounded-2xl border border-rule p-7" aria-labelledby="plan-free">
-          <h2 id="plan-free" className="text-2xl font-semibold text-ink">Free</h2>
+        <section className="flex flex-col self-start rounded-2xl border border-rule p-7" aria-labelledby="plan-free">
+          <h2 id="plan-free" className="text-2xl font-semibold leading-tight text-ink">Free</h2>
           <p className="mt-2"><span className="font-display text-4xl font-semibold text-ink">$0</span></p>
-          <ul className="mt-6 flex-1 space-y-3 text-ink">
+          <ul className="mt-6 space-y-3 text-ink">
             {["Browse and search every vacancy", "Filter by organization, country, category and deadline", "Add closing dates to your calendar", ...(siteConfig.freeWeeklyEmail ? ["Weekly email with new vacancies"] : [])].map((f) => (
               <li key={f} className="flex gap-2.5"><Check />{f}</li>
             ))}
@@ -81,21 +82,23 @@ export default function PricingPage() {
 
         <section className="flex flex-col rounded-2xl border-2 border-brand bg-candy-soft p-7" aria-labelledby="plan-premium">
           <div className="flex items-center justify-between gap-3">
-            <h2 id="plan-premium" className="text-2xl font-semibold text-ink">{p.name}</h2>
+            <h2 id="plan-premium" className="text-2xl font-semibold leading-tight text-ink">{p.name}</h2>
             {BILLING_LIVE ? null : <span className="rounded-full bg-paper px-2.5 py-0.5 text-xs font-semibold text-ink">Launching soon</span>}
           </div>
-          <dl className="mt-3 grid grid-cols-2 gap-3">
+          {/* Plain price text: the plan is chosen at the trial form, not here. */}
+          <dl className="mt-3 space-y-3">
             {[...p.plans].reverse().map((plan) => (
-              <div key={plan.label} className={`relative rounded-xl bg-paper p-3 ${plan.note ? "border-2 border-remote" : "border border-rule"}`}>
-                <dt className="flex items-center justify-between gap-2 text-sm text-slate">
-                  {plan.note ? <span className="absolute -top-2.5 right-2 rounded-full bg-remote px-2 py-0.5 text-xs font-semibold text-white">Best value</span> : null}
-                  <span>{plan.label}</span>
-                  {plan.note ? <span className="rounded-full bg-remote-bg px-2 py-0.5 text-xs font-semibold text-remote">{plan.note}</span> : null}
+              <div key={plan.label}>
+                <dt className="text-sm font-medium text-ink">
+                  {plan.label}
+                  {plan.note ? (
+                    <span className="mt-1 block w-fit rounded-full bg-remote-bg px-2 py-0.5 text-xs font-semibold text-remote sm:ml-2 sm:mt-0 sm:inline-block">Best value: {plan.note.toLowerCase()}</span>
+                  ) : null}
                 </dt>
-                <dd className="mt-1">
-                  <span className="font-display text-3xl font-semibold text-ink">{plan.price}</span>
-                  <span className="block text-sm text-slate">{plan.per === "month" ? "per month" : `for ${plan.per}`}</span>
-                  {"perMonth" in plan && plan.perMonth ? <span className="block text-sm font-medium text-remote">= {plan.perMonth} a month</span> : null}
+                <dd className="mt-0.5 text-ink">
+                  <span className="font-display text-3xl font-semibold">{plan.price}</span>{" "}
+                  <span className="text-slate">{plan.per === "month" ? "a month" : `for ${plan.per}`}</span>
+                  {"perMonth" in plan && plan.perMonth ? <span className="block text-sm text-slate">That&apos;s {plan.perMonth} a month.</span> : null}
                 </dd>
               </div>
             ))}
@@ -135,7 +138,8 @@ export default function PricingPage() {
           ))}
         </dl>
         <p className="mt-6 text-sm text-slate">
-          Prices in US dollars{BILLING_LIVE ? ", including any sales tax or VAT" : ""}. {siteConfig.name} is run by {siteConfig.operator.name}.{" "}
+          {BILLING_LIVE ? TAX_LINE : "Prices in US dollars."} {siteConfig.name} is run by {siteConfig.operator.name}.{" "}
+          {BILLING_LIVE ? <><Link href="/refunds" className="text-accent underline">Refunds</Link> · </> : null}
           <Link href="/terms" className="text-accent underline">Terms</Link> · <Link href="/privacy" className="text-accent underline">Privacy</Link>
         </p>
       </section>

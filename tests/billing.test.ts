@@ -147,7 +147,7 @@ describe("paid-alert copy", () => {
   it("builds the trial button and line from site.config.ts", () => {
     expect(trialButton).toBe(`Start ${siteConfig.premium.trialDays}-day free trial`);
     expect(trialLine()).toBe(
-      `Card required. $0 today. Your free trial lasts ${siteConfig.premium.trialDays} days; then ${q.price} every ${q.per}, renewing automatically until you cancel. Cancel any time before then and you pay nothing.`,
+      `Card required. $0 today. Your free trial lasts ${siteConfig.premium.trialDays} days; then ${q.price} every ${q.per}. Your plan renews automatically until you cancel. Cancel any time before the trial ends and you pay nothing.`,
     );
     expect(trialLine("monthly", "23 Nov 2026")).toContain(`Your free trial ends on 23 Nov 2026; then ${m.price} a month`);
     expect(trialLine()).not.toMatch(/\$\d+\.\d\d\/3 months/);

@@ -35,7 +35,7 @@ export default async function OrganizationsPage() {
       <div className="mx-auto max-w-6xl space-y-12 px-4 py-10 sm:px-6">
         {sorted.map(([type, list]) => (
           <section key={type} aria-labelledby={`g-${type}`}>
-            <h2 id={`g-${type}`} className="text-[1.5rem] font-semibold text-ink">{heading(type)}</h2>
+            <h2 id={`g-${type}`} className="text-[1.5rem] font-semibold leading-tight text-ink">{heading(type)}</h2>
             <ul className="mt-4 grid gap-x-8 border-t border-rule sm:grid-cols-2 lg:grid-cols-3">
               {list.map((o) => (
                 <li key={o.slug} className="border-b border-rule">

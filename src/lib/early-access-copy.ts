@@ -16,17 +16,23 @@ const plans = () => siteConfig.premium.plans;
 /** Button that opens the checkout, e.g. "Start 14-day free trial". */
 export const trialButton = `Start ${siteConfig.premium.trialDays}-day free trial`;
 
+/** Tax wording wherever a price is shown with billing live (Paddle adds tax at checkout where it applies). */
+export const TAX_LINE = "Prices in US dollars. Sales tax or VAT may be added at checkout depending on where you live.";
+
+/** The words the trial line sets in bold. */
+export const RENEWS = "renews automatically";
+
 /**
- * The terms shown right under the trial button, for the plan that is selected:
- * "Card required. $0 today. Your trial ends on 23 Nov; then $19.99 every 3 months,
- * renewing automatically until you cancel. Cancel any time in your account."
+ * The terms shown right above the trial button, for the plan that is selected:
+ * "Card required. $0 today. Your free trial ends on 23 Nov 2026; then $19.99 every 3 months.
+ * Your plan renews automatically until you cancel. Cancel any time before the trial ends and you pay nothing."
  * `trialEnds` is a formatted date, or null before the browser has worked it out.
  */
 export function trialLine(plan: "monthly" | "quarterly" = "quarterly", trialEnds: string | null = null) {
   const [m, q] = plans();
   const price = plan === "monthly" ? `${m.price} a month` : `${q.price} every ${q.per}`;
   const when = trialEnds ? `Your free trial ends on ${trialEnds}` : `Your free trial lasts ${siteConfig.premium.trialDays} days`;
-  return `Card required. $0 today. ${when}; then ${price}, renewing automatically until you cancel. Cancel any time before then and you pay nothing.`;
+  return `Card required. $0 today. ${when}; then ${price}. Your plan ${RENEWS} until you cancel. Cancel any time before the trial ends and you pay nothing.`;
 }
 
 /** Plan choices for the checkout form; the 3-month plan (best value) comes first and is preselected. */

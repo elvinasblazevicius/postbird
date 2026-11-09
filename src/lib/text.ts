@@ -67,6 +67,21 @@ export function sanitizeDescription(html: string): string {
   return clean.trim();
 }
 
+/**
+ * sanitizeDescription, at most `max` characters, and always well-formed: a
+ * longer result is cut (never inside a tag or an entity) and sanitized again,
+ * which closes the tags the cut left open. Closing tags add a few
+ * characters, so the cut shrinks until the result fits.
+ */
+export function sanitizeDescriptionMax(html: string, max: number): string {
+  let clean = sanitizeDescription(html);
+  for (let limit = max; clean.length > max && limit > 0; limit = Math.floor(limit * 0.98)) {
+    const cut = clean.slice(0, limit).replace(/<[^>]*$/, "").replace(/&[#\w]*$/, "");
+    clean = sanitizeDescription(cut);
+  }
+  return clean;
+}
+
 /** First ~n characters of plain text, cut at a word boundary. */
 export function excerpt(text: string, n: number): string {
   const flat = text.replace(/\s+/g, " ").trim();

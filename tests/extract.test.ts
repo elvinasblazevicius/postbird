@@ -3,6 +3,7 @@ import { extractDeadline, findDate } from "@/lib/feeds/dates";
 import { detectCategory, detectJobType, findCountries, normalizeItem, type FeedContext } from "@/lib/feeds/extract";
 import { parseFeed, type RawItem } from "@/lib/feeds/parse";
 import { canonicalizeUrl, pickApplyUrl } from "@/lib/feeds/url";
+import { sanitizeDescription, sanitizeDescriptionMax } from "@/lib/text";
 
 const feed: FeedContext = { id: 1, name: "Test", defaultOrganization: null, contentPolicy: "none" };
 
@@ -41,12 +42,13 @@ describe("dates", () => {
 describe("classification", () => {
   it("assigns categories from the title", () => {
     expect(detectCategory("Data Analyst (P-3)")).toBe("data-analytics");
-    expect(detectCategory("Programme Officer, Child Protection")).toBe("programme-management");
+    expect(detectCategory("Programme Officer, Child Protection")).toBe("protection-humanitarian-affairs");
     expect(detectCategory("Finance and Administration Associate")).toBe("finance");
     expect(detectCategory("Senior Statistician")).toBe("data-analytics");
     expect(detectCategory("HR Business Partner")).toBe("human-resources");
     expect(detectCategory("Driver")).toBe("administration");
-    expect(detectCategory("Chief of Field Office")).toBe("other");
+    expect(detectCategory("Chief of Field Office")).toBe("programme-management");
+    expect(detectCategory("Cartographer")).toBe("other");
   });
   it("detects job types only from explicit words", () => {
     expect(detectJobType("Internship - Communications")).toBe("Internship");
@@ -122,6 +124,30 @@ describe("normalizeItem", () => {
     const full = normalizeItem(raw({ title: "Analyst", contentHtml: html }), { ...feed, contentPolicy: "full" });
     expect(full.descriptionHtml).toContain("<p>");
     expect(full.descriptionHtml).not.toContain("script");
+  });
+
+  it("caps a very long full description without leaving broken HTML", () => {
+    const para = (i: number) => `<p>Paragraph ${i} with <strong>bold &amp; important</strong> and <a href="https://example.org/${i}">a link</a> &lt;here&gt;.</p>`;
+    // Deep nesting, so a plain cut would leave several tags open.
+    const html = `<blockquote><ul><li>${Array.from({ length: 2000 }, (_, i) => para(i)).join("")}</li></ul></blockquote>`;
+    const job = normalizeItem(raw({ title: "Analyst", contentHtml: html }), { ...feed, contentPolicy: "full" });
+    const d = job.descriptionHtml!;
+    expect(d.length).toBeGreaterThan(50_000);
+    expect(d.length).toBeLessThanOrEqual(60_000);
+    // Well-formed: sanitizing again changes nothing, every tag is closed, and the end isn't a cut tag or entity.
+    expect(sanitizeDescription(d)).toBe(d);
+    for (const tag of ["blockquote", "ul", "li", "p", "strong", "a"]) {
+      const opened = d.match(new RegExp(`<${tag}[\\s>]`, "g"))?.length ?? 0;
+      expect(d.match(new RegExp(`</${tag}>`, "g"))?.length ?? 0).toBe(opened);
+    }
+    expect(d).toMatch(/<\/blockquote>$/);
+    expect(d).not.toMatch(/&[#\w]*$|<[^>]*$/);
+    // Cuts at every position stay well-formed too.
+    for (let max = 40; max < 400; max += 7) {
+      const short = sanitizeDescriptionMax(html, max);
+      expect(short.length).toBeLessThanOrEqual(max);
+      expect(sanitizeDescription(short)).toBe(short);
+    }
   });
 
   it("ignores implausible deadlines and future publish dates", () => {

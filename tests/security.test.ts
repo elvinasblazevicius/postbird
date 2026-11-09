@@ -1,5 +1,6 @@
 /** Unit tests for the security helpers that need no database. */
 import { afterEach, describe, expect, it } from "vitest";
+import { GET as calendar } from "@/app/api/calendar/[id]/route";
 import { GET as geo } from "@/app/api/geo/route";
 import { cleanTrackedPath } from "@/app/api/track/clean-path";
 import robots from "@/app/robots";
@@ -110,5 +111,14 @@ describe("robots.txt", () => {
     const rule = Array.isArray(r.rules) ? r.rules[0] : r.rules;
     expect(rule.allow).toContain("/api/org-logo/");
     expect(rule.disallow).toContain("/api/");
+  });
+});
+
+describe("calendar route", () => {
+  it("answers 404 for ids that aren't 1 to 12 digits, without asking the database", async () => {
+    for (const id of ["99999999999999999999.ics", "9223372036854775808", "1234567890123", "0", "1e3", "-5", "12abc.ics", ""]) {
+      const res = await calendar(new Request(`http://localhost/api/calendar/${id}`), { params: Promise.resolve({ id }) });
+      expect(res.status, id).toBe(404);
+    }
   });
 });

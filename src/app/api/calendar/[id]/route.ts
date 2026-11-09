@@ -27,8 +27,10 @@ function fold(line: string): string {
 
 /** "Add deadline to calendar": an all-day event on the closing date. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const id = Number((await params).id.replace(/\.ics$/, ""));
-  if (!Number.isInteger(id) || id <= 0) return new Response("Not found", { status: 404 });
+  // Up to 12 digits, like job URLs (parseJobParam): longer numbers would overflow the database's bigint.
+  const raw = (await params).id.replace(/\.ics$/, "");
+  if (!/^\d{1,12}$/.test(raw) || Number(raw) <= 0) return new Response("Not found", { status: 404 });
+  const id = Number(raw);
   const job = await getJob(id);
   if (!job || job.status === "removed" || !job.deadline) return new Response("This vacancy has no deadline to add.", { status: 404 });
 

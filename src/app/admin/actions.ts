@@ -6,8 +6,8 @@ import { revalidatePath } from "next/cache";
 import { ALL_CATEGORIES } from "@/config/categories";
 import { IMPORT_SETTINGS } from "@/config/import";
 import { ADMIN_COOKIE, checkPassword, createAdminSession, isAdminConfigured, revokeAllSessions, verifyAdminSession } from "@/lib/admin-auth";
-import { sql } from "@/lib/db";
-import { isEmailConfigured, sendEmail } from "@/lib/email";
+import { sql, transaction, type Db } from "@/lib/db";
+import { batchKey, isEmailConfigured, sendBatch, sendEmail, type OutgoingEmail } from "@/lib/email";
 import { confirmationEmail } from "@/lib/email-templates";
 import { parseFeed } from "@/lib/feeds/parse";
 import { clientIp, hashKey, rateLimit } from "@/lib/rate-limit";
@@ -98,12 +98,25 @@ export async function updateFeedAction(form: FormData) {
   const id = Number(form.get("id"));
   const policyRaw = String(form.get("content_policy") ?? "none");
   const policy = (POLICIES as readonly string[]).includes(policyRaw) ? policyRaw : "none";
-  await sql`
-    update feeds set name = ${String(form.get("name") ?? "").trim().slice(0, 120) || "Untitled feed"},
-      default_organization = ${String(form.get("default_organization") ?? "").trim().slice(0, 120) || null},
-      content_policy = ${policy}, is_active = ${form.get("is_active") === "on"}, updated_at = now()
-    where id = ${id}`;
+  const active = form.get("is_active") === "on";
+  await transaction(async (tx) => {
+    await tx`
+      update feeds set name = ${String(form.get("name") ?? "").trim().slice(0, 120) || "Untitled feed"},
+        default_organization = ${String(form.get("default_organization") ?? "").trim().slice(0, 120) || null},
+        content_policy = ${policy}, is_active = ${active}, updated_at = now()
+      where id = ${id}`;
+    if (!active) await releaseFeedJobs(tx, id);
+  });
   revalidatePath("/admin/feeds");
+}
+
+/**
+ * A switched-off or deleted feed no longer supplies its listings' data: the
+ * next feed that still lists them takes them over (see primary_feed_id in
+ * src/lib/feeds/sync.ts).
+ */
+async function releaseFeedJobs(db: Db, feedId: number) {
+  await db`update jobs set primary_feed_id = null where primary_feed_id = ${feedId}`;
 }
 
 export async function deleteFeedAction(form: FormData) {
@@ -111,12 +124,15 @@ export async function deleteFeedAction(form: FormData) {
   const id = Number(form.get("id"));
   const [feed] = await sql<{ from_env: boolean }[]>`select from_env from feeds where id = ${id}`;
   if (!feed) return;
-  if (feed.from_env) {
-    // It would come back from INOREADER_FEED_URLS on the next sync, so switch it off instead.
-    await sql`update feeds set is_active = false, updated_at = now() where id = ${id}`;
-  } else {
-    await sql`delete from feeds where id = ${id}`;
-  }
+  await transaction(async (tx) => {
+    if (feed.from_env) {
+      // It would come back from INOREADER_FEED_URLS on the next sync, so switch it off instead.
+      await tx`update feeds set is_active = false, updated_at = now() where id = ${id}`;
+    } else {
+      await tx`delete from feeds where id = ${id}`;
+    }
+    await releaseFeedJobs(tx, id);
+  });
   revalidatePath("/admin/feeds");
 }
 
@@ -169,23 +185,45 @@ export async function sendTestEmailAction(): Promise<void> {
   redirect(`/admin?email=${encodeURIComponent(result.slice(0, 200))}`);
 }
 
+/** Confirmation emails resent per click: one Resend batch request, well within the host's time limit. */
+const RESEND_CONFIRMATIONS_LIMIT = 100;
+
 export async function resendConfirmationsAction(): Promise<void> {
   await requireAdmin();
   if (!isEmailConfigured()) redirect("/admin/subscribers?msg=email-not-configured");
-  const pending = await sql<{ id: number; email: string; confirm_token: string; wants_alerts: boolean; premium_waitlist: boolean }[]>`
-    select id, email, confirm_token, wants_alerts, premium_waitlist from subscribers
-    where status = 'pending' and confirm_token is not null and (confirm_sent_at is null or confirm_sent_at < now() - interval '1 hour')
-    order by id limit 90`;
-  let sent = 0;
-  for (const p of pending) {
-    const msg = confirmationEmail({ confirmUrl: absoluteUrl(`/alerts/confirm?token=${encodeURIComponent(p.confirm_token)}`), waitlist: p.premium_waitlist, alerts: p.wants_alerts });
-    const res = await sendEmail({ to: p.email, ...msg });
-    if (res.ok) {
-      sent++;
-      await sql`update subscribers set confirm_sent_at = now() where id = ${p.id}`;
+  // Claim the rows first (confirm_sent_at), so a second click at the same time can't send them too.
+  const pending = await sql<{ id: number; email: string; confirm_token: string; wants_alerts: boolean; premium_waitlist: boolean; prev_sent_at: Date | null }[]>`
+    update subscribers s set confirm_sent_at = now()
+    from (
+      select id, confirm_sent_at as prev_sent_at from subscribers
+      where status = 'pending' and confirm_token is not null and (confirm_sent_at is null or confirm_sent_at < now() - interval '1 hour')
+      order by id limit ${RESEND_CONFIRMATIONS_LIMIT}
+      for update skip locked
+    ) p
+    where s.id = p.id
+    returning s.id::int as id, s.email, s.confirm_token, s.wants_alerts, s.premium_waitlist, p.prev_sent_at`;
+  let sent = 0, failed = 0;
+  if (pending.length) {
+    const msgs: OutgoingEmail[] = pending.map((p) => ({
+      to: p.email,
+      ...confirmationEmail({ confirmUrl: absoluteUrl(`/alerts/confirm?token=${encodeURIComponent(p.confirm_token)}`), waitlist: p.premium_waitlist, alerts: p.wants_alerts }),
+    }));
+    // One key per batch from each message's key (subscriber and hour): a repeated
+    // request within the hour can't send twice; a click an hour later sends again.
+    const hour = new Date().toISOString().slice(0, 13);
+    const res = await sendBatch(msgs, () => batchKey("confirm-resend", pending.map((p) => `confirm-resend:${p.id}:${hour}`)));
+    sent = res.sent;
+    failed = res.failed;
+    // Not sent: give the rows back (their previous send time) for the next click.
+    if (res.failed) {
+      for (const p of pending) await sql`update subscribers set confirm_sent_at = ${p.prev_sent_at} where id = ${p.id}`;
     }
   }
-  redirect(`/admin/subscribers?msg=confirmations-sent-${sent}`);
+  const [{ remaining }] = await sql<{ remaining: number }[]>`
+    select count(*)::int as remaining from subscribers
+    where status = 'pending' and confirm_token is not null and (confirm_sent_at is null or confirm_sent_at < now() - interval '1 hour')`;
+  const message = `Confirmation emails: sent ${sent}${failed ? `, ${failed} not sent (try again later)` : ""}.${remaining && !failed ? ` ${remaining} still waiting: click again.` : ""}`;
+  redirect(`/admin/subscribers?msg=${encodeURIComponent(message)}`);
 }
 
 export async function sendDigestNowAction(): Promise<void> {

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FILTER_GRADE_GROUPS, gradeGroupOf } from "@/lib/grades";
 import { JOB_TYPES, jobsUrl, type JobFilters } from "@/lib/jobs";
+import { BILLING_LIVE } from "@/lib/billing/live";
 import { AutoSubmit } from "./auto-submit";
 
 export type FacetData = {
@@ -54,11 +55,11 @@ function Select({ name, label, value, options, groups, all, idPrefix = "f" }: { 
 const withCount = (name: string, count: number) => `${name} (${count})`;
 
 /** One "Where" field: world regions first, then countries. Options without jobs are left out, except the one chosen. */
-export function WhereSelect({ facets, filters, idPrefix, label = "Where" }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string }) {
+export function WhereSelect({ facets, filters, idPrefix, label = "Where", name = "where" }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string; name?: string }) {
   return (
     <Select
       idPrefix={idPrefix}
-      name="where"
+      name={name}
       label={label}
       all="Anywhere"
       value={filters.region ? `region-${filters.region}` : filters.country}
@@ -117,7 +118,7 @@ function RemoteToggle({ checked, id }: { checked?: boolean; id: string }) {
 }
 
 /** Secondary filters, folded away to keep the form simple. */
-function MoreFilterFields({ idPrefix, filters, facets }: { idPrefix: string; filters: JobFilters; facets: FacetData }) {
+function MoreFilterFields({ idPrefix, filters, facets, hideOrgType = false }: { idPrefix: string; filters: JobFilters; facets: FacetData; hideOrgType?: boolean }) {
   return (
     <>
       {facets.types && (facets.types.some((x) => x.count) || filters.type) ? (
@@ -132,7 +133,7 @@ function MoreFilterFields({ idPrefix, filters, facets }: { idPrefix: string; fil
         <Select idPrefix={idPrefix} name="lang" label="Language in requirements" value={filters.lang} all="Any language"
           options={[...facets.langs.filter((l) => l.count || l.lang === filters.lang), ...(filters.lang && !facets.langs.some((l) => l.lang === filters.lang) ? [{ lang: filters.lang, count: 0 }] : [])].map((l) => ({ value: l.lang, label: withCount(l.lang, l.count) }))} />
       ) : null}
-      {facets.orgTypes && (facets.orgTypes.some((o) => o.count) || filters.orgtype) ? (
+      {!hideOrgType && facets.orgTypes && (facets.orgTypes.some((o) => o.count) || filters.orgtype) ? (
         <Select idPrefix={idPrefix} name="orgtype" label="Type of organization" value={filters.orgtype} all="Any type"
           options={facets.orgTypes.filter((o) => o.count || o.value === filters.orgtype).map((o) => ({ value: o.value, label: withCount(o.name, o.count) }))} />
       ) : null}
@@ -147,9 +148,9 @@ function MoreFilterFields({ idPrefix, filters, facets }: { idPrefix: string; fil
 function MoreToggle() {
   return (
     <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-accent [&::-webkit-details-marker]:hidden">
-      <span className="group-open:hidden">More filters</span>
-      <span className="hidden group-open:inline">Fewer filters</span>
-      <svg viewBox="0 0 12 12" className="h-3 w-3 transition-transform group-open:rotate-180" aria-hidden="true"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+      <span className="group-open/more:hidden">More filters</span>
+      <span className="hidden group-open/more:inline">Fewer filters</span>
+      <svg viewBox="0 0 12 12" className="h-3 w-3 transition-transform group-open/more:rotate-180" aria-hidden="true"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
     </summary>
   );
 }
@@ -169,7 +170,7 @@ export function HeroSearch({ facets }: { facets: FacetData }) {
         <WhereSelect facets={facets} filters={{}} idPrefix="hero" />
         <button type="submit" className="rounded-lg bg-brand px-5 py-2.5 text-base font-semibold text-white hover:bg-accent sm:px-7">Search<span className="hidden sm:inline"> jobs</span></button>
       </div>
-      <details className="group mt-3">
+      <details className="group/more mt-3">
         <MoreToggle />
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Select idPrefix="hero" name="org" label="Organization" all="Any organization" options={facets.orgs.map((o) => ({ value: o.slug, label: withCount(o.name, o.count) }))} />
@@ -222,11 +223,11 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
           <span className="block text-xs text-slate">National Officer, General Service and other posts usually open only to nationals or residents</span>
         </span>
       </label>
-      <details className="group" open={moreIsOpen(filters)}>
+      <details className="group/more" open={moreIsOpen(filters)}>
         <MoreToggle />
         <div className="mt-3 space-y-4">
           {gradeUpFront ? null : <GradeSelect facets={facets} filters={filters} idPrefix={P} />}
-          <MoreFilterFields idPrefix={P} filters={filters} facets={facets} />
+          <MoreFilterFields idPrefix={P} filters={filters} facets={facets} hideOrgType={"orgtype" in hidden} />
         </div>
       </details>
       <div className="flex items-center gap-3 pt-1">
@@ -239,31 +240,26 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
 }
 
 /**
- * "What should we watch for?" — the optional first step of the alert sign-up. A plain GET form back to
- * the same page; the page turns the answers into the saved search (the /jobs query string) that the
- * sign-up form sends on (see searchFromAlertStep in src/lib/saved-searches.ts). `keep` carries other
- * filters of a search started on the jobs page, and the reminder job id.
+ * "What should we watch for?": optional keyword, organization and location fields INSIDE the alert
+ * sign-up form (no form of their own, so nothing typed is lost). The server turns them into the
+ * saved search (searchFromSignupForm in src/lib/saved-searches.ts).
  */
-export function WatchForForm({ action, facets, filters, keep = {} }: { action: string; facets: FacetData; filters: JobFilters; keep?: Record<string, string> }) {
+export function WatchFieldset({ facets, filters }: { facets: FacetData; filters: JobFilters }) {
   return (
-    <form action={action} method="get" className="space-y-4">
-      <input type="hidden" name="step" value="watch" />
-      {Object.entries(keep).map(([k, v]) => (
-        <input key={k} type="hidden" name={k} value={v} />
-      ))}
+    <fieldset className="space-y-4">
+      <legend className="text-lg font-semibold text-ink">
+        What should we watch for? <span className="text-sm font-normal text-slate">(optional)</span>
+      </legend>
+      <p className="-mt-2 text-sm text-slate">Leave these empty to get every new vacancy.{BILLING_LIVE ? " You can add up to 5 searches later." : ""}</p>
       <div>
         <label htmlFor="watch-q" className="mb-1.5 block text-sm font-medium text-ink">Keywords</label>
-        <input id="watch-q" name="q" type="text" defaultValue={filters.q ?? ""} maxLength={120} placeholder="e.g. data analyst, WASH, monitoring" className={fieldCls} autoComplete="off" />
+        <input id="watch-q" name="watch_q" type="text" defaultValue={filters.q ?? ""} maxLength={120} placeholder="e.g. data analyst, WASH, monitoring" className={fieldCls} autoComplete="off" />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Select idPrefix="watch" name="org" label="Organization" value={filters.org} all="Any organization"
+        <Select idPrefix="watch" name="watch_org" label="Organization" value={filters.org} all="Any organization"
           options={facets.orgs.filter((o) => o.count > 0 || o.slug === filters.org).map((o) => ({ value: o.slug, label: o.name }))} />
-        <WhereSelect idPrefix="watch" facets={facets} filters={filters} label="Location" />
+        <WhereSelect idPrefix="watch" name="watch_where" facets={facets} filters={filters} label="Location" />
       </div>
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-        <button type="submit" className="rounded-lg bg-brand px-5 py-2.5 font-semibold text-white hover:bg-accent">Save and continue</button>
-        <a href="#alert-signup" className="text-sm font-medium text-accent hover:underline">Skip this step</a>
-      </div>
-    </form>
+    </fieldset>
   );
 }

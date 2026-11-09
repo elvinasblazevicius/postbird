@@ -73,8 +73,10 @@ export async function runDigest(opts: { force?: boolean } = {}): Promise<DigestR
           headers: { "List-Unsubscribe": `<${oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
         };
       });
-      // Same week and chunk, same key: a retry of a chunk that already went out is not sent twice.
-      const res = await sendBatch(msgs, () => `digest:${periodKey}:${i / 100}`);
+      // One key per batch, built from each message's key digest:{week}:{subscriberId}: a retry of
+      // the same recipients that already went out is not sent twice, and a different set of
+      // recipients (someone unsubscribed or joined in between) never reuses a key.
+      const res = await sendBatch(msgs, () => batchKey(`digest:${periodKey}`, chunk.map((r) => `digest:${periodKey}:${r.id}`)));
       sent += res.sent;
       failed += res.failed;
       errors.push(...res.errors);

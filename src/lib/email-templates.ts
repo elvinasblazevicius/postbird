@@ -1,5 +1,6 @@
 import siteConfig from "@site-config";
 import type { JobListItem } from "@/lib/jobs";
+import { planDescription } from "@/lib/early-access-copy";
 import { absoluteUrl, formatDate, jobPath, locationLabel } from "@/lib/site";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -47,7 +48,7 @@ export function digestEmail(opts: { jobs: JobListItem[]; total: number; unsubscr
       const url = absoluteUrl(jobPath(j)) + "?utm_source=digest&utm_medium=email";
       return `<tr><td style="padding:14px 0;border-bottom:1px solid #dde3ea">
         <a href="${esc(url)}" style="font-family:Georgia,serif;font-size:17px;font-weight:600;color:#0e1b2c;text-decoration:none">${esc(j.title)}</a>
-        <div style="font-size:14px;color:#0e1b2c;margin-top:4px">${esc(j.org_name ?? "Organization not stated")}</div>
+        <div style="font-size:14px;color:#0e1b2c;margin-top:4px">${esc(j.org_name ?? "Organization not in our source")}</div>
         <div style="font-size:13px;color:#566476;margin-top:2px">${esc(locationLabel(j))}${j.deadline ? ` &nbsp;|&nbsp; Closes ${esc(formatDate(j.deadline))}` : ""}</div>
       </td></tr>`;
     })
@@ -64,7 +65,7 @@ export function digestEmail(opts: { jobs: JobListItem[]; total: number; unsubscr
   );
   const text =
     `This week's new vacancies on ${siteConfig.name}\n\n` +
-    opts.jobs.map((j) => `${j.title}\n${j.org_name ?? "Organization not stated"} | ${locationLabel(j)}${j.deadline ? ` | Closes ${formatDate(j.deadline)}` : ""}\n${absoluteUrl(jobPath(j))}`).join("\n\n") +
+    opts.jobs.map((j) => `${j.title}\n${j.org_name ?? "Organization not in our source"} | ${locationLabel(j)}${j.deadline ? ` | Closes ${formatDate(j.deadline)}` : ""}\n${absoluteUrl(jobPath(j))}`).join("\n\n") +
     `\n\nSee all: ${absoluteUrl("/jobs?posted=7")}\n\nUnsubscribe: ${opts.unsubscribeUrl}\n\n${postal()}`;
   return { subject, html, text };
 }
@@ -80,22 +81,36 @@ function accountFooter(accountUrl: string, unsubscribeUrl: string): string {
 const accountFooterText = (accountUrl: string, unsubscribeUrl: string) =>
   `Your account (saved searches, frequency, billing): ${accountUrl}\nUnsubscribe: ${unsubscribeUrl}\n\n${postal()}`;
 
-/** Sent once when a subscriber's trial (or subscription) starts. */
+/**
+ * What the subscriber will be charged: their plan's price when `plan` is one of the plan
+ * descriptions (planDescription), otherwise both plans, neutrally.
+ */
+function chargeLine(plan: string): string {
+  const [m, q] = siteConfig.premium.plans;
+  if (plan === planDescription("quarter")) return `${q.price} every ${q.per}`;
+  if (plan === planDescription("month")) return `${m.price} every ${m.per}`;
+  return `the price of the plan you chose (${m.price} every ${m.per} or ${q.price} every ${q.per})`;
+}
+
+/** Sent once when a subscriber's trial (or subscription) starts. `plan` is planDescription() of their plan. */
 export function welcomeEmail(opts: { accountUrl: string; unsubscribeUrl: string; trialEndsAt: string | null; plan: string }) {
   const subject = `Your ${siteConfig.name} ${siteConfig.premium.name.toLowerCase()} are on`;
+  const refundsUrl = absoluteUrl("/refunds");
+  const charge = chargeLine(opts.plan);
   const trial = opts.trialEndsAt
-    ? `Your free trial runs until ${formatDate(opts.trialEndsAt)}. After that you're billed for ${opts.plan} unless you cancel before then. You can cancel any time from your account page.`
-    : `Your plan: ${opts.plan}. You can cancel any time from your account page.`;
+    ? `Your free trial runs until ${formatDate(opts.trialEndsAt)}. After your trial you're charged ${charge}, renewing automatically until you cancel. Cancel any time from your account page.`
+    : `You're charged ${charge}, renewing automatically until you cancel. Cancel any time from your account page.`;
+  const refundHtml = `Refund policy: <a href="${esc(refundsUrl)}" style="color:#566476">${esc(refundsUrl)}</a>`;
   const html = layout(
     subject,
     `<h1 style="font-family:Georgia,serif;font-size:24px;line-height:1.3;margin:0 0 12px">Welcome to ${esc(siteConfig.premium.name.toLowerCase())}</h1>
      <p style="font-size:16px;line-height:1.6;margin:0 0 12px">We'll email you new vacancies that match your saved searches. Your first alert arrives with the next round of new listings.</p>
-     <p style="font-size:15px;line-height:1.6;margin:0 0 20px;color:#566476">${esc(trial)}</p>
+     <p style="font-size:15px;line-height:1.6;margin:0 0 20px;color:#566476">${esc(trial)} ${refundHtml}</p>
      <p style="margin:0 0 20px">${button(opts.accountUrl, "Open my account")}</p>
      <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">On your account page you can add up to 5 saved searches, choose daily or weekly emails, and manage billing. Keep this email: the button is your private link.</p>`,
     accountFooter(opts.accountUrl, opts.unsubscribeUrl),
   );
-  const text = `Welcome to ${siteConfig.premium.name.toLowerCase()} on ${siteConfig.name}.\n\nWe'll email you new vacancies that match your saved searches.\n\n${trial}\n\nYour account (keep this link private): ${opts.accountUrl}\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
+  const text = `Welcome to ${siteConfig.premium.name.toLowerCase()} on ${siteConfig.name}.\n\nWe'll email you new vacancies that match your saved searches.\n\n${trial} Refund policy: ${refundsUrl}\n\nYour account (keep this link private): ${opts.accountUrl}\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
   return { subject, html, text };
 }
 
@@ -123,7 +138,7 @@ export function alertEmail(opts: { groups: AlertGroup[]; frequency: "daily" | "w
     const url = absoluteUrl(jobPath(j)) + "?utm_source=alert&utm_medium=email";
     return `<tr><td style="padding:12px 0;border-bottom:1px solid #dde3ea">
       <a href="${esc(url)}" style="font-family:Georgia,serif;font-size:17px;font-weight:600;color:#0e1b2c;text-decoration:none">${esc(j.title)}</a>
-      <div style="font-size:14px;color:#0e1b2c;margin-top:4px">${esc(j.org_name ?? "Organization not stated")}</div>
+      <div style="font-size:14px;color:#0e1b2c;margin-top:4px">${esc(j.org_name ?? "Organization not in our source")}</div>
       <div style="font-size:13px;color:#566476;margin-top:2px">${esc(locationLabel(j))}${j.deadline ? ` &nbsp;|&nbsp; Closes ${esc(formatDate(j.deadline))}` : ""}</div>
     </td></tr>`;
   };
@@ -148,7 +163,7 @@ export function alertEmail(opts: { groups: AlertGroup[]; frequency: "daily" | "w
     `New vacancies for your saved searches on ${siteConfig.name}\n\n` +
     opts.groups
       .map((g) => `${g.label} (${g.total} new)\n\n` +
-        g.jobs.map((j) => `${j.title}\n${j.org_name ?? "Organization not stated"} | ${locationLabel(j)}${j.deadline ? ` | Closes ${formatDate(j.deadline)}` : ""}\n${absoluteUrl(jobPath(j))}`).join("\n\n") +
+        g.jobs.map((j) => `${j.title}\n${j.org_name ?? "Organization not in our source"} | ${locationLabel(j)}${j.deadline ? ` | Closes ${formatDate(j.deadline)}` : ""}\n${absoluteUrl(jobPath(j))}`).join("\n\n") +
         (g.total > g.jobs.length ? `\n\nSee all ${g.total}: ${g.url}` : ""))
       .join("\n\n---\n\n") +
     `\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;

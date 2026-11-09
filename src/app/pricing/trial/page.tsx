@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { AlertExample } from "@/components/alert-example";
-import { AlertWatchStep } from "@/components/alert-watch-step";
+import { WatchFields } from "@/components/alert-watch-step";
 import { PageHeader } from "@/components/page-header";
 import { PremiumInterestForm } from "@/components/token-forms";
 import { BILLING_LIVE } from "@/lib/billing/live";
@@ -12,6 +12,9 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: BILLING_LIVE ? "Email alerts: free trial" : "Email alerts: early access",
+  description: BILLING_LIVE
+    ? `Start a ${siteConfig.premium.trialDays}-day free trial of ${siteConfig.name} email alerts: new UN, EU and international organization vacancies that match your searches, by email. Then ${siteConfig.premium.priceSummary}; cancel any time.`
+    : `Join early access to ${siteConfig.name} email alerts: new UN, EU and international organization vacancies that match your searches, by email. Nothing is charged now.`,
   robots: { index: false, follow: true },
   alternates: { canonical: "/pricing/trial" },
 };
@@ -36,7 +39,7 @@ export default async function TrialPage({ searchParams }: Props) {
     <>
       <PageHeader
         title={BILLING_LIVE ? `Start your ${p.trialDays}-day free trial` : "Email alerts launch soon"}
-        crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Pricing" }, { href: "/pricing/trial", label: BILLING_LIVE ? "Free trial" : "Early access" }]}
+        crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Email alerts" }, { href: "/pricing/trial", label: BILLING_LIVE ? "Free trial" : "Early access" }]}
         intro={
           BILLING_LIVE ? (
             <>
@@ -53,7 +56,6 @@ export default async function TrialPage({ searchParams }: Props) {
         }
       />
       <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
-        <AlertWatchStep action="/pricing/trial" search={search} searchLabel={searchLabel} chosen={sp.step === "watch"} extraKeep={remindId ? { remind: String(remindId) } : {}} />
         {remindJob ? (
           <div className="mb-6 rounded-xl border border-rule bg-candy-soft p-4 text-ink">
             <p>
@@ -69,7 +71,12 @@ export default async function TrialPage({ searchParams }: Props) {
           </div>
         ) : null}
         <div id="alert-signup" className="scroll-mt-24">
-          <PremiumInterestForm source={search ? "search-alert" : remindJob ? "deadline-reminder" : "pricing"} search={search ?? undefined} remindJobId={remindJob ? remindJob.id : undefined} />
+          <PremiumInterestForm
+            source={search ? "search-alert" : remindJob ? "deadline-reminder" : "pricing"}
+            search={search ?? undefined}
+            remindJobId={remindJob ? remindJob.id : undefined}
+            watch={<WatchFields search={search} searchLabel={searchLabel} />}
+          />
         </div>
         <div className="mt-12">
           <AlertExample />

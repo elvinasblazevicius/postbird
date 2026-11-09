@@ -101,7 +101,8 @@ const securityHeaders = [
  */
 const CDN_CACHED_PAGES = [
   "/", "/jobs", "/jobs/:slug", "/organizations", "/organizations/:slug", "/locations", "/locations/:slug",
-  "/categories", "/categories/:slug", "/remote-jobs", "/pricing", "/pricing/trial", "/about", "/sitemap.xml", "/robots.txt",
+  "/categories", "/categories/:slug", "/remote-jobs", "/un-jobs", "/eu-jobs", "/development-bank-jobs", "/ngo-jobs",
+  "/pricing", "/pricing/trial", "/about", "/refunds", "/saved", "/sitemap.xml", "/robots.txt",
 ];
 const cdnCacheHeaders = [
   { key: "Cache-Control", value: "public, max-age=0, must-revalidate" },

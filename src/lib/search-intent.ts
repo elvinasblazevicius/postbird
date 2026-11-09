@@ -5,6 +5,7 @@
  */
 import { CATEGORIES } from "@/config/categories";
 import { COUNTRIES } from "@/config/countries";
+import { KNOWN_ORGS } from "@/config/organizations";
 
 export type SearchIntent = {
   /** Words left to match as text (null when nothing is left). */
@@ -47,11 +48,77 @@ const COUNTRY_NAMES: [string, string][] = COUNTRIES.flatMap((c) =>
     .map((n) => [n.toLowerCase(), c.slug] as [string, string]),
 ).sort((a, b) => b[0].length - a[0].length);
 
+/**
+ * Lower case without accents, the same as pb_fold() in the database (db/migrations/007): "Médecins" → "medecins".
+ * Letters that unaccent spells out (œ, æ, ß) are spelled out here too.
+ */
+export function foldText(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/œ/g, "oe").replace(/æ/g, "ae").replace(/ß/g, "ss").replace(/þ/g, "th")
+    .replace(/ø/g, "o").replace(/ł/g, "l").replace(/đ/g, "d").replace(/ı/g, "i")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+}
+
+/** How a search box value is tidied before reading it (lower case, no quotes or punctuation). */
+const tidyQuery = (s: string) => s.toLowerCase().replace(/[“”"'’,;:!?()]/g, " ").replace(/\s+/g, " ").trim();
+
+/** Words that pick an organization type (see ORG_TYPE_PHRASES); never treated as one organization's alias. */
+const ORG_TYPE_WORDS = new Set(["un", "eu", "united nations", "european union", "ngo", "ngos", "un system", "eu institutions"]);
+
+/**
+ * Organization aliases a search can use: acronyms (MSF, MdM, ADB, AfDB, EIB, IDB, IOM, UNHCR…) and
+ * names of several words ("doctors without borders"), each with every name of that organization,
+ * folded, to compare with the stored organization name and short name.
+ */
+type OrgAlias = { key: string; names: string[] };
+const ORG_ALIASES: OrgAlias[] = KNOWN_ORGS.flatMap((o) => {
+  const all = [o.name, o.short, ...(o.aliases ?? [])].filter((n): n is string => Boolean(n));
+  const names = [...new Set(all.map(foldText))];
+  const keys = all.filter((n) => /^[A-Za-z][A-Za-z-]{1,7}$/.test(n) ? (n.match(/[A-Z]/g)?.length ?? 0) >= 2 : n.trim().includes(" "));
+  // Both the accented and the plain spelling, so "medecins du monde" and "médecins du monde" are both found.
+  return [...new Set(keys.flatMap((k) => [tidyQuery(k), tidyQuery(foldText(k))]))]
+    // Not organization-type words, nor phrases made only of those and stop words ("UN Careers" is a portal, not a search for one agency).
+    .filter((key) => key && !key.split(" ").every((w) => ORG_TYPE_WORDS.has(w) || STOP_WORDS.has(w)))
+    .map((key) => ({ key, names }));
+});
+const ORG_ALIAS_INDEX = new Map<string, string[]>();
+for (const a of ORG_ALIASES) ORG_ALIAS_INDEX.set(a.key, [...new Set([...(ORG_ALIAS_INDEX.get(a.key) ?? []), ...a.names])]);
+/** Aliases of several words, longest first. */
+const ORG_PHRASES = [...ORG_ALIAS_INDEX.keys()].filter((k) => k.includes(" ")).sort((a, b) => b.length - a.length);
+
+/** Every folded name of the organization(s) a search term is an alias of ("msf" → "médecins sans frontières", …), or []. */
+export function orgNamesForTerm(term: string): string[] {
+  return ORG_ALIAS_INDEX.get(tidyQuery(term)) ?? ORG_ALIAS_INDEX.get(tidyQuery(foldText(term))) ?? [];
+}
+
+/** Takes organization names of several words out of a tidied query, so they are matched as one term. */
+function takeOrgPhrases(s: string): { phrases: string[]; rest: string } {
+  let rest = ` ${s} `;
+  const phrases: string[] = [];
+  for (const p of ORG_PHRASES) {
+    if (rest.includes(` ${p} `)) {
+      phrases.push(p);
+      rest = rest.replace(` ${p} `, " ");
+    }
+  }
+  return { phrases, rest: rest.replace(/\s+/g, " ").trim() };
+}
+
+/** The terms of a search: organization names of several words stay together, everything else is one word each (at most 8). */
+export function searchTerms(q: string): string[] {
+  const { phrases, rest } = takeOrgPhrases(tidyQuery(q));
+  return [...phrases, ...rest.split(" ").filter(Boolean)].slice(0, 8);
+}
+
 const wordRe = (phrase: string) => new RegExp(`(^|\\s)${phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=\\s|$)`);
 
 export function interpretQuery(q: string | undefined | null): SearchIntent {
   if (!q) return { text: null };
-  let s = ` ${q.toLowerCase().replace(/[“”"',;:!?()]/g, " ").replace(/\s+/g, " ").trim()} `;
+  // Organization names of several words are kept whole ("doctors of the world" keeps "of the").
+  const { phrases, rest } = takeOrgPhrases(tidyQuery(q));
+  let s = ` ${rest} `;
   const intent: SearchIntent = { text: null };
 
   for (const [phrase, value] of ORG_TYPE_PHRASES) {
@@ -78,7 +145,7 @@ export function interpretQuery(q: string | undefined | null): SearchIntent {
   }
 
   const words = s.split(" ").filter(Boolean);
-  const kept: string[] = [];
+  const kept: string[] = [...phrases];
   for (const w of words) {
     if (REMOTE_WORDS.has(w)) intent.remote = true;
     else if (INTERNSHIP_WORDS.has(w)) intent.type = "Internship";
@@ -100,12 +167,12 @@ export function wordPattern(term: string): string {
 /**
  * Categories whose name contains a search word, matched like wordPattern: short words (4 letters
  * or fewer) as whole words, longer ones also as the start of a word ("health" → Health,
- * "procure" → Procurement & Logistics). Never "Other".
+ * "procure" → Procurement and logistics). Never "Other".
  */
 export function categoriesForWord(word: string): string[] {
   const w = word.toLowerCase();
   if (!/^[a-z0-9]+$/.test(w)) return [];
   return CATEGORIES.filter((c) =>
-    c.name.toLowerCase().split(/[^a-z0-9]+/).some((x) => x && (x === w || (w.length > 4 && x.startsWith(w)))),
+    c.name.toLowerCase().split(/[^a-z0-9]+/).some((x) => x && x !== "and" && (x === w || (w.length > 4 && x.startsWith(w)))),
   ).map((c) => c.slug);
 }

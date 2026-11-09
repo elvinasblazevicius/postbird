@@ -18,7 +18,8 @@
     "digest": "tsx --env-file-if-exists=.env.local scripts/digest.ts",
     "build:map": "node scripts/build-world-dots.mjs",
     "build:flags": "node scripts/build-flag-wall.mjs",
-    "diagnose": "tsx --env-file-if-exists=.env.local scripts/diagnose.ts"
+    "diagnose": "tsx --env-file-if-exists=.env.local scripts/diagnose.ts",
+    "reclassify": "tsx --env-file-if-exists=.env.local scripts/reclassify.ts"
   },
   "dependencies": {
     "@fontsource-variable/newsreader": "^5.3.0",

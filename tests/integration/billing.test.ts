@@ -444,6 +444,42 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(await notices.runTrialReminders()).toEqual({ sent: 0, failed: 0 });
     });
 
+    it("a returning customer's new trial gets its own reminder", async () => {
+      const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString();
+      const trial = (id: string, customer: string, ref: string, endsAt: string) => ({
+        id, customer_id: customer, custom_data: { ref },
+        current_billing_period: { starts_at: inDays(-12), ends_at: endsAt }, next_billed_at: endsAt,
+        items: [{ price: { id: "pri_test" }, trial_dates: { starts_at: inDays(-12), ends_at: endsAt } }],
+      });
+      const first = "sub_01hv8x29kz0t586xy6zn1a64aa", second = "sub_01hv8x29kz0t586xy6zn1a64ab";
+      const customer = "ctm_01hv6y1jedq4p1n0yqn5ba3kb1";
+
+      // First trial: reminded once.
+      const start1 = await billing.startCheckout({ email: "returning@example.org", plan: "monthly", search: null });
+      await billing.handlePaddleEvent(subEvent("subscription.created", trial(first, customer, (start1 as { ref: string }).ref, inDays(2))));
+      expect(await notices.runTrialReminders()).toEqual({ sent: 1, failed: 0 });
+      expect(sent.map((m) => m.to)).toEqual(["returning@example.org"]);
+
+      // Canceled, then a new subscription with a new trial: the reminder is due again.
+      const canceledAt = new Date(Date.now() + 1_000).toISOString();
+      await billing.handlePaddleEvent(subEvent("subscription.canceled", { id: first, customer_id: customer, status: "canceled", canceled_at: canceledAt, current_billing_period: null }, canceledAt));
+      expect((await sql`select billing_status from subscribers where email = 'returning@example.org'`)[0].billing_status).toBe("canceled");
+      const start2 = await billing.startCheckout({ email: "returning@example.org", plan: "monthly", search: null });
+      expect("ref" in start2).toBe(true);
+      const res = await billing.handlePaddleEvent(subEvent("subscription.created", trial(second, customer, (start2 as { ref: string }).ref, inDays(1)), new Date(Date.now() + 2_000).toISOString()));
+      expect(res.outcome).toBe("applied");
+      const [s] = await sql`select billing_status, paddle_subscription_id, trial_reminder_sent_at from subscribers where email = 'returning@example.org'`;
+      expect(s).toMatchObject({ billing_status: "trialing", paddle_subscription_id: second, trial_reminder_sent_at: null });
+
+      sent.length = 0;
+      expect(await notices.runTrialReminders()).toEqual({ sent: 1, failed: 0 });
+      expect(sent.map((m) => m.to)).toEqual(["returning@example.org"]);
+      // A repeated snapshot of the same subscription does not reset it.
+      await billing.handlePaddleEvent(subEvent("subscription.updated", trial(second, customer, (start2 as { ref: string }).ref, inDays(1)), new Date(Date.now() + 3_000).toISOString()));
+      sent.length = 0;
+      expect(await notices.runTrialReminders()).toEqual({ sent: 0, failed: 0 });
+    });
+
     it("one-click unsubscribe with a running plan: unsubscribes and sends one notice with the cancel link", async () => {
       const acct = await mk("oneclick@example.org", { billing: "active", interval: "month", periodEndInDays: 20 });
       const { POST } = await import("@/app/api/unsubscribe/route");
@@ -516,6 +552,27 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       sent.length = 0;
       expect((await notices.notifyWaitlist()).sent).toBe(0);
       expect(sent).toHaveLength(0);
+    });
+  });
+
+  describe("sign-up confirmations", () => {
+    it("sends at most 3 confirmation emails per address in 24 hours, on top of the 5-minute gap", async () => {
+      const email = "flooded@example.org";
+      const signupOnce = async () => {
+        expect(await subscribers.signup({ email, kind: "alerts", source: "test" })).toEqual({ ok: true, state: "check_email" });
+        // Step past the 5-minute gap.
+        await sql`update subscribers set confirm_sent_at = now() - interval '10 minutes' where email = ${email}`;
+      };
+      for (let i = 0; i < 5; i++) await signupOnce();
+      expect(sent.filter((m) => m.to === email)).toHaveLength(3);
+      // Within 5 minutes of a send, nothing more goes out either.
+      await sql`delete from rate_limits`;
+      await subscribers.signup({ email, kind: "alerts" });
+      await subscribers.signup({ email, kind: "alerts" });
+      expect(sent.filter((m) => m.to === email)).toHaveLength(4);
+      // Another address is not affected.
+      await subscribers.signup({ email: "other-flood@example.org", kind: "waitlist" });
+      expect(sent.filter((m) => m.to === "other-flood@example.org")).toHaveLength(1);
     });
   });
 
