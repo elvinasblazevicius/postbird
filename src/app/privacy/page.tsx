@@ -46,9 +46,13 @@ export default function PrivacyPage() {
           question. We don&apos;t set cookies for this and we never store your IP address. Each visit is counted with a pseudonymous code made from your IP address and
           browser type, combined with the date and a secret key, so visits on different days can&apos;t be linked together. Search terms, the page address (without
           personal links), the campaign tags of the link you arrived from and the name of the website that linked to us (only its domain, never the full address)
-          are recorded with the count. If you sign up, that day&apos;s pseudonymous code is kept with
-          your sign-up for up to 30 days, only to measure which pages lead to sign-ups. For abuse protection (for example limiting repeated sign-ups) we keep a one-way
+          are recorded with the count. If you sign up, that day&apos;s pseudonymous code is kept with the sign-up count for up to 13
+          months, and linked to your subscription for up to 30 days, only to measure which pages lead to sign-ups. For abuse protection (for example limiting repeated sign-ups) we keep a one-way
           hash of IP addresses for up to 24 hours.
+        </p>
+        <p>
+          <strong>Where you are.</strong> We use the country your connection appears to come from (from our host, Netlify; not stored) to decide whether
+          to ask for cookie consent first.
         </p>
         <p>
           <strong>What is stored on your device.</strong> {ASK_FIRST} ({ASK_FIRST_UNKNOWN}), before you make a choice we store only <code>gch_geo</code> (a session flag in session storage that notes whether we need to ask for consent,
@@ -79,10 +83,16 @@ export default function PrivacyPage() {
         <p>
           {ASK_FIRST} ({ASK_FIRST_UNKNOWN}), nothing is stored on your device and Microsoft&apos;s
           tag isn&apos;t loaded unless you click &quot;Allow&quot;. If you click &quot;No thanks&quot; later, we delete the Microsoft cookies and storage entries
-          listed above that were set on this site, and the remembered campaign tags. In the United States it runs unless you opt out; we treat a Global Privacy Control signal from your browser as an opt-out. You can change your choice at any time with &quot;Cookie settings&quot; at
+          listed above that were set on this site, and the remembered campaign tags. In the United States it runs unless you opt out; we treat a Global Privacy Control signal from your browser as an opt-out. You can change your choice at any time with &quot;Cookie settings / Your privacy choices&quot; at
           the bottom of every page. You can also opt out of personalised Microsoft ads at{" "}
           <a className="text-accent underline" href="https://account.microsoft.com/privacy/ad-settings" rel="noopener">account.microsoft.com/privacy/ad-settings</a> and of
           interest-based ads generally at <a className="text-accent underline" href="https://optout.aboutads.info" rel="noopener">optout.aboutads.info</a>.
+        </p>
+
+        <H2 id="us-privacy-choices">Your US privacy choices</H2>
+        <p>
+          We don&apos;t sell your data. Microsoft&apos;s advertising tag may count as &quot;sharing&quot; for targeted advertising under some US state
+          laws; opt out with &quot;Your privacy choices&quot; at the bottom of every page or with Global Privacy Control.
         </p>
 
         <H2>{siteConfig.freeWeeklyEmail ? "Weekly email, daily alerts and early access" : "Email alerts and early access"}</H2>
@@ -113,7 +123,8 @@ export default function PrivacyPage() {
             store your card details. Paddle tells us your email address, country, plan, subscription status and dates, and its customer and subscription IDs, which
             we use to send your alerts and let you manage your subscription. Paddle&apos;s checkout script (Paddle.js) is loaded from Paddle&apos;s servers only
             once you use a checkout form, so that the secure checkout opens without a wait: where we ask first about cookies (see above), when you click into
-            the email field or start the checkout; in the United States also when you point at the form. On live checkouts Paddle.js may also load Paddle
+            the email field or start the checkout; in the United States also when you point at the form. Once loaded, Paddle.js sets Cloudflare&apos;s <code>__cf_bm</code>
+            cookie on paddle.com (bot protection). On live checkouts Paddle.js may also load Paddle
             Retain (formerly ProfitWell, part of Paddle), which Paddle uses for payment recovery and subscription analytics under Paddle&apos;s privacy notice.
           </p>
         ) : null}

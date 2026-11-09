@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import { confirmAction, unsubscribeAction, type FormState } from "@/app/actions";
 import { alertSignupAction } from "@/app/alert-actions";
 import { unsubscribeCancelLinkAction } from "@/app/billing-actions";
@@ -10,7 +11,9 @@ import { AttributionField, uetEvent } from "./ads";
 import { EarlyAccessDone } from "./early-access";
 import { EARLY_ACCESS_BUTTON, earlyAccessLine } from "@/lib/early-access-copy";
 import { BILLING_LIVE } from "@/lib/billing/live";
-import { TrialCheckoutForm } from "./paddle-checkout";
+
+// Paddle's checkout code loads only where the checkout form is shown (billing live), not with every page that has this form.
+const TrialCheckoutForm = dynamic(() => import("./paddle-checkout").then((m) => m.TrialCheckoutForm));
 
 const initial: FormState = { status: "idle", message: "" };
 

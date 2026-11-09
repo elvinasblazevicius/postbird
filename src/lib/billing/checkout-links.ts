@@ -1,29 +1,16 @@
 /**
- * Checkout for addresses that have or had a plan (server only).
+ * Checkout through a link that reached the address's mailbox (server only):
+ * for addresses the public form must not start a plan for (a confirmed owner,
+ * or one that has or had a plan), and from places where the address is already
+ * proven (the account page, the free weekly email).
  *
- * What the public trial form shows: an address that is new here, or was never
- * confirmed and never had a plan, goes straight to Paddle Checkout; any other
- * address gets "Check your inbox" instead, and the next step goes to the
- * address itself:
- *  - a plan is running: the account link ("You already have daily alerts");
- *  - a plan was had before (or the address's canonical form had one, or it
- *    left a trial marker): a single-use link, valid 24 hours, to
- *    /account/continue, which shows the terms for this address (no second
- *    free trial: one per person) and opens Paddle Checkout for a transaction
- *    without a trial;
- *  - a confirmed address that never had a plan (e.g. a free weekly email
- *    subscriber): the same link, whose page offers the free trial. Its owner
- *    is known, so nobody else can start (and use up) its trial from the form.
- * So the form does tell whoever types an address one thing: whether it is
- * new or unconfirmed here (Paddle opens) or not ("Check your inbox"), which
- * suggests the address is a confirmed subscriber or has or had a plan. It does
- * not say which (all of them get the same reply, also when the daily cap stops
- * the email), and the account link and checkout terms only ever go to the
- * address. The trade-off: hiding even that would mean emailing every address a
- * link before checkout, an extra step for every genuine new customer; it was
- * judged not worth it for this one bit of information.
+ * Trade-off: the public form answers new or unconfirmed addresses with Paddle
+ * and everyone else with "check your inbox", so it does reveal that one bit
+ * about an address. Hiding it would mean emailing every genuine new customer a
+ * link before checkout; that was judged not worth it. The account link and the
+ * checkout terms only ever go to the address itself.
  */
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { sendAccountLink } from "@/lib/account";
 import { createNoTrialTransaction, isPaddleApiConfigured } from "@/lib/billing/paddle";
 import {
@@ -35,6 +22,7 @@ import { sql } from "@/lib/db";
 import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { checkoutLinkEmail } from "@/lib/email-templates";
 import { takeDailyQuota } from "@/lib/rate-limit";
+import { sharedSecret } from "@/lib/server-secret";
 import { absoluteUrl } from "@/lib/site";
 
 /** How long an emailed checkout link works. */
@@ -74,6 +62,29 @@ export async function createCheckoutLink(subscriberId: number, opts: { plan: Che
     insert into checkout_links (token_hash, subscriber_id, plan, search, visitor, expires_at)
     values (${hashToken(token)}, ${subscriberId}, ${opts.plan}, ${opts.search}, ${opts.visitor ?? null}, now() + make_interval(hours => ${CHECKOUT_LINK_HOURS}))`;
   return token;
+}
+
+/** How long the checkout link in a free weekly email works (until about the next one). */
+export const WEEKLY_LINK_DAYS = 7;
+
+/**
+ * Single-use checkout links for one week's free weekly emails, by subscriber id.
+ * The token is derived from the server secret, the week and the subscriber, not
+ * random: a retried send must carry exactly the same message, or Resend refuses
+ * its idempotency key (a used link stays used; on conflict nothing changes).
+ * Empty without a server secret: the email then links to the public trial page.
+ */
+export async function weeklyCheckoutLinks(periodKey: string, rows: { subscriberId: number; search: string | null }[]): Promise<Map<number, string>> {
+  const secret = sharedSecret();
+  const out = new Map<number, string>();
+  if (!secret || rows.length === 0) return out;
+  for (const r of rows) out.set(r.subscriberId, createHmac("sha256", secret).update(`weekly-checkout:${periodKey}:${r.subscriberId}`).digest("base64url"));
+  await sql`
+    insert into checkout_links (token_hash, subscriber_id, plan, search, expires_at)
+    select t.h, t.id, 'quarterly', t.search, now() + make_interval(days => ${WEEKLY_LINK_DAYS})
+    from unnest(${rows.map((r) => hashToken(out.get(r.subscriberId)!))}::text[], ${rows.map((r) => r.subscriberId)}::bigint[], ${rows.map((r) => r.search)}::text[]) as t(h, id, search)
+    on conflict (token_hash) do nothing`;
+  return out;
 }
 
 /**
@@ -141,12 +152,10 @@ export type ContinueResult =
 export const LINK_USED = "This link has already been used or has expired. Start again from the free trial page and we'll email you a new one.";
 
 /**
- * The continue page's button: uses the link up (single use), then prepares
- * the checkout with the right terms for the address. A returning customer
- * gets a Paddle transaction for the plan without its trial; if that can't be
- * created, the link is given back so the visitor can try again, and the trial
- * is never offered instead. Opening the link proves the address is the
- * visitor's, so paying confirms it (address_proven on the checkout).
+ * The continue page's button: uses the link up, then prepares the checkout with
+ * the address's terms. If a returning customer's no-trial transaction can't be
+ * created, the link is given back and the trial is never offered instead. The
+ * link reached the mailbox, so paying confirms the address (address_proven).
  */
 export async function continueCheckout(token: unknown, plan: CheckoutPlan): Promise<ContinueResult> {
   if (typeof token !== "string" || !TOKEN_RE.test(token)) return { ok: false, error: LINK_USED, used: true };
@@ -161,10 +170,7 @@ export async function continueCheckout(token: unknown, plan: CheckoutPlan): Prom
   if (!st) return { ok: false, error: LINK_USED, used: true };
   if (st.state === "live") return { ok: false, error: "This address already has daily alerts. Open your account from the link in any of our emails." };
 
-  // Another checkout for this address in the last OPEN_CHECKOUT_MINUTES that hasn't led to a
-  // subscription yet (e.g. a second emailed link opened in another tab): it may still be open or
-  // being paid, so no second one (two finished checkouts would be two subscriptions, two charges).
-  // The link is given back, so it works again once that time has passed.
+  // A recent checkout may still be open or being paid (two would be two charges): the link is given back.
   const [open] = await sql`
     select 1 from paddle_checkouts
     where subscriber_id = ${link.subscriber_id} and subscription_id is null

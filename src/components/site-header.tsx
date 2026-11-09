@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { ORG_TYPES } from "@/config/regions";
 import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
+import { employerTypeCounts } from "@/lib/jobs";
 import { siteConfig } from "@/lib/site";
 import { BrandMark } from "./brand-mark";
 import { SavedCount } from "./job-tools";
 import { NavLink } from "./nav-link";
-import { AlertsButton, FindJobsMenu, MobileMenu } from "./site-nav";
+import { AlertsButton, FindJobsMenu, MobileMenu, type NavItem } from "./site-nav";
 
 /** Header links after "Find jobs" (which has its own menu of employer types). */
 const NAV = [
@@ -13,10 +15,23 @@ const NAV = [
   { href: "/pricing", label: "Pricing" },
 ];
 
-/** The employer-type pages, always listed (also in the footer). */
+/** The employer-type pages (also in the footer). */
 export const EMPLOYER_NAV = EMPLOYER_TYPE_PAGES.map((p) => ({ href: p.path, label: p.label }));
 
-export function SiteHeader() {
+/**
+ * The employer-type pages that have open vacancies, for the menus and the footer (a page with none
+ * stays reachable from /organizations and its own address). All of them while the site is being
+ * built (static pages are built without the database) or when the count can't be read.
+ */
+export async function employerNav(): Promise<NavItem[]> {
+  if (process.env.NEXT_PHASE === "phase-production-build") return EMPLOYER_NAV;
+  const counts = await employerTypeCounts().catch(() => null);
+  if (!counts) return EMPLOYER_NAV;
+  return EMPLOYER_TYPE_PAGES.filter((p) => (counts.get(ORG_TYPES.find((o) => o.value === p.orgtype)?.type ?? "") ?? 0) > 0).map((p) => ({ href: p.path, label: p.label }));
+}
+
+export async function SiteHeader() {
+  const employers = await employerNav();
   return (
     <header className="sticky top-0 z-40 border-b border-rule bg-paper/95 backdrop-blur supports-[backdrop-filter]:bg-paper/85">
       <div className="mx-auto flex h-[72px] max-w-6xl items-center justify-between gap-3 px-4 sm:px-6 md:gap-6">
@@ -26,7 +41,7 @@ export function SiteHeader() {
         </Link>
 
         <nav aria-label="Main" className="hidden items-center gap-6 md:flex">
-          <FindJobsMenu employers={EMPLOYER_NAV} />
+          <FindJobsMenu employers={employers} />
           {NAV.map((n) => (
             <NavLink key={n.href} href={n.href}>{n.label}</NavLink>
           ))}
@@ -43,7 +58,7 @@ export function SiteHeader() {
           <AlertsButton className="whitespace-nowrap rounded-lg border border-rule bg-paper px-3 py-2 text-sm font-semibold text-ink hover:bg-mist">Email alerts</AlertsButton>
           <MobileMenu
             main={[{ href: "/jobs", label: "Find jobs" }, ...NAV]}
-            employers={EMPLOYER_NAV}
+            employers={employers}
             more={[
               { href: "/locations", label: "Countries" },
               { href: "/categories", label: "Categories" },

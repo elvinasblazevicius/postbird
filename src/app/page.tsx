@@ -52,8 +52,9 @@ export default async function HomePage() {
   const closingSoon = closingFresh.slice(0, closingFresh.length >= 4 ? 4 : closingFresh.length >= 2 ? 2 : 0);
 
   const showTotal = stats.active >= siteConfig.showVacancyCountFrom;
-  // Entry points by employer type (the row under the hero search): every type, with its count when it has open jobs.
-  const employerTypes = EMPLOYER_TYPE_PAGES.map((t) => ({ ...t, count: orgTypes.find((o) => o.value === t.orgtype)?.count ?? 0 }));
+  // Entry points by employer type (the row under the hero search): the types with open jobs, with their counts
+  // (a type with none stays reachable from /organizations).
+  const employerTypes = EMPLOYER_TYPE_PAGES.map((t) => ({ ...t, count: orgTypes.find((o) => o.value === t.orgtype)?.count ?? 0 })).filter((t) => t.count > 0);
   // The headline names the EU only while EU institutions have open vacancies here.
   const copy = homeCopy((orgTypes.find((o) => o.value === "eu")?.count ?? 0) > 0);
 
@@ -87,7 +88,7 @@ export default async function HomePage() {
           <div className="mt-4 max-w-4xl sm:mt-9">
             <HeroSearch facets={{ orgs, countries, regions, categories, types, grades, langs, exps, orgTypes }} />
           </div>
-          <nav aria-label="Employer types" className="mt-4 max-w-4xl">
+          {employerTypes.length ? <nav aria-label="Employer types" className="mt-4 max-w-4xl">
             <ul className="flex flex-wrap gap-2">
               {employerTypes.map((t) => (
                 <li key={t.path}>
@@ -96,12 +97,12 @@ export default async function HomePage() {
                     className="inline-flex items-center gap-1.5 rounded-full border border-white/30 px-3 py-1 text-sm font-medium text-white hover:border-white hover:bg-white/10"
                   >
                     {t.label}
-                    {t.count > 0 ? <span className="font-normal text-white/75">{t.count.toLocaleString("en-US")}</span> : null}
+                    <span className="font-normal text-white/75">{t.count.toLocaleString("en-US")}</span>
                   </Link>
                 </li>
               ))}
             </ul>
-          </nav>
+          </nav> : null}
           <p className="mt-5 hidden flex-wrap gap-x-5 gap-y-2 text-[0.95rem] text-white/85 sm:flex">
             <span className="text-white">
               {showTotal ? (
@@ -122,8 +123,6 @@ export default async function HomePage() {
 
       {/* Latest */}
       <div className="dots-soft border-b border-rule pb-14">
-      {/* Wider screens: the week's numbers first. Phones: "Recently posted" first, the week after it (below). */}
-      <WeekInReviewStrip week={week} className="max-sm:hidden" />
       <section className="mx-auto max-w-6xl px-4 pt-8 sm:px-6 sm:pt-12" aria-labelledby="latest-heading">
         <div className="flex items-end justify-between gap-4">
           <h2 id="latest-heading" className="text-[1.6rem] font-semibold leading-tight text-ink sm:text-[1.9rem]">Recently posted</h2>
@@ -144,7 +143,6 @@ export default async function HomePage() {
           )}
         </div>
       </section>
-      <WeekInReviewStrip week={week} headingId="week-heading-phone" className="sm:hidden" />
       {closingSoon.length ? (
         <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6" aria-labelledby="closing-heading">
           <div className="flex items-end justify-between gap-4">
@@ -154,9 +152,11 @@ export default async function HomePage() {
             </div>
             <Link href="/jobs?sort=deadline" className="shrink-0 text-[0.95rem] font-medium text-accent hover:underline">All by closing date</Link>
           </div>
-          <div className="mt-5"><JobGrid jobs={closingSoon} /></div>
+          <div className="mt-5"><JobGrid jobs={closingSoon} stamp /></div>
         </section>
       ) : null}
+      {/* The week's numbers after the vacancies themselves, on every screen size. */}
+      <WeekInReviewStrip week={week} className="sm:pt-12" />
       {countries.length ? (
         <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6" aria-label="Browse by duty station">
           <div className="space-y-3">

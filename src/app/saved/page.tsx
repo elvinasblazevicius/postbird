@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { SavedJobs } from "@/components/job-tools";
+import { SavedJobs } from "@/components/saved-jobs";
 import { PageHeader } from "@/components/page-header";
 
 export const metadata: Metadata = {

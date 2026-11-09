@@ -38,8 +38,10 @@ on:
         type: choice
         options: [sync, digest, setup, diagnose]
 
+# actions: read lets the job check that CI passed for this commit before it applies migrations.
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: scheduled-jobs
@@ -58,9 +60,25 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
+      # Migrations are applied by the Netlify production build and the Deploy migrations workflow.
+      # Here only as a catch-up, and only when the latest CI run for this commit succeeded, so a
+      # migration from a commit that failed its checks is never applied.
+      - name: Check CI for this commit
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          conclusion=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$GITHUB_SHA" --limit 1 --json conclusion --jq '.[0].conclusion // ""' 2>/dev/null || true)
+          if [ "$conclusion" = "success" ]; then
+            echo "migrate=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "migrate=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CI hasn't succeeded for this commit (${conclusion:-no run found}), so migrations are not applied by this run."
+          fi
       - name: Run task
         env:
           TASK: ${{ github.event.schedule == '23 6 * * *' && 'digest' || inputs.task || 'sync' }}
+          MIGRATE: ${{ steps.ci.outputs.migrate }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           NEXT_PUBLIC_SITE_URL: ${{ secrets.SITE_URL }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
@@ -78,8 +96,13 @@ jobs:
           if [ -z "$ANALYTICS_SALT" ] && [ -z "$CRON_SECRET" ]; then
             echo "::error::Add the CRON_SECRET and ANALYTICS_SALT repository secrets (exactly the same values as on Netlify). Without them no trial marker can be written."
           fi
-          # Database tables are created or updated first (safe to repeat; already-applied steps are skipped).
-          npm run db:migrate
+          if [ "$MIGRATE" = "true" ]; then
+            # Safe to repeat: already-applied migrations are skipped.
+            npm run db:migrate
+          elif [ "$TASK" = "setup" ]; then
+            echo "::error::Migrations were not applied: CI hasn't succeeded for this commit. Fix CI (or wait for it to finish), then run setup again."
+            exit 1
+          fi
           if [ "$TASK" = "setup" ]; then echo "Database is ready."; exit 0; fi
           echo "Running: $TASK"
           npm run "$TASK"

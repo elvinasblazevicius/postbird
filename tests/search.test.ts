@@ -329,7 +329,10 @@ describe("language names in the search words", () => {
   it("take one language; a second one stays a search word, and places keep their names", () => {
     expect(interpretQuery("french arabic")).toEqual({ text: "arabic", lang: "French" });
     expect(interpretQuery("jobs in french polynesia").lang).toBeUndefined();
-    expect(interpretQuery("german").lang).toBeUndefined();
+    // German is a filter language now (EU official languages); names that often stand for an organization stay words.
+    expect(interpretQuery("german").lang).toBe("German");
+    expect(interpretQuery("danish refugee council").lang).toBeUndefined();
+    expect(interpretQuery("irish aid").lang).toBeUndefined();
   });
 
   it("never replace a language filter that is set (withSearchIntent)", () => {

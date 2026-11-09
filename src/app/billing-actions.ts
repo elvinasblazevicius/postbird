@@ -14,8 +14,7 @@ import { BILLING_LIVE } from "@/lib/billing/live";
 import { checkoutReply, continueCheckout, createCheckoutLink, sendCheckoutLink, type CheckoutState } from "@/lib/billing/checkout-links";
 import { planRenewal } from "@/lib/billing/notices";
 import { createPortalSession, isPaddleApiConfigured } from "@/lib/billing/paddle";
-import { checkoutAccountToken, hadTrialBefore, LIVE_STATUSES, startCheckout, verifiedCustomerFor, type BillingTarget, type CheckoutPlan } from "@/lib/billing/subscriptions";
-import { trialUsedElsewhere } from "@/lib/billing/trial-markers";
+import { checkoutAccountToken, LIVE_STATUSES, startCheckout, verifiedCustomerFor, type BillingTarget, type CheckoutPlan } from "@/lib/billing/subscriptions";
 import { sql } from "@/lib/db";
 import { clientIp, rateLimit, safeRateLimit } from "@/lib/rate-limit";
 import { addSavedSearch, normalizeSearch, removeSavedSearch, searchFromSignupForm } from "@/lib/saved-searches";
@@ -268,9 +267,9 @@ export async function portalAction(_prev: FormState, form: FormData): Promise<Fo
 }
 
 /**
- * "Restart daily alerts" on the account page, for an address that had a plan:
- * the account link proves the address, so this goes straight to the continue
- * page (no second free trial: one per email address).
+ * "Start your free trial" / "Restart daily alerts" on the account page. The account link only
+ * ever reaches the address, so it proves it: straight to the continue page, which offers the
+ * trial or not (one per person), instead of the public form and an extra email round trip.
  */
 export async function restartPlanAction(_prev: FormState, form: FormData): Promise<FormState> {
   if (!BILLING_LIVE) return { status: "error", message: "Daily alerts aren't open yet." };
@@ -279,8 +278,7 @@ export async function restartPlanAction(_prev: FormState, form: FormData): Promi
     const acct = await accountFrom(form);
     if (!acct) return INVALID_LINK;
     if (LIVE_STATUSES.includes(acct.billing_status)) return { status: "error", message: "You already have daily alerts." };
-    if (!hadTrialBefore(acct, await trialUsedElsewhere(acct.email, acct.id))) target = "/pricing/trial";
-    else target = `/account/continue?token=${await createCheckoutLink(acct.id, { plan: "quarterly", search: null })}`;
+    target = `/account/continue?token=${await createCheckoutLink(acct.id, { plan: "quarterly", search: null })}`;
   } catch (e) {
     console.error("restart plan failed", (e as Error).message);
     return { status: "error", message: SERVER_ERROR };

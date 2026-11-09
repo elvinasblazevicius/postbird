@@ -90,6 +90,18 @@ export function titleGradeGroup(title: string | null | undefined): "NO" | "P" | 
 
 const GROUP_DISPLAY: Record<"NO" | "P" | "G", string> = { NO: "National Officer", P: "Professional", G: "General Service" };
 
+/** EU grades are stored "AD-6", "AST/SC-2", "FG-IV" and written as the EU writes them: "AD 6", "AST/SC 2", "FG IV". */
+const EU_GRADE_RE = /^(AD|AST|AST\/SC|FG)-(\d{1,2}|I{1,3}|IV)$/;
+
+/** A stored grade as it is written: "P-3", "AD 6", "FG IV", "GG". */
+export function gradeText(grade: string): string {
+  const eu = grade.match(EU_GRADE_RE);
+  return eu ? `${eu[1]} ${eu[2]}` : grade;
+}
+
+/** EU staff grade groups (the EU salary tables apply to them). */
+const EU_GROUPS = new Set(["AD", "AST", "AST-SC", "FG"]);
+
 /**
  * The grade to show: the parsed one, or the grade group the title names when no grade was parsed
  * ("National Officer", or "Professional" / "General Service" for IOM's "(P)" / "(G)"). National
@@ -98,7 +110,7 @@ const GROUP_DISPLAY: Record<"NO" | "P" | "G", string> = { NO: "National Officer"
 export function displayGrade(job: { grade: string | null | undefined; title: string | null | undefined }): string | null {
   if (job.grade) {
     const no = job.grade.match(/^NO-?([A-E])$/i);
-    return no ? `National Officer ${no[1].toUpperCase()}` : job.grade;
+    return no ? `National Officer ${no[1].toUpperCase()}` : gradeText(job.grade);
   }
   const group = titleGradeGroup(job.title);
   return group ? GROUP_DISPLAY[group] : null;
@@ -131,7 +143,8 @@ export function payScaleFor(job: { grade: string | null | undefined; title: stri
   if ((job.grade && UN_PAY_GRADE_RE.test(job.grade)) || (!job.grade && titleGradeGroup(job.title))) {
     return { family: "UN", label: "ICSC salary scales", href: PAY_SOURCES.icscSalaryScales };
   }
-  if (job.org_type === "EU institution" && job.title && EU_PAY_TITLE_RE.test(job.title)) {
+  const euGrade = Boolean(job.grade && EU_GROUPS.has(gradeGroupOf(job.grade) ?? ""));
+  if (job.org_type === "EU institution" && (euGrade || (job.title && EU_PAY_TITLE_RE.test(job.title)))) {
     return { family: "EU", label: "EU salary levels", href: PAY_SOURCES.euSalaries };
   }
   return null;
@@ -164,7 +177,7 @@ export function isGradeGroup(value: string | undefined): boolean {
   return Boolean(value && GRADE_GROUPS.some((g) => g.value === value));
 }
 
-/** Short label for a grade filter value: "Professional (P-1 to P-5)" or "P-3". */
+/** Short label for a grade filter value: "Professional (P-1 to P-5)", "P-3" or "AD 6". */
 export function gradeLabel(value: string): string {
-  return GRADE_GROUPS.find((g) => g.value === value)?.name ?? value;
+  return GRADE_GROUPS.find((g) => g.value === value)?.name ?? gradeText(value);
 }

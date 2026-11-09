@@ -3,6 +3,7 @@ import { sharedTitle, shareMetadata } from "@/lib/share-metadata";
 import Link from "next/link";
 import { AlertExample } from "@/components/alert-example";
 import { CoverageLine } from "@/components/coverage-line";
+import { coverage, oneEmailLine } from "@/lib/coverage";
 import { PageHeader } from "@/components/page-header";
 import { TrackedLink } from "@/components/tracking";
 import { BILLING_LIVE } from "@/lib/billing/live";
@@ -33,6 +34,7 @@ function Check() {
 
 export default async function PricingPage() {
   const p = siteConfig.premium;
+  const cov = await coverage();
   const billingFaq: [string, React.ReactNode][] = BILLING_LIVE
     ? [
         [
@@ -165,10 +167,19 @@ export default async function PricingPage() {
       <div className="mx-auto grid max-w-4xl gap-8 px-4 sm:px-6 md:grid-cols-[1fr_1.35fr]">
         <section aria-labelledby="why-heading">
           <h2 id="why-heading" className="text-xl font-semibold text-ink">Why alerts help</h2>
-          <p className="mt-3 leading-relaxed text-ink">
-            Many international vacancies are open for only two to four weeks, and they are spread across dozens of separate career sites. Alerts check them for you and
-            send the new ones that match your searches, so you see a role while there is still time to apply.
-          </p>
+          {/* Each line checked against the code: the organization count is computed (src/lib/coverage.ts), the 3-day section is
+              closingSoonForAlert (src/lib/jobs.ts), local-only posts are the hidelocal filter, and copies of one vacancy on several
+              sites are merged by the import (fingerprint in src/lib/feeds/extract.ts and sync.ts). */}
+          <ul className="mt-3 space-y-2.5 leading-relaxed text-ink">
+            {[
+              oneEmailLine(cov),
+              `${siteConfig.freeWeeklyEmail ? "Daily alerts also list" : "Each alert also lists"} matching vacancies that close in the next 3 days, once each.`,
+              "A search can leave out local-only posts: those usually open only to nationals or residents of the duty-station country.",
+              "When we find the same vacancy on more than one site, we list it once (matched by organization and vacancy number, or by title, place and closing date).",
+            ].map((line) => (
+              <li key={line} className="flex gap-2.5"><Check />{line}</li>
+            ))}
+          </ul>
         </section>
         <AlertExample />
       </div>

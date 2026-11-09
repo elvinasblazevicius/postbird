@@ -58,8 +58,9 @@ export function FindJobsMenu({ employers }: { employers: NavItem[] }) {
       <Link
         href="/jobs"
         aria-current={pathname === "/jobs" ? "page" : undefined}
-        className={`relative py-2 pl-1 text-[0.95rem] font-medium transition-colors ${
-          active ? "text-ink after:absolute after:inset-x-1 after:-bottom-[21px] after:h-[2px] after:bg-brand" : "text-ink/65 hover:text-ink"
+        // As tall as the header, so the underline sits at its bottom edge, inside it (see NavLink).
+        className={`relative flex h-[72px] items-center pl-1 text-[0.95rem] font-medium transition-colors ${
+          active ? "text-ink after:absolute after:inset-x-1 after:bottom-0 after:h-[2px] after:bg-brand" : "text-ink/65 hover:text-ink"
         }`}
       >
         Find jobs
@@ -78,7 +79,7 @@ export function FindJobsMenu({ employers }: { employers: NavItem[] }) {
       <div
         id={panelId}
         hidden={!open}
-        className="absolute left-0 top-full z-50 mt-3 w-60 rounded-xl border border-rule bg-paper p-2 shadow-[0_16px_40px_-16px_rgba(11,27,63,0.35)]"
+        className="absolute left-0 top-full z-50 -mt-2 w-60 rounded-xl border border-rule bg-paper p-2 shadow-[0_16px_40px_-16px_rgba(11,27,63,0.35)]"
       >
         <Link href="/jobs" onClick={close} className="block rounded-lg px-3 py-2 text-[0.95rem] font-medium text-ink hover:bg-mist">All jobs</Link>
         <p className="mt-1 border-t border-rule px-3 pb-1 pt-2.5 text-xs font-semibold text-slate">Browse by employer</p>
@@ -106,14 +107,13 @@ export function AlertsButton({ className, children }: { className: string; child
   const pathname = usePathname() ?? "";
   const here = isActive(pathname, "/alerts");
   return (
-    // Marked like the other header links: the brand underline at the header's edge, not a ring.
-    <Link
-      href="/alerts"
-      aria-current={here ? "page" : undefined}
-      className={`${className} relative ${here ? "after:absolute after:inset-x-1 after:-bottom-[21px] after:h-[2px] after:bg-brand max-md:after:-bottom-[22px]" : ""}`}
-    >
-      {children}
-    </Link>
+    // Marked like the other header links: the brand underline at the header's bottom edge (inside it), not a ring.
+    // The wrapper is as tall as the header, so the underline never hangs below the sticky header.
+    <span className={`relative flex h-[72px] items-center ${here ? "after:absolute after:inset-x-1 after:bottom-0 after:h-[2px] after:bg-brand" : ""}`}>
+      <Link href="/alerts" aria-current={here ? "page" : undefined} className={className}>
+        {children}
+      </Link>
+    </span>
   );
 }
 

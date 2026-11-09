@@ -2,10 +2,11 @@ import Link from "next/link";
 import { siteConfig } from "@/lib/site";
 import { CookieSettingsLink } from "./ads";
 import { BrandMark } from "./brand-mark";
-import { EMPLOYER_NAV } from "./site-header";
+import { employerNav } from "./site-header";
 
-export function SiteFooter() {
+export async function SiteFooter() {
   const year = new Date().getFullYear();
+  const employers = await employerNav();
   return (
     <footer className="mt-24 border-t border-rule bg-mist">
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
@@ -36,7 +37,7 @@ export function SiteFooter() {
         <nav aria-label="Browse by employer" className="text-sm">
           <h2 className="font-sans text-sm font-semibold text-ink">Browse by employer</h2>
           <ul className="mt-3 space-y-2 text-slate">
-            {EMPLOYER_NAV.map((e) => (
+            {employers.map((e) => (
               <li key={e.href}><Link href={e.href} className="hover:text-ink">{e.label}</Link></li>
             ))}
           </ul>
@@ -56,7 +57,7 @@ export function SiteFooter() {
             {siteConfig.contactEmail ? (
               <li><a href={`mailto:${siteConfig.contactEmail}`} className="hover:text-ink">Contact</a></li>
             ) : null}
-            <li><CookieSettingsLink className="hover:text-ink" /></li>
+            <li><CookieSettingsLink className="text-left hover:text-ink" /></li>
           </ul>
         </nav>
       </div>

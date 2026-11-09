@@ -5,7 +5,7 @@
  */
 import { CATEGORIES } from "@/config/categories";
 import { COUNTRIES } from "@/config/countries";
-import { LANGUAGES } from "@/config/regions";
+import { SEARCH_LANGUAGES } from "@/config/regions";
 import { KNOWN_ORGS } from "@/config/organizations";
 
 export type SearchIntent = {
@@ -170,12 +170,12 @@ export function gradeFromWord(word: string): string | null {
 
 /**
  * The language filter value one search word names ("french", "Arabic" → "French", "Arabic"), or
- * null. Only the languages the filter offers (LANGUAGES in src/config/regions.ts), written as the
+ * null. Only the languages a search word may name (SEARCH_LANGUAGES in src/config/regions.ts), written as the
  * plain language name: "francophone" or "Spanish-speaking" are left as words.
  */
 export function languageFromWord(word: string): string | null {
   const w = foldText(word.trim());
-  return LANGUAGES.find((l) => l.toLowerCase() === w) ?? null;
+  return SEARCH_LANGUAGES.find((l) => l.toLowerCase() === w) ?? null;
 }
 
 /** Takes the first grade out of a tidied query (" p3 data " → "P-3" and " data "). */

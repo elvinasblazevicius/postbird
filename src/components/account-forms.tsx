@@ -166,13 +166,13 @@ export function PortalButton({ t }: { t: string }) {
   );
 }
 
-/** "Restart daily alerts" for an address that had a plan: opens the checkout page with the terms for it (no second trial). */
-export function RestartPlanButton({ t }: { t: string }) {
+/** Opens the checkout page with this address's terms (the free trial, or no second one). */
+export function RestartPlanButton({ t, label = "Restart daily alerts" }: { t: string; label?: string }) {
   const [state, action, pending] = useActionState(restartPlanAction, initial);
   return (
     <form action={action}>
       <input type="hidden" name="t" value={t} />
-      <button disabled={pending} className={primary}>{pending ? "Opening…" : "Restart daily alerts"}</button>
+      <button disabled={pending} className={primary}>{pending ? "Opening…" : label}</button>
       <Message state={state} />
     </form>
   );

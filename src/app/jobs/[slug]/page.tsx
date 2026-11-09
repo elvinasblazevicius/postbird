@@ -13,7 +13,10 @@ import { countryByCode } from "@/config/countries";
 import { LISTING_SETTINGS } from "@/config/import";
 import { applyLinkKind } from "@/lib/apply-link";
 import { displayGrade, isLocalOnly, payScaleFor } from "@/lib/grades";
-import { searchJobs, similarJobs, type JobDetail } from "@/lib/jobs";
+import { ORG_TYPES } from "@/config/regions";
+import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
+import { moreInCategory, organizationPostingMix, POSTING_MIX_DAYS, searchJobs, type JobDetail } from "@/lib/jobs";
+import { usuallyPosts } from "@/lib/org-profile";
 import { orgInText } from "@/lib/org-names";
 import { applyTarget } from "@/lib/recruitment-system";
 import { extraLocation } from "@/lib/place-text";
@@ -84,12 +87,6 @@ function jobPostingLd(job: JobDetail) {
   return ld;
 }
 
-/** "Grade, contract type and eligibility" (sentence case, joined with commas and "and"). */
-function listPhrase(items: string[]): string {
-  const text = items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
-  return text.replace(/^./, (c) => c.toUpperCase());
-}
-
 /** "Get new data and analytics vacancies by email" (keeps short acronyms such as IT). */
 function categoryPhrase(slug: string): string {
   if (slug === "other") return "";
@@ -117,7 +114,11 @@ function GlanceRow({ label, children, className = "" }: { label: string; childre
   );
 }
 
-/** Required languages, then "Desirable: …" on its own line; null when the source names neither. */
+/**
+ * Required languages, then the others on their own line: those called desirable and those named as
+ * alternatives ("German or Italian"), any of which may do (desirable_languages, see
+ * detectLanguageRequirements in src/lib/feeds/extract.ts). Null when the source names neither.
+ */
 function Languages({ job }: { job: JobDetail }) {
   const required = job.languages?.length ? job.languages.join(", ") : null;
   const desirable = job.desirable_languages?.length ? job.desirable_languages.join(", ") : null;
@@ -126,10 +127,13 @@ function Languages({ job }: { job: JobDetail }) {
     <>
       {required}
       {required && desirable ? <br /> : null}
-      {desirable ? <span className={required ? "text-sm text-slate" : undefined}>Desirable: {desirable}</span> : null}
+      {desirable ? <span className={required ? "text-sm text-slate" : undefined}>Desirable or one of several: {desirable}</span> : null}
     </>
   );
 }
+
+/** One known detail of the vacancy, shown as a row (At a glance), a cell (the facts strip) or inline (a thin page's header). */
+type Detail = { label: string; node: React.ReactNode };
 
 export default async function JobPage({ params }: Props) {
   const { slug } = await params;
@@ -140,10 +144,13 @@ export default async function JobPage({ params }: Props) {
   // Closed vacancies are a 404 that says so and lists similar open ones (see layout.tsx).
   if (!isOpen(job)) notFound();
 
-  const [similar, orgOpen] = await Promise.all([
-    similarJobs(job),
+  const description = hasDescription(job);
+  const [more, orgOpen, mix] = await Promise.all([
+    moreInCategory(job).catch(() => []),
     // How many open vacancies the organization has (this one included), for "4 other open vacancies at IOM".
     job.org_slug ? searchJobs({ org: [job.org_slug] }, 1).then((r) => r.total).catch(() => 0) : Promise.resolve(0),
+    // What the organization usually posts, for pages without a description (src/lib/org-profile.ts).
+    !description && job.org_slug ? organizationPostingMix(job.org_slug).catch(() => null) : Promise.resolve(null),
   ]);
   const ld = jobPostingLd(job);
   const dl = deadlineLabel(job.deadline);
@@ -153,34 +160,28 @@ export default async function JobPage({ params }: Props) {
   const localOnly = isLocalOnly(job);
   const lang = titleLanguage(job.title);
   const dutyCountry = countryByCode(job.country_code)?.name ?? null;
-  const description = hasDescription(job);
   const publishedPlace = where !== NOT_SPECIFIED ? extraLocation(where, job.location_text) : null;
   const pay = payScaleFor(job);
-  // Everything our source doesn't give, said once in one line instead of a row each.
-  const missing = [
-    !grade && "grade",
-    !job.job_type && "contract type",
-    !job.deadline && "closing date",
-    !job.published_at && "posting date",
-    where === NOT_SPECIFIED && "location",
-    !job.org_name && "organization",
-    job.min_experience_years == null && "required experience",
-    !job.languages?.length && !job.desirable_languages?.length && "language requirements",
-  ].filter((x): x is string => Boolean(x));
   const experience = job.min_experience_years != null ? `${job.min_experience_years}+ ${job.min_experience_years === 1 ? "year" : "years"}` : null;
   // "Who can apply" only where we know the usual rule: local-only posts. For any other post we make
   // no general claim (eligibility differs by employer: EU citizenship, member-country nationality,
   // work permits); that advice is part of the one note below instead.
   const whoCanApply = localOnly ? `Usually only nationals or legal residents of ${dutyCountry ?? "the duty-station country"}.` : null;
-  // One compact note for everything the page can't say: what our source lacks, eligibility, and where the full posting is.
-  const missingLine = (
+  // One quiet line for everything the page doesn't show (it makes no claim about what the employer's page has beyond the full details).
+  const detailsLine = (
     <p className="mt-3 text-sm text-slate">
-      {missing.length ? `${listPhrase(missing)} ${missing.length === 1 ? "isn't" : "aren't"} in our source. ` : ""}
-      {localOnly ? "" : "Any nationality, residence or work-permit requirement is set by the employer. "}
-      <a href={job.apply_url} target="_blank" rel="nofollow noopener noreferrer" className="text-accent underline">See the employer&apos;s page</a>
-      {description ? "." : " for the full description, requirements and how to apply."}
+      Full details are on the{" "}
+      <a href={job.apply_url} target="_blank" rel="nofollow noopener noreferrer" className="text-accent underline">
+        employer&apos;s page<span className="sr-only"> (opens in a new tab)</span>
+      </a>
+      .
     </p>
   );
+  // The employer's type (its landing page) and what it usually posts, worked out from its listings.
+  const typePage = EMPLOYER_TYPE_PAGES.find((p) => p.orgtype === ORG_TYPES.find((t) => t.type === job.org_type)?.value);
+  const usually = mix ? usuallyPosts(mix) : null;
+  // The guide is about UN vacancies (grades, UN languages): linked from UN-system vacancies only.
+  const unSystem = job.org_type === "UN system";
   const orgRef = orgInText(job.org_name, job.org_short);
   // Where Apply goes, in plain words: "Opens IOM's recruitment system (Oracle)"; the address only for the organization's own site.
   const homepage = applyLinkKind(job.apply_url) === "homepage";
@@ -220,7 +221,7 @@ export default async function JobPage({ params }: Props) {
     <p className="text-sm text-slate">No closing date in our source. Check the employer&apos;s page.</p>
   );
 
-  /** Where Apply goes, that applying is free, and the guide to reading a vacancy. */
+  /** Where Apply goes, that applying is free, and (UN-system vacancies) the guide to reading one. */
   const applyNotes = (
     <>
       <p className="mt-3 text-sm leading-snug text-slate">
@@ -228,9 +229,11 @@ export default async function JobPage({ params }: Props) {
         {target.host ? <span className="mt-0.5 block break-all text-xs text-slate">{target.host}</span> : null}
       </p>
       <p className="mt-2 text-sm leading-snug text-ink">Applying is free. {siteConfig.name} never charges a fee to apply.</p>
-      <p className="mt-2 text-sm">
-        <Link href="/guides/how-to-read-a-un-vacancy" className="font-medium text-accent underline-offset-2 hover:underline">How to read a UN vacancy</Link>
-      </p>
+      {unSystem ? (
+        <p className="mt-2 text-sm">
+          <Link href="/guides/how-to-read-a-un-vacancy" className="font-medium text-accent underline-offset-2 hover:underline">How to read a UN vacancy</Link>
+        </p>
+      ) : null}
     </>
   );
 
@@ -246,6 +249,44 @@ export default async function JobPage({ params }: Props) {
     <Link href={`/organizations/${job.org_slug}`} className="font-medium text-accent underline-offset-2 hover:underline">
       {otherAtOrg.toLocaleString("en-US")} other open {otherAtOrg === 1 ? "vacancy" : "vacancies"} at {orgRef ?? job.org_name}
     </Link>
+  ) : null;
+
+  // The known details, in one order for every layout. The closing date is not among them: it has its own box.
+  const details = ([
+    grade ? { label: "Grade", node: <>{grade} <Link href="/grades" className="text-sm text-accent underline">What grades mean</Link></> } : null,
+    job.job_type ? { label: "Contract type", node: job.job_type } : null,
+    experience ? { label: "Experience", node: experience } : null,
+    job.languages?.length || job.desirable_languages?.length ? { label: "Languages besides English", node: <Languages job={job} /> } : null,
+    whoCanApply && !description ? { label: "Who can apply", node: whoCanApply } : null,
+    payLink ? { label: "Pay", node: payLink } : null,
+    job.published_at ? { label: "Posted", node: formatDate(job.published_at) } : null,
+    category && category.slug !== "other" ? { label: "Category", node: <Link href={`/categories/${category.slug}`} className="text-accent underline">{category.name}</Link> } : null,
+    lang ? { label: "Posting language", node: lang.name } : null,
+    job.reference ? { label: description ? "Reference" : "Reference number", node: <span className="break-all">{job.reference}</span> } : null,
+  ] as (Detail | null)[]).filter((d): d is Detail => d !== null);
+  // A page without a description and with three details or fewer: they go in the header, under the title, instead of a short list of their own.
+  const thin = !description && details.length <= 3;
+  const employerBlock = typePage || usually ? (
+    <section aria-labelledby="employer-heading" className="mt-6">
+      <h2 id="employer-heading" className="text-[1.15rem] font-semibold leading-tight text-ink">About {orgRef ?? job.org_name ?? "the employer"}</h2>
+      <dl className="mt-2 space-y-2 text-[0.95rem]">
+        {typePage ? (
+          <div className="flex flex-wrap gap-x-2">
+            <dt className="text-slate">Employer type</dt>
+            <dd><Link href={typePage.path} className="text-accent underline">{typePage.label}</Link></dd>
+          </div>
+        ) : null}
+        {usually ? (
+          <div className="flex flex-wrap gap-x-2">
+            <dt className="text-slate">Usually posts</dt>
+            <dd className="text-ink">
+              {usually.charAt(0).toUpperCase() + usually.slice(1)}
+              <span className="block text-xs text-slate">From its listings of the past {Math.round(POSTING_MIX_DAYS / 30)} months</span>
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+    </section>
   ) : null;
 
   return (
@@ -279,11 +320,22 @@ export default async function JobPage({ params }: Props) {
                   {publishedPlace ? <span className="text-sm"> ({publishedPlace})</span> : null}
                 </p>
               ) : null}
-              <div className="mt-3 flex flex-wrap gap-2">
-                {job.is_demo ? <Tag tone="demo">Demo data — not a real vacancy</Tag> : null}
-                {job.is_remote ? <Tag tone="remote">Remote / home-based</Tag> : null}
-                {lang ? <Tag>Posting in {lang.name}</Tag> : null}
-              </div>
+              {thin && details.length ? (
+                <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[0.95rem]">
+                  {details.map((d) => (
+                    <div key={d.label} className="flex flex-wrap gap-x-1.5">
+                      <dt className="text-slate">{d.label}</dt>
+                      <dd className="text-ink">{d.node}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+              {job.is_demo || job.is_remote ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {job.is_demo ? <Tag tone="demo">Demo data — not a real vacancy</Tag> : null}
+                  {job.is_remote ? <Tag tone="remote">Remote / home-based</Tag> : null}
+                </div>
+              ) : null}
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <SaveButton job={{ id: job.id, path: canonical, title: job.title, org: job.org_name }} />
                 <ShareButton url={absoluteUrl(canonical)} title={job.title} />
@@ -300,20 +352,7 @@ export default async function JobPage({ params }: Props) {
               <h2 id="facts-heading" className="sr-only">Vacancy details</h2>
               <dl className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-xl border border-rule px-4 py-4 sm:grid-cols-3 sm:px-5">
                 {job.deadline ? <Fact label="Closing date" className="lg:hidden">{formatDate(job.deadline)}</Fact> : null}
-                {grade ? (
-                  <Fact label="Grade">
-                    {grade} <Link href="/grades" className="text-sm text-accent underline">What grades mean</Link>
-                  </Fact>
-                ) : null}
-                {job.job_type ? <Fact label="Contract type">{job.job_type}</Fact> : null}
-                {category && category.slug !== "other" ? (
-                  <Fact label="Category"><Link href={`/categories/${category.slug}`} className="text-accent underline">{category.name}</Link></Fact>
-                ) : null}
-                {job.published_at ? <Fact label="Posted">{formatDate(job.published_at)}</Fact> : null}
-                {job.min_experience_years != null ? <Fact label="Experience">{experience}</Fact> : null}
-                {job.languages?.length || job.desirable_languages?.length ? <Fact label="Languages besides English"><Languages job={job} /></Fact> : null}
-                {payLink ? <Fact label="Pay">{payLink}</Fact> : null}
-                {job.reference ? <Fact label="Reference"><span className="break-all">{job.reference}</span></Fact> : null}
+                {details.map((d) => <Fact key={d.label} label={d.label}>{d.node}</Fact>)}
               </dl>
               {whoCanApply ? (
                 <p className="mt-3 rounded-xl bg-mist px-4 py-3 text-[0.95rem] text-ink">
@@ -321,32 +360,23 @@ export default async function JobPage({ params }: Props) {
                   <Link href="/grades" className="text-accent underline">About grades and contract types</Link>
                 </p>
               ) : null}
-              {missingLine}
-              {orgLink ? <p className="mt-3 text-[0.95rem]">{orgLink}</p> : null}
+              {detailsLine}
+            </section>
+          ) : thin ? (
+            <section aria-labelledby="facts-heading">
+              <h2 id="facts-heading" className="sr-only">Vacancy details</h2>
+              {detailsLine}
+              {employerBlock}
             </section>
           ) : (
             <section aria-labelledby="facts-heading">
               <h2 id="facts-heading" className="text-[1.45rem] font-semibold leading-tight text-ink">At a glance</h2>
               <dl className="mt-3 divide-y divide-rule border-y border-rule">
                 {job.deadline ? <GlanceRow label="Closing date" className="lg:hidden">{formatDate(job.deadline)}</GlanceRow> : null}
-                {grade ? (
-                  <GlanceRow label="Grade">
-                    {grade} <Link href="/grades" className="text-sm text-accent underline">What grades mean</Link>
-                  </GlanceRow>
-                ) : null}
-                {job.job_type ? <GlanceRow label="Contract type">{job.job_type}</GlanceRow> : null}
-                {job.min_experience_years != null ? <GlanceRow label="Experience">{experience}</GlanceRow> : null}
-                {job.languages?.length || job.desirable_languages?.length ? <GlanceRow label="Languages besides English"><Languages job={job} /></GlanceRow> : null}
-                {whoCanApply ? <GlanceRow label="Who can apply">{whoCanApply}</GlanceRow> : null}
-                {payLink ? <GlanceRow label="Pay">{payLink}</GlanceRow> : null}
-                {job.published_at ? <GlanceRow label="Posted">{formatDate(job.published_at)}</GlanceRow> : null}
-                {category && category.slug !== "other" ? (
-                  <GlanceRow label="Category"><Link href={`/categories/${category.slug}`} className="text-accent underline">{category.name}</Link></GlanceRow>
-                ) : null}
-                {job.reference ? <GlanceRow label="Reference number"><span className="break-all">{job.reference}</span></GlanceRow> : null}
-                {orgLink ? <GlanceRow label="Organization">{orgLink}</GlanceRow> : null}
+                {details.map((d) => <GlanceRow key={d.label} label={d.label}>{d.node}</GlanceRow>)}
               </dl>
-              {missingLine}
+              {detailsLine}
+              {employerBlock}
             </section>
           )}
 
@@ -377,12 +407,14 @@ export default async function JobPage({ params }: Props) {
 
           {isEuInstitution(job.org_type) ? <EpsoBook className="mt-10" source="job-page" /> : null}
 
-          {similar.length ? (
-            <section className="mt-12" aria-labelledby="similar-heading">
-              <h2 id="similar-heading" className="text-[1.45rem] font-semibold leading-tight text-ink">Similar open vacancies</h2>
-              <div className="mt-4"><JobList jobs={similar} /></div>
+          {/* Two small blocks: more in the category at other organizations, and a link to this organization's other vacancies. */}
+          {more.length && category ? (
+            <section className="mt-12" aria-labelledby="more-heading">
+              <h2 id="more-heading" className="text-[1.45rem] font-semibold leading-tight text-ink">More in {category.name}</h2>
+              <div className="mt-4"><JobList jobs={more} /></div>
             </section>
           ) : null}
+          {orgLink ? <p className={`${more.length ? "mt-4" : "mt-10"} text-[0.95rem]`}>{orgLink}</p> : null}
         </div>
 
         <aside className="space-y-4">

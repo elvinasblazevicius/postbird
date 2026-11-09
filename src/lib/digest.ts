@@ -14,6 +14,8 @@
  */
 import { createHash } from "node:crypto";
 import siteConfig from "@site-config";
+import { continueUrl, weeklyCheckoutLinks } from "@/lib/billing/checkout-links";
+import { BILLING_LIVE } from "@/lib/billing/live";
 import { hadTrialBefore, type PlanHistory } from "@/lib/billing/subscriptions";
 import { trialUsedElsewhereIds } from "@/lib/billing/trial-markers";
 import { sql, transaction } from "@/lib/db";
@@ -155,6 +157,9 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
       // One trial per person: addresses deleted after a plan and signed up again keep their trial
       // marker, and another form of the same address (name+x@, Gmail dots) may have had a plan.
       const elsewhere = await trialUsedElsewhereIds(current.map((c) => ({ id: c.id, email: c.email })));
+      // The address is proven (confirmed, and this email reaches it), so the upgrade link goes straight
+      // to checkout instead of the public form, which would only email it a link first.
+      const checkout = BILLING_LIVE ? await weeklyCheckoutLinks(periodKey, chunk.map((o) => ({ subscriberId: o.row.id, search: o.row.search || null }))) : new Map<number, string>();
       const msgs: OutgoingEmail[] = chunk.map((o) => {
         const c = byId.get(o.row.id)!;
         const oneClick = absoluteUrl(`/api/unsubscribe?token=${c.unsubscribe_token}`);
@@ -163,7 +168,7 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
           ...weeklyEmail({
             group: o.group,
             search: o.row.search,
-            trialUrl: o.trialUrl,
+            trialUrl: checkout.has(c.id) ? continueUrl(checkout.get(c.id)!) : o.trialUrl,
             // One free trial per person: someone who had a plan isn't offered another trial.
             hadTrial: hadTrialBefore(c, elsewhere.has(c.id)),
             accountUrl: absoluteUrl(`/account?t=${c.manage_token}`),
@@ -268,7 +273,7 @@ const MAX_WINDOW_HOURS = { daily: 7 * 24, weekly: 14 * 24 } as const;
 
 export type AlertsResult = { status: "sent" | "skipped" | "failed"; due: number; sent: number; failed: number; empty: number; message: string | null };
 
-type DueRow = { id: number; email: string; frequency: "daily" | "weekly" };
+type DueRow = { id: number; email: string; frequency: "daily" | "weekly"; plan_started_at: Date | null };
 
 /**
  * The idempotency key of one paid alert: the subscriber and where each of its
@@ -317,13 +322,17 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
   try {
     // One clock for the whole run: the database's.
     const [{ now }] = await sql<{ now: Date }[]>`select now() as now`;
+    // A plan that went live since the last email is due at once: the free weekly email may have set
+    // last_sent_at this morning, and the first paid alert shouldn't wait a day for it.
     const due = await sql<DueRow[]>`
-      select s.id::int as id, s.email, s.frequency
+      select s.id::int as id, s.email, s.frequency, s.plan_started_at
       from subscribers s
       where s.status = 'confirmed' and s.billing_status in ('trialing', 'active')
         and exists (select 1 from saved_searches ss where ss.subscriber_id = s.id)
-        and coalesce((select max(ss.last_sent_at) from saved_searches ss where ss.subscriber_id = s.id), '-infinity'::timestamptz)
-            <= ${now}::timestamptz - make_interval(hours => case when s.frequency = 'daily' then ${MIN_HOURS_BETWEEN.daily}::int else ${MIN_HOURS_BETWEEN.weekly}::int end)
+        and (coalesce((select max(ss.last_sent_at) from saved_searches ss where ss.subscriber_id = s.id), '-infinity'::timestamptz)
+               <= ${now}::timestamptz - make_interval(hours => case when s.frequency = 'daily' then ${MIN_HOURS_BETWEEN.daily}::int else ${MIN_HOURS_BETWEEN.weekly}::int end)
+             or (s.plan_started_at is not null
+                 and not exists (select 1 from saved_searches ss where ss.subscriber_id = s.id and ss.last_sent_at >= s.plan_started_at)))
       order by s.id
       limit ${opts.limit ?? 5000}`;
     if (due.length === 0) return { ...base, status: "sent", message: "No subscribers due." };
@@ -400,9 +409,14 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
     const windowsFor = (sub: DueRow) => searches.filter((x) => x.subscriber_id === sub.id).map((s) => {
       const firstHours = FIRST_WINDOW_HOURS[sub.frequency] ?? FIRST_WINDOW_HOURS.weekly;
       const maxHours = MAX_WINDOW_HOURS[sub.frequency] ?? MAX_WINDOW_HOURS.weekly;
+      const firstWindow = now.getTime() - firstHours * 3_600_000;
+      // A new plan's first alert covers its own time (or one normal window), not a week of
+      // backlog from before it started.
+      const planFloor = sub.plan_started_at ? Math.min(new Date(sub.plan_started_at).getTime(), firstWindow) : 0;
       const since = new Date(Math.max(
-        s.last_sent_at ? new Date(s.last_sent_at).getTime() : now.getTime() - firstHours * 3_600_000,
+        s.last_sent_at ? new Date(s.last_sent_at).getTime() : firstWindow,
         now.getTime() - maxHours * 3_600_000,
+        planFloor,
       ));
       return { s, l: { key: `${s.search}|${since.getTime()}`, search: s.search, since } };
     });

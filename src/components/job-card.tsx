@@ -6,7 +6,8 @@ import { displayGrade, isLocalOnly } from "@/lib/grades";
 import { titleLanguage } from "@/lib/title-language";
 import { Flag } from "./flag";
 import { SaveButton } from "./job-tools";
-import { jobPath, locationLabel, monogram, NOT_SPECIFIED } from "@/lib/site";
+import { LISTING_SETTINGS } from "@/config/import";
+import { daysUntil, formatShortDate, jobPath, locationLabel, monogram, NOT_SPECIFIED } from "@/lib/site";
 import { ClosingPostmark } from "./postmark";
 
 /**
@@ -65,10 +66,50 @@ export function Tag({ children, tone = "plain" }: { children: React.ReactNode; t
   return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[0.8rem] font-medium ${tones[tone]}`}>{children}</span>;
 }
 
-/** Closing date at the right of a row: a postmark ("Closes / 12 Nov", red with "in 3 days" when close). */
+/** Closing date at the right of a row as a postmark ("Closes / 12 Nov", red with "in 3 days" when close): the home page's "Closing soon". */
 function Deadline({ deadline }: { deadline: string | null }) {
   if (!deadline) return <span className="block w-[4.5rem] text-center text-xs leading-snug text-slate">No closing date in our source</span>;
   return <ClosingPostmark deadline={deadline} />;
+}
+
+/**
+ * A closing date in words: "Closes 12 Nov" and how many days are left ("3 days", "today",
+ * "tomorrow"; none beyond 60 days), urgent (red) only within LISTING_SETTINGS.closingSoonDays.
+ * Null without a published closing date.
+ */
+export function closingChip(deadline: string | null): { date: string; left: string | null; urgent: boolean } | null {
+  const n = daysUntil(deadline);
+  if (n === null || n < 0) return null;
+  const left = n === 0 ? "today" : n === 1 ? "tomorrow" : n <= 60 ? `${n} days` : null;
+  return { date: `Closes ${formatShortDate(deadline)}`, left, urgent: n <= LISTING_SETTINGS.closingSoonDays };
+}
+
+/** The chip's words: "Closes 12 Nov · 3 days" (read as "Closes 12 Nov, 3 days left"). */
+function ChipText({ chip }: { chip: NonNullable<ReturnType<typeof closingChip>> }) {
+  return (
+    <>
+      {chip.date}
+      {chip.left ? (
+        <>
+          <span aria-hidden="true">{" · "}</span>
+          <span className="sr-only">, </span>
+          {chip.left}
+          {/^\d/.test(chip.left) ? <span className="sr-only"> left</span> : null}
+        </>
+      ) : null}
+    </>
+  );
+}
+
+/** Closing date at the right of a list row: a compact chip, red only when it closes within a week. */
+function DateChip({ deadline }: { deadline: string | null }) {
+  const chip = closingChip(deadline);
+  if (!chip) return <span className="whitespace-nowrap text-xs text-slate">Closing date not listed</span>;
+  return (
+    <span className={`inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-[0.8rem] font-medium ${chip.urgent ? "bg-signal-bg text-signal" : "bg-mist text-slate"}`}>
+      <ChipText chip={chip} />
+    </span>
+  );
 }
 
 /** "New" for a listing posted in the last 48 hours, "3d ago" up to 30 days, nothing after that. */
@@ -93,10 +134,10 @@ function PlaceWithFlag({ code, where }: { code: string | null; where: string }) 
 
 /**
  * One vacancy as a compact two-line row: the title, then organization · location · grade · type,
- * with the closing date on the right. The whole row is the link (its accessible name is the title);
+ * with the closing date on the right (on phones, at the end of that line). The whole row is the link (its accessible name is the title);
  * the bookmark button sits above it.
  */
-export function JobCard({ job, headingLevel = 3 }: { job: JobListItem; headingLevel?: 2 | 3 }) {
+export function JobCard({ job, headingLevel = 3, stamp = false }: { job: JobListItem; headingLevel?: 2 | 3; stamp?: boolean }) {
   const H = `h${headingLevel}` as "h2" | "h3";
   const href = jobPath(job);
   const lang = titleLanguage(job.title);
@@ -109,6 +150,7 @@ export function JobCard({ job, headingLevel = 3 }: { job: JobListItem; headingLe
   const nationalOfficer = Boolean(grade?.startsWith("National Officer"));
   const localLabel = !local ? null : nationalOfficer && localCountry ? `Nationals of ${localCountry} only` : localCountry ? `Local post · ${localCountry}` : "Local post";
   const posted = postedMarker(job);
+  const chip = closingChip(job.deadline);
   // Each detail ends with its own separator, glued to its last word by a no-break space, so a
   // wrapped line can end with "·" but never start with one.
   type Meta = { node: React.ReactNode; nowrap?: boolean };
@@ -145,22 +187,31 @@ export function JobCard({ job, headingLevel = 3 }: { job: JobListItem; headingLe
             <Fragment key={i}>
               <span className={m.nowrap ? "whitespace-nowrap" : undefined}>
                 {m.node}
-                {i < meta.length - 1 ? <span aria-hidden="true">{"\u00a0·"}</span> : null}
+                {/* The dot is for the eye; a screen reader hears a comma. */}
+                {i < meta.length - 1 ? <><span aria-hidden="true">{"\u00a0·"}</span><span className="sr-only">, </span></> : null}
               </span>
               {i < meta.length - 1 ? " " : null}
             </Fragment>
           ))}
+          {/* Phones: the closing date ends the meta line, so the title keeps the row's full width. Glued to the last detail by a no-break space. */}
+          {!stamp && chip ? (
+            <span className="sm:hidden">
+              <span aria-hidden="true">{"\u00a0·"}</span><span className="sr-only">, </span>{" "}
+              <span className={`whitespace-nowrap ${chip.urgent ? "font-medium text-signal" : ""}`}><ChipText chip={chip} /></span>
+            </span>
+          ) : null}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1 self-center text-right text-sm">
-        <Deadline deadline={job.deadline} />
+        {stamp ? <Deadline deadline={job.deadline} /> : <span className={chip ? "max-sm:hidden" : ""}><DateChip deadline={job.deadline} /></span>}
         <SaveButton compact job={{ id: job.id, path: href, title: job.title, org: job.org_name }} />
       </div>
     </article>
   );
 }
 
-export function JobList({ jobs, headingLevel = 3, mobileLimit, columns = 1 }: { jobs: JobListItem[]; headingLevel?: 2 | 3; mobileLimit?: number; columns?: 1 | 2 }) {
+/** `stamp`: the closing date as a postmark instead of a chip (the home page's "Closing soon"). */
+export function JobList({ jobs, headingLevel = 3, mobileLimit, columns = 1, stamp = false }: { jobs: JobListItem[]; headingLevel?: 2 | 3; mobileLimit?: number; columns?: 1 | 2; stamp?: boolean }) {
   const two = columns === 2;
   return (
     <ul className={`overflow-hidden rounded-xl border-x border-t border-rule bg-paper ${two ? "lg:grid lg:grid-cols-2" : ""}`}>
@@ -169,7 +220,7 @@ export function JobList({ jobs, headingLevel = 3, mobileLimit, columns = 1 }: { 
           key={j.id}
           className={`border-b border-rule ${mobileLimit !== undefined && i >= mobileLimit ? "max-sm:hidden" : ""} ${two && i % 2 === 0 ? "lg:border-r" : ""}`}
         >
-          <JobCard job={j} headingLevel={headingLevel} />
+          <JobCard job={j} headingLevel={headingLevel} stamp={stamp} />
         </li>
       ))}
     </ul>
@@ -177,6 +228,6 @@ export function JobList({ jobs, headingLevel = 3, mobileLimit, columns = 1 }: { 
 }
 
 /** Homepage list: the same compact rows, two columns on wide screens, the first `mobileLimit` on phones. */
-export function JobGrid({ jobs, mobileLimit }: { jobs: JobListItem[]; mobileLimit?: number }) {
-  return <JobList jobs={jobs} columns={2} mobileLimit={mobileLimit} />;
+export function JobGrid({ jobs, mobileLimit, stamp = false }: { jobs: JobListItem[]; mobileLimit?: number; stamp?: boolean }) {
+  return <JobList jobs={jobs} columns={2} mobileLimit={mobileLimit} stamp={stamp} />;
 }

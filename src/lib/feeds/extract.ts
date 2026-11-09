@@ -8,6 +8,7 @@ import { CATEGORIES, OTHER_CATEGORY } from "@/config/categories";
 import { COUNTRIES, countryByCode } from "@/config/countries";
 import { DUTY_STATIONS } from "@/config/cities";
 import { KNOWN_ORGS, type KnownOrg } from "@/config/organizations";
+import { LANGUAGES } from "@/config/regions";
 import { IMPORT_SETTINGS } from "@/config/import";
 import { escapeRegExp, excerpt, htmlToText, normalizeForCompare, oneLine, sanitizeDescriptionMax, slugify } from "@/lib/text";
 import { extractDeadline, parseFeedDate } from "./dates";
@@ -163,20 +164,58 @@ const GRADE_LABELS = ["grade", "grade level", "level", "post level", "category a
 const TYPE_LABELS = ["contract type", "type of contract", "contract", "appointment type", "type of appointment", "employment type", "vacancy type", "job type", "position type", "contract modality"];
 const REF_LABELS = ["job id", "job opening id", "job opening number", "vacancy (?:number|no\\.?|notice(?: number)?)", "requisition(?: id| number)?", "reference(?: number| no\\.?)?", "ref\\.?", "va(?: no\\.?| number)", "post number", "position number"];
 
-const GRADE_RE = /\b(USG|ASG|D-?[12]|P-?[1-7]|NO-?[A-E]|G-?[1-7]|GS-?[1-7]|FS-?[1-7]|SB-?[1-5]|LICA-?\d{1,2}|NPSA-?\d{1,2}|IPSA-?\d{1,2}|ICS-?\d{1,2})\b/;
+/**
+ * EU staff grades: AD 5 to AD 16 (administrators), AST 1 to AST 11 (assistants), AST/SC 1 to
+ * AST/SC 6 (secretaries and clerks), and contract agents' function groups FG I to FG IV.
+ */
+const EU_GRADE_SOURCE = "AST ?[/-] ?SC ?-? ?[1-6]|AST ?-? ?(?:1[01]|[1-9])|AD ?-? ?(?:1[0-6]|[5-9])|FG ?-? ?(?:IV|I{1,3})";
+/**
+ * Grades: UN common system (P, D, NO, G/GS, FS, ASG/USG), UN service contracts (SB, LICA, NPSA,
+ * IPSA, ICS), EU staff (EU_GRADE_SOURCE) and the World Bank Group and IFC (GA to GK).
+ */
+const UN_EU_GRADE_SOURCE = `USG|ASG|${EU_GRADE_SOURCE}|D-?[12]|P-?[1-7]|NO-?[A-E]|G-?[1-7]|GS-?[1-7]|FS-?[1-7]|SB-?[1-5]|LICA-?\\d{1,2}|NPSA-?\\d{1,2}|IPSA-?\\d{1,2}|ICS-?\\d{1,2}`;
+const GRADE_RE = new RegExp(`\\b(${UN_EU_GRADE_SOURCE}|G[A-K])\\b`);
+/**
+ * A title segment that is only a grade. World Bank Group grades are read from a "Grade:" line only:
+ * in a title, "GA" is more often a place ("Atlanta, GA") than a grade.
+ */
+const TITLE_SEGMENT_GRADE_RE = new RegExp(`^(${UN_EU_GRADE_SOURCE})$`);
+/** An EU grade anywhere in a title ("Contract Agent FG IV - Data Analyst"): the forms are distinctive enough. */
+const EU_TITLE_GRADE_RE = new RegExp(`\\b(${EU_GRADE_SOURCE})\\b`);
 
-function normalizeGrade(g: string): string {
-  const m = g.toUpperCase().match(/^(USG|ASG|NO|GS|FS|SB|LICA|NPSA|IPSA|ICS|D|P|G)-?(\w+)$/);
-  if (!m) return g.toUpperCase();
+/** A grade as stored: "P-3", "NO-B", "USG", "AD-6", "AST/SC-2", "FG-IV", "GG" (see gradeText in src/lib/grades.ts). */
+export function normalizeGrade(g: string): string {
+  const u = g.toUpperCase().replace(/\s+/g, " ").trim();
+  const sc = u.match(/^AST ?[/-] ?SC ?-? ?([1-6])$/);
+  if (sc) return `AST/SC-${sc[1]}`;
+  const eu = u.match(/^(AD|AST|FG) ?-? ?(\d{1,2}|IV|I{1,3})$/);
+  if (eu) return `${eu[1]}-${eu[2]}`;
+  if (/^G[A-K]$/.test(u)) return u;
+  const m = u.match(/^(USG|ASG|NO|GS|FS|SB|LICA|NPSA|IPSA|ICS|D|P|G)-?(\w+)$/);
+  if (!m) return u;
   if (m[1] === "USG" || m[1] === "ASG") return m[1];
   return `${m[1]}-${m[2]}`;
 }
 
+/** The grade from a "Grade:" line, a title segment that is only a grade ("(P-3)", "- AD 6"), or an EU grade anywhere in the title. */
+export function detectGrade(title: string, gradeLabel: string | null): string | null {
+  const titleGrade = [...title.matchAll(/\(([^)]{1,20})\)/g)].map((m) => m[1])
+    .concat(title.split(/\s[-–—|]\s|,|\//))
+    .map((x) => x.trim())
+    .find((x) => TITLE_SEGMENT_GRADE_RE.test(x));
+  const m = (gradeLabel && gradeLabel.match(GRADE_RE)) || (titleGrade ? titleGrade.match(TITLE_SEGMENT_GRADE_RE) : null) || title.match(EU_TITLE_GRADE_RE);
+  return m ? normalizeGrade(m[1]) : null;
+}
+
 export function detectJobType(text: string): string | null {
   const t = text.toLowerCase();
+  if (/\btrainee(ship)?s?\b/.test(t)) return "Traineeship";
   if (/\binterns?(hip)?\b|\bstagiaire\b|\bpasant[ií]a\b/.test(t)) return "Internship";
   if (/\bfellow(ship)?s?\b/.test(t)) return "Fellowship";
   if (/\b(un )?volunteers?\b|\bunv\b/.test(t)) return "Volunteer";
+  // EU staff categories: contract staff (CAST, function groups FG I to IV) and temporary staff.
+  if (/\bcontract agents?\b/.test(t)) return "Contract agent";
+  if (/\btemporary agents?\b/.test(t)) return "Temporary agent";
   if (/\bconsult(ant|ancy|ancies|ants)\b|\bindividual contractor\b|\bindividual consultant\b|\bfreelance\b/.test(t)) return "Consultancy";
   if (/\btemporary( appointment| job opening| position)?\b|\bshort[- ]term\b/.test(t)) return "Temporary";
   if (/\bfixed[- ]term\b|\bcontinuing appointment\b|\bpermanent\b|\bfta\b/.test(t)) return "Fixed-term";
@@ -190,7 +229,16 @@ export function detectCategory(title: string): string {
   return OTHER_CATEGORY.slug;
 }
 
-const LANGUAGE_NAMES = ["French", "Spanish", "Arabic", "Portuguese", "Russian", "Chinese"];
+const LANGUAGE_NAMES: readonly string[] = LANGUAGES;
+/**
+ * What may follow a language name when it names something else: a place ("French Polynesia",
+ * "Czech Republic"), an organization or government ("Danish Refugee Council", "German Agency for
+ * International Cooperation", "Swedish Embassy"), people ("Polish nationals"), or a place where a
+ * language is spoken ("Spanish-speaking countries").
+ */
+const NOT_A_LANGUAGE_AFTER = "(?! Polynesia| Guiana| Southern| Republic| Refugee| Red Cross| Church| Government| Ministry| Embassy| Agency| Council| Institute| International| Development| Relief| Humanitarian| Aid\\b| Cooperation| Presidency| authorities| nationals?\\b| citizens?\\b| nationality|-language|[- ]speaking (?:countr|region|area|world|communit|populat|context|environment|africa|west|east|central|north|south|nation|state|people))";
+/** Languages named as alternatives: "one of the following: French, Spanish", "either French or Spanish". */
+const ANY_OF_MARK = /\b(?:(?:one|any) of the following|(?:one|any) of|either)\b/gi;
 const LANG_CONTEXT = /\b(fluen\w*|proficien\w*|knowledge of|command of|written and (?:oral|spoken)|spoken and written|oral and written|bilingual|mother tongue|native speaker|language (?:skills?|requirements?|proficiency)|required|essential|mandatory|obligatory|must\s+(?:be\s+able\s+to\s+)?(?:speak|read|write|understand|communicate|be fluent|be proficient|have)|speak|speaks|speaking|spoken|desirable|an asset|advantage|preferred)\b|\blanguages?\s*[:：]/i;
 /** Words that make a language a plus rather than a requirement ("… is an advantage", "Desirable: French"). */
 const DESIRABLE_MARK = /\b(?:advantage\w*|advantageous|desirable|desired|assets?|preferred|preferabl[ey]|a plus|added value|nice to have|beneficial)\b/gi;
@@ -207,11 +255,20 @@ const OTHER_UN_LANGUAGE =
 
 export type LanguageRequirements = { required: string[] | null; desirable: string[] | null };
 
+/** "French or Spanish", "English, French and/or Spanish": languages joined by "or" (English included, so "English or French" counts). */
+const OR_CHAIN = (() => {
+  const lang = `(?:English|${LANGUAGES.join("|")})`;
+  return new RegExp(`\\b${lang}(?:\\s*,\\s*${lang})*\\s*,?\\s+(?:and\\/or|or)\\s+${lang}\\b`, "gi");
+})();
+
 /**
  * Languages (other than English) named in sentences about language requirements, split into
  * required and desirable. A language counts as desirable when the nearest marker after it in its
  * sentence (or, with none after it, the nearest one before it) is "advantage", "desirable", "an
- * asset", "preferred" and the like; otherwise it is required. A language named both ways is required.
+ * asset", "preferred" and the like; otherwise it is required. A language named as one of several
+ * alternatives ("German or Italian is required", "English and one of the following: French,
+ * Spanish") is not required on its own, so it is kept with the desirable ones (any of them).
+ * A language named both ways is required.
  */
 export function detectLanguageRequirements(text: string): LanguageRequirements {
   const required = new Set<string>();
@@ -226,12 +283,16 @@ export function detectLanguageRequirements(text: string): LanguageRequirements {
       ...[...sentence.matchAll(DESIRABLE_MARK)].map((m) => ({ at: m.index ?? 0, desirable: true })),
       ...[...sentence.matchAll(REQUIRED_MARK)].map((m) => ({ at: m.index ?? 0, desirable: false })),
     ].sort((a, b) => a.at - b.at);
+    // Where alternatives are named: after "one of the following" / "either", and within "French or Spanish".
+    const anyOfFrom = [...sentence.matchAll(ANY_OF_MARK)].map((m) => m.index ?? 0);
+    const orChains = [...sentence.matchAll(OR_CHAIN)].map((m) => [m.index ?? 0, (m.index ?? 0) + m[0].length]);
+    const isAlternative = (at: number) => anyOfFrom.some((from) => from < at) || orChains.some(([a, b]) => at >= a && at < b);
     for (const lang of LANGUAGE_NAMES) {
       // "French" but not "French Polynesia", nor "Spanish-speaking countries" (a place, not a language the job needs)
-      for (const m of sentence.matchAll(new RegExp(`\\b${lang}\\b(?! Polynesia| Guiana| Southern|-language|[- ]speaking (?:countr|region|area|world|communit|populat|context|environment|africa|west|east|central|north|south|nation|state|people))`, "gi"))) {
+      for (const m of sentence.matchAll(new RegExp(`\\b${lang}\\b${NOT_A_LANGUAGE_AFTER}`, "gi"))) {
         const at = m.index ?? 0;
         const mark = marks.find((k) => k.at > at) ?? [...marks].reverse().find((k) => k.at < at);
-        (mark?.desirable ? desirable : required).add(lang);
+        (mark?.desirable || isAlternative(at) ? desirable : required).add(lang);
       }
     }
   }
@@ -446,13 +507,7 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   // Type, grade, reference
   const typeLabel = labelled(head, TYPE_LABELS, 80);
   const jobType = detectJobType([title, typeLabel ?? ""].join(" | "));
-  const gradeLabel = labelled(head, GRADE_LABELS, 30);
-  const titleGrade = [...title.matchAll(/\(([^)]{1,20})\)/g)].map((m) => m[1])
-    .concat(title.split(/\s[-–—|]\s|,|\//))
-    .map((x) => x.trim())
-    .find((x) => new RegExp(`^${GRADE_RE.source}$`).test(x));
-  const gradeMatch = (gradeLabel && gradeLabel.match(GRADE_RE)) || (titleGrade ? titleGrade.match(GRADE_RE) : null);
-  const grade = gradeMatch ? normalizeGrade(gradeMatch[1]) : null;
+  const grade = detectGrade(title, labelled(head, GRADE_LABELS, 30));
   const refLabel = labelled(head, REF_LABELS, 40);
   const refMatch = refLabel?.match(/[A-Za-z0-9][A-Za-z0-9\-/_.]{2,39}/);
   const reference = refMatch && /\d/.test(refMatch[0]) ? refMatch[0] : null;

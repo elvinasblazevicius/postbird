@@ -201,7 +201,7 @@ export function consentRegion(): Promise<boolean> {
 export function CookieSettingsLink({ className = "" }: { className?: string }) {
   return (
     <button type="button" className={className} onClick={() => window.dispatchEvent(new Event(OPEN_EVENT))}>
-      Cookie settings
+      Cookie settings / Your privacy choices
     </button>
   );
 }

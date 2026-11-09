@@ -142,7 +142,7 @@ export type ConfirmResult =
       /** The free weekly email is on after this confirmation (now or from before). */
       weeklyEmail: boolean;
       paidPlan: boolean;
-      /** The plan at this address is a trial the daily job canceled because the address wasn't confirmed in time. */
+      /** The plan at this address is a trial the daily job canceled because the address wasn't confirmed in time (billing flag trial_unconfirmed). */
       trialCanceled: boolean;
     };
 
@@ -173,7 +173,9 @@ export async function confirmSubscriber(t: unknown): Promise<ConfirmResult> {
     returning subscribers.id::int as id, premium_waitlist, wants_alerts, weekly_email,
               billing_status in ('trialing', 'active') as paid_plan,
               billing_status in ('trialing', 'active', 'past_due', 'paused') as plan_live,
-              (billing_status = 'canceled' and coalesce(subscribers.paddle_subscription_id = subscribers.unconfirmed_trial_sub, false)) as trial_canceled,
+              -- Only a trial the daily job canceled: one canceled in Paddle by someone also leaves unconfirmed_trial_sub set.
+              (billing_status = 'canceled' and coalesce(subscribers.paddle_subscription_id = subscribers.unconfirmed_trial_sub, false)
+               and exists (select 1 from billing_flags f where f.subscription_id = subscribers.paddle_subscription_id and f.kind = 'trial_unconfirmed')) as trial_canceled,
               prev.prev_changes->>'weekly_search' as weekly_search`;
     const row = updated[0];
     // The free weekly email follows one search: the one just chosen. A plan keeps its own searches.

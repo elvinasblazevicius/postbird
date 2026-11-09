@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { andList, STATED_DETAIL } from "@/lib/filter-labels";
-import { FILTER_GRADE_GROUPS, gradeGroupOf } from "@/lib/grades";
+import { FILTER_GRADE_GROUPS, gradeGroupOf, gradeText } from "@/lib/grades";
 import { derivedFilters, JOB_TYPES, jobsUrl, type JobFilters } from "@/lib/jobs";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { AutoSubmit } from "./auto-submit";
@@ -78,12 +78,13 @@ const MAX_ORGS = 5;
 
 /**
  * A field that may hold several values (a listing matching any of them matches): one select per
- * chosen value, plus "Add another …" once one is chosen. Works without JavaScript: each select is
- * a repeated field of the same name, and an empty one is ignored.
+ * chosen value (or one empty select), and under it an "Add another …" link-style button that opens
+ * one more select. Works without JavaScript: the button is a native disclosure (details/summary),
+ * each select is a repeated field of the same name, and an empty one is ignored.
  */
-function RepeatSelect({ name, label, idPrefix, chosen, groups, anyLabel, chooseLabel, addLabel, removeLabel, itemNoun, max }: {
+function RepeatSelect({ name, label, idPrefix, chosen, groups, anyLabel, chooseLabel, addLabel, addHint, removeLabel, itemNoun, max }: {
   name: string; label: string; idPrefix: string; chosen: string[]; groups: Group[];
-  anyLabel: string; chooseLabel: string; addLabel: string; removeLabel: string; itemNoun: string; max: number;
+  anyLabel: string; chooseLabel: string; addLabel: string; addHint: string; removeLabel: string; itemNoun: string; max: number;
 }) {
   const options = (empty: string) => (
     <>
@@ -97,46 +98,51 @@ function RepeatSelect({ name, label, idPrefix, chosen, groups, anyLabel, chooseL
         ))}
     </>
   );
+  const values = chosen.length ? chosen : [""];
   return (
     <fieldset>
       <legend className="mb-1.5 block text-sm font-medium text-ink">{label}</legend>
       <div className="space-y-2">
-        {chosen.map((v, i) => (
+        {values.map((v, i) => (
           <select
-            key={v}
+            key={v || "none"}
             id={`${idPrefix}-${name}-${i}`}
             name={name}
             defaultValue={v}
-            aria-label={chosen.length > 1 ? `${label}, ${itemNoun} ${i + 1} of ${chosen.length}` : label}
+            aria-label={values.length > 1 ? `${label}, ${itemNoun} ${i + 1} of ${values.length}` : label}
             className={fieldCls}
             style={chevron}
           >
-            {options(chosen.length > 1 ? removeLabel : anyLabel)}
+            {options(values.length > 1 ? removeLabel : anyLabel)}
           </select>
         ))}
-        {chosen.length < max ? (
-          <div>
-            <label htmlFor={`${idPrefix}-${name}-add`} className="mb-1 block text-xs text-slate">{addLabel}</label>
+      </div>
+      {chosen.length < max ? (
+        <details className="group/add mt-1.5">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 py-1 text-sm font-medium text-accent hover:underline [&::-webkit-details-marker]:hidden">
+            <svg viewBox="0 0 12 12" className="h-3 w-3 transition-transform group-open/add:rotate-45" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+            {addLabel}
+          </summary>
+          <div className="mt-1.5">
+            <label htmlFor={`${idPrefix}-${name}-add`} className="mb-1 block text-xs text-slate">{addHint}</label>
             <select id={`${idPrefix}-${name}-add`} name={name} defaultValue="" className={fieldCls} style={chevron}>
               {options(chooseLabel)}
             </select>
           </div>
-        ) : null}
-      </div>
+        </details>
+      ) : null}
     </fieldset>
   );
 }
 
 /**
  * "Where" for result pages and alerts, with room for several places (a listing in any of them
- * matches). One select per chosen place, plus "Add another place" once one is chosen.
+ * matches): one select per chosen place, and "Add another place" under them.
  */
 export function WhereFields({ facets, filters, idPrefix, label = "Where", name = "where" }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string; name?: string }) {
-  const chosen = chosenPlaces(filters);
-  if (!chosen.length) return <WhereSelect facets={facets} filters={filters} idPrefix={idPrefix} label={label} name={name} />;
   return (
-    <RepeatSelect name={name} label={label} idPrefix={idPrefix} chosen={chosen} groups={placeGroups(facets, filters)} max={MAX_PLACES}
-      anyLabel="Anywhere" chooseLabel="Choose a place" addLabel="Add another place (jobs in any of them)" removeLabel="Remove this place" itemNoun="place" />
+    <RepeatSelect name={name} label={label} idPrefix={idPrefix} chosen={chosenPlaces(filters)} groups={placeGroups(facets, filters)} max={MAX_PLACES}
+      anyLabel="Anywhere" chooseLabel="Choose a place" addLabel="Add another place" addHint="Jobs in any of the places you choose" removeLabel="Remove this place" itemNoun="place" />
   );
 }
 
@@ -147,10 +153,9 @@ export function WhereFields({ facets, filters, idPrefix, label = "Where", name =
 export function OrgFields({ facets, filters, idPrefix, name = "org", counts = true }: { facets: FacetData; filters: JobFilters; idPrefix: string; name?: string; counts?: boolean }) {
   const chosen = filters.org ?? [];
   const options = facets.orgs.filter((o) => o.count > 0 || chosen.includes(o.slug)).map((o) => ({ value: o.slug, label: counts ? withCount(o.name, o.count) : o.name }));
-  if (!chosen.length) return <Select idPrefix={idPrefix} name={name} label="Organization" all="Any organization" options={options} />;
   return (
     <RepeatSelect name={name} label="Organization" idPrefix={idPrefix} chosen={chosen} groups={[{ label: "", options }]} max={MAX_ORGS}
-      anyLabel="Any organization" chooseLabel="Choose an organization" addLabel="Add another organization (jobs at any of them)" removeLabel="Remove this organization" itemNoun="organization" />
+      anyLabel="Any organization" chooseLabel="Choose an organization" addLabel="Add another organization" addHint="Jobs at any of the organizations you choose" removeLabel="Remove this organization" itemNoun="organization" />
   );
 }
 
@@ -183,7 +188,7 @@ function GradeSelect({ facets, filters, idPrefix }: { facets: FacetData; filters
     return {
       label: g.name,
       options: count > 0 || selected === g.value || exact.length
-        ? [{ value: g.value, label: withCount(anyLevelLabel(g.name), count) }, ...exact.map((x) => ({ value: x.grade, label: withCount(x.grade, x.count) }))]
+        ? [{ value: g.value, label: withCount(anyLevelLabel(g.name), count) }, ...exact.map((x) => ({ value: x.grade, label: withCount(gradeText(x.grade), x.count) }))]
         : [],
     };
   });
@@ -198,53 +203,55 @@ function GradeSelect({ facets, filters, idPrefix }: { facets: FacetData; filters
       all="Any grade"
       value={selected}
       options={legacy}
-      groups={[...groups, { label: "Other grades", options: other.map((x) => ({ value: x.grade, label: withCount(x.grade, x.count) })) }]}
+      groups={[...groups, { label: "Other grades", options: other.map((x) => ({ value: x.grade, label: withCount(gradeText(x.grade), x.count) })) }]}
     />
   );
 }
 
 /**
- * Grade as checkboxes (result pages): by grade group, each starting with "All … grades" (the whole
- * group) and then the single grades in it that have open jobs. Several can be ticked; a listing
- * with any of them matches. Grades outside the groups are listed last.
+ * Grade as checkboxes (result pages), compact: one "{Group}, any level" box per grade group with
+ * open jobs, and the group's single grades ("P-3") folded under it (open while one is ticked).
+ * Several can be ticked; a listing with any of them matches. Grades outside the groups come last.
  */
-function GradeChecks({ facets, filters, idPrefix }: { facets: FacetData; filters: JobFilters; idPrefix: string }) {
+function GradeChecks({ facets, filters }: { facets: FacetData; filters: JobFilters }) {
   const selected = new Set(filters.grade ?? []);
   const groups = FILTER_GRADE_GROUPS.map((g) => {
     const { count, exact } = gradeGroupCounts(facets, g.value, (grade) => selected.has(grade));
-    const show = count > 0 || selected.has(g.value) || exact.length > 0;
-    return {
-      key: g.value,
-      label: g.name.replace(/ \(.*\)$/, ""),
-      options: show ? [{ value: g.value, label: anyLevelLabel(g.name), count }, ...exact.map((x) => ({ value: x.grade, label: x.grade, count: x.count }))] : [],
-    };
-  });
+    return { key: g.value, name: g.name.replace(/ \(.*\)$/, ""), any: anyLevelLabel(g.name), count, exact, show: count > 0 || selected.has(g.value) || exact.length > 0 };
+  }).filter((g) => g.show);
   const other = facets.grades.filter((x) => !gradeGroupOf(x.grade) && x.grade !== "entry" && (x.count > 0 || selected.has(x.grade)));
   // An old link may use the "entry" group, which is not offered any more: keep it while chosen.
-  const legacy = selected.has("entry") ? [{ key: "entry", label: "Entry level", options: [{ value: "entry", label: "P-1, P-2, NO-A", count: 0 }] }] : [];
-  const all = [...legacy, ...groups, { key: "other", label: "Other grades", options: other.map((x) => ({ value: x.grade, label: x.grade, count: x.count })) }]
-    .filter((g) => g.options.length);
-  if (!all.length) return null;
+  const legacy = selected.has("entry");
+  if (!groups.length && !other.length && !legacy) return null;
+  const box = (value: string, label: React.ReactNode, count: number | null) => (
+    <label className="flex cursor-pointer items-center gap-2 py-1 text-[0.95rem] text-ink">
+      <input type="checkbox" name="grade" value={value} defaultChecked={selected.has(value)} className="h-4 w-4 shrink-0 accent-[var(--accent)]" />
+      <span>{label}{count !== null ? <> <span className="text-slate">({count})</span></> : null}</span>
+    </label>
+  );
   return (
     <fieldset>
-      <legend className="mb-1.5 block text-sm font-medium text-ink">Grade</legend>
-      <div className="space-y-3">
-        {all.map((g) => (
-          <div key={g.key} role="group" aria-labelledby={`${idPrefix}-grade-${g.key}`}>
-            <p id={`${idPrefix}-grade-${g.key}`} className="text-xs font-medium text-slate">{g.label}</p>
-            <ul className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5">
-              {g.options.map((o) => (
-                <li key={o.value} className={o.value === g.key ? "col-span-2" : ""}>
-                  <label className="flex cursor-pointer items-center gap-2 py-1 text-[0.95rem] text-ink">
-                    <input type="checkbox" name="grade" value={o.value} defaultChecked={selected.has(o.value)} className="h-4 w-4 shrink-0 accent-[var(--accent)]" />
-                    <span>{o.label} <span className="text-slate">({o.count})</span></span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </div>
+      <legend className="mb-1 block text-sm font-medium text-ink">Grade</legend>
+      <ul>
+        {legacy ? <li>{box("entry", "Entry level (P-1, P-2, NO-A)", null)}</li> : null}
+        {groups.map((g) => (
+          <li key={g.key}>
+            {box(g.key, g.any, g.count)}
+            {g.exact.length ? (
+              <details className="group/levels ml-6" open={g.exact.some((x) => selected.has(x.grade))}>
+                <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-accent [&::-webkit-details-marker]:hidden">
+                  {g.name} levels
+                  <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 transition-transform group-open/levels:rotate-180" aria-hidden="true"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+                </summary>
+                <ul className="grid grid-cols-2 gap-x-3">
+                  {g.exact.map((x) => <li key={x.grade}>{box(x.grade, gradeText(x.grade), x.count)}</li>)}
+                </ul>
+              </details>
+            ) : null}
+          </li>
         ))}
-      </div>
+        {other.map((x) => <li key={x.grade}>{box(x.grade, gradeText(x.grade), x.count)}</li>)}
+      </ul>
     </fieldset>
   );
 }
@@ -299,7 +306,7 @@ function MoreToggle() {
   );
 }
 
-const moreIsOpen = (f: JobFilters) => Boolean(f.grade?.length || f.type || f.posted || f.closing || f.lang || f.exp || f.orgtype || f.unstated);
+const moreIsOpen = (f: JobFilters) => Boolean(f.type || f.posted || f.closing || f.lang || f.exp || f.orgtype);
 
 /**
  * "Also show vacancies that don't state a grade": with a filter read from the posting's text in
@@ -371,6 +378,7 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
       {!("category" in hidden) ? (
         <Select idPrefix={P} name="category" label="Category" value={filters.category} all="Any category" options={facets.categories.filter((c) => c.count > 0 || c.slug === filters.category).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) }))} />
       ) : null}
+      <GradeChecks facets={facets} filters={filters} />
       {!("remote" in hidden) ? (
         <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-rule px-3 py-2.5 text-[0.95rem] text-ink">
           <input type="checkbox" name="remote" value="1" defaultChecked={!!filters.remote} className="h-4 w-4 accent-[var(--accent)]" />
@@ -387,11 +395,11 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
       <details className="group/more" open={moreIsOpen(filters)}>
         <MoreToggle />
         <div className="mt-3 space-y-4">
-          <GradeChecks facets={facets} filters={filters} idPrefix={P} />
           <MoreFilterFields idPrefix={P} filters={filters} facets={facets} hideOrgType={"orgtype" in hidden} />
-          <UnstatedToggle filters={filters} idPrefix={P} />
         </div>
       </details>
+      {/* Outside "More filters": it also applies to the grade boxes above. */}
+      <UnstatedToggle filters={filters} idPrefix={P} />
       <div className="flex items-center gap-3 pt-1">
         <button type="submit" className="flex-1 rounded-lg bg-brand px-4 py-2.5 font-semibold text-white hover:bg-accent">Show jobs</button>
         <Link href={jobsUrl({}, action)} className="rounded-lg px-3 py-2.5 text-sm font-medium text-accent hover:bg-mist">Clear</Link>

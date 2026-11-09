@@ -3,6 +3,7 @@
  * on /pricing and /pricing/trial: computed from the open listings (demo
  * listings left out), so the line is always true. Server only.
  */
+import { cache } from "react";
 import { organizationFacets } from "@/lib/jobs";
 
 /** Below this many organizations with open vacancies the line isn't shown. */
@@ -50,7 +51,21 @@ export function joinNames(names: string[]): string {
   return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-export async function coverage(): Promise<Coverage | null> {
+/**
+ * "One email instead of checking IOM, WHO, UNESCO and 117 other career sites." from the coverage
+ * (three names, then the number of the others); a plain line without numbers when the coverage
+ * isn't shown (fewer than COVERAGE_MIN_ORGS organizations).
+ */
+export function oneEmailLine(c: Coverage | null): string {
+  if (!c || !c.names.length) return "One email instead of checking each employer's career site.";
+  const names = c.names.slice(0, 3);
+  const others = c.count - names.length;
+  if (others < 1) return `One email instead of checking the career sites of ${joinNames(names)}.`;
+  return `One email instead of checking ${names.join(", ")} and ${others.toLocaleString("en-US")} other career ${others === 1 ? "site" : "sites"}.`;
+}
+
+/** Shared by everything in one render (the pricing page asks twice). */
+export const coverage = cache(async (): Promise<Coverage | null> => {
   const orgs = await organizationFacets(1000, false).catch(() => []);
   return coverageFrom(orgs);
-}
+});

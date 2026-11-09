@@ -19,6 +19,11 @@ const GROUP_NAMES: Record<string, string> = {
   NO: "National Officer",
   G: "General Service",
   FS: "Field Service",
+  AD: "EU AD",
+  AST: "EU AST",
+  "AST-SC": "EU AST/SC",
+  FG: "EU contract agent",
+  WBG: "World Bank Group",
 };
 
 /** The usual values: at least USUAL_MIN_SHARE of those stating one, most first, at most three. */

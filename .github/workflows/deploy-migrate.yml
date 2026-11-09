@@ -1,9 +1,10 @@
-# Applies new database migrations (db/migrations) once CI has passed on main,
-# so the database is ready for the code Netlify is deploying from the same push
-# and a migration from a commit that failed its checks is never applied.
-# Migrations are safe to run more than once (already-applied ones are
-# skipped); the scheduled workflow applies them again before each task.
-# Can also be started by hand (Actions → Deploy migrations → Run workflow).
+# Backup for applying database migrations (db/migrations): the Netlify production
+# build applies them before the new code goes live (scripts/build-netlify.sh);
+# this applies them again once CI has passed on main, in case that build couldn't
+# (e.g. DATABASE_URL without the Builds scope). Safe to run more than once
+# (already-applied ones are skipped). The scheduled workflow also applies them
+# when CI passed for its commit. Can be started by hand (Actions → Deploy
+# migrations → Run workflow).
 #
 # Repository secret needed: DATABASE_URL (the same one the scheduled jobs use).
 name: Deploy migrations

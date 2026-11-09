@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { extractDeadline, findDate } from "@/lib/feeds/dates";
-import { detectCategory, detectJobType, findCountries, normalizeItem, type FeedContext } from "@/lib/feeds/extract";
+import { detectCategory, detectGrade, detectJobType, detectLanguageRequirements as languagesOf, findCountries, normalizeGrade, normalizeItem, type FeedContext } from "@/lib/feeds/extract";
+import { displayGrade, gradeGroupOf, gradeLabel, gradeMatches, isLocalOnlyGrade, payScaleFor } from "@/lib/grades";
+import { parseFilters } from "@/lib/jobs";
 import { parseFeed, type RawItem } from "@/lib/feeds/parse";
 import { canonicalizeUrl, pickApplyUrl } from "@/lib/feeds/url";
 import { sanitizeDescription, sanitizeDescriptionMax } from "@/lib/text";
@@ -401,5 +403,82 @@ describe("employer links (job boards are never linked)", () => {
     expect(domainMatchesOrg("medecinsdumonde.org", "Médecins du Monde")).toBe(true);
     expect(domainMatchesOrg("impact-initiatives.org", "Agency for Technical Cooperation and Development")).toBe(false);
     expect(domainMatchesOrg("google.com", "World Health Organization")).toBe(false);
+  });
+});
+
+describe("EU and development-bank grades, contract types and languages", () => {
+  const job = (title: string, summaryHtml: string | null = null) => normalizeItem(raw({ title, summaryHtml }), feed);
+
+  it("reads EU grades from the title and from a grade line", () => {
+    expect(job("Policy Officer (AD 6)").grade).toBe("AD-6");
+    expect(job("Policy Officer", "<p>Grade: AD 6</p><p>The officer will...</p>").grade).toBe("AD-6");
+    expect(job("Contract Agent FG IV").grade).toBe("FG-IV");
+    expect(job("Contract Agent FG IV").jobType).toBe("Contract agent");
+    expect(job("Secretary (AST/SC 2)").grade).toBe("AST/SC-2");
+    expect(detectGrade("Assistant - AST 3", null)).toBe("AST-3");
+    expect(detectGrade("Head of Unit", "AD12")).toBe("AD-12");
+    expect(normalizeGrade("ast-sc 6")).toBe("AST/SC-6");
+    expect(normalizeGrade("FG III")).toBe("FG-III");
+    // Out of range: no AD 1-4, no AST 12, no FG V.
+    expect(detectGrade("Officer (AD 3)", null)).toBeNull();
+    expect(detectGrade("Officer", "AST 12")).toBeNull();
+    expect(detectGrade("Officer", "FG V")).toBeNull();
+  });
+
+  it("reads World Bank Group grades from a grade line only (in a title GA is more often a place)", () => {
+    expect(job("Senior Economist", "<p>Grade: GG</p><p>The economist will...</p>").grade).toBe("GG");
+    expect(detectGrade("Health Advisor - Atlanta, GA", null)).toBeNull();
+    expect(detectGrade("Analyst", "GK")).toBe("GK");
+    expect(detectGrade("Analyst", "GL")).toBeNull();
+  });
+
+  it("reads EU contract types and traineeships", () => {
+    expect(detectJobType("Temporary Agent - Legal Officer")).toBe("Temporary agent");
+    expect(detectJobType("Contract agent, function group III")).toBe("Contract agent");
+    expect(detectJobType("Blue Book traineeship")).toBe("Traineeship");
+    expect(detectJobType("Temporary Appointment")).toBe("Temporary");
+  });
+
+  it("groups the new grades for the filter and writes them as their employers do", () => {
+    expect(gradeGroupOf("AD-6")).toBe("AD");
+    expect(gradeGroupOf("AST-11")).toBe("AST");
+    expect(gradeGroupOf("AST/SC-2")).toBe("AST-SC");
+    expect(gradeGroupOf("FG-IV")).toBe("FG");
+    expect(gradeGroupOf("GG")).toBe("WBG");
+    expect(gradeMatches("AD", "AD-16")).toBe(true);
+    expect(gradeMatches("AST", "AST/SC-2")).toBe(false);
+    expect(displayGrade({ grade: "AD-6", title: "Policy Officer" })).toBe("AD 6");
+    expect(displayGrade({ grade: "AST/SC-2", title: "Secretary" })).toBe("AST/SC 2");
+    expect(displayGrade({ grade: "FG-IV", title: "Contract Agent" })).toBe("FG IV");
+    expect(displayGrade({ grade: "GG", title: "Economist" })).toBe("GG");
+    expect(gradeLabel("WBG")).toBe("World Bank Group (GA to GK)");
+    expect(gradeLabel("FG-IV")).toBe("FG IV");
+    // None of them is a local-only grade ("AST/SC" isn't the service contract "SC").
+    for (const g of ["AD-6", "AST-3", "AST/SC-2", "FG-IV", "GA"]) expect(isLocalOnlyGrade(g), g).toBe(false);
+    expect(payScaleFor({ grade: "AD-6", title: "Policy Officer", org_type: "EU institution" })?.family).toBe("EU");
+    expect(payScaleFor({ grade: "GG", title: "Economist", org_type: "International financial institution" })).toBeNull();
+  });
+
+  it("accepts the new grades, groups, contract types and languages in the URL", () => {
+    expect(parseFilters({ grade: ["AD", "AST-SC", "FG", "WBG", "AD-6", "AST/SC-2", "FG-IV", "GG", "AD-4", "GZ"] }).grade).toEqual(["AD", "AD-6", "AST-SC", "AST/SC-2", "FG", "FG-IV", "GG", "WBG"]);
+    expect(parseFilters({ type: "Contract agent" }).type).toBe("Contract agent");
+    expect(parseFilters({ type: "Traineeship" }).type).toBe("Traineeship");
+    for (const lang of ["German", "Italian", "Dutch", "Polish", "Swedish"]) expect(parseFilters({ lang }).lang).toBe(lang);
+  });
+
+  it("treats languages named as alternatives as any of them, not each required", () => {
+    expect(languagesOf("Satisfactory knowledge of German or Italian is required.")).toEqual({ required: null, desirable: ["German", "Italian"] });
+    expect(languagesOf("English and one of the following: French, Spanish is required.")).toEqual({ required: null, desirable: ["French", "Spanish"] });
+    expect(languagesOf("Thorough knowledge of either French or German is required.")).toEqual({ required: null, desirable: ["French", "German"] });
+    expect(languagesOf("Fluency in English or French is required.")).toEqual({ required: null, desirable: ["French"] });
+    // Named on its own elsewhere: required.
+    expect(languagesOf("German or Italian is required. Fluency in German is essential.")).toEqual({ required: ["German"], desirable: ["Italian"] });
+    expect(languagesOf("Excellent knowledge of Dutch and Polish is required.")).toEqual({ required: ["Dutch", "Polish"], desirable: null });
+  });
+
+  it("leaves organizations, countries and nationals named after a language alone", () => {
+    expect(languagesOf("Experience with the Danish Refugee Council is required.")).toEqual({ required: null, desirable: null });
+    expect(languagesOf("Experience in the Czech Republic is required.")).toEqual({ required: null, desirable: null });
+    expect(languagesOf("Fluency in English is required; Polish nationals are encouraged to apply.")).toEqual({ required: null, desirable: null });
   });
 });

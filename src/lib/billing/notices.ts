@@ -1,16 +1,9 @@
 /**
- * Emails about a subscriber's plan (server only): the welcome email, the
- * confirmation link for an address that a checkout didn't create, the
- * trial-ending reminder, the "unsubscribing doesn't cancel" notice and the
- * one "alerts are open" email to the early-access list.
- *
- * Every send has a stable idempotency key (see src/lib/email.ts), and the
- * daily jobs "claim" rows (set the *_sent_at column) before sending and give
- * them back if sending fails, so two runs at once can't both send. A claim
- * also sets *_claimed_at, cleared once Resend has answered: a claim that is
- * still open after CLAIM_LEASE_MINUTES (the process stopped between claiming
- * and sending) is picked up again by the next daily run, under the same
- * idempotency key, so an email that did go out is not sent twice.
+ * Emails about a subscriber's plan (server only). The daily jobs claim a row
+ * (*_sent_at, with a lease in *_claimed_at) before sending and give it back if
+ * sending fails, so two runs at once can't both send; a claim left open past
+ * CLAIM_LEASE_MINUTES (the process died mid-send) is picked up again under the
+ * same idempotency key, so an email that did go out isn't sent twice.
  */
 import siteConfig from "@site-config";
 import { accountUrl } from "@/lib/account";
@@ -90,11 +83,7 @@ export function planRenewal(p: PlanState): { sentence: string; chargesAhead: boo
   return { sentence: "Your plan is paused, so nothing is charged while it stays paused, but it is still open until you cancel it.", chargesAhead: false, canCancel: true };
 }
 
-/**
- * The daily jobs below send one email per request. Spacing the requests keeps
- * them under Resend's default rate limit (a few requests per second per
- * account); bulk sends use the batch API instead (see notifyWaitlist).
- */
+/** Keeps one-by-one sends under Resend's default rate limit (bulk sends use the batch API). */
 const SEND_SPACING_MS = 500;
 const spaced = (i: number) => (i > 0 ? new Promise((r) => setTimeout(r, SEND_SPACING_MS)) : Promise.resolve());
 
@@ -119,10 +108,9 @@ export async function sendWelcomeEmail(w: WelcomeInfo): Promise<SendResult> {
 }
 
 /**
- * Daily job: the welcome email for subscribers in trial or paying whose
- * welcome was never sent (sending failed, the address was confirmed later, or
- * a claim was left open for more than CLAIM_LEASE_MINUTES). With `onlyId`,
- * just that subscriber (right after its owner confirmed the address).
+ * Daily job: welcome emails still owed (sending failed, the address was
+ * confirmed later, or a claim's lease ran out). `onlyId`: just that subscriber,
+ * right after its owner confirmed the address.
  */
 export async function runWelcomeRetries(limit = 200, onlyId: number | null = null): Promise<{ sent: number; failed: number }> {
   // Claim the rows first, so a run started at the same time can't send them too.
@@ -196,15 +184,11 @@ export async function confirmationSent(subscriberId: number): Promise<void> {
 export const CONFIRM_RESEND_DAYS = [3, 10] as const;
 
 /**
- * Daily job, for every address with a running plan that isn't confirmed (new
- * addresses from the public trial form as well as existing ones):
- *  - confirmation links that failed to send (see confirmationNotSent) or whose
- *    claim was left open;
- *  - during a free trial, the confirmation email again on day 3 and on day 10
- *    (counted from the trial's start, trial_ends_at minus the trial length),
- *    each once: the last one sent before that day is older than the day. A
- *    trial already canceled for want of confirmation gets nothing.
- * The send day is part of the idempotency key.
+ * Daily job, for running plans still awaiting confirmation (awaiting_confirmation(),
+ * migration 017: never-confirmed addresses only, so a sign-up form someone else
+ * fills in for a confirmed owner can't trigger these): confirmation emails that
+ * failed or whose lease ran out, and the reminders on days 3 and 10 of a trial,
+ * each once (the send day is part of the idempotency key).
  */
 export async function runConfirmationRetries(limit = 200): Promise<{ sent: number; failed: number }> {
   const trialDays = siteConfig.premium.trialDays;
@@ -219,7 +203,7 @@ export async function runConfirmationRetries(limit = 200): Promise<{ sent: numbe
                   else 'start' end as send_day,
              s.trial_ends_at - make_interval(days => ${trialDays}) as trial_start
       from subscribers s
-      where s.confirm_token is not null and s.status <> 'confirmed'
+      where s.confirm_token is not null and awaiting_confirmation(s)
         and s.paddle_subscription_id is not null and s.billing_status in ('trialing', 'active', 'past_due', 'paused')
         and not exists (select 1 from billing_flags f where f.subscription_id = s.paddle_subscription_id and f.kind = 'trial_unconfirmed' and f.cancel_done_at is not null)
     ), picked as (
@@ -258,14 +242,9 @@ export async function runConfirmationRetries(limit = 200): Promise<{ sent: numbe
 const REMINDER_DAYS_BEFORE = 3;
 
 /**
- * Daily job: one email to each subscriber whose free trial ends within the
- * next 3 days and who hasn't canceled: the plan, the amount, the date of the
- * first payment and the link to cancel. Sent at most once
- * (trial_reminder_sent_at), also to addresses that unsubscribed from alerts,
- * because it is about a payment. Not to an address still waiting for
- * confirmation (awaiting_confirmation(), db/migrations/015): its trial is
- * canceled before it ends unless it is confirmed, and it gets the
- * confirmation email again instead (runConfirmationRetries).
+ * Daily job: the reminder before a trial's first payment, once per trial. Also
+ * to addresses that unsubscribed, because it is about a payment. Not to one
+ * still awaiting confirmation: that trial is canceled before it can charge.
  */
 export async function runTrialReminders(limit = 500): Promise<{ sent: number; failed: number }> {
   const rows = await sql<{ id: number; email: string; manage_token: string; trial_ends_at: Date; plan_interval: PlanInterval | null }[]>`
@@ -323,10 +302,9 @@ export async function sendPlanStillActiveNotice(subscriberId: number): Promise<S
 export type WaitlistNoticeResult = { ok: boolean; sent: number; failed: number; remaining: number; message: string };
 
 /**
- * Admin button: emails each confirmed early-access member who has never had a
- * plan (the email offers the free trial, one per email address) that alerts are open
- * (once: waitlist_notified_at). At most `limit` per click
- * so it stays within the website's time limit; click again for the rest.
+ * Admin button: the one "alerts are open" email to confirmed early-access
+ * members who never had a plan (it offers the free trial). At most `limit` per
+ * click, to stay within the website's time limit.
  */
 export async function notifyWaitlist(limit = 300): Promise<WaitlistNoticeResult> {
   if (!BILLING_LIVE) return { ok: false, sent: 0, failed: 0, remaining: 0, message: "Paid alerts aren't switched on yet (Paddle settings), so this email would not be true." };

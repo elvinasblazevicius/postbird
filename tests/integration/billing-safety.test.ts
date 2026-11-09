@@ -162,6 +162,24 @@ describe.skipIf(!TEST_DB)("billing safety (database)", () => {
       expect(new Set(rows.map((r: { sql_had_plan: boolean }) => r.sql_had_plan))).toEqual(new Set([true, false]));
       await sql`delete from subscribers where email like 'hadplan-%'`;
     });
+
+    it("awaiting_confirmation() in SQL agrees with awaitingConfirmation(): only never-confirmed addresses", async () => {
+      const cases: { status: string; confirmed: boolean; token: boolean }[] = [];
+      for (const status of ["pending", "confirmed", "unsubscribed"]) for (const confirmed of [false, true]) for (const token of [false, true]) cases.push({ status, confirmed, token });
+      const rows = await sql`
+        insert into subscribers (email, status, confirmed_at, confirm_token, unsubscribe_token)
+        select 'awaiting-' || i || '@example.org', st, case when c then now() end, case when t then 'confirm-awaiting-' || lpad(i::text, 8, '0') end,
+               'unsub-awaiting-' || lpad(i::text, 6, '0') || '-xxxxxxxx'
+        from unnest(${cases.map((_, i) => i)}::int[], ${cases.map((c) => c.status)}::text[], ${cases.map((c) => c.confirmed)}::bool[], ${cases.map((c) => c.token)}::bool[]) as u(i, st, c, t)
+        returning email, status, confirmed_at, awaiting_confirmation(subscribers) as sql_awaiting`;
+      expect(rows).toHaveLength(cases.length);
+      for (const r of rows) expect([r.email, r.sql_awaiting]).toEqual([r.email, billing.awaitingConfirmation(r)]);
+      // A confirmed owner who unsubscribed is never waiting, whatever token a later sign-up set.
+      expect(rows.filter((r: { sql_awaiting: boolean }) => r.sql_awaiting).map((r: { status: string; confirmed_at: Date | null }) => [r.status, r.confirmed_at]))
+        .toEqual(expect.arrayContaining([["pending", null], ["unsubscribed", null]]));
+      expect(rows.filter((r: { sql_awaiting: boolean; confirmed_at: Date | null }) => r.sql_awaiting && r.confirmed_at !== null)).toHaveLength(0);
+      await sql`delete from subscribers where email like 'awaiting-%'`;
+    });
   });
 
   describe("one running subscription per address", () => {
@@ -365,6 +383,145 @@ describe.skipIf(!TEST_DB)("billing safety (database)", () => {
       expect(await billing.startCheckout({ email: "late-confirm@example.org", plan: "monthly", search: null }))
         .toEqual({ ok: true, inbox: true, email: "late-confirm@example.org", subscriberId: r.id, live: false });
       await sql`delete from subscribers where email in ('late-confirm@example.org', 'late-weekly@example.org')`;
+    });
+  });
+
+  describe("a confirmed owner who unsubscribed stays proven", () => {
+    it("a stranger's free-weekly sign-up with the address doesn't cancel the trial or stop its reminder", async () => {
+      const subId = "sub_01hv8x29kz0t586xy6zn1a7p01";
+      const [r] = await sql`
+        insert into subscribers (email, status, confirmed_at, billing_status, plan, plan_interval, paddle_subscription_id, trial_ends_at, welcome_sent_at, unsubscribe_token)
+        values ('proven-owner@example.org', 'confirmed', now() - interval '12 days', 'trialing', 'premium', 'month', ${subId},
+                now() + interval '1.5 days', now() - interval '12 days', ${tok("proven-owner@example.org")})
+        returning id::int as id`;
+      const subscribers = await import("@/lib/subscribers");
+      // The owner unsubscribes from emails (the plan keeps running).
+      expect(await subscribers.unsubscribe(tok("proven-owner@example.org"))).toBe(r.id);
+      // Someone else types the address into the free weekly email form.
+      await subscribers.signup({ email: "proven-owner@example.org", kind: "alerts", weeklySearch: "" });
+      const [mid] = await sql`select status, confirm_token from subscribers where id = ${r.id}`;
+      expect(mid.status).toBe("unsubscribed");
+      expect(mid.confirm_token).not.toBeNull();
+      sent.length = 0;
+
+      // The daily job: no cancel, no "confirm or we cancel" emails, and the trial reminder still goes.
+      expect(await billing.runBillingSafety()).toMatchObject({ unconfirmed: { canceled: 0, failed: 0 } });
+      expect(paddleCalls).toEqual([]);
+      await sql`update subscribers set confirm_sent_at = now() - interval '20 days' where id = ${r.id}`;
+      expect(await notices.runConfirmationRetries()).toEqual({ sent: 0, failed: 0 });
+      expect(await notices.runTrialReminders()).toEqual({ sent: 1, failed: 0 });
+      expect(sent.map((m) => [m.to, m.key?.startsWith("trial-reminder:")])).toEqual([["proven-owner@example.org", true]]);
+      const [after] = await sql`select billing_status, unconfirmed_trial_sub from subscribers where id = ${r.id}`;
+      expect(after).toEqual({ billing_status: "trialing", unconfirmed_trial_sub: null });
+      expect(await sql`select 1 from billing_flags where subscription_id = ${subId}`).toHaveLength(0);
+      await sql`delete from subscribers where id = ${r.id}`;
+    });
+  });
+
+  describe("a plan canceled in Paddle before its address was proven", () => {
+    it("doesn't use up the free trial, and a late confirmation doesn't claim the daily job canceled it", async () => {
+      const subId = "sub_01hv8x29kz0t586xy6zn1a7q01";
+      const start = await billing.startCheckout({ email: "never-proven@example.org", plan: "monthly", search: null });
+      expect(start).toMatchObject({ ok: true, trial: true });
+      expect(await postEvent(subEvent("subscription.created", trialing(subId, "", (start as { ref: string }).ref)))).toBe("applied");
+      await settle();
+      // Whoever started it cancels it in Paddle (e.g. from the confirmation email's account link).
+      expect(await postEvent(subEvent("subscription.canceled", { ...trialing(subId, "", (start as { ref: string }).ref), status: "canceled", canceled_at: inDays(0) }))).toBe("applied");
+      const [row] = await sql`
+        select id::int as id, status, confirmed_at, confirm_token, unconfirmed_trial_sub, had_plan(subscribers) as sql_had_plan
+        from subscribers where email = 'never-proven@example.org'`;
+      expect(row).toMatchObject({ status: "pending", confirmed_at: null, confirm_token: null, unconfirmed_trial_sub: subId, sql_had_plan: false });
+
+      // The owner signs up for the free weekly email and confirms: the trial was never theirs.
+      const subscribers = await import("@/lib/subscribers");
+      await subscribers.signup({ email: "never-proven@example.org", kind: "alerts", weeklySearch: "" });
+      const [{ confirm_token }] = await sql`select confirm_token from subscribers where id = ${row.id}`;
+      const confirmed = await subscribers.confirmSubscriber(confirm_token);
+      expect(confirmed).toMatchObject({ ok: true, trialCanceled: false, weeklyEmail: true });
+      const [h] = await sql`
+        select confirmed_at, paddle_subscription_id, billing_status, trial_ends_at, canceled_at, unconfirmed_trial_sub, had_plan(subscribers) as sql_had_plan
+        from subscribers where id = ${row.id}`;
+      expect(h.confirmed_at).not.toBeNull();
+      expect(h.sql_had_plan).toBe(false);
+      expect(billing.hadTrialBefore(h)).toBe(false);
+      await sql`delete from subscribers where id = ${row.id}`;
+    });
+
+    it("a plan canceled after its owner confirmed still counts", async () => {
+      const subId = "sub_01hv8x29kz0t586xy6zn1a7q02";
+      await sql`
+        insert into subscribers (email, status, confirmed_at, billing_status, plan, paddle_subscription_id, trial_ends_at, unsubscribe_token)
+        values ('proven-cancel@example.org', 'confirmed', now(), 'trialing', 'premium', ${subId}, now() + interval '10 days', ${tok("proven-cancel@example.org")})`;
+      expect(await postEvent(subEvent("subscription.canceled", { ...trialing(subId, "", null), status: "canceled", canceled_at: inDays(0) }))).toBe("applied");
+      const [h] = await sql`select unconfirmed_trial_sub, had_plan(subscribers) as sql_had_plan from subscribers where email = 'proven-cancel@example.org'`;
+      expect(h).toEqual({ unconfirmed_trial_sub: null, sql_had_plan: true });
+      await sql`delete from subscribers where email = 'proven-cancel@example.org'`;
+    });
+  });
+
+  describe("upgrading from the free weekly email", () => {
+    const addJob = (slug: string, title: string, hoursAgo: number) => sql`
+      insert into jobs (slug, title, apply_url, apply_host, url_hash, status, first_seen_at, published_at)
+      values (${slug}, ${title}, ${`https://example.org/${slug}`}, 'example.org', ${`hash-${slug}`}, 'active',
+              now() - make_interval(mins => ${Math.round(hoursAgo * 60)}), now() - make_interval(mins => ${Math.round(hoursAgo * 60)}))`;
+
+    it("switches the plan to daily, and the next daily run sends the first alert with only what the weekly email didn't", async () => {
+      // A weekly subscriber (the default frequency) whose free weekly email went out 3 hours ago.
+      const [r] = await sql`
+        insert into subscribers (email, status, confirmed_at, weekly_email, unsubscribe_token)
+        values ('weekly-upgrade@example.org', 'confirmed', now() - interval '30 days', true, ${tok("weekly-upgrade@example.org")})
+        returning id::int as id, frequency`;
+      expect(r.frequency).toBe("weekly");
+      await sql`insert into saved_searches (subscriber_id, search, label, last_sent_at) values (${r.id}, 'q=welder', 'Welders', now() - interval '3 hours')`;
+      await addJob("welder-sent-weekly", "Welder sent in the weekly email", 5);
+      await addJob("welder-new", "Welder posted since", 1);
+
+      const token = await links.createCheckoutLink(r.id, { plan: "quarterly", search: "q=welder" });
+      const c = await links.continueCheckout(token, "quarterly");
+      expect(c).toMatchObject({ ok: true, trial: true });
+      const subId = "sub_01hv8x29kz0t586xy6zn1a7x01";
+      expect(await postEvent(subEvent("subscription.created", trialing(subId, "", (c as { ref: string }).ref)))).toBe("applied");
+      await settle();
+      const [s] = await sql`select status, billing_status, frequency, plan_started_at from subscribers where id = ${r.id}`;
+      expect(s).toMatchObject({ status: "confirmed", billing_status: "trialing", frequency: "daily" });
+      expect(s.plan_started_at).not.toBeNull();
+      const welcome = sent.find((m) => m.to === "weekly-upgrade@example.org" && m.key?.startsWith("welcome:"))!;
+      expect(welcome.text).toContain("once a day");
+      sent.length = 0;
+
+      // The next daily run: due at once (the weekly email went out within the last 20 hours), and
+      // only the vacancy first seen after the weekly email.
+      await digest.runAlerts();
+      expect(sent.filter((m) => m.to === "weekly-upgrade@example.org")).toHaveLength(1);
+      const alert = sent.find((m) => m.to === "weekly-upgrade@example.org")!;
+      expect(alert.text).toContain("Welder posted since");
+      expect(alert.text).not.toContain("Welder sent in the weekly email");
+      // Not due again until the normal daily gap has passed.
+      await sql`update locks set locked_until = null, holder = null`;
+      sent.length = 0;
+      await digest.runAlerts();
+      expect(sent.filter((m) => m.to === "weekly-upgrade@example.org")).toHaveLength(0);
+      await sql`delete from subscribers where id = ${r.id}`;
+      await sql`delete from jobs where slug like 'welder-%'`;
+    });
+
+    it("the first alert never reaches back before the plan started (beyond one normal daily window)", async () => {
+      const [r] = await sql`
+        insert into subscribers (email, status, confirmed_at, billing_status, plan, frequency, plan_started_at, unsubscribe_token)
+        values ('late-weekly-reader@example.org', 'confirmed', now() - interval '60 days', 'trialing', 'premium', 'daily', now() - interval '30 hours',
+                ${tok("late-weekly-reader@example.org")})
+        returning id::int as id`;
+      // The last free weekly email was 3 days ago.
+      await sql`insert into saved_searches (subscriber_id, search, label, last_sent_at) values (${r.id}, 'q=plumber', 'Plumbers', now() - interval '3 days')`;
+      await addJob("plumber-before-plan", "Plumber before the plan", 50);
+      await addJob("plumber-after-plan", "Plumber after the plan", 28);
+      await digest.runAlerts();
+      expect(sent.filter((m) => m.to === "late-weekly-reader@example.org")).toHaveLength(1);
+      const alert = sent.find((m) => m.to === "late-weekly-reader@example.org")!;
+      expect(alert.text).toContain("Plumber after the plan");
+      expect(alert.text).not.toContain("Plumber before the plan");
+      await sql`delete from subscribers where id = ${r.id}`;
+      await sql`delete from jobs where slug like 'plumber-%'`;
     });
   });
 

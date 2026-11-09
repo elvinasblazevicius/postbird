@@ -198,6 +198,32 @@ describe.skipIf(!TEST_DB)("free weekly email (database)", () => {
       expect((await sql`select last_sent_at from saved_searches where subscriber_id = ${id}`)[0].last_sent_at).not.toBeNull();
     });
 
+    it("with a server secret, the upgrade link is a single-use checkout link for the address, the same on a retry", async () => {
+      process.env.ANALYTICS_SALT = "test-weekly-salt-0123456789";
+      try {
+        const links = await import("@/lib/billing/checkout-links");
+        const id = await freeSub("upgrade@example.org", "q=nurse");
+        await addJob("Nurse coordinator", 2);
+        await digest.runDigest({ at: monday });
+        expect(sent).toHaveLength(1);
+        const token = sent[0].text.match(/Start a 14-day free trial: http:\/\/localhost:3000\/account\/continue\?token=([\w-]+)/)![1];
+        expect(sent[0].text).not.toContain("/pricing/trial");
+        expect(await links.findCheckoutLink(token)).toEqual({ email: "upgrade@example.org", plan: "quarterly", state: "new" });
+        const [row] = await sql`select search, expires_at > now() + interval '6 days' as week from checkout_links where subscriber_id = ${id}`;
+        expect(row).toEqual({ search: "q=nurse", week: true });
+        // A retry of the same week builds the same message (Resend refuses a key reused for a different one).
+        const again = await links.weeklyCheckoutLinks(digest.isoWeekKey(monday), [{ subscriberId: id, search: "q=nurse" }]);
+        expect(again.get(id)).toBe(token);
+        expect(await sql`select 1 from checkout_links where subscriber_id = ${id}`).toHaveLength(1);
+        // Single use: once the checkout is prepared, the link is spent, and a retry doesn't revive it.
+        expect(await links.continueCheckout(token, "monthly")).toMatchObject({ ok: true, trial: true });
+        await links.weeklyCheckoutLinks(digest.isoWeekKey(monday), [{ subscriberId: id, search: "q=nurse" }]);
+        expect(await links.findCheckoutLink(token)).toBeNull();
+      } finally {
+        delete process.env.ANALYTICS_SALT;
+      }
+    });
+
     it("lists at most 10 with a See all link and the total in the subject", async () => {
       await freeSub("many@example.org", "q=nurse");
       for (let i = 0; i < 14; i++) await addJob(`Nurse number ${i}`, i + 1);

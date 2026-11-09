@@ -55,6 +55,13 @@ export const GRADE_GROUPS: { value: string; name: string; grades: string[] }[] =
   { value: "G", name: "General Service (G-1 to G-7)", grades: ["G-1", "G-2", "G-3", "G-4", "G-5", "G-6", "G-7", "GS-1", "GS-2", "GS-3", "GS-4", "GS-5", "GS-6", "GS-7"] },
   { value: "FS", name: "Field Service (FS)", grades: ["FS-1", "FS-2", "FS-3", "FS-4", "FS-5", "FS-6", "FS-7"] },
   { value: "SC", name: "Service contracts (SB, NPSA, IPSA, LICA, ICS)", grades: [] },
+  // EU staff categories (stored "AD-6", "AST-3", "AST/SC-2", "FG-IV"; shown "AD 6", see displayGrade in src/lib/grades.ts).
+  { value: "AD", name: "EU AD (AD 5 to AD 16)", grades: Array.from({ length: 12 }, (_, i) => `AD-${i + 5}`) },
+  { value: "AST", name: "EU AST (AST 1 to AST 11)", grades: Array.from({ length: 11 }, (_, i) => `AST-${i + 1}`) },
+  { value: "AST-SC", name: "EU AST/SC (AST/SC 1 to AST/SC 6)", grades: Array.from({ length: 6 }, (_, i) => `AST/SC-${i + 1}`) },
+  { value: "FG", name: "EU contract agent (FG I to FG IV)", grades: ["FG-I", "FG-II", "FG-III", "FG-IV"] },
+  // World Bank Group and IFC grades GA (entry) to GK.
+  { value: "WBG", name: "World Bank Group (GA to GK)", grades: ["GA", "GB", "GC", "GD", "GE", "GF", "GG", "GH", "GI", "GJ", "GK"] },
 ];
 
 /** Organization types (from the known-organizations list). */
@@ -66,5 +73,19 @@ export const ORG_TYPES: { value: string; name: string; type: string }[] = [
   { value: "ngo", name: "NGOs", type: "NGO" },
 ];
 
-/** Languages detected in a vacancy's language requirements. */
-export const LANGUAGES = ["French", "Spanish", "Arabic", "Portuguese", "Russian", "Chinese"] as const;
+/**
+ * Languages detected in a vacancy's language requirements (besides English): the UN's official
+ * languages, then the other official languages of the EU.
+ */
+export const LANGUAGES = [
+  "French", "Spanish", "Arabic", "Portuguese", "Russian", "Chinese",
+  "German", "Italian", "Dutch", "Polish", "Bulgarian", "Croatian", "Czech", "Danish", "Estonian", "Finnish", "Greek", "Hungarian",
+  "Irish", "Latvian", "Lithuanian", "Maltese", "Romanian", "Slovak", "Slovenian", "Swedish",
+] as const;
+
+/**
+ * The languages a single search word turns into the language filter ("german" → German). Names that
+ * often stand for an organization or a nationality in a search ("danish refugee council", "irish aid")
+ * stay search words.
+ */
+export const SEARCH_LANGUAGES: readonly string[] = ["French", "Spanish", "Arabic", "Portuguese", "Russian", "Chinese", "German", "Italian", "Dutch", "Polish"];

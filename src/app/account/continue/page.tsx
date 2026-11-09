@@ -32,7 +32,7 @@ export default async function ContinuePage({ searchParams }: Props) {
       <h1 className="text-[2rem] font-semibold text-ink">Continue to daily alerts</h1>
       {!link ? (
         <p className="mt-3 text-lg text-slate">
-          This link has already been used or has expired. Links work once, for 24 hours.{" "}
+          This link has already been used or has expired. Each link works once, for a limited time.{" "}
           <Link href="/pricing/trial" className="font-semibold text-accent underline">Start again</Link> and we&apos;ll email you a new one.
         </p>
       ) : link.state === "live" ? (

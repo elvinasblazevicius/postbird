@@ -4,6 +4,7 @@
  */
 import { countryBySlug } from "@/config/countries";
 import { GRADE_GROUPS, regionBySlug } from "@/config/regions";
+import { gradeText } from "@/lib/grades";
 
 /** "Kenya", "Kenya or Uganda", "Kenya, Uganda or Africa". */
 export function orList(items: string[]): string {
@@ -35,7 +36,7 @@ export function placeNames(f: { country?: string[]; region?: string[] }): string
 
 /** A grade filter value without the group's grade range: "Professional", "P-3". */
 export function gradeShortName(value: string): string {
-  return GRADE_GROUPS.find((g) => g.value === value)?.name.replace(/ \(.*\)$/, "") ?? value;
+  return GRADE_GROUPS.find((g) => g.value === value)?.name.replace(/ \(.*\)$/, "") ?? gradeText(value);
 }
 
 const SORT_HEADINGS = { newest: "Newest first", deadline: "Closing soonest first", relevance: "Best match first" } as const;

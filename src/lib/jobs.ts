@@ -1,11 +1,12 @@
+import { cache } from "react";
 import { ALL_CATEGORIES, categoryBySlug } from "@/config/categories";
 import { countryByCode, countryBySlug } from "@/config/countries";
-import { GRADE_GROUPS, LANGUAGES, ORG_TYPES, REGIONS, regionBySlug } from "@/config/regions";
+import { GRADE_GROUPS, LANGUAGES, ORG_TYPES, REGIONS, regionBySlug, regionOf } from "@/config/regions";
 import { LISTING_SETTINGS } from "@/config/import";
 import { countriesInLocation, DROP_CHARS, FOLD_FROM, FOLD_TO, locationPatterns } from "@/lib/country-match";
 import { sql, transaction } from "@/lib/db";
 import { logoProtectedSql } from "@/lib/feeds/logos";
-import { GENERAL_SERVICE_TITLE_SQL, LOCAL_ONLY_GRADE_SQL, LOCAL_ONLY_TITLE_SQL, NATIONAL_OFFICER_TITLE_SQL, PROFESSIONAL_TITLE_SQL } from "@/lib/grades";
+import { GENERAL_SERVICE_TITLE_SQL, gradeGroupOf, LOCAL_ONLY_GRADE_SQL, LOCAL_ONLY_TITLE_SQL, NATIONAL_OFFICER_TITLE_SQL, PROFESSIONAL_TITLE_SQL, titleGradeGroup } from "@/lib/grades";
 import { categoriesForWord, foldText, interpretQuery, orgNamesForTerm, placeVariants, searchTerms, wordPattern } from "@/lib/search-intent";
 
 export type JobListItem = {
@@ -49,7 +50,7 @@ export type JobDetail = JobListItem & {
   sources: { source_title: string | null; feed_name: string; item_url: string | null }[];
 };
 
-export const JOB_TYPES = ["Fixed-term", "Temporary", "Consultancy", "Internship", "Fellowship", "Volunteer", "Part-time"] as const;
+export const JOB_TYPES = ["Fixed-term", "Temporary", "Consultancy", "Internship", "Traineeship", "Fellowship", "Volunteer", "Part-time", "Contract agent", "Temporary agent"] as const;
 
 export const EXPERIENCE_BANDS = [
   { value: "0-2", name: "Up to 2 years", min: 0, max: 2 },
@@ -141,7 +142,7 @@ export function parseFilters(sp: SP): JobFilters {
   for (const region of every(sp.region)) if (regionBySlug(region)) regions.push(region);
   if (countries.length) f.country = tidyList(countries);
   if (regions.length) f.region = tidyList(regions);
-  const grades = every(sp.grade).filter((grade) => GRADE_GROUPS.some((g) => g.value === grade) || /^(P|D|NO|G|GS|FS)-[0-9A-E]$|^(ASG|USG)$|^(SB|SC|LICA|NPSA|IPSA|ICS)-\d{1,2}$/.test(grade));
+  const grades = every(sp.grade).filter((grade) => GRADE_GROUPS.some((g) => g.value === grade || g.grades.includes(grade)) || /^(P|D|NO|G|GS|FS)-[0-9A-E]$|^(ASG|USG)$|^(SB|SC|LICA|NPSA|IPSA|ICS)-\d{1,2}$/.test(grade));
   if (grades.length) f.grade = tidyList(grades);
   const orgtype = first(sp.orgtype);
   if (orgtype && ORG_TYPES.some((o) => o.value === orgtype)) f.orgtype = orgtype;
@@ -332,7 +333,55 @@ function rankQuery(q: string): Frag {
 function looseWordCondition(t: string): Frag {
   const folded = foldText(t);
   if (folded.length < TYPO_MIN_LENGTH || folded.includes(" ")) return wordCondition(t);
-  return sql`(${wordCondition(t)} or pb_word_similarity(${folded}, pb_fold(j.title)) >= ${TYPO_TITLE_SIMILARITY})`;
+  const stem = loosePrefix(t);
+  const prefix = stem && stem !== folded ? sql` or pb_fold(j.title) ~ ${`\\m${stem}`} or j.search_folded @@ to_tsquery('simple', ${`${stem}:*`})` : sql``;
+  return sql`(${wordCondition(t)}${prefix} or pb_word_similarity(${folded}, pb_fold(j.title)) >= ${TYPO_TITLE_SIMILARITY})`;
+}
+
+/**
+ * The start of a word that the loose fallback also matches, for words of TYPO_MIN_LENGTH letters
+ * or more: the word without a common ending ("finance" → "financ", so it finds "Financing" and
+ * "Financial"; "monitoring" → "monitor"). Null for shorter words and anything but plain letters
+ * and digits (the prefix goes into a tsquery).
+ */
+export function loosePrefix(t: string): string | null {
+  const f = foldText(t);
+  if (f.length < TYPO_MIN_LENGTH || !/^[a-z0-9]+$/.test(f)) return null;
+  const stem = f.replace(/(?:ing|es|ed|e|s)$/, "");
+  return stem.length >= 4 ? stem : f;
+}
+
+/** The term in the TITLE, for the loose fallback's order: as a word, the start of one (loosePrefix) or spelled almost the same way. */
+function titleWordCondition(t: string): Frag {
+  const folded = foldText(t);
+  let c = sql`pb_fold(j.title) ~ ${wordPattern(folded)}`;
+  const stem = loosePrefix(t);
+  if (stem) c = sql`${c} or pb_fold(j.title) ~ ${`\\m${stem}`} or pb_word_similarity(${folded}, pb_fold(j.title)) >= ${TYPO_TITLE_SIMILARITY}`;
+  return sql`(${c})`;
+}
+
+/**
+ * How much each search word counts in the loose fallback's order: words in the titles of fewer open
+ * listings count more (inverse document frequency over titles, ln((N + 1) / (n + 1)) plus a little,
+ * so a word in every title still counts). "finance officer" then puts finance jobs before the many
+ * "… Officer" ones. One query over the open listings.
+ */
+async function looseWordWeights(terms: string[]): Promise<number[]> {
+  if (!terms.length) return [];
+  const counts = terms.map((t) => sql`(count(*) filter (where ${titleWordCondition(t)}))::int`).reduce((a, b) => sql`${a}, ${b}`);
+  const [row] = await transaction(async (tx) => await tx<{ n: number; df: number[] }[]>`
+    select count(*)::int as n, array[${counts}] as df from jobs j left join organizations o on o.id = j.organization_id where ${isOpen()}`);
+  return row.df.map((df) => Math.log((row.n + 1) / (df + 1)) + 0.05);
+}
+
+/**
+ * The loose fallback's "Best match" order: each word that matches adds its weight (looseWordWeights),
+ * three times over when it is in the title.
+ */
+function looseRank(terms: string[], weights: number[]): Frag {
+  return terms
+    .map((t, i) => sql`((${titleWordCondition(t)})::int * 2 + (${looseWordCondition(t)})::int) * ${weights[i] ?? 1}::float8`)
+    .reduce((a, b) => sql`${a} + ${b}`);
 }
 
 function textCondition(q: string, mode: MatchMode): Frag {
@@ -432,10 +481,13 @@ export async function searchJobs(input: JobFilters, pageSize: number = LISTING_S
   const sort = f.sort ?? (f.q ? "relevance" : "newest");
   const run = async (mode: MatchMode) => {
     const where = whereFor(f, mode);
+    const terms = f.q ? searchWords(f.q) : [];
+    const looseOrder = sort === "relevance" && mode === "any" && terms.length > 0;
+    const weights = looseOrder ? await looseWordWeights(terms) : [];
     const order =
       sort === "deadline" ? sql`j.deadline asc nulls last, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
-      sort === "relevance" && f.q && mode === "any"
-        ? sql`(${searchWords(f.q).map((t) => sql`(${wordCondition(t)})::int * 2 + (${looseWordCondition(t)})::int`).reduce((a, b) => sql`${a} + ${b}`)}) desc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
+      looseOrder && f.q
+        ? sql`(${looseRank(terms, weights)}) desc, ts_rank(j.search_folded, ${rankQuery(f.q)}) desc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
       sort === "relevance" && f.q ? sql`ts_rank(j.search_folded, ${rankQuery(f.q)}) desc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
       sql`coalesce(j.published_at, j.first_seen_at) desc, j.id desc`;
     // Each in its own short transaction, which carries the statement time limit (see
@@ -629,11 +681,31 @@ export async function openJobsByIds(ids: number[]): Promise<JobListItem[]> {
     where ${isOpen()} and j.id = any(${list})`;
 }
 
+/** Open listings at the same organization or in the same category, the organization's first (the closed-vacancy page). */
 export async function similarJobs(job: JobDetail, limit = 4) {
   return sql<JobListItem[]>`
     select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
     where ${isOpen()} and j.id <> ${job.id} and (j.category = ${job.category} or o.slug = ${job.org_slug ?? "--"})
     order by (o.slug = ${job.org_slug ?? "--"}) desc nulls last, coalesce(j.published_at, j.first_seen_at) desc, j.id desc limit ${limit}`;
+}
+
+/**
+ * "More in {category}" on a job page: other open listings in the same category at OTHER
+ * organizations (the page links to the organization's own other vacancies instead), those in the
+ * same grade group (gradeGroupOf: "P", "EU AD"…) first, then those in the same world region, then
+ * the newest. None for the catch-all "Other" category.
+ */
+export async function moreInCategory(job: Pick<JobDetail, "id" | "category" | "org_slug" | "grade" | "title" | "country_code">, limit = 4) {
+  if (job.category === "other") return [];
+  const group = gradeGroupOf(job.grade ?? titleGradeGroup(job.title) ?? "");
+  const groupGrades = group ? [...(GRADE_GROUPS.find((g) => g.value === group)?.grades ?? []), group] : [];
+  const sameGroup = group === "SC" ? sql`coalesce(j.grade, '') ~ '^(SB|SC|LICA|NPSA|IPSA|ICS)-'` : groupGrades.length ? sql`${gradeKey()} = any(${groupGrades})` : sql`false`;
+  const region = regionOf(job.country_code)?.codes ?? [];
+  return sql<JobListItem[]>`
+    select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
+    where ${isOpen()} and j.id <> ${job.id} and j.category = ${job.category} and o.slug is distinct from ${job.org_slug ?? null}
+    order by (${sameGroup}) desc, (j.country_code = any(${region})) desc nulls last, coalesce(j.published_at, j.first_seen_at) desc, j.id desc
+    limit ${limit}`;
 }
 
 // ── Facets & stats ───────────────────────────────────────────
@@ -772,6 +844,17 @@ export async function orgTypeFacets() {
 export async function jobTypeFacets() {
   return (await facetSnapshot(true)).job_types.map((r) => ({ job_type: r.k, count: r.n }));
 }
+
+/**
+ * Open listings by employer type (ORG_TYPES type names → count), for the header and footer menus,
+ * which leave out a type with none. One small query, shared by everything in one render (cache).
+ */
+export const employerTypeCounts = cache(async (): Promise<Map<string, number>> => {
+  const rows = await sql<{ k: string; n: number }[]>`
+    select o.org_type as k, count(*)::int as n from jobs j join organizations o on o.id = j.organization_id
+    where ${isOpen()} and o.org_type is not null group by 1`;
+  return new Map(rows.map((r) => [r.k, r.n]));
+});
 
 export async function siteStats() {
   return (await facetSnapshot(true)).stats;

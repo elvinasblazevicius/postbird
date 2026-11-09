@@ -557,4 +557,26 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
     await ops.resolveOpsEvent(open[0].id);
     expect((await ops.openOpsEvents()).filter((o) => o.source === "webhook")).toHaveLength(0);
   });
+  it("the account page's trial and restart buttons go straight to the continue page, with the address's terms", async () => {
+    /** The redirect target of a server action (redirect() works by throwing). */
+    const redirectOf = async (p: Promise<unknown>) => {
+      try { await p; } catch (e) { return String((e as { digest?: string }).digest ?? "").split(";")[2] ?? null; }
+      return null;
+    };
+    const [fresh] = await sql`
+      insert into subscribers (email, status, confirmed_at, weekly_email, unsubscribe_token)
+      values ('account-trial@example.org', 'confirmed', now(), true, 'unsub-account-trial-xxxxxxxx') returning id::int as id, manage_token`;
+    const [had] = await sql`
+      insert into subscribers (email, status, confirmed_at, billing_status, paddle_subscription_id, canceled_at, unsubscribe_token)
+      values ('account-restart@example.org', 'confirmed', now(), 'canceled', 'sub_01hv8x29kz0t586xy6zn1a7r01', now(), 'unsub-account-restart-xxxxxx') returning id::int as id, manage_token`;
+    for (const [r, state] of [[fresh, "new"], [had, "returning"]] as const) {
+      const target = await redirectOf(actions.restartPlanAction({ status: "idle", message: "" }, form({ t: r.manage_token })));
+      const token = target?.match(/^\/account\/continue\?token=([\w-]+)$/)?.[1];
+      expect(token, String(target)).toBeTruthy();
+      expect(await links.findCheckoutLink(token)).toMatchObject({ state });
+    }
+    // No email round trip.
+    expect(sent).toHaveLength(0);
+    await sql`delete from subscribers where id in (${fresh.id}, ${had.id})`;
+  });
 });

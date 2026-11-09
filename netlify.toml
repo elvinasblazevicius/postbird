@@ -5,3 +5,8 @@
 
 [build.environment]
   NODE_VERSION = "22"
+
+# Production builds apply database migrations first (scripts/build-netlify.sh).
+# Deploy previews and branch deploys keep the plain build above.
+[context.production]
+  command = "bash scripts/build-netlify.sh"

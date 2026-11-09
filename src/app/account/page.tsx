@@ -103,9 +103,7 @@ export default async function AccountPage({ searchParams }: Props) {
             hadPlan ? (
               <RestartPlanButton t={acct.manage_token} />
             ) : (
-              <Link href="/pricing/trial" className="rounded-lg bg-brand px-5 py-2.5 text-[0.95rem] font-semibold text-white hover:bg-accent">
-                Start your {siteConfig.premium.trialDays}-day free trial
-              </Link>
+              <RestartPlanButton t={acct.manage_token} label={`Start your ${siteConfig.premium.trialDays}-day free trial`} />
             )
           ) : null}
         </div>

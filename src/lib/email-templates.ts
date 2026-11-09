@@ -171,13 +171,13 @@ export function welcomeEmail(opts: { accountUrl: string; unsubscribeUrl: string;
   const html = layout(
     subject,
     `<h1 style="font-family:Georgia,serif;font-size:24px;line-height:1.3;margin:0 0 12px">Welcome to ${esc(siteConfig.premium.name.toLowerCase())}</h1>
-     <p style="font-size:16px;line-height:1.6;margin:0 0 12px">We'll email you new vacancies that match your saved searches, and remind you of matching vacancies that close in the next ${CLOSING_SOON_DAYS} days. Your first alert arrives with the next round of new listings.</p>
+     <p style="font-size:16px;line-height:1.6;margin:0 0 12px">We'll email you once a day with new vacancies that match your saved searches, and remind you of matching vacancies that close in the next ${CLOSING_SOON_DAYS} days. Your first alert comes with the next daily send, if there is something new for you. You can switch to one email a week on your account page.</p>
      <p style="font-size:15px;line-height:1.6;margin:0 0 20px;color:#566476">${esc(billing)} ${refundHtml}</p>
      <p style="margin:0 0 20px">${button(opts.accountUrl, "Open my account")}</p>
      <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">On your account page you can add up to 5 saved searches, choose daily or weekly emails, and manage billing. Keep this email: the button is your private link.</p>`,
     accountFooter(opts.accountUrl, opts.unsubscribeUrl),
   );
-  const text = `Welcome to ${siteConfig.premium.name.toLowerCase()} on ${siteConfig.name}.\n\nWe'll email you new vacancies that match your saved searches, and remind you of matching vacancies that close in the next ${CLOSING_SOON_DAYS} days.\n\n${billing} Refund policy: ${refundsUrl}\n\nYour account (keep this link private): ${opts.accountUrl}\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
+  const text = `Welcome to ${siteConfig.premium.name.toLowerCase()} on ${siteConfig.name}.\n\nWe'll email you once a day with new vacancies that match your saved searches, and remind you of matching vacancies that close in the next ${CLOSING_SOON_DAYS} days. Your first alert comes with the next daily send, if there is something new for you. You can switch to one email a week on your account page.\n\n${billing} Refund policy: ${refundsUrl}\n\nYour account (keep this link private): ${opts.accountUrl}\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
   return { subject, html, text };
 }
 
