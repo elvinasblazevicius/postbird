@@ -25,9 +25,11 @@ export default async function HomePage() {
     languageFacets(),
     experienceFacets(),
     orgTypeFacets(),
-    closingSoonJobs(6),
+    closingSoonJobs(12),
   ]);
-  const closingSoon = closing.filter((j) => !latest.some((l) => l.id === j.id)).slice(0, 3);
+  const closingFresh = closing.filter((j) => !latest.some((l) => l.id === j.id)).slice(0, 3);
+  // A row of one or two looks broken; show the section only with three cards.
+  const closingSoon = closingFresh.length === 3 ? closingFresh : [];
 
   const showTotal = stats.active >= siteConfig.showVacancyCountFrom;
 
@@ -82,7 +84,7 @@ export default async function HomePage() {
       <div className="dots-soft border-b border-rule pb-14">
       <section className="mx-auto max-w-6xl px-4 pt-8 sm:px-6 sm:pt-12" aria-labelledby="latest-heading">
         <div className="flex items-end justify-between gap-4">
-          <h2 id="latest-heading" className="text-[1.9rem] font-semibold text-ink">Latest vacancies</h2>
+          <h2 id="latest-heading" className="text-[1.9rem] font-semibold text-ink">Recently posted, UN system first</h2>
           <Link href="/jobs" className="shrink-0 text-[0.95rem] font-medium text-accent hover:underline">{showTotal ? `See all ${stats.active.toLocaleString("en-US")} jobs` : "See all jobs"}</Link>
         </div>
         <div className="mt-6">

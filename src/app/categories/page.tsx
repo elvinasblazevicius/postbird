@@ -22,7 +22,7 @@ export default async function CategoriesPage() {
       />
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {cats.map((c) => (
+          {cats.filter((c) => c.count > 0).map((c) => (
             <li key={c.slug}>
               <Link href={`/categories/${c.slug}`} className="block h-full rounded-xl border border-rule p-5 hover:border-accent">
                 <div className="flex items-baseline justify-between gap-3">

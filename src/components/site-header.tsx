@@ -44,6 +44,14 @@ export function SiteHeader() {
                 {n.label}
               </Link>
             ))}
+            {[
+              { href: "/locations", label: "Countries" },
+              { href: "/categories", label: "Categories" },
+            ].map((n) => (
+              <Link key={n.href} href={n.href} className="block rounded-lg px-3 py-2.5 text-ink hover:bg-mist">
+                {n.label}
+              </Link>
+            ))}
             <Link href="/alerts" className="mt-1 block rounded-lg bg-highlight px-3 py-2.5 font-semibold text-ink">
               Get email alerts
             </Link>

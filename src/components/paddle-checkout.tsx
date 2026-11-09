@@ -191,7 +191,7 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
               key={p.value}
               className={`relative flex cursor-pointer flex-col rounded-xl border-2 px-4 pb-3.5 pt-4 transition-colors ${
                 dark
-                  ? "border-white/25 text-white has-[:checked]:border-white has-[:checked]:bg-white/10"
+                  ? "border-white/25 text-white has-[:checked]:border-[var(--highlight)] has-[:checked]:bg-white/10 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-white/70"
                   : "border-rule bg-paper text-ink hover:border-[color-mix(in_srgb,var(--accent)_45%,var(--rule))] has-[:checked]:border-accent has-[:checked]:bg-[color-mix(in_srgb,var(--accent)_6%,white)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[color-mix(in_srgb,var(--accent)_35%,transparent)]"
               }`}
             >
@@ -200,7 +200,7 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
               ) : null}
               <span className="flex items-center justify-between gap-2">
                 <span className="font-semibold">{p.label}</span>
-                <input type="radio" name="plan" value={p.value} defaultChecked={p.best} onChange={() => setPlan(p.value)} className="h-4 w-4 accent-[var(--accent)]" />
+                <input type="radio" name="plan" value={p.value} defaultChecked={p.best} onChange={() => setPlan(p.value)} className={`h-4 w-4 ${dark ? "accent-[var(--highlight)]" : "accent-[var(--accent)]"}`} />
               </span>
               <span className="mt-1.5 flex items-baseline gap-1">
                 <span className="font-display text-3xl font-semibold leading-none">{p.price}</span>

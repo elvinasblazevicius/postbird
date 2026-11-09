@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AlertExample } from "@/components/alert-example";
 import { PageHeader } from "@/components/page-header";
 import { TrackedLink } from "@/components/tracking";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { EARLY_ACCESS_BUTTON, earlyAccessLine } from "@/lib/early-access-copy";
-import { latestJobs } from "@/lib/jobs";
-import { formatDate, locationLabel, siteConfig } from "@/lib/site";
+import { siteConfig } from "@/lib/site";
 
-export const revalidate = 600;
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Pricing — email alerts for international jobs",
@@ -23,9 +23,8 @@ function Check() {
   );
 }
 
-export default async function PricingPage() {
+export default function PricingPage() {
   const p = siteConfig.premium;
-  const sample = await latestJobs(3).catch(() => []);
   const billingFaq: [string, React.ReactNode][] = BILLING_LIVE
     ? [
         [
@@ -86,10 +85,10 @@ export default async function PricingPage() {
             {BILLING_LIVE ? null : <span className="rounded-full bg-paper px-2.5 py-0.5 text-xs font-semibold text-ink">Launching soon</span>}
           </div>
           <dl className="mt-3 grid grid-cols-2 gap-3">
-            {p.plans.map((plan) => (
+            {[...p.plans].reverse().map((plan) => (
               <div key={plan.label} className={`relative rounded-xl bg-paper p-3 ${plan.note ? "border-2 border-remote" : "border border-rule"}`}>
-                {plan.note ? <span className="absolute -top-2.5 right-2 rounded-full bg-remote px-2 py-0.5 text-xs font-semibold text-white">Best value</span> : null}
                 <dt className="flex items-center justify-between gap-2 text-sm text-slate">
+                  {plan.note ? <span className="absolute -top-2.5 right-2 rounded-full bg-remote px-2 py-0.5 text-xs font-semibold text-white">Best value</span> : null}
                   <span>{plan.label}</span>
                   {plan.note ? <span className="rounded-full bg-remote-bg px-2 py-0.5 text-xs font-semibold text-remote">{plan.note}</span> : null}
                 </dt>
@@ -122,26 +121,7 @@ export default async function PricingPage() {
             send the new ones that match your searches, so you see a role while there is still time to apply.
           </p>
         </section>
-        {sample.length ? (
-          <section aria-labelledby="sample-heading">
-            <h2 id="sample-heading" className="text-xl font-semibold text-ink">What an alert looks like</h2>
-            <div className="mt-3 rounded-xl border border-rule bg-paper p-4 text-sm shadow-sm">
-              <p className="text-xs text-slate">Example built from current listings</p>
-              <p className="mt-1 font-semibold text-ink">New vacancies matching your search</p>
-              <ul className="mt-2 divide-y divide-rule">
-                {sample.map((j) => (
-                  <li key={j.id} className="py-2">
-                    <p className="font-medium text-ink">{j.title}</p>
-                    <p className="text-slate">
-                      {j.org_name ?? "Organization not stated"} · {locationLabel(j)}
-                      {j.deadline ? ` · Closes ${formatDate(j.deadline)}` : ""}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </section>
-        ) : null}
+        <AlertExample />
       </div>
 
       <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6" aria-labelledby="faq-heading">

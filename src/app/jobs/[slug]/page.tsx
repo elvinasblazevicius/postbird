@@ -138,7 +138,7 @@ export default async function JobPage({ params }: Props) {
       jobId={job.id}
       className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-3.5 text-base font-semibold text-white hover:bg-accent"
     >
-      Apply
+      {applyLinkKind(job.apply_url) === "homepage" ? "Find it on the careers site" : "Apply"}
       <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true"><path d="M6 3h7v7M13 3 4 12" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
     </ApplyLink>
   );
@@ -210,7 +210,9 @@ export default async function JobPage({ params }: Props) {
                 </Fact>
               ) : null}
               {job.reference ? <Fact label="Vacancy reference">{job.reference}</Fact> : null}
-              {missing.length ? <Fact label="Not stated in the posting" muted>{missing.join(", ").replace(/^./, (c) => c.toUpperCase())}</Fact> : null}
+              {missing.map((m) => (
+                <Fact key={m} label={m.replace(/^./, (c) => c.toUpperCase())} muted>Not stated in the posting</Fact>
+              ))}
             </dl>
           </section>
 

@@ -28,7 +28,7 @@ export default async function LocationsPage() {
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         <h2 className="text-[1.5rem] font-semibold text-ink">Regions</h2>
         <ul className="mt-4 mb-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {regions.map((r) => (
+          {regions.filter((r) => r.count > 0).map((r) => (
             <li key={r.slug}>
               <Link href={`/locations/${r.slug}`} className="card-lift flex items-baseline justify-between rounded-xl border border-rule bg-paper px-4 py-3 hover:border-brand">
                 <span className="font-medium text-ink">{r.name}</span>
