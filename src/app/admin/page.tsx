@@ -5,17 +5,19 @@ import { sql } from "@/lib/db";
 import { isEmailConfigured } from "@/lib/email";
 import { BILLING_LIVE, PADDLE_ENV } from "@/lib/billing/live";
 import { planPriceNumber } from "@/lib/early-access-copy";
-import { syncNowAction } from "./actions";
+import { sendTestEmailAction, syncNowAction } from "./actions";
 import { requireAdmin } from "./guard";
 import { AdminShell, Card, fmtDateTime, olderThanHours, Stat, StatusPill, Table } from "./ui";
 
 export const dynamic = "force-dynamic";
 
-type Props = { searchParams: Promise<{ days?: string }> };
+type Props = { searchParams: Promise<{ days?: string; email?: string }> };
 
 export default async function AdminHome({ searchParams }: Props) {
   await requireAdmin();
-  const daysRaw = Number((await searchParams).days);
+  const sp = await searchParams;
+  const emailResult = typeof sp.email === "string" ? sp.email.slice(0, 200) : null;
+  const daysRaw = Number(sp.days);
   const days = [7, 30, 90].includes(daysRaw) ? daysRaw : 30;
 
   const [[jobs], [subs], lastRuns, [feeds], [ev], daily, topCats, topOrgs, topSearches, topJobs, referrers] = await Promise.all([
@@ -157,11 +159,21 @@ export default async function AdminHome({ searchParams }: Props) {
       title="Overview"
       active="/admin"
       actions={
-        <form action={syncNowAction}>
-          <button className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-accent">Sync now</button>
-        </form>
+        <div className="flex gap-2">
+          <form action={sendTestEmailAction}>
+            <button className="rounded-lg border border-rule px-4 py-2 text-sm font-semibold text-ink hover:bg-mist">Send test email</button>
+          </form>
+          <form action={syncNowAction}>
+            <button className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-accent">Sync now</button>
+          </form>
+        </div>
       }
     >
+      {emailResult ? (
+        <Card className={`mb-6 ${emailResult.startsWith("sent") ? "bg-remote-bg" : "border-[#f0d9b5] bg-signal-bg"}`}>
+          <p className="text-sm text-ink">Test email {emailResult}</p>
+        </Card>
+      ) : null}
       {warnings.length ? (
         <Card className="mb-6 border-[#f0d9b5] bg-signal-bg">
           <ul className="list-disc space-y-1 pl-5 text-sm text-ink">{warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>

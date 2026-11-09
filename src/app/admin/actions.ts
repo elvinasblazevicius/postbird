@@ -13,6 +13,7 @@ import { parseFeed } from "@/lib/feeds/parse";
 import { clientIp, hashKey, rateLimit } from "@/lib/rate-limit";
 import { absoluteUrl } from "@/lib/site";
 import { requireAdmin } from "./guard";
+import siteConfig from "@site-config";
 
 // The sync and digest modules (and the HTML sanitizer they pull in) are
 // imported only inside the actions that need them, after the admin check, so
@@ -156,6 +157,20 @@ export async function setJobCategoryAction(form: FormData) {
 }
 
 // ── Subscribers ──
+/** Sends one test email to the site's contact address and shows Resend's answer on the overview. */
+export async function sendTestEmailAction(): Promise<void> {
+  await requireAdmin();
+  const to = siteConfig.contactEmail;
+  const res = await sendEmail({
+    to,
+    subject: `${siteConfig.name} test email`,
+    text: `This is a test email from the ${siteConfig.name} admin overview. If you can read it, sending works.`,
+    html: `<p>This is a test email from the ${siteConfig.name} admin overview. If you can read it, sending works.</p>`,
+  });
+  const result = res.ok ? `sent to ${to}` : `not sent: ${res.error ?? "unknown error"}`;
+  redirect(`/admin?email=${encodeURIComponent(result.slice(0, 200))}`);
+}
+
 export async function resendConfirmationsAction(): Promise<void> {
   await requireAdmin();
   if (!isEmailConfigured()) redirect("/admin/subscribers?msg=email-not-configured");
