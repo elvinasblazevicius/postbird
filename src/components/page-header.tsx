@@ -30,17 +30,20 @@ export function Breadcrumbs({ items, dark = false }: { items: Crumb[]; dark?: bo
   );
 }
 
-/** Quiet header band at the top of inner pages. `badge` is an optional logo or flag beside the title. */
-export function PageHeader({ title, intro, crumbs, badge, children }: { title: string; intro?: React.ReactNode; crumbs?: Crumb[]; badge?: React.ReactNode; children?: React.ReactNode }) {
+/**
+ * Quiet header band at the top of inner pages. `badge` is an optional logo or flag beside the title.
+ * `compact`: on phones a smaller title and no intro, so results start near the top (search pages).
+ */
+export function PageHeader({ title, intro, crumbs, badge, compact = false, children }: { title: string; intro?: React.ReactNode; crumbs?: Crumb[]; badge?: React.ReactNode; compact?: boolean; children?: React.ReactNode }) {
   return (
     <header className="brand-band">
-      <div className="mx-auto max-w-6xl px-4 pb-9 pt-7 sm:px-6">
-        {crumbs ? <Breadcrumbs items={crumbs} /> : null}
-        <div className="mt-4 flex items-center gap-4">
+      <div className={`mx-auto max-w-6xl px-4 sm:px-6 ${compact ? "pb-4 pt-4 sm:pb-9 sm:pt-7" : "pb-9 pt-7"}`}>
+        {crumbs ? <div className={compact ? "hidden sm:block" : undefined}><Breadcrumbs items={crumbs} /></div> : null}
+        <div className={`flex items-center gap-4 ${compact ? "sm:mt-4" : "mt-4"}`}>
           {badge}
-          <h1 className="text-[2rem] font-semibold leading-tight text-ink sm:text-[2.5rem]">{title}</h1>
+          <h1 className={`font-semibold leading-tight text-ink ${compact ? "text-[1.45rem] sm:text-[2.5rem]" : "text-[2rem] sm:text-[2.5rem]"}`}>{title}</h1>
         </div>
-        {intro ? <div className="mt-3 max-w-3xl text-[1.05rem] leading-relaxed text-slate">{intro}</div> : null}
+        {intro ? <div className={`mt-3 max-w-3xl text-[1.05rem] leading-relaxed text-slate ${compact ? "hidden sm:block" : ""}`}>{intro}</div> : null}
         {children}
       </div>
     </header>

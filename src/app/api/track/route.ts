@@ -48,7 +48,7 @@ export async function POST(req: Request) {
   if (body.props && typeof body.props === "object") {
     if (type === "search") {
       // Only the known filter fields, trimmed.
-      const keys = ["q", "org", "country", "region", "category", "remote", "type", "posted", "closing", "grade", "orgtype", "lang", "exp", "results"];
+      const keys = ["q", "org", "country", "region", "category", "remote", "type", "posted", "closing", "grade", "orgtype", "lang", "exp", "hidelocal", "results", "match"];
       props = Object.fromEntries(
         keys.filter((k) => body.props![k] !== undefined && body.props![k] !== null)
           .map((k) => [k, typeof body.props![k] === "string" ? (body.props![k] as string).slice(0, 120) : typeof body.props![k] === "number" || typeof body.props![k] === "boolean" ? body.props![k] : null]),

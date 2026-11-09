@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { GRADE_GROUPS } from "@/config/regions";
+import { FILTER_GRADE_GROUPS, gradeGroupOf } from "@/lib/grades";
 import { JOB_TYPES, jobsUrl, type JobFilters } from "@/lib/jobs";
 import { AutoSubmit } from "./auto-submit";
 
@@ -53,39 +53,53 @@ function Select({ name, label, value, options, groups, all, idPrefix = "f" }: { 
 
 const withCount = (name: string, count: number) => `${name} (${count})`;
 
-/** One "Where" field: world regions first, then countries. */
-function WhereSelect({ facets, filters, idPrefix }: { facets: FacetData; filters: JobFilters; idPrefix: string }) {
+/** One "Where" field: world regions first, then countries. Options without jobs are left out, except the one chosen. */
+export function WhereSelect({ facets, filters, idPrefix, label = "Where" }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string }) {
   return (
     <Select
       idPrefix={idPrefix}
       name="where"
-      label="Where"
+      label={label}
       all="Anywhere"
       value={filters.region ? `region-${filters.region}` : filters.country}
       groups={[
-        { label: "Regions", options: facets.regions.filter((r) => r.count > 0).map((r) => ({ value: `region-${r.slug}`, label: withCount(r.name, r.count) })) },
-        { label: "Countries", options: facets.countries.map((c) => ({ value: c.slug, label: withCount(c.name, c.count) })) },
+        { label: "Regions", options: facets.regions.filter((r) => r.count > 0 || r.slug === filters.region).map((r) => ({ value: `region-${r.slug}`, label: withCount(r.name, r.count) })) },
+        { label: "Countries", options: facets.countries.filter((c) => c.count > 0 || c.slug === filters.country).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) })) },
       ]}
     />
   );
 }
 
-/** Grade: groups (Professional, National Officer…) and the exact grades that have open jobs. */
+/**
+ * Grade: one list, arranged by grade group. Each group starts with "All …" (the whole group,
+ * e.g. P-1 to P-5), followed by the single grades in it that have open jobs ("P-3").
+ * Grades outside the groups are listed last.
+ */
 function GradeSelect({ facets, filters, idPrefix }: { facets: FacetData; filters: JobFilters; idPrefix: string }) {
-  const total = (grades: string[], sc = false) =>
-    facets.grades.filter((g) => (sc ? /^(SB|LICA|NPSA|IPSA|ICS)-/.test(g.grade) : grades.includes(g.grade))).reduce((n, g) => n + g.count, 0);
-  const groups = GRADE_GROUPS.map((g) => ({ ...g, count: total(g.grades, g.value === "SC") })).filter((g) => g.count > 0);
+  const selected = filters.grade;
+  const groups: Group[] = FILTER_GRADE_GROUPS.map((g) => {
+    const grades = facets.grades.filter((x) => gradeGroupOf(x.grade) === g.value);
+    const count = grades.reduce((n, x) => n + x.count, 0);
+    const exact = grades.filter((x) => x.count > 0 || x.grade === selected);
+    return {
+      label: g.name,
+      options: count > 0 || selected === g.value || exact.length
+        ? [{ value: g.value, label: withCount(`${g.name.replace(/ \(.*\)$/, "")}, all grades`, count) }, ...exact.map((x) => ({ value: x.grade, label: withCount(x.grade, x.count) }))]
+        : [],
+    };
+  });
+  const other = facets.grades.filter((x) => !gradeGroupOf(x.grade) && (x.count > 0 || x.grade === selected));
+  // An old link may use the "entry" group, which is not offered any more: keep it selectable while chosen.
+  const legacy = selected === "entry" ? [{ value: "entry", label: "Entry level (P-1, P-2, NO-A)" }] : [];
   return (
     <Select
       idPrefix={idPrefix}
       name="grade"
       label="Grade"
       all="Any grade"
-      value={filters.grade}
-      groups={[
-        { label: "Grade groups", options: groups.map((g) => ({ value: g.value, label: withCount(g.name, g.count) })) },
-        { label: "Exact grade", options: facets.grades.map((g) => ({ value: g.grade, label: withCount(g.grade, g.count) })) },
-      ]}
+      value={selected}
+      options={legacy}
+      groups={[...groups, { label: "Other grades", options: other.map((x) => ({ value: x.grade, label: withCount(x.grade, x.count) })) }]}
     />
   );
 }
@@ -106,21 +120,21 @@ function RemoteToggle({ checked, id }: { checked?: boolean; id: string }) {
 function MoreFilterFields({ idPrefix, filters, facets }: { idPrefix: string; filters: JobFilters; facets: FacetData }) {
   return (
     <>
-      {facets.types && facets.types.length ? (
+      {facets.types && (facets.types.some((x) => x.count) || filters.type) ? (
         <Select idPrefix={idPrefix} name="type" label="Contract type" value={filters.type} all="Any contract"
-          options={JOB_TYPES.filter((t) => facets.types!.some((x) => x.job_type === t)).map((t) => ({ value: t, label: withCount(t, facets.types!.find((x) => x.job_type === t)!.count) }))} />
+          options={JOB_TYPES.map((t) => ({ t, count: facets.types!.find((x) => x.job_type === t)?.count ?? 0 })).filter((x) => x.count > 0 || x.t === filters.type).map((x) => ({ value: x.t, label: withCount(x.t, x.count) }))} />
       ) : null}
-      {facets.exps && facets.exps.some((e) => e.count) ? (
+      {facets.exps && (facets.exps.some((e) => e.count) || filters.exp) ? (
         <Select idPrefix={idPrefix} name="exp" label="Experience required" value={filters.exp} all="Any experience"
-          options={facets.exps.filter((e) => e.count).map((e) => ({ value: e.value, label: withCount(e.name, e.count) }))} />
+          options={facets.exps.filter((e) => e.count || e.value === filters.exp).map((e) => ({ value: e.value, label: withCount(e.name, e.count) }))} />
       ) : null}
-      {facets.langs && facets.langs.length ? (
+      {facets.langs && (facets.langs.some((l) => l.count) || filters.lang) ? (
         <Select idPrefix={idPrefix} name="lang" label="Language in requirements" value={filters.lang} all="Any language"
-          options={facets.langs.map((l) => ({ value: l.lang, label: withCount(l.lang, l.count) }))} />
+          options={[...facets.langs.filter((l) => l.count || l.lang === filters.lang), ...(filters.lang && !facets.langs.some((l) => l.lang === filters.lang) ? [{ lang: filters.lang, count: 0 }] : [])].map((l) => ({ value: l.lang, label: withCount(l.lang, l.count) }))} />
       ) : null}
-      {facets.orgTypes && facets.orgTypes.some((o) => o.count) ? (
+      {facets.orgTypes && (facets.orgTypes.some((o) => o.count) || filters.orgtype) ? (
         <Select idPrefix={idPrefix} name="orgtype" label="Type of organization" value={filters.orgtype} all="Any type"
-          options={facets.orgTypes.filter((o) => o.count).map((o) => ({ value: o.value, label: withCount(o.name, o.count) }))} />
+          options={facets.orgTypes.filter((o) => o.count || o.value === filters.orgtype).map((o) => ({ value: o.value, label: withCount(o.name, o.count) }))} />
       ) : null}
       <Select idPrefix={idPrefix} name="closing" label="Deadline" value={filters.closing} all="Any deadline"
         options={[{ value: "7", label: "Closing within 7 days" }, { value: "30", label: "Closing within 30 days" }]} />
@@ -189,7 +203,7 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
       </div>
       {!("country" in hidden) && !("region" in hidden) ? <WhereSelect facets={facets} filters={filters} idPrefix={P} /> : null}
       {!("org" in hidden) ? (
-        <Select idPrefix={P} name="org" label="Organization" value={filters.org} all="Any organization" options={facets.orgs.map((o) => ({ value: o.slug, label: withCount(o.name, o.count) }))} />
+        <Select idPrefix={P} name="org" label="Organization" value={filters.org} all="Any organization" options={facets.orgs.filter((o) => o.count > 0 || o.slug === filters.org).map((o) => ({ value: o.slug, label: withCount(o.name, o.count) }))} />
       ) : null}
       {!("category" in hidden) ? (
         <Select idPrefix={P} name="category" label="Category" value={filters.category} all="Any category" options={facets.categories.filter((c) => c.count > 0 || c.slug === filters.category).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) }))} />
@@ -201,6 +215,13 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
           Remote / home-based only
         </label>
       ) : null}
+      <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-rule px-3 py-2.5 text-[0.95rem] text-ink">
+        <input type="checkbox" name="hidelocal" value="1" defaultChecked={!!filters.hidelocal} className="mt-1 h-4 w-4 shrink-0 accent-[var(--accent)]" />
+        <span>
+          Hide local-only posts
+          <span className="block text-xs text-slate">National Officer, General Service and other posts usually open only to nationals or residents</span>
+        </span>
+      </label>
       <details className="group" open={moreIsOpen(filters)}>
         <MoreToggle />
         <div className="mt-3 space-y-4">
@@ -213,6 +234,36 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
         <Link href={jobsUrl({}, action)} className="rounded-lg px-3 py-2.5 text-sm font-medium text-accent hover:bg-mist">Clear</Link>
       </div>
       <AutoSubmit formId={formId} />
+    </form>
+  );
+}
+
+/**
+ * "What should we watch for?" — the optional first step of the alert sign-up. A plain GET form back to
+ * the same page; the page turns the answers into the saved search (the /jobs query string) that the
+ * sign-up form sends on (see searchFromAlertStep in src/lib/saved-searches.ts). `keep` carries other
+ * filters of a search started on the jobs page, and the reminder job id.
+ */
+export function WatchForForm({ action, facets, filters, keep = {} }: { action: string; facets: FacetData; filters: JobFilters; keep?: Record<string, string> }) {
+  return (
+    <form action={action} method="get" className="space-y-4">
+      <input type="hidden" name="step" value="watch" />
+      {Object.entries(keep).map(([k, v]) => (
+        <input key={k} type="hidden" name={k} value={v} />
+      ))}
+      <div>
+        <label htmlFor="watch-q" className="mb-1.5 block text-sm font-medium text-ink">Keywords</label>
+        <input id="watch-q" name="q" type="text" defaultValue={filters.q ?? ""} maxLength={120} placeholder="e.g. data analyst, WASH, monitoring" className={fieldCls} autoComplete="off" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Select idPrefix="watch" name="org" label="Organization" value={filters.org} all="Any organization"
+          options={facets.orgs.filter((o) => o.count > 0 || o.slug === filters.org).map((o) => ({ value: o.slug, label: o.name }))} />
+        <WhereSelect idPrefix="watch" facets={facets} filters={filters} label="Location" />
+      </div>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <button type="submit" className="rounded-lg bg-brand px-5 py-2.5 font-semibold text-white hover:bg-accent">Save and continue</button>
+        <a href="#alert-signup" className="text-sm font-medium text-accent hover:underline">Skip this step</a>
+      </div>
     </form>
   );
 }

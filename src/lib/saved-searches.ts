@@ -40,6 +40,37 @@ export function normalizeSearch(raw: string | null | undefined): string | null {
   return jobsUrl({ ...f, page: undefined, sort: undefined, posted: undefined }).replace(/^\/jobs\??/, "");
 }
 
+/** Filters of a saved search that the alert sign-up's "What should we watch for?" step carries over unchanged. */
+const STEP_KEEP = ["category", "grade", "type", "remote", "lang", "exp", "orgtype", "closing", "hidelocal"] as const;
+
+type SP = Record<string, string | string[] | undefined>;
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
+
+/**
+ * The saved search for the alert sign-up pages (/alerts, /pricing/trial): from the "What should we
+ * watch for?" step (keywords, organization, location, plus the filters it carried over) when it was
+ * just submitted, otherwise from ?search= (a search started on the jobs page). null = none.
+ */
+export function searchFromAlertStep(sp: SP): string | null {
+  if (one(sp.step) === "watch") {
+    const p = new URLSearchParams();
+    for (const k of ["q", "org", "where", ...STEP_KEEP]) {
+      const v = one(sp[k]).trim().slice(0, 120);
+      if (v) p.set(k, v);
+    }
+    return normalizeSearch(p.toString()) || null;
+  }
+  const raw = one(sp.search);
+  return raw && raw.length <= 400 ? normalizeSearch(raw) || null : null;
+}
+
+/** The parts of a saved search the step's fields don't show, as hidden form fields. */
+export function alertStepKeep(search: string | null): Record<string, string> {
+  if (!search) return {};
+  const p = new URLSearchParams(search);
+  return Object.fromEntries(STEP_KEEP.filter((k) => p.get(k)).map((k) => [k, p.get(k)!]));
+}
+
 /** Plain-language summary of a saved search, e.g. "Data & Analytics jobs, in Africa, grade P-3". */
 export async function describeSearch(query: string): Promise<string | null> {
   const f = parseFilters(Object.fromEntries(new URLSearchParams(query)));
@@ -54,6 +85,7 @@ export async function describeSearch(query: string): Promise<string | null> {
   if (f.type) parts.push(f.type.toLowerCase());
   if (f.lang) parts.push(`${f.lang} required`);
   if (f.closing) parts.push(`closing within ${f.closing} days`);
+  if (f.hidelocal) parts.push("without local-only posts");
   return parts.length ? parts.join(", ") : null;
 }
 

@@ -69,7 +69,8 @@ export function CancelPlanForm({ token }: { token: string }) {
 const field = "w-full rounded-lg border border-rule bg-paper px-4 py-3 text-base text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]";
 
 /**
- * Paid-alerts form on /pricing/trial. While billing is off: the early-access
+ * Paid-alerts form on /pricing/trial and /alerts. What to watch for is chosen in the optional step above
+ * it (AlertWatchStep) and arrives here as `search`. While billing is off: the early-access
  * form of the concept test (records interest, takes no payment). Once billing
  * is live: plan, email and the Paddle checkout for the free trial.
  */
@@ -98,24 +99,6 @@ function EarlyAccessForm({ source = "pricing", search, remindJobId }: { source?:
         <label htmlFor="pi-email" className="mb-1.5 block text-sm font-medium text-ink">Email address</label>
         <input id="pi-email" name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} />
       </div>
-      {search ? null : (
-        <>
-      <div>
-        <label htmlFor="pi-keywords" className="mb-1.5 block text-sm font-medium text-ink">Roles or keywords to watch <span className="font-normal text-slate">(optional)</span></label>
-        <input id="pi-keywords" name="keywords" placeholder="e.g. data analyst, M&E, WASH" className={field} />
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="pi-orgs" className="mb-1.5 block text-sm font-medium text-ink">Organizations <span className="font-normal text-slate">(optional)</span></label>
-          <input id="pi-orgs" name="organizations" placeholder="e.g. UNICEF, WHO" className={field} />
-        </div>
-        <div>
-          <label htmlFor="pi-locations" className="mb-1.5 block text-sm font-medium text-ink">Locations <span className="font-normal text-slate">(optional)</span></label>
-          <input id="pi-locations" name="locations" placeholder="e.g. Geneva, remote" className={field} />
-        </div>
-      </div>
-        </>
-      )}
       <div>
         <label htmlFor="pi-note" className="mb-1.5 block text-sm font-medium text-ink">Anything else you&apos;d want from {siteConfig.premium.name.toLowerCase()}? <span className="font-normal text-slate">(optional)</span></label>
         <textarea id="pi-note" name="note" rows={3} className={field} />

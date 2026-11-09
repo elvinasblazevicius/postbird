@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AlertExample } from "@/components/alert-example";
 import { AlertSignup } from "@/components/alert-signup";
+import { AlertWatchStep } from "@/components/alert-watch-step";
 import { PageHeader } from "@/components/page-header";
 import { PremiumInterestForm } from "@/components/token-forms";
 import { BILLING_LIVE } from "@/lib/billing/live";
+import { describeSearch, searchFromAlertStep } from "@/lib/saved-searches";
 import { siteConfig } from "@/lib/site";
 
 const free = siteConfig.freeWeeklyEmail;
@@ -18,8 +21,14 @@ export const metadata: Metadata = {
   alternates: { canonical: "/alerts" },
 };
 
-export default function AlertsPage() {
+type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
+
+export default async function AlertsPage({ searchParams }: Props) {
   const p = siteConfig.premium;
+  // Paid alerts work from saved searches; the free weekly email has none.
+  const sp = await searchParams;
+  const search = free ? null : searchFromAlertStep(sp);
+  const searchLabel = search ? await describeSearch(search) : null;
   return (
     <>
       <PageHeader
@@ -32,7 +41,18 @@ export default function AlertsPage() {
         }
       />
       <div className="mx-auto grid max-w-6xl gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[1.2fr_1fr]">
-        <div className="max-w-xl">{free ? <AlertSignup source="alerts-page" /> : <PremiumInterestForm source="alerts-page" />}</div>
+        <div className="max-w-xl">
+          {free ? (
+            <AlertSignup source="alerts-page" />
+          ) : (
+            <>
+              <AlertWatchStep action="/alerts" search={search} searchLabel={searchLabel} chosen={sp.step === "watch"} />
+              <div id="alert-signup" className="scroll-mt-24">
+                <PremiumInterestForm source="alerts-page" search={search ?? undefined} />
+              </div>
+            </>
+          )}
+        </div>
         <div className="rounded-2xl border border-rule bg-candy-soft p-6">
           <h2 className="text-xl font-semibold text-ink">What you&apos;ll get</h2>
           <ul className="mt-3 list-disc space-y-2 pl-5 text-slate">
@@ -49,6 +69,9 @@ export default function AlertsPage() {
           <p className="mt-5 text-slate">
             Browsing and searching every vacancy stays free. <Link href="/pricing" className="font-medium text-accent hover:underline">See pricing</Link>.
           </p>
+          <div className="mt-8">
+            <AlertExample />
+          </div>
         </div>
       </div>
     </>

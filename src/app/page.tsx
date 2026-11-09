@@ -159,7 +159,7 @@ export default async function HomePage() {
         <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
             ["One search, every kind of employer", "UN agencies, EU institutions, development banks, international organizations and NGOs, side by side."],
-            ["Apply straight to the employer", "Every Apply button opens the employer's own website or application form. No middle pages, no account needed to browse."],
+            ["No sign-in, no third-party ads", `Browse and apply without a ${siteConfig.name} account. Every Apply button opens the employer's own website or application form, which may ask you to register.`],
             ["Closing dates up front", "Each listing shows when it closes, and expired vacancies disappear automatically."],
             ["Filters made for this field", "Grade, duty station, remote work, contract type and language requirements."],
           ].map(([title, body]) => (

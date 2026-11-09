@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { AlertExample } from "@/components/alert-example";
+import { AlertWatchStep } from "@/components/alert-watch-step";
 import { PageHeader } from "@/components/page-header";
 import { PremiumInterestForm } from "@/components/token-forms";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { getJob } from "@/lib/jobs";
-import { describeSearch } from "@/lib/saved-searches";
+import { describeSearch, searchFromAlertStep } from "@/lib/saved-searches";
 import { siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +16,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/pricing/trial" },
 };
 
-type Props = { searchParams: Promise<{ search?: string; remind?: string }> };
+type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 /**
  * The visitor clicked an email-alert button. While billing is off (concept
@@ -24,9 +26,10 @@ type Props = { searchParams: Promise<{ search?: string; remind?: string }> };
 export default async function TrialPage({ searchParams }: Props) {
   const p = siteConfig.premium;
   const sp = await searchParams;
-  const search = sp.search && sp.search.length <= 400 ? sp.search : null;
+  const search = searchFromAlertStep(sp);
   const searchLabel = search ? await describeSearch(search) : null;
-  const remindId = sp.remind && /^\d{1,12}$/.test(sp.remind) ? Number(sp.remind) : null;
+  const remind = typeof sp.remind === "string" ? sp.remind : "";
+  const remindId = /^\d{1,12}$/.test(remind) ? Number(remind) : null;
   const remindJob = remindId ? await getJob(remindId) : null;
 
   return (
@@ -50,11 +53,7 @@ export default async function TrialPage({ searchParams }: Props) {
         }
       />
       <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
-        {searchLabel ? (
-          <p className="mb-6 rounded-xl border border-rule bg-candy-soft p-4 text-ink">
-            <span className="font-semibold">Alerts for:</span> {searchLabel}
-          </p>
-        ) : null}
+        <AlertWatchStep action="/pricing/trial" search={search} searchLabel={searchLabel} chosen={sp.step === "watch"} extraKeep={remindId ? { remind: String(remindId) } : {}} />
         {remindJob ? (
           <div className="mb-6 rounded-xl border border-rule bg-candy-soft p-4 text-ink">
             <p>
@@ -69,7 +68,12 @@ export default async function TrialPage({ searchParams }: Props) {
             </p>
           </div>
         ) : null}
-        <PremiumInterestForm source={search ? "search-alert" : remindJob ? "deadline-reminder" : "pricing"} search={search ?? undefined} remindJobId={remindJob ? remindJob.id : undefined} />
+        <div id="alert-signup" className="scroll-mt-24">
+          <PremiumInterestForm source={search ? "search-alert" : remindJob ? "deadline-reminder" : "pricing"} search={search ?? undefined} remindJobId={remindJob ? remindJob.id : undefined} />
+        </div>
+        <div className="mt-12">
+          <AlertExample />
+        </div>
       </div>
     </>
   );
