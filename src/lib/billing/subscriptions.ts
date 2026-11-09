@@ -8,8 +8,9 @@
  *  2. Paddle creates the subscription and sends webhooks; handlePaddleEvent()
  *     finds the subscriber through that reference (Paddle copies a checkout's
  *     customData onto the subscription) and mirrors the subscription's status.
- *  3. Only an address created by that checkout counts as confirmed by paying
- *     (the payer typed it). An address that already existed keeps its email
+ *  3. Only an address created by that checkout (or by an earlier, unfinished
+ *     checkout, untouched since) counts as confirmed by paying (the payer
+ *     typed it). An address that already existed keeps its email
  *     status (pending or unsubscribed) until its owner clicks the link we
  *     email to it, because anyone can type anyone's address at checkout.
  */
@@ -78,8 +79,16 @@ export async function startCheckout(opts: {
   });
   if (created) return { ok: true, ref, email };
 
-  const [existing] = await sql<{ id: number; billing_status: BillingStatus; manage_token: string }[]>`
-    select id::int as id, billing_status, manage_token from subscribers where email = ${email}`;
+  // checkout_created: the row was created by an earlier checkout that was never
+  // finished, and nobody has touched it since (no confirmation, no sign-up or
+  // confirmation link, no subscription). Retrying the checkout is the same
+  // payer typing the same new address again, so paying confirms it as well;
+  // otherwise the row would stay pending after payment and alerts never start.
+  const [existing] = await sql<{ id: number; billing_status: BillingStatus; manage_token: string; checkout_created: boolean }[]>`
+    select s.id::int as id, s.billing_status, s.manage_token,
+           (s.status = 'pending' and s.confirmed_at is null and s.confirm_token is null and s.paddle_subscription_id is null
+            and exists (select 1 from paddle_checkouts c where c.subscriber_id = s.id and c.new_subscriber)) as checkout_created
+    from subscribers s where s.email = ${email}`;
   if (!existing) return { ok: false, error: "Something went wrong on our side. Please try again in a minute." };
   // One subscription per address: send the existing subscriber to their account instead.
   if (LIVE_STATUSES.includes(existing.billing_status)) {
@@ -89,7 +98,7 @@ export async function startCheckout(opts: {
   if (attribution) await sql`update subscribers set attribution = coalesce(attribution, ${sql.json(attribution)}) where id = ${existing.id}`;
   await sql`
     insert into paddle_checkouts (ref, subscriber_id, plan, search, new_subscriber, visitor)
-    values (${ref}, ${existing.id}, ${opts.plan}, ${opts.search}, false, ${opts.visitor ?? null})`;
+    values (${ref}, ${existing.id}, ${opts.plan}, ${opts.search}, ${existing.checkout_created}, ${opts.visitor ?? null})`;
   return { ok: true, ref, email };
 }
 
@@ -321,12 +330,17 @@ async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: st
       confirm_token = case when prev.next_status = 'confirmed' then null
                            when prev.live_link then coalesce(s.confirm_token, ${newToken()})
                            else s.confirm_token end,
+      -- Claimed here (with a lease, confirm_claimed_at), sent after the commit (see the webhook route).
       confirm_sent_at = case when prev.live_link and prev.next_status <> 'confirmed' then now() else s.confirm_sent_at end,
+      confirm_claimed_at = case when prev.live_link and prev.next_status <> 'confirmed' then now() else s.confirm_claimed_at end,
       wants_alerts = case when ${live} then true else s.wants_alerts end,
       -- A different subscription (e.g. a returning customer's new trial) gets its own trial reminder.
       trial_reminder_sent_at = case when prev.paddle_subscription_id is distinct from ${sub.id} then null else s.trial_reminder_sent_at end,
-      -- Claimed here, sent after the commit; reset if sending fails (welcomeNotSent).
-      welcome_sent_at = case when ${alerts} and prev.next_status = 'confirmed' then coalesce(s.welcome_sent_at, now()) else s.welcome_sent_at end
+      trial_reminder_claimed_at = case when prev.paddle_subscription_id is distinct from ${sub.id} then null else s.trial_reminder_claimed_at end,
+      -- Claimed here, sent after the commit; reset if sending fails (welcomeNotSent). welcome_claimed_at
+      -- is the lease: cleared once sent (welcomeSent), and the daily job picks up a claim older than 30 minutes.
+      welcome_sent_at = case when ${alerts} and prev.next_status = 'confirmed' then coalesce(s.welcome_sent_at, now()) else s.welcome_sent_at end,
+      welcome_claimed_at = case when ${alerts} and prev.next_status = 'confirmed' and s.welcome_sent_at is null then now() else s.welcome_claimed_at end
     from prev
     where s.id = prev.id
       and (prev.paddle_subscription_id is distinct from ${sub.id} or s.billing_event_at is null or s.billing_event_at <= ${occurredAt})
@@ -367,5 +381,10 @@ async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: st
 
 /** Called when sending the welcome email failed, so the daily job (or a later event) can try again. */
 export async function welcomeNotSent(subscriberId: number): Promise<void> {
-  await sql`update subscribers set welcome_sent_at = null where id = ${subscriberId}`;
+  await sql`update subscribers set welcome_sent_at = null, welcome_claimed_at = null where id = ${subscriberId}`;
+}
+
+/** Called once Resend accepted the welcome email: ends the claim's lease (see db/migrations/009_email_claim_leases.sql). */
+export async function welcomeSent(subscriberId: number): Promise<void> {
+  await sql`update subscribers set welcome_claimed_at = null where id = ${subscriberId}`;
 }

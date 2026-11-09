@@ -46,8 +46,9 @@
   --color-tint-ink: var(--tint-ink);
   --color-lilac: var(--lilac);
   --color-lilac-ink: var(--lilac-ink);
-  --font-sans: var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-serif: var(--font-newsreader), ui-serif, Georgia, serif;
+  /* The latin-ext families come first; their unicode-range keeps them to letters the latin files lack (see layout.tsx). */
+  --font-sans: var(--font-public-sans-ext), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-newsreader-ext), var(--font-newsreader), ui-serif, Georgia, serif;
 }
 
 html {
@@ -145,27 +146,21 @@ a {
   position: relative;
 }
 
-/* Faint wall of national flags in the homepage hero (public/flag-wall.svg) */
-.flag-wall {
-  position: absolute;
-  pointer-events: none;
-  user-select: none;
-  max-width: none;
-  width: 520px;
-  right: -230px;
-  top: -40px;
-  opacity: 0.1;
-  filter: saturate(0.35);
-  transform: rotate(-8deg);
-  -webkit-mask-image: radial-gradient(ellipse 60% 60% at 62% 45%, #000 25%, transparent 75%);
-  mask-image: radial-gradient(ellipse 60% 60% at 62% 45%, #000 25%, transparent 75%);
+/* Homepage hero: the dot-matrix world map (public/world-dots.svg), faint, on the deep-blue field. */
+.hero-dots {
+  width: 760px;
+  right: -260px;
+  top: -10px;
+  opacity: 0.07;
+  -webkit-mask-image: radial-gradient(ellipse 70% 70% at 60% 45%, #000 40%, transparent 85%);
+  mask-image: radial-gradient(ellipse 70% 70% at 60% 45%, #000 40%, transparent 85%);
 }
 @media (min-width: 1024px) {
-  .flag-wall {
-    width: 860px;
-    right: -120px;
-    top: 10px;
-    opacity: 0.16;
+  .hero-dots {
+    width: 1040px;
+    right: -180px;
+    top: 0;
+    opacity: 0.09;
   }
 }
 

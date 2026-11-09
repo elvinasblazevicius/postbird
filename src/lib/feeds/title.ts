@@ -27,5 +27,9 @@ export function cleanTitle(raw: string): string {
   if (letters.length >= 8 && upper.length / letters.length > 0.85) {
     t = t.split(/(\s+)/).map((w, i) => (/\s/.test(w) ? w : titleCaseWord(w, i === 0))).join("");
   }
+  // A hyphen with a space on one or both sides separates parts of the title: "Officer- TVET",
+  // "Officer -TVET" and "Officer - TVET" all become "Officer – TVET" (en dash). Hyphens inside
+  // words ("Non-Food") and suspended hyphens before "and/or/to" ("pre- and post-") are left alone.
+  t = t.replace(/(?<=\S)(?:\s+-\s*|-\s+)(?!(?:and|or|to)\s)(?=\S)/gi, " – ");
   return t.replace(/\s{2,}/g, " ").trim();
 }

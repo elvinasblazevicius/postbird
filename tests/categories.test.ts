@@ -57,6 +57,27 @@ describe("job categories", () => {
     }
   });
 
+  it("places partnerships, floods, genebanks and directors", () => {
+    const cases: [string, string][] = [
+      ["Partnerships Officer", "programme-management"],
+      ["Partnership Specialist", "programme-management"],
+      ["Flood Risk Analyst", "environment-climate-energy"],
+      ["Flooding and Resilience Adviser", "environment-climate-energy"],
+      ["Genebank Manager", "food-security-agriculture"],
+      ["Gene Bank Technician", "food-security-agriculture"],
+      ["Plant Genetic Resources Officer", "food-security-agriculture"],
+      ["Head of Entity", "programme-management"],
+      ["Director, Regional Bureau", "programme-management"],
+      ["Deputy Director", "programme-management"],
+    ];
+    for (const [title, slug] of cases) expect(detectCategory(title), title).toBe(slug);
+    // Earlier categories still win, and "gene" doesn't match inside other words.
+    expect(detectCategory("Finance Director")).toBe("finance");
+    expect(detectCategory("Communications Director")).toBe("communications");
+    expect(detectCategory("General Service Assistant")).not.toBe("food-security-agriculture");
+    expect(detectCategory("Geneva Liaison Officer")).not.toBe("food-security-agriculture");
+  });
+
   it("matches the new category names in search words", () => {
     expect(categoriesForWord("water")).toEqual(["wash"]);
     expect(categoriesForWord("climate")).toEqual(["environment-climate-energy"]);

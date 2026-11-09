@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect } from "react";
 import { confirmAction, unsubscribeAction, type FormState } from "@/app/actions";
 import { alertSignupAction } from "@/app/alert-actions";
@@ -67,6 +68,15 @@ export function CancelPlanForm({ token }: { token: string }) {
   );
 }
 
+/** Under every form that asks for an email address. */
+export function PrivacyNote({ className = "text-sm text-slate" }: { className?: string }) {
+  return (
+    <p className={className}>
+      We use your address only to send these emails. <Link href="/privacy" className="underline underline-offset-2 hover:text-accent">Privacy policy</Link>
+    </p>
+  );
+}
+
 const field = "w-full rounded-lg border border-rule bg-paper px-4 py-3 text-base text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]";
 
 /**
@@ -112,6 +122,7 @@ function EarlyAccessForm({ source = "pricing", search, remindJobId, watch }: { s
       <p className="text-sm text-slate">
         {earlyAccessLine()}
       </p>
+      <PrivacyNote />
     </form>
   );
 }
@@ -146,6 +157,7 @@ export function FreeWeeklyForm({ source = "alerts-page", search, watch }: { sour
         {pending ? "Saving…" : "Get the free weekly email"}
       </button>
       <p className="text-sm text-slate">Free, no card and no account. We&apos;ll email you once to confirm. Unsubscribe with one click.</p>
+      <PrivacyNote />
     </form>
   );
 }

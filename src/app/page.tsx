@@ -57,7 +57,7 @@ export default async function HomePage() {
       {/* Hero */}
       <section className="bg-candy-hero relative overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/flag-wall.svg" alt="" aria-hidden="true" className="flag-wall" />
+        <img src="/world-dots.svg" alt="" aria-hidden="true" className="world-dots hero-dots" />
         <div className="relative mx-auto max-w-6xl px-4 pb-5 pt-5 sm:px-6 sm:pb-12 sm:pt-16">
           <div className="max-w-3xl">
             <h1 className="max-w-[20ch] text-[1.7rem] font-semibold leading-[1.1] text-white sm:text-[3.5rem]">{siteConfig.home.headline}</h1>
@@ -163,30 +163,26 @@ export default async function HomePage() {
       ) : null}
       </div>
 
-      {/* Why Postbird */}
-      <section className="mx-auto mt-16 max-w-6xl px-4 sm:px-6" aria-labelledby="why-heading">
-        <h2 id="why-heading" className="text-[1.6rem] font-semibold leading-tight text-ink">Why use {siteConfig.name}</h2>
-        <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            ["One search, every kind of employer", "UN agencies, EU institutions, development banks, international organizations and NGOs, side by side."],
-            ["No sign-in, no third-party ads on the page", `Browse and apply without a ${siteConfig.name} account. Every Apply button opens the employer's own website or application form, which may ask you to register.`],
-            ["Closing dates up front", "Each listing shows when it closes, and expired vacancies disappear automatically."],
-            ["Filters made for this field", "Grade, duty station, remote work, contract type and language requirements."],
-          ].map(([title, body]) => (
-            <li key={title} className="rounded-2xl border border-rule bg-paper p-5">
-              <svg viewBox="0 0 16 16" className="h-5 w-5 text-remote" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="1.8" /></svg>
-              <h3 className="mt-2 text-lg font-semibold leading-snug text-ink">{title}</h3>
-              <p className="mt-1.5 text-[0.95rem] leading-relaxed text-slate">{body}</p>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-4 text-sm text-slate">
-          Details our source doesn&apos;t give are marked &quot;Not in our source&quot;, never guessed. <Link href="/about" className="text-accent underline">How it works</Link>
-        </p>
+      {/* What is true of every listing: facts, not claims. Checked against the code: imports run every 2 hours
+          (.github/workflows/scheduled.yml), listings without an employer link aren't shown (src/lib/feeds), local-only
+          posts carry a tag (isLocalOnly in src/lib/grades.ts) and nothing on the site needs an account. */}
+      <section className="mx-auto mt-12 max-w-6xl px-4 sm:px-6" aria-labelledby="facts-heading">
+        <h2 id="facts-heading" className="sr-only">About the listings</h2>
+        <div className="flex flex-col gap-3 border-y border-rule py-4 sm:flex-row sm:items-center sm:justify-between">
+          <ul className="flex flex-wrap gap-x-2 gap-y-1.5 text-[0.95rem] text-ink">
+            {["Updated every 2 hours", "Apply links go to the employer", "Local-only posts flagged", "No sign-in needed"].map((f, i) => (
+              <li key={f} className="flex items-center gap-2">
+                {i > 0 ? <span aria-hidden="true" className="text-slate">·</span> : null}
+                {f}
+              </li>
+            ))}
+          </ul>
+          <Link href="/about" className="shrink-0 text-sm font-medium text-accent hover:underline">How it works</Link>
+        </div>
       </section>
 
       {/* Browse */}
-      <section className="mx-auto mt-16 grid max-w-6xl gap-12 px-4 sm:px-6 lg:grid-cols-2" aria-label="Browse">
+      <section className="mx-auto mt-14 grid max-w-6xl gap-12 px-4 sm:px-6 lg:grid-cols-2" aria-label="Browse">
         <div>
           <div className="flex items-end justify-between">
             <h2 className="text-[1.6rem] font-semibold leading-tight text-ink">Browse by organization</h2>
@@ -231,7 +227,7 @@ export default async function HomePage() {
             <p className="mt-3 max-w-lg leading-relaxed text-white/80">
               {siteConfig.freeWeeklyEmail
                 ? "A free Monday email with the past week's new vacancies for the search you choose. No card, no account, unsubscribe with one click."
-                : "New vacancies for the roles, organizations and places you choose, by email, with every closing date shown."}
+                : "New vacancies for the roles, organizations and places you choose, by email, with the closing date whenever the employer publishes one."}
             </p>
           </div>
           {siteConfig.freeWeeklyEmail ? (

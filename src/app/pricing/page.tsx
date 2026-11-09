@@ -31,11 +31,11 @@ export default function PricingPage() {
     ? [
         [
           "How does the free trial work?",
-          <>You pay $0 for {p.trialDays} days. A card is needed to start. If you don&apos;t cancel before day {p.trialDays}, the plan you chose starts automatically.</>,
+          <>You pay $0 for {p.trialDays} days, and a card is needed to start. If you don&apos;t cancel before your trial ends (we show the date before you start and email you about 3 days ahead), the plan you chose starts automatically.</>,
         ],
         [
           "How do I cancel?",
-          <>Every alert email links to your account, where &quot;Manage billing or cancel&quot; opens Paddle&apos;s page to cancel. Lost the email? <Link href="/account/login" className="text-accent underline">Get your account link</Link>. You keep alerts until the end of the period you paid for.</>,
+          <>Every alert email links to your account, where &quot;Cancel or manage billing&quot; opens Paddle&apos;s page to cancel. Lost the email? <Link href="/account/login" className="text-accent underline">Get your account link</Link>. You keep alerts until the end of the period you paid for.</>,
         ],
         ["Who handles the payment?", <>Paddle.com, our reseller and merchant of record. It handles payment, invoices and tax; we never see your card details.</>],
         ["Can I get a refund?", <>Yes. Email us within 14 days of any charge and we&apos;ll refund that charge in full, no questions asked. <Link href="/refunds" className="text-accent underline">Refund policy</Link></>],
@@ -63,7 +63,7 @@ export default function PricingPage() {
         ],
         [
           "What do paid alerts add?",
-          <>New matches every day instead of once a week, and up to 5 saved searches instead of one. While you have a paid plan you get your alerts instead of the weekly email, not both.</>,
+          <>New matches every day instead of once a week, so you see a vacancy up to 6 days sooner, and up to 5 searches instead of one, each with the same full filters. While you have a paid plan you get your alerts instead of the weekly email, not both.</>,
         ],
       ]
     : [];
@@ -84,8 +84,9 @@ export default function PricingPage() {
   return (
     <>
       <PageHeader
-        title="Email alerts"
-        crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Email alerts" }]}
+        width="max-w-4xl"
+        title="Plans and pricing"
+        crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Pricing" }]}
         intro={
           siteConfig.freeWeeklyEmail
             ? `Every vacancy, search and filter is free, and so is a weekly email for one search. Paid daily alerts${BILLING_LIVE ? "" : ", launching soon,"} bring new matches for up to 5 searches every day.`
@@ -97,7 +98,13 @@ export default function PricingPage() {
           <h2 id="plan-free" className="text-2xl font-semibold leading-tight text-ink">Free</h2>
           <p className="mt-2"><span className="font-display text-4xl font-semibold text-ink">$0</span></p>
           <ul className="mt-6 space-y-3 text-ink">
-            {["Browse and search every vacancy", "Filter by organization, country, category and deadline", "Add closing dates to your calendar", ...(siteConfig.freeWeeklyEmail ? ["Weekly email with new matches for one search"] : [])].map((f) => (
+            {[
+              "Browse and search every vacancy",
+              "Filter by organization, country, grade, contract type and deadline",
+              "Closing date shown whenever the employer publishes one",
+              "Add closing dates to your calendar",
+              ...(siteConfig.freeWeeklyEmail ? ["Weekly email with new matches for one search, with the same filters"] : []),
+            ].map((f) => (
               <li key={f} className="flex gap-2.5"><Check />{f}</li>
             ))}
           </ul>

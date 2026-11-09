@@ -8,6 +8,7 @@ import { EarlyAccessDone } from "./early-access";
 import { EARLY_ACCESS_BUTTON, earlyAccessLine } from "@/lib/early-access-copy";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { TrialCheckoutForm } from "./paddle-checkout";
+import { PrivacyNote } from "./token-forms";
 
 const initial: FormState = { status: "idle", message: "" };
 
@@ -81,6 +82,7 @@ function EarlyAccessSignup({ source, tone = "light" }: { source: string; tone?: 
             : "We'll email you once to confirm. Unsubscribe any time."}
         </p>
       )}
+      <PrivacyNote className={`mt-1 text-sm ${dark ? "text-white/70" : "text-slate"}`} />
     </form>
   );
 }

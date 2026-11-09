@@ -40,13 +40,27 @@ describe("local-only posts from the title", () => {
   });
 
   it("infers grade NO from a National (Professional) Officer title when no grade was parsed", () => {
-    expect(displayGrade({ grade: null, title: "National Professional Officer (Education)" })).toBe("NO");
-    expect(displayGrade({ grade: null, title: "NPO - WASH" })).toBe("NO");
-    expect(displayGrade({ grade: "NO-C", title: "National Professional Officer" })).toBe("NO-C");
+    expect(displayGrade({ grade: null, title: "National Professional Officer (Education)" })).toBe("National Officer");
+    expect(displayGrade({ grade: null, title: "NPO - WASH" })).toBe("National Officer");
     expect(displayGrade({ grade: null, title: "International Officer" })).toBeNull();
     const re = sqlToJs(NATIONAL_OFFICER_TITLE_SQL);
     expect(re.test("national professional officer (education)")).toBe(true);
     expect(re.test("international officer")).toBe(false);
+  });
+});
+
+describe("displayGrade", () => {
+  it("writes National Officer grades out in full", () => {
+    expect(displayGrade({ grade: "NO-C", title: "National Professional Officer" })).toBe("National Officer C");
+    expect(displayGrade({ grade: "NO-A", title: "Programme Officer" })).toBe("National Officer A");
+    expect(displayGrade({ grade: "NOB", title: "Programme Officer" })).toBe("National Officer B");
+  });
+
+  it("leaves other grades as stored", () => {
+    expect(displayGrade({ grade: "P-3", title: "Programme Officer" })).toBe("P-3");
+    expect(displayGrade({ grade: "G-5", title: "Programme Assistant" })).toBe("G-5");
+    expect(displayGrade({ grade: "NPSA-8", title: "Field Associate" })).toBe("NPSA-8");
+    expect(displayGrade({ grade: null, title: "Programme Officer" })).toBeNull();
   });
 });
 
@@ -128,12 +142,54 @@ describe("dates and paid-alert copy", () => {
   it("spells out the charge and links the refund policy in the welcome email", () => {
     const [m, q] = siteConfig.premium.plans;
     const quarterly = welcomeEmail({ accountUrl: "https://x/a", unsubscribeUrl: "https://x/u", trialEndsAt: "2026-11-23T10:00:00Z", plan: planDescription("quarter") });
-    expect(quarterly.text).toContain(`After your trial you're charged ${q.price} every ${q.per}, renewing automatically until you cancel. Cancel any time from your account page.`);
+    expect(quarterly.text).toContain(`After your trial you're charged ${q.price} every ${q.per} (plus any sales tax shown at checkout), renewing automatically until you cancel. Cancel any time from your account page.`);
     expect(quarterly.text).toMatch(/Refund policy: https?:\/\/\S+\/refunds/);
     expect(quarterly.html).toContain("/refunds");
     const monthly = welcomeEmail({ accountUrl: "https://x/a", unsubscribeUrl: "https://x/u", trialEndsAt: "2026-11-23T10:00:00Z", plan: planDescription("month") });
     expect(monthly.text).toContain(`charged ${m.price} every month`);
     const unknown = welcomeEmail({ accountUrl: "https://x/a", unsubscribeUrl: "https://x/u", trialEndsAt: null, plan: siteConfig.premium.name });
     expect(unknown.text).toContain(`${m.price} every month or ${q.price} every 3 months`);
+  });
+});
+
+describe("organization names in sentences", () => {
+  it("uses acronyms as they are and adds “the” to names that need it", async () => {
+    const { orgInText, withArticle, nonAffiliationLine } = await import("@/lib/org-names");
+    expect(orgInText("World Food Programme", "WFP")).toBe("WFP");
+    expect(orgInText("UN Women", "UN Women")).toBe("UN Women");
+    expect(orgInText("World Bank", "World Bank")).toBe("the World Bank");
+    expect(orgInText("International Rescue Committee", null)).toBe("the International Rescue Committee");
+    expect(orgInText("African Development Bank", "AfDB")).toBe("the African Development Bank");
+    expect(withArticle("Save the Children")).toBe("Save the Children");
+    expect(withArticle("Médecins Sans Frontières")).toBe("Médecins Sans Frontières");
+    expect(nonAffiliationLine("Postbird", null)).toBe("Postbird is independent and not affiliated with these organizations. You apply on the employer's own website.");
+  });
+});
+
+describe("job page and card helpers", () => {
+  it("shows the published location only when it adds something", async () => {
+    const { extraLocation } = await import("@/lib/place-text");
+    expect(extraLocation("Amman, Jordan", "Amman")).toBeNull();
+    expect(extraLocation("Amman, Jordan", "Amman, Jordan")).toBeNull();
+    expect(extraLocation("Juba, South Sudan", "Juba; Wau")).toBe("Juba; Wau");
+  });
+
+  it("keeps badge text to lines of 4 characters", async () => {
+    const { badgeLines } = await import("@/components/job-card");
+    expect(badgeLines("WFP")).toEqual(["WFP"]);
+    expect(badgeLines("UNICEF")).toEqual(["UN", "ICEF"]);
+    expect(badgeLines("UNHCR")).toEqual(["UN", "HCR"]);
+    expect(badgeLines("ACTED")).toEqual(["ACT", "ED"]);
+    for (const l of badgeLines("ABCDEFGHIJ")) expect(l.length).toBeLessThanOrEqual(4);
+  });
+
+  it("marks new listings and shows the age of older ones", async () => {
+    const { postedMarker } = await import("@/components/job-card");
+    const now = Date.parse("2026-11-09T12:00:00Z");
+    const at = (h: number) => ({ published_at: new Date(now - h * 3_600_000), first_seen_at: new Date(now) });
+    expect(postedMarker(at(5), now)).toEqual({ text: "New", fresh: true });
+    expect(postedMarker(at(47), now)?.text).toBe("New");
+    expect(postedMarker(at(50), now)?.text).toBe("2d ago");
+    expect(postedMarker(at(24 * 40), now)).toBeNull();
   });
 });

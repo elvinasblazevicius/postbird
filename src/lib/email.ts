@@ -24,7 +24,11 @@ export type OutgoingEmail = {
   html: string;
   text: string;
   headers?: Record<string, string>;
-  /** Stable key for this message, e.g. "welcome:123" (single sends only; batches take one key per request). */
+  /**
+   * Stable key for this message, e.g. "welcome:123". A batch request takes one key for the
+   * whole request (keyFor in sendBatch); a message's own key is used if the batch falls back
+   * to sending its messages one by one.
+   */
   idempotencyKey?: string;
 };
 
@@ -126,16 +130,35 @@ export async function sendEmail(msg: OutgoingEmail): Promise<SendResult> {
   }
 }
 
+/** Spacing between single sends when a batch falls back to one request per message (Resend's default rate limit is a few requests per second). */
+const FALLBACK_SPACING_MS = 500;
+
+export type BatchResult = {
+  sent: number;
+  failed: number;
+  errors: string[];
+  /** One entry per message, in the order given: true when Resend accepted it. */
+  delivered: boolean[];
+};
+
 /**
  * Send up to 100 emails per request (Resend batch API). keyFor(chunkIndex,
  * chunk) gives each request's idempotency key; it must give the same key for
  * the same messages.
+ *
+ * Resend validates a whole batch first and rejects all of it (422) when one
+ * message is invalid, e.g. one malformed address. That chunk is then sent one
+ * message per request, so one bad address doesn't stop everyone else's email.
+ * Each of those requests carries the message's own idempotencyKey or, without
+ * one, a key derived from the batch key and the recipient, so a retry of the
+ * fallback can't send twice either. `delivered` says which messages went out,
+ * so callers can mark exactly those as sent.
  */
 export async function sendBatch(
   msgs: OutgoingEmail[],
   keyFor?: (chunkIndex: number, chunk: OutgoingEmail[]) => string,
-): Promise<{ sent: number; failed: number; errors: string[] }> {
-  const out = { sent: 0, failed: 0, errors: [] as string[] };
+): Promise<BatchResult> {
+  const out: BatchResult = { sent: 0, failed: 0, errors: [], delivered: msgs.map(() => false) };
   if (!isEmailConfigured()) {
     if (msgs.length) console.info("email not sent: RESEND_API_KEY missing");
     out.failed = msgs.length;
@@ -144,11 +167,24 @@ export async function sendBatch(
   }
   for (let i = 0; i < msgs.length; i += 100) {
     const chunk = msgs.slice(i, i + 100);
+    const key = keyFor?.(i / 100, chunk);
+    const mark = (j: number) => { out.delivered[i + j] = true; out.sent++; };
     try {
-      const res = await post("/emails/batch", chunk.map(payload), cleanKey(keyFor?.(i / 100, chunk)));
+      const res = await post("/emails/batch", chunk.map(payload), cleanKey(key));
       // A repeat of a batch Resend already accepted is answered with its first result (2xx).
-      if (isOk(res)) out.sent += chunk.length;
-      else {
+      if (isOk(res)) chunk.forEach((_, j) => mark(j));
+      else if (res.status === 422) {
+        console.warn(`email batch rejected: Resend 422: ${failure(res)}; sending its ${chunk.length} messages one by one`);
+        for (const [j, m] of chunk.entries()) {
+          if (j > 0) await new Promise((r) => setTimeout(r, FALLBACK_SPACING_MS));
+          const one = await sendEmail({ ...m, idempotencyKey: m.idempotencyKey ?? (key ? `${key}:${m.to}` : undefined) });
+          if (one.ok) mark(j);
+          else {
+            out.failed++;
+            out.errors.push(one.error ?? "not sent");
+          }
+        }
+      } else {
         const error = failure(res);
         console.warn(`email batch not sent: Resend ${res.status}: ${error}`);
         out.failed += chunk.length;

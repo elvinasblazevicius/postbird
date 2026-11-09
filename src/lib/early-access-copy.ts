@@ -17,7 +17,10 @@ const plans = () => siteConfig.premium.plans;
 export const trialButton = `Start ${siteConfig.premium.trialDays}-day free trial`;
 
 /** Tax wording wherever a price is shown with billing live (Paddle adds tax at checkout where it applies). */
-export const TAX_LINE = "Prices in US dollars. Sales tax or VAT may be added at checkout depending on where you live.";
+export const TAX_LINE = "Prices in US dollars and include VAT where it applies. US and Canadian sales tax may be added at checkout.";
+
+/** After a US-dollar amount in an email ("$19.99 every 3 months (plus any sales tax shown at checkout)"). */
+export const EMAIL_TAX_NOTE = "(plus any sales tax shown at checkout)";
 
 /** The words the trial line sets in bold. */
 export const RENEWS = "renews automatically";

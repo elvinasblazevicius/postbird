@@ -53,7 +53,9 @@ export function sanitizeDescription(html: string): string {
   const clean = sanitizeHtml(html, {
     allowedTags: ["p", "br", "ul", "ol", "li", "strong", "b", "em", "i", "h2", "h3", "h4", "a", "blockquote",
       "table", "thead", "tbody", "tr", "th", "td"],
-    allowedAttributes: { a: ["href"] },
+    // rel and target must be allowed, or the filter (which runs after transformTags) strips
+    // the values set below; any rel/target in the source is replaced by them.
+    allowedAttributes: { a: ["href", "rel", "target"] },
     allowedSchemes: ["http", "https", "mailto"],
     transformTags: {
       h1: "h2",

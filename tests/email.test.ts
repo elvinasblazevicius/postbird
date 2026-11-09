@@ -77,7 +77,7 @@ describe("email sending (Resend answers)", () => {
   it("batches: counts only 2xx as sent, retries a concurrent 409 once, fails an invalid one", async () => {
     const msgs = [msg, { ...msg, to: "other@example.org" }];
     replies.push({ status: 200, body: { data: [{ id: "a" }, { id: "b" }] } });
-    expect(await run(sendBatch(msgs, () => "b:1"))).toEqual({ sent: 2, failed: 0, errors: [] });
+    expect(await run(sendBatch(msgs, () => "b:1"))).toEqual({ sent: 2, failed: 0, errors: [], delivered: [true, true] });
 
     replies.push(conflict("concurrent_idempotent_requests"), { status: 200, body: { data: [] } });
     expect(await run(sendBatch(msgs, () => "b:2"))).toMatchObject({ sent: 2, failed: 0 });
@@ -88,6 +88,33 @@ describe("email sending (Resend answers)", () => {
     expect(res).toMatchObject({ sent: 0, failed: 2 });
     expect(res.errors[0]).toMatch(/invalid_idempotent_request/);
     expect(calls).toHaveLength(1);
+  });
+
+  it("a batch rejected with 422 is sent one by one, so one bad address doesn't block the others", async () => {
+    const msgs = [
+      { ...msg, to: "a@example.org", idempotencyKey: "digest:2026-W46:1" },
+      { ...msg, to: "not-an-address" },
+      { ...msg, to: "c@example.org", idempotencyKey: "digest:2026-W46:3" },
+    ];
+    const invalid = { status: 422, body: { statusCode: 422, name: "validation_error", message: "Invalid `to` field." } };
+    replies.push(invalid, { status: 200, body: { id: "one" } }, invalid, { status: 200, body: { id: "three" } });
+    const res = await run(sendBatch(msgs, () => "b:422"));
+    expect(res).toMatchObject({ sent: 2, failed: 1, delivered: [true, false, true] });
+    expect(res.errors).toEqual(["Invalid `to` field."]);
+    // The batch request, then one request per message: each message's own key, or one
+    // derived from the batch key and the recipient. A 422 is not retried.
+    expect(calls.map((c) => [c.url, c.key])).toEqual([
+      ["https://api.resend.com/emails/batch", "b:422"],
+      ["https://api.resend.com/emails", "digest:2026-W46:1"],
+      ["https://api.resend.com/emails", "b:422:not-an-address"],
+      ["https://api.resend.com/emails", "digest:2026-W46:3"],
+    ]);
+
+    // Other failures are not split up: the whole chunk failed.
+    calls.length = 0;
+    replies.push({ status: 500, body: { name: "internal_server_error", message: "down" } }, { status: 500, body: { name: "internal_server_error", message: "down" } });
+    expect(await run(sendBatch(msgs, () => "b:500"))).toMatchObject({ sent: 0, failed: 3, delivered: [false, false, false] });
+    expect(calls.every((c) => c.url.endsWith("/emails/batch"))).toBe(true);
   });
 
   it("batch keys depend on the messages' own keys", () => {

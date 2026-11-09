@@ -30,6 +30,17 @@ export function jobPath(job: { id: number; slug: string }): string {
   return `/jobs/${job.slug}-${job.id}`;
 }
 
+/**
+ * A database id from a form field or query string: 1 to 12 digits, above 0,
+ * else null. Longer numbers would overflow bigint (or lose precision) and
+ * make the query fail with a 500 instead of a clean "not found".
+ */
+export function parseId(v: unknown): number | null {
+  if (typeof v !== "string" || !/^\d{1,12}$/.test(v)) return null;
+  const n = Number(v);
+  return n > 0 ? n : null;
+}
+
 /** Extract the numeric id from "/jobs/<slug>-<id>". */
 export function parseJobParam(param: string): number | null {
   const m = param.match(/-(\d{1,12})$/) ?? param.match(/^(\d{1,12})$/);

@@ -6,7 +6,7 @@ import { applyLinkKind } from "@/lib/apply-link";
 describe("cleanTitle", () => {
   test("all caps becomes title case, acronyms kept", () => {
     expect(cleanTitle("CLINICAL TRIAL PROJECT MANAGEMENT CONSULTANT")).toBe("Clinical Trial Project Management Consultant");
-    expect(cleanTitle("HEAD OF ICT AND DATA - KENYA")).toBe("Head of ICT and Data - Kenya");
+    expect(cleanTitle("HEAD OF ICT AND DATA - KENYA")).toBe("Head of ICT and Data – Kenya");
   });
   test("leading requisition numbers are removed", () => {
     expect(cleanTitle("23559 Monitoring and Evaluation (M&E) Officer (P)")).toBe("Monitoring and Evaluation (M&E) Officer (P)");
@@ -14,6 +14,14 @@ describe("cleanTitle", () => {
   });
   test("bilingual titles keep the Latin-script part", () => {
     expect(cleanTitle("Field Documentation Officer || موثق/ـة ميداني/ـة")).toBe("Field Documentation Officer");
+  });
+  test("spaced hyphens between parts of a title become an en dash", () => {
+    expect(cleanTitle("Programme Officer- TVET")).toBe("Programme Officer – TVET");
+    expect(cleanTitle("Programme Officer -TVET")).toBe("Programme Officer – TVET");
+    expect(cleanTitle("Programme Officer - TVET")).toBe("Programme Officer – TVET");
+    expect(cleanTitle("Non-Food Items Assistant")).toBe("Non-Food Items Assistant");
+    expect(cleanTitle("Pre- and Post-Deployment Adviser")).toBe("Pre- and Post-Deployment Adviser");
+    expect(cleanTitle("Officer – Health")).toBe("Officer – Health");
   });
   test("ordinary titles are unchanged", () => {
     expect(cleanTitle("Research Manager")).toBe("Research Manager");

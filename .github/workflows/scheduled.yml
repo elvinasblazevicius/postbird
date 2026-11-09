@@ -17,9 +17,10 @@ on:
     - cron: "17 */2 * * *"   # import feeds every 2 hours (UTC)
     # Emails, daily 06:23 UTC: paid alerts (each subscriber's daily or weekly
     # choice is enforced in the code, so weekly subscribers get one email a
-    # week) and the free weekly email, which starts only on Mondays (UTC) and
-    # goes to each free subscriber at most once per ISO week; Tuesday to Sunday
-    # runs only retry a Monday run that failed.
+    # week) and the free weekly email, which starts on Mondays (UTC), or on
+    # Tuesday or Wednesday if no run started it on Monday, and goes to each
+    # free subscriber at most once per ISO week; later runs only retry a week
+    # that started and failed.
     - cron: "23 6 * * *"
   workflow_dispatch:
     inputs:

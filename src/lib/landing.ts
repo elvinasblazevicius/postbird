@@ -21,6 +21,15 @@ export async function countFor(fixed: Partial<JobFilters>, includeDemo = true): 
   return r.n;
 }
 
+/** The contract types among the open jobs for a landing page's fixed organization (for its description). */
+export async function jobTypesFor(fixed: { org: string }, includeDemo = true): Promise<Set<string>> {
+  const rows = await sql<{ t: string }[]>`
+    select distinct j.job_type as t from jobs j join organizations o on o.id = j.organization_id
+    where o.slug = ${fixed.org} and j.job_type is not null and j.status = 'active'
+      and (j.deadline is null or j.deadline >= (now() at time zone 'utc')::date) and (${includeDemo} or not j.is_demo)`;
+  return new Set(rows.map((r) => r.t));
+}
+
 /**
  * Metadata for a landing page. Pages with too few jobs, or with extra
  * filters applied, are kept out of search indexes to avoid thin/duplicate pages.

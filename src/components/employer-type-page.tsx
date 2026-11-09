@@ -4,6 +4,8 @@ import { PageHeader } from "@/components/page-header";
 import { employerTypePage, type EmployerTypePage } from "@/lib/employer-types";
 import { parseFilters } from "@/lib/jobs";
 import { countFor, landingMetadata } from "@/lib/landing";
+import { nonAffiliationLine } from "@/lib/org-names";
+import { siteConfig } from "@/lib/site";
 
 type SP = Promise<Record<string, string | string[] | undefined>>;
 
@@ -27,9 +29,9 @@ export async function EmployerTypeListing({ orgtype, searchParams }: { orgtype: 
   delete filters.orgtype;
   return (
     <>
-      <PageHeader title={page.title} crumbs={[{ href: "/", label: "Home" }, { href: page.path, label: page.title }]} intro={page.intro} compact />
+      <PageHeader title={page.title} crumbs={[{ href: "/", label: "Home" }, { href: page.path, label: page.title }]} intro={page.intro} note={nonAffiliationLine(siteConfig.name, null)} compact />
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-        <JobsBrowser filters={filters} fixed={{ orgtype }} base={page.path} />
+        <JobsBrowser filters={filters} fixed={{ orgtype }} base={page.path} alertNoun={page.alertNoun} />
       </div>
     </>
   );

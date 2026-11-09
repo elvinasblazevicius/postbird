@@ -1,8 +1,9 @@
 /** The subscriber's account page (/account?t=<manage_token>): lookups and the "email me my link" message. */
 import { createHash, randomBytes } from "node:crypto";
 import { sql } from "@/lib/db";
-import { sendEmail } from "@/lib/email";
+import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { accountLinkEmail } from "@/lib/email-templates";
+import { takeDailyQuota } from "@/lib/rate-limit";
 import { absoluteUrl } from "@/lib/site";
 import type { BillingStatus, PlanInterval } from "@/lib/billing/subscriptions";
 
@@ -45,12 +46,26 @@ export const accountUrl = (manageToken: string) => absoluteUrl(`/account?t=${man
 const newManageToken = () => randomBytes(32).toString("hex");
 
 /**
+ * At most this many account-link emails per address in any 24 hours, on top
+ * of the callers' hourly limits (3 per hour per address), so nobody can flood
+ * someone's inbox, or keep replacing their link, all day.
+ */
+export const ACCOUNT_LINKS_PER_DAY = 5;
+
+/**
  * Emails the account link to the address (only ever to the address itself).
  * The link is replaced by a new one first, so links from older emails (or a
  * forwarded one) stop working. Emails sent later (alerts, reminders) read the
- * current link when they are sent. Returns false if sending failed.
+ * current link when they are sent. Returns false if sending failed. Over the
+ * daily cap nothing is sent or replaced, and it returns true like a send, so
+ * callers reply the same either way (nothing about the address is revealed).
  */
 export async function sendAccountLink(email: string): Promise<boolean> {
+  // Counted before the lookup, so addresses with and without an account are treated alike.
+  if (isEmailConfigured() && !(await takeDailyQuota(`account-link-day|${email}`, ACCOUNT_LINKS_PER_DAY))) {
+    console.info("account link: daily limit reached for this address"); // the address itself is never logged
+    return true;
+  }
   const [row] = await sql<{ id: number; manage_token: string; unsubscribe_token: string }[]>`
     update subscribers set manage_token = ${newManageToken()} where email = ${email}
     returning id::int as id, manage_token, unsubscribe_token`;

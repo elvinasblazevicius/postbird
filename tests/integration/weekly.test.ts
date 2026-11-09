@@ -24,9 +24,11 @@ describe.skipIf(!TEST_DB)("free weekly email (database)", () => {
   const sent: Sent[] = [];
   let seq = 0;
 
-  // This week's Monday, 06:23 UTC (the scheduled run), and the Tuesday after it.
+  // This week's Monday, 06:23 UTC (the scheduled run), and the days after it.
   let monday: Date;
   let tuesday: Date;
+  let wednesday: Date;
+  let thursday: Date;
 
   async function addJob(title: string, firstSeenHoursAgo: number, extra: { demo?: boolean; deadline?: string | null; org?: string } = {}) {
     const slug = `${title.toLowerCase().replace(/\W+/g, "-")}-${++seq}`;
@@ -82,6 +84,8 @@ describe.skipIf(!TEST_DB)("free weekly email (database)", () => {
     const [{ now }] = await sql`select now() as now`;
     monday = new Date(digest.weekStart(new Date(now)).getTime() + (6 * 60 + 23) * 60_000);
     tuesday = new Date(monday.getTime() + 86_400_000);
+    wednesday = new Date(monday.getTime() + 2 * 86_400_000);
+    thursday = new Date(monday.getTime() + 3 * 86_400_000);
   });
 
   afterAll(async () => {
@@ -233,12 +237,15 @@ describe.skipIf(!TEST_DB)("free weekly email (database)", () => {
       expect(sent.map((m) => m.to).sort()).toEqual(["free@example.org", "gone@example.org"]);
     });
 
-    it("goes out on Mondays only, once a week per subscriber; later runs only retry, never resend", async () => {
+    it("starts Monday to Wednesday only, once a week per subscriber; later runs only retry, never resend", async () => {
       await freeSub("weekly@example.org", "q=nurse");
       await addJob("Nurse coordinator", 2);
-      const tue = await digest.runDigest({ at: tuesday });
-      expect(tue.status).toBe("skipped");
-      expect(tue.message).toMatch(/Mondays/);
+      // Thursday to Sunday never start a week's email.
+      for (const d of [3, 4, 5, 6]) {
+        const late = await digest.runDigest({ at: new Date(monday.getTime() + d * 86_400_000) });
+        expect(late.status).toBe("skipped");
+        expect(late.message).toMatch(/Mondays/);
+      }
       expect(sent).toHaveLength(0);
 
       expect((await digest.runDigest({ at: monday })).sent).toBe(1);
@@ -249,6 +256,25 @@ describe.skipIf(!TEST_DB)("free weekly email (database)", () => {
       const forced = await digest.runDigest({ at: tuesday, force: true });
       expect(forced.sent).toBe(0);
       expect(sent).toHaveLength(1);
+    });
+
+    it("a missed Monday starts the week on Tuesday or Wednesday, still once per subscriber", async () => {
+      await freeSub("missed@example.org", "q=nurse");
+      await addJob("Nurse coordinator", 2);
+      const tue = await digest.runDigest({ at: tuesday });
+      expect(tue).toMatchObject({ status: "sent", sent: 1 });
+      expect(sent.map((m) => m.to)).toEqual(["missed@example.org"]);
+      // Later runs that week (Wednesday, Thursday) see the week as done.
+      await addJob("Nurse adviser", 0);
+      expect((await digest.runDigest({ at: wednesday })).message).toMatch(/already sent/);
+      expect((await digest.runDigest({ at: thursday })).message).toMatch(/already sent/);
+      expect(sent).toHaveLength(1);
+
+      // A week first run on Wednesday starts too.
+      await sql`truncate digests restart identity`;
+      await sql`update subscribers set last_digest_at = null`;
+      sent.length = 0;
+      expect((await digest.runDigest({ at: wednesday })).sent).toBe(1);
     });
 
     it("a Monday run that failed is retried later in the week with the same window and key", async () => {

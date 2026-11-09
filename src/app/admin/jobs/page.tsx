@@ -17,7 +17,7 @@ export default async function AdminJobsPage({ searchParams }: Props) {
   const sp = await searchParams;
   const q = sp.q?.trim() || null;
   const status = STATUSES.includes(sp.status ?? "") ? sp.status! : null;
-  const page = Math.max(1, Number(sp.page) || 1);
+  const page = Math.min(Math.max(1, Math.floor(Number(sp.page)) || 1), 100_000);
   const like = q ? `%${q.replace(/[%_\\]/g, "")}%` : null;
   const rows = await sql<{
     id: number; slug: string; title: string; org_name: string | null; city: string | null; country_code: string | null; location_text: string | null;

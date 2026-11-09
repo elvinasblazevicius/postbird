@@ -150,6 +150,14 @@ describe("normalizeItem", () => {
     }
   });
 
+  it("links in full descriptions open in a new tab with rel=nofollow noopener noreferrer, whatever the source said", () => {
+    const d = sanitizeDescription(`<p>Apply at <a href="https://example.org/apply" rel="opener" target="_self" onclick="steal()">the site</a>.</p>`);
+    expect(d).toBe(`<p>Apply at <a href="https://example.org/apply" rel="nofollow noopener noreferrer" target="_blank">the site</a>.</p>`);
+    expect(sanitizeDescription(d)).toBe(d);
+    // Unsafe schemes are still dropped.
+    expect(sanitizeDescription(`<p><a href="javascript:alert(1)">x</a></p>`)).not.toContain("javascript");
+  });
+
   it("ignores implausible deadlines and future publish dates", () => {
     const job = normalizeItem(raw({ title: "Analyst", summaryHtml: "Deadline: 1 January 2020", published: "2099-01-01T00:00:00Z" }), feed);
     expect(job.publishedAt).toBeNull();

@@ -1,7 +1,7 @@
 import { after } from "next/server";
 import { verifyPaddleSignature } from "@/lib/billing/paddle";
-import { confirmationNotSent, sendPaidConfirmation, sendWelcomeEmail } from "@/lib/billing/notices";
-import { handlePaddleEvent, welcomeNotSent, type PaddleEvent } from "@/lib/billing/subscriptions";
+import { confirmationNotSent, confirmationSent, sendPaidConfirmation, sendWelcomeEmail } from "@/lib/billing/notices";
+import { handlePaddleEvent, welcomeNotSent, welcomeSent, type PaddleEvent } from "@/lib/billing/subscriptions";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +46,10 @@ export async function POST(req: Request) {
       const w = res.welcome;
       after(async () => {
         const sent = await sendWelcomeEmail(w);
-        if (!sent.ok && !sent.skipped) {
+        // Sent: end the claim's lease. If this task is stopped before getting here, the
+        // daily job sends it again after 30 minutes, under the same idempotency key.
+        if (sent.ok) await welcomeSent(w.subscriberId).catch(() => {});
+        else if (!sent.skipped) {
           // The daily job sends it again (welcome_sent_at is null again).
           console.warn("paddle webhook: welcome email not sent", sent.error);
           await welcomeNotSent(w.subscriberId).catch(() => {});
@@ -57,7 +60,8 @@ export async function POST(req: Request) {
       const c = res.confirm;
       after(async () => {
         const sent = await sendPaidConfirmation(c);
-        if (!sent.ok && !sent.skipped) {
+        if (sent.ok) await confirmationSent(c.subscriberId).catch(() => {});
+        else if (!sent.skipped) {
           console.warn("paddle webhook: confirmation email not sent", sent.error);
           await confirmationNotSent(c.subscriberId).catch(() => {});
         }

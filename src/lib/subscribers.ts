@@ -4,7 +4,7 @@ import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { confirmationEmail } from "@/lib/email-templates";
 import { absoluteUrl } from "@/lib/site";
 import { recordEvent } from "@/lib/analytics";
-import { hashKey } from "@/lib/rate-limit";
+import { takeDailyQuota } from "@/lib/rate-limit";
 import { replaceWithWeeklySearch } from "@/lib/saved-searches";
 import type { BillingStatus, PlanInterval } from "@/lib/billing/subscriptions";
 
@@ -88,19 +88,11 @@ export const CONFIRMATIONS_PER_DAY = 3;
 
 /**
  * Counts one confirmation email for this address, unless it already had
- * CONFIRMATIONS_PER_DAY in the last 24 hours (then false: don't send). Stored
- * in rate_limits as a salted hash of the address, one row per email, and
- * deleted after 24 hours like every rate-limit row.
+ * CONFIRMATIONS_PER_DAY in the last 24 hours (then false: don't send). See
+ * takeDailyQuota in src/lib/rate-limit.ts.
  */
 async function takeDailyConfirmation(email: string): Promise<boolean> {
-  const key = hashKey(`confirm-email|${email}`);
-  const rows = await sql`
-    insert into rate_limits (key, window_start, count)
-    select ${key}, clock_timestamp(), 1
-    where (select count(*) from rate_limits where key = ${key} and window_start > now() - interval '24 hours') < ${CONFIRMATIONS_PER_DAY}
-    on conflict (key, window_start) do nothing
-    returning 1`;
-  return rows.length === 1;
+  return takeDailyQuota(`confirm-email|${email}`, CONFIRMATIONS_PER_DAY);
 }
 
 async function sendConfirmation(id: number, email: string, confirmToken: string, waitlist: boolean, alerts: boolean): Promise<SignupResult> {

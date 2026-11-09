@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { sql } from "@/lib/db";
-import { jobPath } from "@/lib/site";
+import { jobPath, parseId } from "@/lib/site";
 import { requireAdmin } from "../../guard";
 import { AdminShell, Card, fmtDateTime, StatusPill, Table } from "../../ui";
 
@@ -13,7 +13,8 @@ type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ outcome?
 
 export default async function ImportRunPage({ params, searchParams }: Props) {
   await requireAdmin();
-  const id = Number((await params).id);
+  const id = parseId((await params).id);
+  if (id === null) notFound();
   const outcome = (await searchParams).outcome;
   const [run] = await sql<{ id: number; status: string; trigger: string; started_at: Date; finished_at: Date | null; message: string | null; jobs_created: number; jobs_updated: number; jobs_unchanged: number; duplicates: number; items_failed: number; feeds_failed: number; jobs_expired: number }[]>`
     select * from sync_runs where id = ${id}`;

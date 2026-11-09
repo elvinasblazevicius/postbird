@@ -66,13 +66,17 @@ export function isNationalOfficerTitle(title: string | null | undefined): boolea
 }
 
 /**
- * The grade to show: the parsed one, or "NO" when no grade was parsed and the title names the
- * National Officer category. IOM's "(P)" and "(G)" suffixes give a category, not a grade, so
- * they only count for the local-only rule.
+ * The grade to show: the parsed one, or "National Officer" when no grade was parsed and the title
+ * names the National Officer category. National Officer grades are written out ("NO-B" →
+ * "National Officer B"), since "NO" on its own reads as the word. IOM's "(P)" and "(G)" suffixes
+ * give a category, not a grade, so they only count for the local-only rule.
  */
 export function displayGrade(job: { grade: string | null | undefined; title: string | null | undefined }): string | null {
-  if (job.grade) return job.grade;
-  return isNationalOfficerTitle(job.title) ? "NO" : null;
+  if (job.grade) {
+    const no = job.grade.match(/^NO-?([A-E])$/i);
+    return no ? `National Officer ${no[1].toUpperCase()}` : job.grade;
+  }
+  return isNationalOfficerTitle(job.title) ? "National Officer" : null;
 }
 
 /** The grade groups shown in the filter (the overlapping "entry" group is kept only for old links). */

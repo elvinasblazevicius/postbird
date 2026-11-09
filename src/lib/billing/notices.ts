@@ -6,7 +6,11 @@
  *
  * Every send has a stable idempotency key (see src/lib/email.ts), and the
  * daily jobs "claim" rows (set the *_sent_at column) before sending and give
- * them back if sending fails, so two runs at once can't both send.
+ * them back if sending fails, so two runs at once can't both send. A claim
+ * also sets *_claimed_at, cleared once Resend has answered: a claim that is
+ * still open after CLAIM_LEASE_MINUTES (the process stopped between claiming
+ * and sending) is picked up again by the next daily run, under the same
+ * idempotency key, so an email that did go out is not sent twice.
  */
 import siteConfig from "@site-config";
 import { accountUrl } from "@/lib/account";
@@ -83,6 +87,9 @@ export function planRenewal(p: PlanState): { sentence: string; chargesAhead: boo
 const SEND_SPACING_MS = 500;
 const spaced = (i: number) => (i > 0 ? new Promise((r) => setTimeout(r, SEND_SPACING_MS)) : Promise.resolve());
 
+/** A claimed email not marked as answered by Resend after this long is claimed again (see db/migrations/009_email_claim_leases.sql). */
+export const CLAIM_LEASE_MINUTES = 30;
+
 // ── Welcome ──────────────────────────────────────────────────
 
 /** The welcome email with the account link (once per subscriber). */
@@ -102,17 +109,19 @@ export async function sendWelcomeEmail(w: WelcomeInfo): Promise<SendResult> {
 
 /**
  * Daily job: the welcome email for subscribers in trial or paying whose
- * welcome was never sent (sending failed, or the address was confirmed later).
+ * welcome was never sent (sending failed, the address was confirmed later, or
+ * a claim was left open for more than CLAIM_LEASE_MINUTES).
  */
 export async function runWelcomeRetries(limit = 200): Promise<{ sent: number; failed: number }> {
   // Claim the rows first, so a run started at the same time can't send them too.
   const rows = await sql<{ id: number; email: string; manage_token: string; unsubscribe_token: string; trial_ends_at: Date | null; plan_interval: PlanInterval | null }[]>`
-    update subscribers set welcome_sent_at = now()
+    update subscribers set welcome_sent_at = now(), welcome_claimed_at = now()
     where id in (
       select id from subscribers
-      where welcome_sent_at is null and status = 'confirmed' and billing_status in ('trialing', 'active')
+      where (welcome_sent_at is null or welcome_claimed_at < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES}))
+        and status = 'confirmed' and billing_status in ('trialing', 'active')
       order by id limit ${limit}
-    ) and welcome_sent_at is null
+    ) and (welcome_sent_at is null or welcome_claimed_at < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES}))
     returning id::int as id, email, manage_token, unsubscribe_token, trial_ends_at, plan_interval`;
   let sent = 0, failed = 0;
   for (const [i, r] of rows.entries()) {
@@ -121,10 +130,12 @@ export async function runWelcomeRetries(limit = 200): Promise<{ sent: number; fa
       subscriberId: r.id, email: r.email, manageToken: r.manage_token, unsubscribeToken: r.unsubscribe_token,
       trialEndsAt: r.trial_ends_at ? new Date(r.trial_ends_at).toISOString() : null, planInterval: r.plan_interval,
     });
-    if (res.ok) sent++;
-    else {
+    if (res.ok) {
+      sent++;
+      await sql`update subscribers set welcome_claimed_at = null where id = ${r.id}`;
+    } else {
       failed++;
-      await sql`update subscribers set welcome_sent_at = null where id = ${r.id}`;
+      await sql`update subscribers set welcome_sent_at = null, welcome_claimed_at = null where id = ${r.id}`;
     }
   }
   return { sent, failed };
@@ -142,26 +153,34 @@ export async function sendPaidConfirmation(c: ConfirmInfo): Promise<SendResult> 
 
 /** Called when the confirmation email failed, so the daily job sends it again. */
 export async function confirmationNotSent(subscriberId: number): Promise<void> {
-  await sql`update subscribers set confirm_sent_at = null where id = ${subscriberId}`;
+  await sql`update subscribers set confirm_sent_at = null, confirm_claimed_at = null where id = ${subscriberId}`;
 }
 
-/** Daily job: confirmation links that failed to send (see confirmationNotSent). */
+/** Called once Resend accepted the confirmation email: ends the claim's lease. */
+export async function confirmationSent(subscriberId: number): Promise<void> {
+  await sql`update subscribers set confirm_claimed_at = null where id = ${subscriberId}`;
+}
+
+/** Daily job: confirmation links that failed to send (see confirmationNotSent) or whose claim was left open. */
 export async function runConfirmationRetries(limit = 200): Promise<{ sent: number; failed: number }> {
   const rows = await sql<{ id: number; email: string; confirm_token: string; paddle_subscription_id: string }[]>`
-    update subscribers set confirm_sent_at = now()
+    update subscribers set confirm_sent_at = now(), confirm_claimed_at = now()
     where id in (
       select id from subscribers
-      where confirm_sent_at is null and confirm_token is not null and status <> 'confirmed'
+      where (confirm_sent_at is null or confirm_claimed_at < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES}))
+        and confirm_token is not null and status <> 'confirmed'
         and paddle_subscription_id is not null and billing_status in ('trialing', 'active', 'past_due', 'paused')
       order by id limit ${limit}
-    ) and confirm_sent_at is null
+    ) and (confirm_sent_at is null or confirm_claimed_at < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES}))
     returning id::int as id, email, confirm_token, paddle_subscription_id`;
   let sent = 0, failed = 0;
   for (const [i, r] of rows.entries()) {
     await spaced(i);
     const res = await sendPaidConfirmation({ subscriberId: r.id, email: r.email, confirmToken: r.confirm_token, subscriptionId: r.paddle_subscription_id });
-    if (res.ok) sent++;
-    else {
+    if (res.ok) {
+      sent++;
+      await confirmationSent(r.id);
+    } else {
       failed++;
       await confirmationNotSent(r.id);
     }
@@ -183,13 +202,14 @@ const REMINDER_DAYS_BEFORE = 3;
  */
 export async function runTrialReminders(limit = 500): Promise<{ sent: number; failed: number }> {
   const rows = await sql<{ id: number; email: string; manage_token: string; trial_ends_at: Date; plan_interval: PlanInterval | null }[]>`
-    update subscribers set trial_reminder_sent_at = now()
+    update subscribers set trial_reminder_sent_at = now(), trial_reminder_claimed_at = now()
     where id in (
       select id from subscribers
-      where billing_status = 'trialing' and cancel_at is null and trial_reminder_sent_at is null
+      where billing_status = 'trialing' and cancel_at is null
+        and (trial_reminder_sent_at is null or trial_reminder_claimed_at < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES}))
         and trial_ends_at > now() and trial_ends_at <= now() + make_interval(days => ${REMINDER_DAYS_BEFORE})
       order by trial_ends_at limit ${limit}
-    ) and trial_reminder_sent_at is null
+    ) and (trial_reminder_sent_at is null or trial_reminder_claimed_at < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES}))
     returning id::int as id, email, manage_token, trial_ends_at, plan_interval`;
   let sent = 0, failed = 0;
   for (const [i, r] of rows.entries()) {
@@ -200,10 +220,12 @@ export async function runTrialReminders(limit = 500): Promise<{ sent: number; fa
       ...trialReminderEmail({ plan: planDescription(r.plan_interval), price: planPrice(r.plan_interval), chargeDate, accountUrl: accountUrl(r.manage_token) }),
       idempotencyKey: `trial-reminder:${r.id}:${chargeDate}`,
     });
-    if (res.ok) sent++;
-    else {
+    if (res.ok) {
+      sent++;
+      await sql`update subscribers set trial_reminder_claimed_at = null where id = ${r.id}`;
+    } else {
       failed++;
-      await sql`update subscribers set trial_reminder_sent_at = null where id = ${r.id}`;
+      await sql`update subscribers set trial_reminder_sent_at = null, trial_reminder_claimed_at = null where id = ${r.id}`;
     }
   }
   return { sent, failed };
@@ -257,12 +279,14 @@ export async function notifyWaitlist(limit = 300): Promise<WaitlistNoticeResult>
       to: r.email,
       ...alertsOpenEmail({ trialUrl, unsubscribeUrl: absoluteUrl(`/alerts/unsubscribe?token=${r.unsubscribe_token}`) }),
       headers: unsubscribeHeaders(r.unsubscribe_token),
+      idempotencyKey: `alerts-open:${r.id}`,
     }));
     const res = await sendBatch(msgs, () => batchKey("alerts-open", chunk.map((r) => `alerts-open:${r.id}`)));
     sent += res.sent;
     failed += res.failed;
-    // Not sent: give the rows back so the next click tries again.
-    if (res.failed) await sql`update subscribers set waitlist_notified_at = null where id = any(${chunk.map((r) => r.id)})`;
+    // Not sent: give those rows back so the next click tries again.
+    const notSent = chunk.filter((_, j) => !res.delivered[j]).map((r) => r.id);
+    if (notSent.length) await sql`update subscribers set waitlist_notified_at = null where id = any(${notSent})`;
   }
   const [{ remaining }] = await sql<{ remaining: number }[]>`
     select count(*)::int as remaining from subscribers

@@ -18,6 +18,7 @@ import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { addSavedSearch, normalizeSearch, removeSavedSearch, searchFromSignupForm } from "@/lib/saved-searches";
 import { findByUnsubscribeToken, normalizeEmail } from "@/lib/subscribers";
 import { jobsUrl, parseFilters } from "@/lib/jobs";
+import { parseId } from "@/lib/site";
 import type { FormState } from "@/app/actions";
 
 export type CheckoutState =
@@ -122,8 +123,8 @@ export async function addSearchAction(_prev: FormState, form: FormData): Promise
 export async function removeSearchAction(_prev: FormState, form: FormData): Promise<FormState> {
   const acct = await accountFrom(form);
   if (!acct) return INVALID_LINK;
-  const id = Number(form.get("id"));
-  if (!Number.isInteger(id) || id <= 0) return { status: "error", message: "Unknown search." };
+  const id = parseId(form.get("id"));
+  if (id === null) return { status: "error", message: "Unknown search." };
   await removeSavedSearch(acct.id, id);
   refresh();
   return { status: "success", message: "Search removed." };
@@ -150,7 +151,7 @@ export async function accountUnsubscribeAction(_prev: FormState, form: FormData)
   // Unsubscribing stops alerts, not payments: say so when the plan still charges.
   const renewal = planRenewal(acct);
   if (renewal?.chargesAhead) {
-    return { status: "success", message: `You're unsubscribed from alerts. ${renewal.sentence} To stop payments, cancel the plan under “Manage billing or cancel”.` };
+    return { status: "success", message: `You're unsubscribed from alerts. ${renewal.sentence} To stop payments, cancel the plan under “Cancel or manage billing”.` };
   }
   return { status: "success", message: "You're unsubscribed. We won't email you again." };
 }
@@ -182,7 +183,7 @@ async function openPortal(customerId: string | null, subscriptionId: string | nu
   redirect(url); // outside try: redirect() works by throwing
 }
 
-/** "Manage billing or cancel": sends the customer to a fresh Paddle customer portal session. */
+/** "Cancel or manage billing": sends the customer to a fresh Paddle customer portal session. */
 export async function portalAction(_prev: FormState, form: FormData): Promise<FormState> {
   const acct = await accountFrom(form);
   if (!acct) return INVALID_LINK;

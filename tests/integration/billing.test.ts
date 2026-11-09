@@ -604,6 +604,132 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
     });
   });
 
+  describe("a checkout tried twice for a new address", () => {
+    const postEvent = async (event: ReturnType<typeof subEvent>) => {
+      const { POST } = await import("@/app/api/paddle/webhook/route");
+      const body = JSON.stringify(event);
+      const ts = Math.floor(Date.now() / 1000);
+      return POST(new Request("http://localhost/api/paddle/webhook", { method: "POST", body, headers: { "paddle-signature": `ts=${ts};h1=${paddle.signPayload(body, ts, WEBHOOK_SECRET)}` } }));
+    };
+
+    it("paying through the second checkout confirms the address and the welcome goes out", async () => {
+      const first = await billing.startCheckout({ email: "twice@example.org", plan: "monthly", search: "q=nurse" });
+      const second = await billing.startCheckout({ email: "twice@example.org", plan: "quarterly", search: "q=nurse" });
+      const ref2 = (second as { ref: string }).ref;
+      expect(ref2).not.toBe((first as { ref: string }).ref);
+      const checkouts = await sql`select new_subscriber from paddle_checkouts c join subscribers s on s.id = c.subscriber_id where s.email = 'twice@example.org' order by c.created_at`;
+      expect(checkouts.map((c: { new_subscriber: boolean }) => c.new_subscriber)).toEqual([true, true]);
+
+      const subId = "sub_01hv8x29kz0t586xy6zn1a65aa";
+      const res = await postEvent(subEvent("subscription.created", { id: subId, customer_id: "ctm_01hv6y1jedq4p1n0yqn5ba3kc1", custom_data: { ref: ref2 } }));
+      expect(await res.text()).toBe("applied");
+      await settle();
+      const [s] = await sql`select id::int as id, status, billing_status, confirmed_at, welcome_sent_at, welcome_claimed_at, manage_token from subscribers where email = 'twice@example.org'`;
+      expect(s).toMatchObject({ status: "confirmed", billing_status: "trialing", welcome_claimed_at: null });
+      expect(s.confirmed_at).not.toBeNull();
+      expect(s.welcome_sent_at).not.toBeNull();
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toMatchObject({ to: "twice@example.org", key: `welcome:${s.id}` });
+      expect(sent[0].text).toContain(`/account?t=${s.manage_token}`);
+      expect(await billing.checkoutAccountToken(ref2)).toEqual({ linked: true, manageToken: s.manage_token });
+    });
+
+    it("an address its owner touched in between (a sign-up) is not confirmed by paying", async () => {
+      await billing.startCheckout({ email: "touched@example.org", plan: "monthly", search: null });
+      await subscribers.signup({ email: "touched@example.org", kind: "alerts" });
+      const second = await billing.startCheckout({ email: "touched@example.org", plan: "monthly", search: null });
+      const [c] = await sql`select new_subscriber from paddle_checkouts where ref = ${(second as { ref: string }).ref}`;
+      expect(c.new_subscriber).toBe(false);
+      const res = await billing.handlePaddleEvent(subEvent("subscription.created", {
+        id: "sub_01hv8x29kz0t586xy6zn1a65ab", customer_id: "ctm_01hv6y1jedq4p1n0yqn5ba3kc2", custom_data: { ref: (second as { ref: string }).ref },
+      }));
+      expect(res.welcome).toBeUndefined();
+      expect(res.confirm?.email).toBe("touched@example.org");
+      expect((await sql`select status from subscribers where email = 'touched@example.org'`)[0].status).toBe("pending");
+    });
+  });
+
+  describe("plan emails claimed but never sent (leases)", () => {
+    async function claimed(email: string, over: Record<string, unknown>) {
+      const [r] = await sql`
+        insert into subscribers (email, status, wants_alerts, billing_status, plan_interval, unsubscribe_token)
+        values (${email}, ${over.status ?? "confirmed"}, true, 'trialing', 'month', ${`unsub-${email}`})
+        returning id::int as id`;
+      await sql`update subscribers set ${sql(over, Object.keys(over).filter((k) => k !== "status"))} where id = ${r.id}`;
+      return r.id as number;
+    }
+    const ago = (mins: number) => new Date(Date.now() - mins * 60_000);
+
+    it("a welcome claimed over 30 minutes ago and never sent goes out once, under the same key; a fresh claim waits", async () => {
+      await sql`update subscribers set welcome_sent_at = coalesce(welcome_sent_at, now()), welcome_claimed_at = null`;
+      const stale = await claimed("lease-welcome@example.org", { welcome_sent_at: ago(45), welcome_claimed_at: ago(45) });
+      const fresh = await claimed("lease-fresh@example.org", { welcome_sent_at: ago(5), welcome_claimed_at: ago(5) });
+      expect(await notices.runWelcomeRetries()).toEqual({ sent: 1, failed: 0 });
+      expect(sent.map((m) => [m.to, m.key])).toEqual([["lease-welcome@example.org", `welcome:${stale}`]]);
+      const [s] = await sql`select welcome_sent_at, welcome_claimed_at from subscribers where id = ${stale}`;
+      expect(s.welcome_sent_at).not.toBeNull();
+      expect(s.welcome_claimed_at).toBeNull();
+      expect(await notices.runWelcomeRetries()).toEqual({ sent: 0, failed: 0 });
+      expect((await sql`select welcome_claimed_at from subscribers where id = ${fresh}`)[0].welcome_claimed_at).not.toBeNull();
+    });
+
+    it("a failed send gives the claim back; the next run sends it", async () => {
+      const id = await claimed("lease-fail@example.org", { welcome_sent_at: null });
+      const resendStub = globalThis.fetch;
+      vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ name: "validation_error", message: "nope" }), { status: 422 }));
+      try {
+        expect(await notices.runWelcomeRetries()).toEqual({ sent: 0, failed: 1 });
+      } finally {
+        vi.stubGlobal("fetch", resendStub);
+      }
+      expect((await sql`select welcome_sent_at, welcome_claimed_at from subscribers where id = ${id}`)[0]).toMatchObject({ welcome_sent_at: null, welcome_claimed_at: null });
+    });
+
+    it("confirmation links and trial reminders left claimed are sent again with their stable keys", async () => {
+      // Earlier subscribers are done with these emails.
+      await sql`update subscribers set confirm_claimed_at = null, trial_reminder_sent_at = coalesce(trial_reminder_sent_at, now()), trial_reminder_claimed_at = null`;
+      const subId = "sub_01hv8x29kz0t586xy6zn1a65ac";
+      const conf = await claimed("lease-confirm@example.org", {
+        status: "pending", confirm_token: "tok-lease-confirm-0123", paddle_subscription_id: subId,
+        welcome_sent_at: ago(60), confirm_sent_at: ago(40), confirm_claimed_at: ago(40),
+      });
+      const trialEnds = new Date(Date.now() + 2 * 86_400_000);
+      const remind = await claimed("lease-trial@example.org", {
+        welcome_sent_at: ago(60), trial_ends_at: trialEnds, trial_reminder_sent_at: ago(40), trial_reminder_claimed_at: ago(40),
+      });
+      expect(await notices.runConfirmationRetries()).toEqual({ sent: 1, failed: 0 });
+      expect(await notices.runTrialReminders()).toEqual({ sent: 1, failed: 0 });
+      const byTo = Object.fromEntries(sent.map((m) => [m.to, m.key]));
+      expect(byTo["lease-confirm@example.org"]).toBe(`paid-confirm:${conf}:${subId}`);
+      const [{ trial_ends_at }] = await sql`select trial_ends_at from subscribers where id = ${remind}`;
+      expect(byTo["lease-trial@example.org"]).toBe(`trial-reminder:${remind}:${new Date(trial_ends_at).toISOString()}`);
+      const rows = await sql`select confirm_claimed_at, trial_reminder_claimed_at from subscribers where id in (${conf}, ${remind})`;
+      for (const r of rows) expect(r).toEqual({ confirm_claimed_at: null, trial_reminder_claimed_at: null });
+      sent.length = 0;
+      expect(await notices.runConfirmationRetries()).toEqual({ sent: 0, failed: 0 });
+      expect(await notices.runTrialReminders()).toEqual({ sent: 0, failed: 0 });
+      expect(sent).toHaveLength(0);
+    });
+  });
+
+  describe("account link emails", () => {
+    it("at most 5 per address in 24 hours, with the same answer and no new link after that", async () => {
+      await sql`delete from rate_limits`;
+      await sql`insert into subscribers (email, status, unsubscribe_token) values ('capped@example.org', 'confirmed', 'unsub-capped')`;
+      for (let i = 0; i < 7; i++) expect(await account.sendAccountLink("capped@example.org")).toBe(true);
+      expect(sent.filter((m) => m.to === "capped@example.org")).toHaveLength(account.ACCOUNT_LINKS_PER_DAY);
+      // Over the cap the link isn't replaced either: the last emailed link still works.
+      const [{ manage_token }] = await sql`select manage_token from subscribers where email = 'capped@example.org'`;
+      expect(sent.filter((m) => m.to === "capped@example.org").at(-1)?.text).toContain(`/account?t=${manage_token}`);
+      // An address without an account gets the same answer.
+      for (let i = 0; i < 7; i++) expect(await account.sendAccountLink("nobody-here@example.org")).toBe(true);
+      // Another address is not affected.
+      await sql`insert into subscribers (email, status, unsubscribe_token) values ('uncapped@example.org', 'confirmed', 'unsub-uncapped')`;
+      expect(await account.sendAccountLink("uncapped@example.org")).toBe(true);
+      expect(sent.filter((m) => m.to === "uncapped@example.org")).toHaveLength(1);
+    });
+  });
+
   describe("UN and EU emblems", () => {
     it("never serves or keeps an icon for a UN system organization or EU institution", async () => {
       const png = Buffer.from("89504e470d0a1a0a0000000d4948445200000040000000400806000000", "hex");

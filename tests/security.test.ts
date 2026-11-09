@@ -2,10 +2,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { GET as calendar } from "@/app/api/calendar/[id]/route";
 import { GET as geo } from "@/app/api/geo/route";
+import { GET as saved } from "@/app/api/saved/route";
+import { GET as unsubscribeGet } from "@/app/api/unsubscribe/route";
 import { cleanTrackedPath } from "@/app/api/track/clean-path";
 import robots from "@/app/robots";
 import { clientIp, hashKey } from "@/lib/rate-limit";
 import { isAuthorizedCron } from "@/lib/cron-auth";
+import { parseId } from "@/lib/site";
 
 describe("clientIp", () => {
   afterEach(() => {
@@ -120,5 +123,34 @@ describe("calendar route", () => {
       const res = await calendar(new Request(`http://localhost/api/calendar/${id}`), { params: Promise.resolve({ id }) });
       expect(res.status, id).toBe(404);
     }
+  });
+});
+
+describe("ids from forms and query strings", () => {
+  it("parseId accepts 1 to 12 digits above 0 only", () => {
+    expect(parseId("1")).toBe(1);
+    expect(parseId("999999999999")).toBe(999_999_999_999);
+    for (const v of ["1234567890123", "99999999999999999999", "9223372036854775808", "0", "000", "1e3", "-5", "1.5", " 7", "abc", "", null, undefined, 12]) {
+      expect(parseId(v), String(v)).toBeNull();
+    }
+  });
+
+  it("/api/saved answers 400 for an oversized id, without asking the database", async () => {
+    for (const ids of ["99999999999999999999", "12,1234567890123", "0"]) {
+      const res = await saved(new Request(`http://localhost/api/saved?ids=${ids}`));
+      expect(res.status, ids).toBe(400);
+    }
+  });
+});
+
+describe("one-click unsubscribe address opened with GET", () => {
+  it("redirects (303) to the unsubscribe page with the token, and unsubscribes nobody", async () => {
+    const res = await unsubscribeGet(new Request("http://localhost/api/unsubscribe?token=abc_DEF-123"));
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/alerts/unsubscribe?token=abc_DEF-123");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const odd = await unsubscribeGet(new Request("http://localhost/api/unsubscribe?token=a%26b%3Dc"));
+    expect(odd.headers.get("location")).toBe("/alerts/unsubscribe?token=a%26b%3Dc");
+    expect((await unsubscribeGet(new Request("http://localhost/api/unsubscribe"))).headers.get("location")).toBe("/alerts/unsubscribe");
   });
 });

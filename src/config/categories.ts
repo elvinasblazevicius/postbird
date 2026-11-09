@@ -80,6 +80,8 @@ export const CATEGORIES: Category[] = [
     keywords: [
       "food security", "food systems", "food assistance", "agricultur*", "agronom*", "agri*", "livestock", "veterinar*", "fisheries", "aquaculture",
       "farming", "farmer*", "crop*", "irrigation", "school feeding", "livelihood*", "rural development", "value chain*", "seguridad alimentaria", "securite alimentaire", "agricola",
+      // Genebanks (CGIAR and others). Not "gene*", which would also match "general" and "Geneva".
+      "gene", "genes", "genebank*", "gene bank*", "genetic resource*", "germplasm",
     ],
   },
   {
@@ -137,7 +139,7 @@ export const CATEGORIES: Category[] = [
     keywords: [
       "environment*", "climate", "energy", "renewable*", "biodiversity", "conservation", "forest*", "carbon", "emission*",
       "sustainability", "sustainable", "natural resource*", "marine", "ocean*", "chemical*", "pollution", "solar", "electricity",
-      "disaster risk", "drr", "resilience", "ecosystem*", "wildlife", "medio ambiente", "environnement", "climat", "clima",
+      "disaster risk", "drr", "resilience", "ecosystem*", "wildlife", "flood*", "medio ambiente", "environnement", "climat", "clima",
     ],
   },
   {
@@ -170,8 +172,8 @@ export const CATEGORIES: Category[] = [
     name: "Programme management",
     blurb: "Programme and project officers, managers and coordinators.",
     keywords: [
-      "programme", "program", "project", "projects", "coordinator", "coordination", "partnership", "portfolio",
-      "country director", "head of office", "field office", "field officer", "chief of party", "team leader",
+      "programme", "program", "project", "projects", "coordinator", "coordination", "partnership*", "portfolio",
+      "country director", "director", "head of entity", "head of office", "field office", "field officer", "chief of party", "team leader",
       "head of mission", "head of programme", "area manager", "base manager", "representative", "programa", "proyecto", "projet",
     ],
   },

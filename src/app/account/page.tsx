@@ -34,7 +34,7 @@ function planLines(a: Account): string[] {
   } else if (a.billing_status === "active" && a.current_period_end) {
     lines.push(a.cancel_at ? `Canceled: your plan stays on until ${formatDate(a.cancel_at)} and won't renew.` : `Renews on ${formatDate(a.current_period_end)}.`);
   } else if (a.billing_status === "past_due") {
-    lines.push("Your last payment didn't go through, so alerts are on hold. Update your card under “Manage billing” to restart them.");
+    lines.push("Your last payment didn't go through, so alerts are on hold. Update your card under “Cancel or manage billing” to restart them.");
   } else if (a.billing_status === "paused") {
     lines.push("Your plan is paused, so alerts are on hold.");
   } else if (a.billing_status === "canceled") {

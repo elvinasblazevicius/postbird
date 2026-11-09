@@ -2,13 +2,14 @@ import Link from "next/link";
 import { siteConfig } from "@/lib/site";
 import { CookieSettingsLink } from "./ads";
 import { BrandMark } from "./brand-mark";
+import { EMPLOYER_NAV } from "./site-header";
 
 export function SiteFooter() {
   const year = new Date().getFullYear();
   return (
     <footer className="mt-24 border-t border-rule bg-mist">
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr]">
-        <div>
+      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
+        <div className="sm:col-span-2 lg:col-span-1">
           <Link href="/" className="flex items-center gap-2.5 text-ink no-underline">
             <BrandMark className="h-6 w-6" />
             <span className="font-display text-lg font-semibold">{siteConfig.name}</span>
@@ -30,6 +31,14 @@ export function SiteFooter() {
             <li><Link href="/locations" className="hover:text-ink">Countries</Link></li>
             <li><Link href="/remote-jobs" className="hover:text-ink">Remote and home-based jobs</Link></li>
             <li><Link href="/saved" className="hover:text-ink">Saved jobs</Link></li>
+          </ul>
+        </nav>
+        <nav aria-label="Browse by employer" className="text-sm">
+          <h2 className="font-sans text-sm font-semibold text-ink">Browse by employer</h2>
+          <ul className="mt-3 space-y-2 text-slate">
+            {EMPLOYER_NAV.map((e) => (
+              <li key={e.href}><Link href={e.href} className="hover:text-ink">{e.label}</Link></li>
+            ))}
           </ul>
         </nav>
         <nav aria-label="About" className="text-sm">

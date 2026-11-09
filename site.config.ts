@@ -17,7 +17,7 @@ const siteConfig = {
   tagline: "UN, EU and international organization jobs in one place",
   /** One line describing the site (meta description default). */
   description:
-    "The UN and international organization job aggregator: vacancies from UN agencies, EU institutions and other international organizations in one place, each linked to the employer's own website.",
+    "Independent job search for UN, EU and international organization vacancies, each linked to the employer's own website.",
 
   /**
    * Public address of the site, without a trailing slash.
@@ -92,11 +92,13 @@ const siteConfig = {
     ],
     /** Short version used in sign-up boxes. */
     priceSummary: "$9.99/month or $19.99 for 3 months",
+    /**
+     * What the paid plan adds, and only that: the free weekly email (one search) has the same
+     * filters, closing dates and links. The first line assumes freeWeeklyEmail is on.
+     */
     features: [
-      "New matching vacancies by email every day (or weekly, if you prefer)",
-      "Up to 5 saved searches by keyword, organization, place or grade",
-      "Closing date shown on every vacancy in the email",
-      "Change searches or cancel any time from your account page",
+      "New matches every day, up to 6 days before the weekly email",
+      "Up to 5 searches, each with full filters",
     ],
   },
 

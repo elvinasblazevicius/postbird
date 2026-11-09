@@ -1,5 +1,5 @@
 import { latestJobs } from "@/lib/jobs";
-import { displayGrade } from "@/lib/grades";
+import { displayGrade, isLocalOnly } from "@/lib/grades";
 import { formatDate, locationLabel, NOT_SPECIFIED } from "@/lib/site";
 
 /** Used only when there are no listings to build the example from. Clearly labelled as illustrative. */
@@ -11,7 +11,9 @@ const ILLUSTRATIVE = [
 
 /** "What an alert looks like": a sample alert email built from current listings. */
 export async function AlertExample({ heading = "What an alert looks like" }: { heading?: string }) {
-  const jobs = await latestJobs(3).catch(() => []);
+  // Posts open to international applicants first (latestJobs already ranks local-only posts last).
+  const recent = await latestJobs(12).catch(() => []);
+  const jobs = [...recent.filter((j) => !isLocalOnly(j)), ...recent.filter((j) => isLocalOnly(j))].slice(0, 3);
   return (
     <section aria-labelledby="sample-heading">
       <h2 id="sample-heading" className="text-xl font-semibold text-ink">{heading}</h2>

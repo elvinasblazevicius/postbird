@@ -185,8 +185,12 @@ export function HeroSearch({ facets }: { facets: FacetData }) {
   );
 }
 
-/** Filter panel for result pages. Works without JavaScript; submits on change when JS is available. */
-export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, formId = "job-filters" }: { filters: JobFilters; facets: FacetData; action?: string; hidden?: Record<string, string>; formId?: string }) {
+/**
+ * Filter panel for result pages. Works without JavaScript. With `submitOnChange` (the desktop
+ * panel) a changed select or checkbox applies at once; on phones people set several filters and
+ * then tap "Show jobs", so the panel there waits for the button.
+ */
+export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, formId = "job-filters", submitOnChange = true }: { filters: JobFilters; facets: FacetData; action?: string; hidden?: Record<string, string>; formId?: string; submitOnChange?: boolean }) {
   const P = formId;
   // Grades are only stated in some postings; when few have one, the grade filter moves under "More filters".
   const graded = (facets.grades ?? []).reduce((n, g) => n + g.count, 0);
@@ -234,7 +238,7 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
         <button type="submit" className="flex-1 rounded-lg bg-brand px-4 py-2.5 font-semibold text-white hover:bg-accent">Show jobs</button>
         <Link href={jobsUrl({}, action)} className="rounded-lg px-3 py-2.5 text-sm font-medium text-accent hover:bg-mist">Clear</Link>
       </div>
-      <AutoSubmit formId={formId} />
+      <AutoSubmit formId={formId} onChange={submitOnChange} />
     </form>
   );
 }

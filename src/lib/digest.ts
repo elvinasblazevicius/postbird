@@ -1,7 +1,8 @@
 /**
  * Scheduled emails:
  *  - runDigest(): the free weekly email (when siteConfig.freeWeeklyEmail is
- *    on), sent on Mondays: for each free subscriber, the new vacancies of the
+ *    on), sent on Mondays (or by Wednesday when Monday's run was missed): for
+ *    each free subscriber, the new vacancies of the
  *    past week that match their one saved search (or the week's newest when
  *    they chose none). Nothing is sent to someone with no new matches.
  *    Subscribers with a plan never get it; they get runAlerts() instead.
@@ -36,6 +37,12 @@ export function weekStart(d: Date): Date {
 
 /** The free weekly email goes out on this day (UTC; 1 = Monday). The scheduled job runs every day at 06:23 UTC. */
 export const WEEKLY_SEND_DAY = 1;
+/**
+ * The last day (UTC; 3 = Wednesday) a week's email may still start when no run
+ * started it on Monday (the job didn't run, or the host was down), so one
+ * missed run doesn't lose the week. Later in the week it waits for next Monday.
+ */
+export const WEEKLY_LAST_START_DAY = 3;
 /** Matches listed in the free weekly email (the rest are behind its "See all" button). */
 const WEEKLY_JOBS_PER_SEARCH = 10;
 /** The weekly email covers vacancies first seen in this many days before the week's first run. */
@@ -69,13 +76,14 @@ type WeeklyRow = {
 type WeeklyOut = { row: WeeklyRow; group: AlertGroup; trialUrl: string };
 
 /**
- * The free weekly email. Runs from the daily scheduled job but sends only on
- * Mondays (UTC): the first run of an ISO week on a Monday records the week in
- * `digests` and its start time is the week's cut-off, so a retry later in the
- * week (when Monday's run failed or was cut off) covers exactly the same
+ * The free weekly email. Runs from the daily scheduled job and starts on
+ * Mondays (UTC), or on Tuesday or Wednesday when no run started that week's
+ * email yet (a missed Monday): the first run of an ISO week records the week
+ * in `digests` and its start time is the week's cut-off, so a retry later in
+ * the week (when that run failed or was cut off) covers exactly the same
  * window and sends the same email. Each subscriber gets at most one weekly
  * email per ISO week (last_digest_at). force (the admin's "send now"): skips
- * the Monday rule and the "already done" check, never the one-per-week rule.
+ * the day rule and the "already done" check, never the one-per-week rule.
  * `at` replaces the database clock for the day and week rules (tests only).
  */
 export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Promise<DigestResult> {
@@ -91,8 +99,11 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
   try {
     const existing = (await sql<{ status: string }[]>`select status from digests where period_key = ${periodKey}`)[0];
     if (existing?.status === "done" && !opts.force) return { ...base, message: `The weekly email for ${periodKey} was already sent.` };
-    // A week that hasn't started sending yet only starts on Monday; one that started (and failed) is retried any day.
-    if (!existing && !opts.force && at.getUTCDay() !== WEEKLY_SEND_DAY) return { ...base, message: "The weekly email goes out on Mondays." };
+    // A week that hasn't started sending yet starts Monday to Wednesday only; one that started (and failed) is retried any day.
+    const day = at.getUTCDay() || 7;
+    if (!existing && !opts.force && (day < WEEKLY_SEND_DAY || day > WEEKLY_LAST_START_DAY)) {
+      return { ...base, message: "The weekly email goes out on Mondays (or by Wednesday if Monday's run was missed)." };
+    }
 
     // started_at is kept from the week's first run: it is the cut-off of the week's window.
     const [{ cutoff }] = await sql<{ cutoff: Date }[]>`
@@ -149,19 +160,23 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
             unsubscribeUrl: absoluteUrl(`/alerts/unsubscribe?token=${c.unsubscribe_token}`),
           }),
           headers: { "List-Unsubscribe": `<${oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+          idempotencyKey: `digest:${periodKey}:${o.row.id}`,
         };
       });
       // One key per batch, built from each message's key digest:{week}:{subscriberId}: a retry of
       // the same recipients that already went out is not sent twice, and a different set of
       // recipients (someone unsubscribed or joined in between) never reuses a key. The week's
       // window is fixed (cut-off above), so a retry sends the same message under the same key.
+      // If Resend rejects the batch (422), its messages go one by one under their own keys.
       const res = await sendBatch(msgs, () => batchKey(`digest:${periodKey}`, chunk.map((o) => `digest:${periodKey}:${o.row.id}`)));
       sent += res.sent;
       failed += res.failed;
       errors.push(...res.errors);
-      if (res.sent === chunk.length) {
-        await sql`update subscribers set last_digest_at = ${until} where id = any(${chunk.map((o) => o.row.id)})`;
-        const searchIds = chunk.map((o) => o.row.search_id).filter((x): x is number => x !== null);
+      // Only the messages Resend accepted count as sent; the rest are retried by the next run this week.
+      const done = chunk.filter((_, j) => res.delivered[j]);
+      if (done.length) {
+        await sql`update subscribers set last_digest_at = ${until} where id = any(${done.map((o) => o.row.id)})`;
+        const searchIds = done.map((o) => o.row.search_id).filter((x): x is number => x !== null);
         if (searchIds.length) {
           await sql`update saved_searches set last_sent_at = ${until} where id = any(${searchIds}) and (last_sent_at is null or last_sent_at < ${until})`;
         }
@@ -289,16 +304,20 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
           to: c.email,
           ...alertEmail({ groups: o.groups, frequency: o.sub.frequency, accountUrl: absoluteUrl(`/account?t=${c.manage_token}`), unsubscribeUrl }),
           headers: { "List-Unsubscribe": `<${oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+          idempotencyKey: `alert:${o.sub.id}:${now.toISOString()}`,
         };
       });
       // Resend takes one idempotency key per batch: built from each message's
       // key alert:{subscriberId}:{run start}, so a retry within this run can't send twice.
+      // If Resend rejects the batch (422), its messages go one by one under their own keys.
       const res = await sendBatch(msgs, () => batchKey("alerts", chunk.map((o) => `alert:${o.sub.id}:${now.toISOString()}`)));
       sent += res.sent;
       failed += res.failed;
       errors.push(...res.errors);
-      if (res.sent === chunk.length) {
-        await sql`update saved_searches set last_sent_at = ${now} where subscriber_id = any(${chunk.map((o) => o.sub.id)})`;
+      // Only subscribers whose email Resend accepted move on; the others stay due.
+      const done = chunk.filter((_, j) => res.delivered[j]);
+      if (done.length) {
+        await sql`update saved_searches set last_sent_at = ${now} where subscriber_id = any(${done.map((o) => o.sub.id)})`;
       }
     };
 

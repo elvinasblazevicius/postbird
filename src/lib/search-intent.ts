@@ -14,6 +14,8 @@ export type SearchIntent = {
   remote?: boolean;
   type?: string;
   country?: string;
+  /** A grade written in the search ("p3", "P-3", "NOA", "GS-6"), normalized ("P-3", "NO-A", "GS-6"). */
+  grade?: string;
 };
 
 const STOP_WORDS = new Set([
@@ -112,6 +114,31 @@ export function searchTerms(q: string): string[] {
   return [...phrases, ...rest.split(" ").filter(Boolean)].slice(0, 8);
 }
 
+/**
+ * Grades people type: P1–P7, D1–D2, NOA–NOE, G1–G7, GS1–GS7 and FS1–FS7, with or without the hyphen,
+ * as a whole word. Written the way the importer stores grades (normalizeGrade in
+ * src/lib/feeds/extract.ts) and parseFilters accepts them: "P-3", "NO-A", "GS-6".
+ */
+const GRADE_WORD_RE = /^(p|d|no|gs|g|fs)-?([1-7a-e])$/;
+const GRADE_RANGES: Record<string, RegExp> = { p: /^[1-7]$/, d: /^[12]$/, no: /^[a-e]$/, g: /^[1-7]$/, gs: /^[1-7]$/, fs: /^[1-7]$/ };
+
+/** The grade one search word names ("p3" → "P-3", "NO-B" → "NO-B", "gs6" → "GS-6"), or null. */
+export function gradeFromWord(word: string): string | null {
+  const m = word.toLowerCase().trim().match(GRADE_WORD_RE);
+  return m && GRADE_RANGES[m[1]].test(m[2]) ? `${m[1].toUpperCase()}-${m[2].toUpperCase()}` : null;
+}
+
+/** Takes the first grade out of a tidied query (" p3 data " → "P-3" and " data "). */
+function takeGrade(s: string): { grade?: string; rest: string } {
+  const words = s.split(" ");
+  // "G5 Sahel" is an organization, not grade G-5.
+  const i = words.findIndex((w, n) => gradeFromWord(w) && !(w === "g5" && words[n + 1] === "sahel"));
+  if (i < 0) return { rest: s };
+  const grade = gradeFromWord(words[i])!;
+  words.splice(i, 1);
+  return { grade, rest: words.join(" ") };
+}
+
 const wordRe = (phrase: string) => new RegExp(`(^|\\s)${phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=\\s|$)`);
 
 export function interpretQuery(q: string | undefined | null): SearchIntent {
@@ -120,6 +147,12 @@ export function interpretQuery(q: string | undefined | null): SearchIntent {
   const { phrases, rest } = takeOrgPhrases(tidyQuery(q));
   let s = ` ${rest} `;
   const intent: SearchIntent = { text: null };
+
+  const g = takeGrade(s);
+  if (g.grade) {
+    intent.grade = g.grade;
+    s = ` ${g.rest} `;
+  }
 
   for (const [phrase, value] of ORG_TYPE_PHRASES) {
     const re = wordRe(phrase);

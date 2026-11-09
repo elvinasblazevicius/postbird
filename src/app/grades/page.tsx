@@ -122,7 +122,7 @@ const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
 export default function GradesPage() {
   return (
     <>
-      <PageHeader
+      <PageHeader width="max-w-3xl"
         title="Grades and contract types explained"
         crumbs={[{ href: "/", label: "Home" }, { href: "/grades", label: "Grades explained" }]}
         intro="What the letters and numbers in international vacancies usually mean. These are general descriptions; each posting sets its own requirements."

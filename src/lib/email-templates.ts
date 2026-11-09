@@ -1,7 +1,7 @@
 import siteConfig from "@site-config";
 import type { JobListItem } from "@/lib/jobs";
 import { BILLING_LIVE } from "@/lib/billing/live";
-import { planDescription } from "@/lib/early-access-copy";
+import { EMAIL_TAX_NOTE, planDescription } from "@/lib/early-access-copy";
 import { displayGrade } from "@/lib/grades";
 import { absoluteUrl, formatDate, jobPath, locationLabel, NOT_SPECIFIED } from "@/lib/site";
 
@@ -154,8 +154,8 @@ export function welcomeEmail(opts: { accountUrl: string; unsubscribeUrl: string;
   const refundsUrl = absoluteUrl("/refunds");
   const charge = chargeLine(opts.plan);
   const trial = opts.trialEndsAt
-    ? `Your free trial runs until ${formatDate(opts.trialEndsAt)}. After your trial you're charged ${charge}, renewing automatically until you cancel. Cancel any time from your account page.`
-    : `You're charged ${charge}, renewing automatically until you cancel. Cancel any time from your account page.`;
+    ? `Your free trial runs until ${formatDate(opts.trialEndsAt)}. After your trial you're charged ${charge} ${EMAIL_TAX_NOTE}, renewing automatically until you cancel. Cancel any time from your account page.`
+    : `You're charged ${charge} ${EMAIL_TAX_NOTE}, renewing automatically until you cancel. Cancel any time from your account page.`;
   const refundHtml = `Refund policy: <a href="${esc(refundsUrl)}" style="color:#566476">${esc(refundsUrl)}</a>`;
   const html = layout(
     subject,
@@ -175,12 +175,12 @@ export function accountLinkEmail(opts: { accountUrl: string; unsubscribeUrl: str
   const subject = `Your ${siteConfig.name} account link`;
   const html = layout(
     subject,
-    `<p style="font-size:16px;line-height:1.6;margin:0 0 16px">Here is the link to your ${esc(siteConfig.name)} account, where you can change your saved searches, choose daily or weekly emails and manage billing.</p>
+    `<p style="font-size:16px;line-height:1.6;margin:0 0 16px">Here is the link to your ${esc(siteConfig.name)} account, where you can change your saved searches, choose daily or weekly emails and, if you have a plan, cancel it or manage billing (&ldquo;Cancel or manage billing&rdquo;).</p>
      <p style="margin:0 0 20px">${button(opts.accountUrl, "Open my account")}</p>
      <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">This is a new link: account links in older emails no longer work. If you didn't ask for this, you can ignore this email; the link only works for this address.</p>`,
     accountFooter(opts.accountUrl, opts.unsubscribeUrl),
   );
-  const text = `Your ${siteConfig.name} account: ${opts.accountUrl}\n\nThis is a new link: account links in older emails no longer work. If you didn't ask for this, ignore this email.\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
+  const text = `Your ${siteConfig.name} account: ${opts.accountUrl}\n\nThere you can change your saved searches, choose daily or weekly emails and, if you have a plan, cancel it or manage billing ("Cancel or manage billing").\n\nThis is a new link: account links in older emails no longer work. If you didn't ask for this, ignore this email.\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
   return { subject, html, text };
 }
 
@@ -236,7 +236,7 @@ export function trialReminderEmail(opts: { plan: string; price: string; chargeDa
   const subject = `Your ${siteConfig.name} free trial ends on ${date}`;
   const lines = [
     `Your free trial of ${siteConfig.name} ${siteConfig.premium.name.toLowerCase()} ends on ${date}.`,
-    `On that day your first payment of ${opts.price} is taken for your plan: ${opts.plan}. After that the plan renews automatically until you cancel.`,
+    `On that day your first payment of ${opts.price} ${EMAIL_TAX_NOTE} is taken for your plan: ${opts.plan}. After that the plan renews automatically until you cancel.`,
     `If you don't want to pay, cancel before ${date} on your account page. If you cancel before then, you pay nothing.`,
   ];
   const html = layout(
@@ -293,7 +293,7 @@ export function alertsOpenEmail(opts: { trialUrl: string; unsubscribeUrl: string
   const subject = `${siteConfig.name} ${p.name.toLowerCase()} are open`;
   const lines = [
     `You joined the early-access list for ${siteConfig.name} ${p.name.toLowerCase()}. They're open now: new vacancies that match your saved searches, by email, daily or weekly.`,
-    `You can start with a ${p.trialDays}-day free trial. A card is needed to start it. If you don't cancel during the trial, the plan costs ${p.priceSummary} and renews until you cancel.`,
+    `You can start with a ${p.trialDays}-day free trial. A card is needed to start it. If you don't cancel during the trial, the plan costs ${p.priceSummary} ${EMAIL_TAX_NOTE} and renews until you cancel.`,
     `This is the one email we said we'd send. We won't email you about it again, and we'll delete your address from the early-access list 30 days from now unless you start a trial.`,
   ];
   const html = layout(

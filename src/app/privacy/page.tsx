@@ -21,7 +21,7 @@ export default function PrivacyPage() {
   const mailLink = mail ? <a className="text-accent underline" href={`mailto:${mail}`}>{mail}</a> : <>us</>;
   return (
     <>
-      <PageHeader title="Privacy" crumbs={[{ href: "/", label: "Home" }, { href: "/privacy", label: "Privacy" }]} />
+      <PageHeader width="max-w-3xl" title="Privacy" crumbs={[{ href: "/", label: "Home" }, { href: "/privacy", label: "Privacy" }]} />
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-12 text-[1.02rem] leading-relaxed text-ink sm:px-6">
         <p className="text-sm text-slate">Last updated 9 November 2026</p>
         <p>
@@ -53,13 +53,15 @@ export default function PrivacyPage() {
 
         <H2 id="cookies">Advertising measurement and cookies</H2>
         <p>
-          We advertise on Microsoft Advertising (Bing). To learn whether ads lead to sign-ups we may:
+          We advertise on Microsoft Advertising and may advertise on other platforms; only Microsoft&apos;s tag is used on this site. To learn whether ads lead to
+          sign-ups we may:
         </p>
         <ul className="list-disc space-y-1 pl-6">
           <li>record the campaign tags of the ad link you clicked (&quot;utm&quot; tags) with page counts and with any sign-up;</li>
           <li>record Microsoft&apos;s click id (&quot;msclkid&quot;), which identifies one ad click, and remember it on your device for up to 90 days. Without your consent we only note that a click id was present, not its value;</li>
           <li>
-            load Microsoft&apos;s Universal Event Tracking (UET) tag, which sets the cookies <code>_uetsid</code>, <code>_uetvid</code> and <code>MUID</code> and sends
+            load Microsoft&apos;s Universal Event Tracking (UET) tag, which sets the cookies <code>_uetsid</code>, <code>_uetvid</code>, <code>_uetmsclkid</code> and <code>MUID</code>, with matching entries in
+            local storage, and sends
             Microsoft these events: the pages you view here (<code>page_view</code>), clicks on Apply (<code>apply_click</code>), clicks on an email-alert button
             (<code>trial_cta_click</code>), joining early access or the email list (<code>trial_signup</code>, <code>subscribe</code>) and a completed free-trial
             checkout (<code>begin_trial</code>). Microsoft processes this under its own{" "}
@@ -110,6 +112,7 @@ export default function PrivacyPage() {
           <li>Netlify (United States): hosts the website.</li>
           <li>Supabase (servers in Australia): stores the database.</li>
           <li>Resend (United States): sends our emails.</li>
+          {mail ? <li>Our email hosting provider: receives and stores the messages you send to {mailLink}.</li> : null}
           <li>GitHub (United States): runs our scheduled jobs, including sending alert emails.</li>
           <li>Microsoft (United States): advertising measurement, only as described above.</li>
           {BILLING_LIVE ? <li>Paddle (United Kingdom): sells subscriptions as merchant of record and processes payments.</li> : null}

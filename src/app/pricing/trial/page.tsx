@@ -40,7 +40,7 @@ export default async function TrialPage({ searchParams }: Props) {
     <>
       <PageHeader
         title={BILLING_LIVE ? `Start your ${p.trialDays}-day free trial` : "Email alerts launch soon"}
-        crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Email alerts" }, { href: "/pricing/trial", label: BILLING_LIVE ? "Free trial" : "Early access" }]}
+        crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Pricing" }, { href: "/pricing/trial", label: BILLING_LIVE ? "Free trial" : "Early access" }]}
         intro={
           BILLING_LIVE ? (
             <>

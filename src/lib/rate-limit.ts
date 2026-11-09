@@ -60,6 +60,24 @@ export async function cleanupRateLimits(): Promise<void> {
 }
 
 /**
+ * Counts one email of a kind to one address, unless `perDay` were already
+ * counted for this key in the last 24 hours (then false: don't send). A
+ * rolling 24 hours, unlike rateLimit's fixed windows. Stored in rate_limits as
+ * a salted hash of the key, one row per email, and deleted after 24 hours
+ * like every rate-limit row.
+ */
+export async function takeDailyQuota(key: string, perDay: number): Promise<boolean> {
+  const hashed = hashKey(key);
+  const rows = await sql`
+    insert into rate_limits (key, window_start, count)
+    select ${hashed}, clock_timestamp(), 1
+    where (select count(*) from rate_limits where key = ${hashed} and window_start > now() - interval '24 hours') < ${perDay}
+    on conflict (key, window_start) do nothing
+    returning 1`;
+  return rows.length === 1;
+}
+
+/**
  * Counts one hit for `key` in the current fixed window of `windowSeconds`.
  * Returns true when the request is allowed (at most `limit` hits per window).
  * Fails open (allows) only if the rate_limits table has not been created yet.

@@ -164,6 +164,7 @@ export function withSearchIntent(f: JobFilters): JobFilters {
     orgtype: f.orgtype ?? i.orgtype,
     remote: f.remote || i.remote || undefined,
     type: f.type ?? i.type,
+    grade: f.grade ?? i.grade,
     country: f.country ?? (f.region ? undefined : i.country),
     sort: !i.text && f.sort === "relevance" ? undefined : f.sort,
   };
@@ -328,11 +329,17 @@ export async function searchJobs(input: JobFilters, pageSize: number = LISTING_S
   return { ...res, page, pageSize, pages: Math.max(1, Math.ceil(res.total / pageSize)), sort, matchMode };
 }
 
+/**
+ * The newest open listings ("Recently posted" on the home page, the alert example, the fallback
+ * under empty results): posts open to international applicants first, local-only ones (the same
+ * rule as the "Hide local-only posts" filter) after them; within each, recent UN system posts first.
+ */
 export async function latestJobs(limit = 8) {
   return sql<JobListItem[]>`
     select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
     where ${isOpen()}
-    order by (o.org_type = 'UN system' and coalesce(j.published_at, j.first_seen_at) >= now() - interval '10 days') desc nulls last,
+    order by (coalesce(j.grade, '') ~ ${LOCAL_ONLY_GRADE_SQL} or lower(j.title) ~ ${LOCAL_ONLY_TITLE_SQL}) asc,
+             (o.org_type = 'UN system' and coalesce(j.published_at, j.first_seen_at) >= now() - interval '10 days') desc nulls last,
              coalesce(j.published_at, j.first_seen_at) desc, j.id desc
     limit ${limit}`;
 }
@@ -361,7 +368,8 @@ export async function getJob(id: number): Promise<JobDetail | null> {
 
 /** The open listings among these ids (the shortlist on /saved; at most 100). */
 export async function openJobsByIds(ids: number[]): Promise<JobListItem[]> {
-  const list = [...new Set(ids.filter((n) => Number.isInteger(n) && n > 0))].slice(0, 100);
+  // At most 12 digits (see parseId in src/lib/site.ts): a larger number would overflow bigint and fail the query.
+  const list = [...new Set(ids.filter((n) => Number.isInteger(n) && n > 0 && n < 1e12))].slice(0, 100);
   if (!list.length) return [];
   return sql<JobListItem[]>`
     select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
@@ -552,7 +560,8 @@ export async function filteredFacets(input: JobFilters, mode: MatchMode = "all")
   const without = active.length
     ? active.map((k) => sql`${k}::text, (count(*) filter (where ${except(k)}))::int`).reduce((a, b) => sql`${a}, ${b}`)
     : null;
-  const [r] = await sql<{
+  // In a transaction for its statement time limit (see transaction() in src/lib/db.ts), like facetSnapshot.
+  const [r] = await transaction(async (tx) => await tx<{
     orgs: { k: string; nm: string; n: number }[]; places: PlaceRow[]; categories: Count<string>[]; grades: Count<string>[];
     languages: Count<string>[]; experience: Count<number>[]; org_types: Count<string>[]; job_types: Count<string>[];
     without: Partial<Record<FilterKey, number>> | null;
@@ -584,7 +593,7 @@ export async function filteredFacets(input: JobFilters, mode: MatchMode = "all")
          from (select org_type as k, count(*)::int as n from base where org_type is not null and ${except("orgtype")} group by 1) x) as org_types,
       (select coalesce(json_agg(json_build_object('k', k, 'n', n) order by n desc, k), '[]'::json)
          from (select job_type as k, count(*)::int as n from base where job_type is not null and ${except("type")} group by 1) x) as job_types,
-      ${without ? sql`(select json_build_object(${without}) from base)` : sql`null::json`} as without`;
+      ${without ? sql`(select json_build_object(${without}) from base)` : sql`null::json`} as without`);
   const places = placeCounts(r.places);
   const cats = new Map(r.categories.map((x) => [x.k, x.n]));
   return {

@@ -225,7 +225,8 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
       {/* The terms come before the button, so they are read before starting. */}
       <p className={`mt-3 text-sm ${dark ? "text-white/85" : "text-slate"}`} aria-live="polite">
         {line.before}<strong className={dark ? "text-white" : "text-ink"}>{RENEWS}</strong>{line.after} {TAX_LINE}{" "}
-        <Link href="/terms#subscriptions" className="underline">Subscription terms</Link>
+        <Link href="/terms#subscriptions" className="underline">Subscription terms</Link> ·{" "}
+        <Link href="/privacy" className="underline">Privacy</Link>
       </p>
       <div className="mt-3">
         <button

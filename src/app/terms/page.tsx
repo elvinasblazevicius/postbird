@@ -13,7 +13,7 @@ export default function TermsPage() {
   const mail = siteConfig.contactEmail;
   return (
     <>
-      <PageHeader title="Terms of use" crumbs={[{ href: "/", label: "Home" }, { href: "/terms", label: "Terms" }]} />
+      <PageHeader width="max-w-3xl" title="Terms of use" crumbs={[{ href: "/", label: "Home" }, { href: "/terms", label: "Terms" }]} />
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-12 text-[1.02rem] leading-relaxed text-ink sm:px-6">
         <p className="text-sm text-slate">Last updated 9 November 2026</p>
         <p>
@@ -31,6 +31,27 @@ export default function TermsPage() {
 
         <h2 className="pt-2 text-xl font-semibold">No recruitment services</h2>
         <p>We don&apos;t recruit, accept applications or act for any employer. We never ask job seekers for payment to apply for a job.</p>
+
+        <h2 id="service" className="scroll-mt-24 pt-2 text-xl font-semibold">What the emails include</h2>
+        <p>
+          Alerts include the vacancies our sources publish. We can&apos;t guarantee that every vacancy at an organization will be included or that an email arrives
+          on a particular day.
+          {BILLING_LIVE ? (
+            <>
+              {" "}If alerts stop working for more than 7 days, email us{mail ? <> at <a className="text-accent underline" href={`mailto:${mail}`}>{mail}</a></> : null} for
+              a pro-rata refund.
+            </>
+          ) : null}
+        </p>
+
+        <h2 id="acceptable-use" className="scroll-mt-24 pt-2 text-xl font-semibold">Acceptable use</h2>
+        <p>
+          Use the site and the emails for your own job search. Don&apos;t scrape or copy listings in bulk, resell or republish them, overload or attack the site, or
+          sign up other people without their permission.
+        </p>
+        <p>
+          We may suspend or close access, including a subscription, that breaks these terms. If we do, we&apos;ll tell you why by email.
+        </p>
 
         {siteConfig.freeWeeklyEmail ? (
           <>
@@ -63,7 +84,7 @@ export default function TermsPage() {
             <h3 id="cancel" className="scroll-mt-24 pt-1 text-lg font-semibold">Cancelling</h3>
             <p>
               Cancel any time: open your account (the link is in every alert email, or{" "}
-              <a className="text-accent underline" href="/account/login">get your account link by email</a>) and choose &quot;Manage billing or cancel&quot;. You can also
+              <a className="text-accent underline" href="/account/login">get your account link by email</a>) and choose &quot;Cancel or manage billing&quot;. You can also
               cancel from the link in Paddle&apos;s receipt email. Your alerts continue until the end of the period you have paid for, and you are not charged again.
               Unsubscribing from our emails does not cancel your plan.
             </p>

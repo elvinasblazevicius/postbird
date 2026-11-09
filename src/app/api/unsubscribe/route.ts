@@ -22,3 +22,15 @@ export async function POST(req: Request) {
   }
   return new Response("Unsubscribed", { status: 200, headers: { "cache-control": "no-store" } });
 }
+
+/**
+ * A GET of the one-click address (someone opened the List-Unsubscribe link in
+ * a browser, or a mail scanner followed it) never unsubscribes: it sends the
+ * visitor to the unsubscribe page, which asks them to confirm. Link scanners
+ * prefetch GETs, so only the RFC 8058 POST unsubscribes.
+ */
+export async function GET(req: Request) {
+  const token = (new URL(req.url).searchParams.get("token") ?? "").slice(0, 100);
+  const location = token ? `/alerts/unsubscribe?token=${encodeURIComponent(token)}` : "/alerts/unsubscribe";
+  return new Response(null, { status: 303, headers: { location, "cache-control": "no-store" } });
+}

@@ -11,7 +11,7 @@ import { batchKey, isEmailConfigured, sendBatch, sendEmail, type OutgoingEmail }
 import { confirmationEmail } from "@/lib/email-templates";
 import { parseFeed } from "@/lib/feeds/parse";
 import { clientIp, hashKey, rateLimit } from "@/lib/rate-limit";
-import { absoluteUrl } from "@/lib/site";
+import { absoluteUrl, parseId } from "@/lib/site";
 import { requireAdmin } from "./guard";
 import siteConfig from "@site-config";
 
@@ -95,7 +95,8 @@ export async function addFeedAction(_prev: AdminState, form: FormData): Promise<
 
 export async function updateFeedAction(form: FormData) {
   await requireAdmin();
-  const id = Number(form.get("id"));
+  const id = parseId(form.get("id"));
+  if (id === null) return;
   const policyRaw = String(form.get("content_policy") ?? "none");
   const policy = (POLICIES as readonly string[]).includes(policyRaw) ? policyRaw : "none";
   const active = form.get("is_active") === "on";
@@ -121,7 +122,8 @@ async function releaseFeedJobs(db: Db, feedId: number) {
 
 export async function deleteFeedAction(form: FormData) {
   await requireAdmin();
-  const id = Number(form.get("id"));
+  const id = parseId(form.get("id"));
+  if (id === null) return;
   const [feed] = await sql<{ from_env: boolean }[]>`select from_env from feeds where id = ${id}`;
   if (!feed) return;
   await transaction(async (tx) => {
@@ -148,7 +150,8 @@ export async function syncNowAction(): Promise<void> {
 // ── Jobs ──
 export async function setJobStatusAction(form: FormData) {
   await requireAdmin();
-  const id = Number(form.get("id"));
+  const id = parseId(form.get("id"));
+  if (id === null) return;
   const op = String(form.get("op"));
   if (op === "remove") {
     await sql`update jobs set status = 'removed', removed_reason = ${String(form.get("reason") ?? "").slice(0, 200) || "Removed by admin"}, updated_at = now() where id = ${id}`;
@@ -163,7 +166,8 @@ export async function setJobStatusAction(form: FormData) {
 
 export async function setJobCategoryAction(form: FormData) {
   await requireAdmin();
-  const id = Number(form.get("id"));
+  const id = parseId(form.get("id"));
+  if (id === null) return;
   const cat = String(form.get("category"));
   if (!ALL_CATEGORIES.some((c) => c.slug === cat)) return;
   await sql`update jobs set category = ${cat}, category_locked = true, updated_at = now() where id = ${id}`;
@@ -204,19 +208,20 @@ export async function resendConfirmationsAction(): Promise<void> {
     returning s.id::int as id, s.email, s.confirm_token, s.wants_alerts, s.premium_waitlist, p.prev_sent_at`;
   let sent = 0, failed = 0;
   if (pending.length) {
-    const msgs: OutgoingEmail[] = pending.map((p) => ({
-      to: p.email,
-      ...confirmationEmail({ confirmUrl: absoluteUrl(`/alerts/confirm?token=${encodeURIComponent(p.confirm_token)}`), waitlist: p.premium_waitlist, alerts: p.wants_alerts }),
-    }));
     // One key per batch from each message's key (subscriber and hour): a repeated
     // request within the hour can't send twice; a click an hour later sends again.
     const hour = new Date().toISOString().slice(0, 13);
+    const msgs: OutgoingEmail[] = pending.map((p) => ({
+      to: p.email,
+      ...confirmationEmail({ confirmUrl: absoluteUrl(`/alerts/confirm?token=${encodeURIComponent(p.confirm_token)}`), waitlist: p.premium_waitlist, alerts: p.wants_alerts }),
+      idempotencyKey: `confirm-resend:${p.id}:${hour}`,
+    }));
     const res = await sendBatch(msgs, () => batchKey("confirm-resend", pending.map((p) => `confirm-resend:${p.id}:${hour}`)));
     sent = res.sent;
     failed = res.failed;
-    // Not sent: give the rows back (their previous send time) for the next click.
-    if (res.failed) {
-      for (const p of pending) await sql`update subscribers set confirm_sent_at = ${p.prev_sent_at} where id = ${p.id}`;
+    // Not sent: give those rows back (their previous send time) for the next click.
+    for (const [j, p] of pending.entries()) {
+      if (!res.delivered[j]) await sql`update subscribers set confirm_sent_at = ${p.prev_sent_at} where id = ${p.id}`;
     }
   }
   const [{ remaining }] = await sql<{ remaining: number }[]>`

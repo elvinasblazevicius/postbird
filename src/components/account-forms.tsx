@@ -128,7 +128,7 @@ export function PortalButton({ t }: { t: string }) {
   return (
     <form action={action}>
       <input type="hidden" name="t" value={t} />
-      <button disabled={pending} className={primary}>{pending ? "Opening billing…" : "Manage billing or cancel"}</button>
+      <button disabled={pending} className={primary}>{pending ? "Opening billing…" : "Cancel or manage billing"}</button>
       <Message state={state} />
     </form>
   );
@@ -142,7 +142,7 @@ export function AccountUnsubscribe({ t, unsubscribed, paying }: { t: string; uns
       {unsubscribed ? (
         <p className="mb-3 text-[0.95rem] text-slate">You&apos;re unsubscribed: we don&apos;t send you any emails.{paying ? " Your plan is still running; cancel it under billing if you no longer want it." : ""}</p>
       ) : (
-        <p className="mb-3 text-[0.95rem] text-slate">Stops every email from us.{paying ? " It doesn't cancel your plan: use \"Manage billing or cancel\" for that." : ""}</p>
+        <p className="mb-3 text-[0.95rem] text-slate">Stops every email from us.{paying ? " It doesn't cancel your plan: use \"Cancel or manage billing\" for that." : ""}</p>
       )}
       <button disabled={pending} className={secondary}>{pending ? "Saving…" : unsubscribed ? "Turn emails back on" : "Unsubscribe from all emails"}</button>
       <Message state={state} />
@@ -150,17 +150,24 @@ export function AccountUnsubscribe({ t, unsubscribed, paying }: { t: string; uns
   );
 }
 
-export function AccountLinkForm() {
+/**
+ * "Email me my account link" (/account/login). `intent: "cancel"` is the same request worded for
+ * cancelling: the emailed link opens the account page, where "Cancel or manage billing" cancels.
+ */
+export function AccountLinkForm({ intent = "manage" }: { intent?: "manage" | "cancel" }) {
   const [state, action, pending] = useActionState(accountLinkAction, initial);
+  const id = `login-email-${intent}`;
   if (state.status === "success") return <p role="status" className="rounded-xl bg-remote-bg p-5 text-[1.02rem] leading-relaxed text-ink">{state.message}</p>;
   return (
     <form action={action} className="space-y-3">
       <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
         <label>Leave empty<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label>
       </div>
-      <label htmlFor="login-email" className="block text-sm font-medium text-ink">Email address</label>
-      <input id="login-email" name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} />
-      <button disabled={pending} className={primary}>{pending ? "Sending…" : "Email me my account link"}</button>
+      <label htmlFor={id} className="block text-sm font-medium text-ink">Email address</label>
+      <input id={id} name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} />
+      <button disabled={pending} className={intent === "cancel" ? secondary.replace("px-4 py-2 text-sm", "px-5 py-2.5 text-[0.95rem]") : primary}>
+        {pending ? "Sending…" : intent === "cancel" ? "Email me a link to cancel" : "Email me my account link"}
+      </button>
       <Message state={state} />
     </form>
   );

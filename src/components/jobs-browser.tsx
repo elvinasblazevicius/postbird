@@ -56,14 +56,14 @@ function filterChips(filters: JobFilters, fixed: Partial<JobFilters>, base: stri
   const own: JobFilters = { ...read, sort: filters.sort, page: undefined };
   for (const k of Object.keys(fixed) as (keyof JobFilters)[]) delete own[k];
   const href = (drop: Partial<Record<keyof JobFilters, undefined>>) => jobsUrl({ ...own, ...drop, page: undefined }, base);
-  const fromSearch = (k: "orgtype" | "remote" | "type" | "country") => Boolean(intent && intent[k] !== undefined && !filters[k] && Boolean(read[k]));
+  const fromSearch = (k: "orgtype" | "remote" | "type" | "country" | "grade") => Boolean(intent && intent[k] !== undefined && !filters[k] && Boolean(read[k]));
   const chips: Chip[] = [];
   if (own.q) chips.push({ key: "q", label: `Keywords: “${own.q}”`, href: href({ q: undefined, sort: undefined }), fromSearch: false });
   if (own.org) chips.push({ key: "org", label: `Organization: ${facets.orgs.find((o) => o.slug === own.org)?.name ?? own.org}`, href: href({ org: undefined }), fromSearch: false });
   if (own.country) chips.push({ key: "where", label: `Country: ${countryBySlug(own.country)?.name ?? own.country}`, href: href({ country: undefined, region: undefined }), fromSearch: fromSearch("country") });
   if (own.region) chips.push({ key: "where", label: `Region: ${regionBySlug(own.region)?.name ?? own.region}`, href: href({ country: undefined, region: undefined }), fromSearch: false });
   if (own.category) chips.push({ key: "category", label: `Category: ${categoryBySlug(own.category)?.name ?? own.category}`, href: href({ category: undefined }), fromSearch: false });
-  if (own.grade) chips.push({ key: "grade", label: `Grade: ${gradeLabel(own.grade)}`, href: href({ grade: undefined }), fromSearch: false });
+  if (own.grade) chips.push({ key: "grade", label: `Grade: ${gradeLabel(own.grade)}`, href: href({ grade: undefined }), fromSearch: fromSearch("grade") });
   if (own.type) chips.push({ key: "type", label: `Type: ${own.type}`, href: href({ type: undefined }), fromSearch: fromSearch("type") });
   if (own.orgtype) chips.push({ key: "orgtype", label: `Organization type: ${ORG_TYPES.find((o) => o.value === own.orgtype)?.name ?? own.orgtype}`, href: href({ orgtype: undefined }), fromSearch: fromSearch("orgtype") });
   if (own.remote) chips.push({ key: "remote", label: "Remote / home-based", href: href({ remote: undefined }), fromSearch: fromSearch("remote") });
@@ -132,11 +132,14 @@ export async function JobsBrowser({
   fixed = {},
   base = "/jobs",
   emptyHint,
+  alertNoun,
 }: {
   filters: JobFilters;
   fixed?: Partial<JobFilters>;
   base?: string;
   emptyHint?: React.ReactNode;
+  /** What the empty-results email offer calls these vacancies: "Get an email when new {UNICEF} vacancies are posted". */
+  alertNoun?: string;
 }) {
   const effective = { ...filters, ...fixed };
   const [result, facetsAll] = await Promise.all([searchJobs(effective, undefined, { looseFallback: true }), filteredFacets(effective)]);
@@ -160,6 +163,8 @@ export async function JobsBrowser({
   const showTotal = userFilters > 0 || result.total >= siteConfig.showVacancyCountFrom;
   const to = from + result.items.length - 1;
   const alertSearch = jobsUrl({ ...effective, page: undefined, sort: undefined }).replace(/^\/jobs\??/, "");
+  const alertHref = `${siteConfig.freeWeeklyEmail ? "/alerts" : "/pricing/trial"}?search=${encodeURIComponent(alertSearch)}`;
+  const noun = [userFilters > 0 ? "matching" : null, alertNoun].filter(Boolean).join(" ");
   const removals = chips
     .map((c) => ({ ...c, count: facets.without[c.key] ?? 0 }))
     .sort((a, b) => b.count - a.count);
@@ -175,7 +180,7 @@ export async function JobsBrowser({
             <span className="hidden text-sm text-accent group-open/panel:inline">Hide</span>
           </summary>
           <div className="mt-4">
-            <FilterForm formId="filters-mobile" filters={filters} facets={facets} action={base} hidden={formHidden} />
+            <FilterForm formId="filters-mobile" filters={filters} facets={facets} action={base} hidden={formHidden} submitOnChange={false} />
           </div>
         </details>
         <div className="sticky top-24 hidden lg:block">
@@ -299,6 +304,12 @@ export async function JobsBrowser({
                 <Link href={base} className="rounded-lg border border-rule px-4 py-2 text-sm font-medium text-ink hover:bg-mist">Clear filters on this page</Link>
               ) : null}
             </div>
+            <p className="mt-5 flex items-start gap-2 border-t border-rule pt-4 text-[0.95rem] text-ink">
+              <svg viewBox="0 0 16 16" className="mt-1 h-4 w-4 shrink-0 text-accent" aria-hidden="true"><path d="M8 2a4 4 0 0 0-4 4v2.5L2.5 11h11L12 8.5V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
+              <Link href={alertHref} className="font-medium text-accent underline-offset-2 hover:underline">
+                Get an email when new {noun ? `${noun} ` : ""}vacancies are posted
+              </Link>
+            </p>
           </div>
         )}
         {fallback.length ? (

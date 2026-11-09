@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function SavedPage() {
   return (
     <>
-      <PageHeader
+      <PageHeader width="max-w-4xl"
         title="Saved jobs"
         crumbs={[{ href: "/", label: "Home" }, { href: "/saved", label: "Saved jobs" }]}
         intro="Vacancies you saved, kept only in this browser on this device. Vacancies that have closed aren't shown."

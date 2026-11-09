@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 export default function RefundsPage() {
   return (
     <>
-      <PageHeader title="Refunds" crumbs={[{ href: "/", label: "Home" }, { href: "/refunds", label: "Refunds" }]} />
+      <PageHeader width="max-w-3xl" title="Refunds" crumbs={[{ href: "/", label: "Home" }, { href: "/refunds", label: "Refunds" }]} />
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-12 text-[1.02rem] leading-relaxed text-ink sm:px-6">
         {BILLING_LIVE ? null : (
           <p className="rounded-xl bg-mist px-4 py-3">

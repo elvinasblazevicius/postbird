@@ -26,6 +26,36 @@ describe("interpretQuery", () => {
     expect(interpretQuery("internship consultancy").type).toBe("Internship");
   });
 
+  it("reads grades as the grade filter and takes them out of the keywords", () => {
+    expect(interpretQuery("P3 data")).toEqual({ text: "data", grade: "P-3" });
+    expect(interpretQuery("programme officer p-4")).toEqual({ text: "programme officer", grade: "P-4" });
+    expect(interpretQuery("D1")).toEqual({ text: null, grade: "D-1" });
+    expect(interpretQuery("g5 assistant").grade).toBe("G-5");
+    expect(interpretQuery("GS-6 finance").grade).toBe("GS-6");
+    expect(interpretQuery("gs6").grade).toBe("GS-6");
+    expect(interpretQuery("NOA health")).toEqual({ text: "health", grade: "NO-A" });
+    expect(interpretQuery("no-b").grade).toBe("NO-B");
+    expect(interpretQuery("FS-5 logistics").grade).toBe("FS-5");
+    expect(interpretQuery("un p2 kenya")).toEqual({ text: null, orgtype: "un", grade: "P-2", country: "kenya" });
+  });
+
+  it("only reads whole words that are real grades", () => {
+    for (const q of ["p38 protein", "dp3", "d3", "p8", "nof", "gs-9", "no", "g5 sahel liaison", "mp3", "p3x"]) {
+      expect(interpretQuery(q).grade, q).toBeUndefined();
+    }
+    expect(interpretQuery("no objection").text).toBe("no objection");
+  });
+
+  it("turns a grade in the words into the grade filter, unless one is set (withSearchIntent)", () => {
+    expect(withSearchIntent({ q: "p3 data" })).toMatchObject({ q: "data", grade: "P-3" });
+    expect(withSearchIntent({ q: "p3 data", grade: "D" })).toMatchObject({ q: "data", grade: "D" });
+    // Every grade the search reads is one parseFilters accepts, so the chip's links keep it.
+    for (const q of ["p3", "d2", "noe", "g7", "gs1", "fs-7"]) {
+      const grade = interpretQuery(q).grade!;
+      expect(parseFilters({ grade }).grade, q).toBe(grade);
+    }
+  });
+
   it("leaves explicit filters alone (withSearchIntent)", () => {
     const f = withSearchIntent({ q: "kenya internship", country: "uganda", type: "Consultancy" });
     expect(f).toMatchObject({ q: undefined, country: "uganda", type: "Consultancy" });

@@ -32,7 +32,7 @@ export default async function AboutPage() {
   const covered = await coveredOrganizations();
   return (
     <>
-      <PageHeader title="How it works" crumbs={[{ href: "/", label: "Home" }, { href: "/about", label: "How it works" }]} />
+      <PageHeader width="max-w-3xl" title="How it works" crumbs={[{ href: "/", label: "Home" }, { href: "/about", label: "How it works" }]} />
       <div className="mx-auto max-w-3xl space-y-10 px-4 py-12 text-[1.05rem] leading-relaxed text-ink sm:px-6">
         <section>
           <h2 className="text-2xl font-semibold leading-tight">Where the vacancies come from</h2>
@@ -82,7 +82,7 @@ export default async function AboutPage() {
         <section>
           <h2 className="text-2xl font-semibold leading-tight">Independence</h2>
           <p className="mt-3">{siteConfig.disclaimer}</p>
-          <p className="mt-3">{siteConfig.name} is run by {siteConfig.operator.name}, {siteConfig.operator.address}.</p>
+          <p className="mt-3">{siteConfig.name} is built and run by {siteConfig.operator.name}, {siteConfig.operator.legalForm} and a small independent company. Postal address: {siteConfig.operator.address}.</p>
           <p className="mt-3">
             Spotted a mistake or a listing that shouldn&apos;t be here?{" "}
             {siteConfig.contactEmail ? <a href={`mailto:${siteConfig.contactEmail}`} className="text-accent underline">Email us at {siteConfig.contactEmail}</a> : "Let us know"} and we&apos;ll fix or remove it.

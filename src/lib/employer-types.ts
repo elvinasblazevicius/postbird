@@ -12,6 +12,8 @@ export type EmployerTypePage = {
   label: string;
   metaTitle: string;
   intro: string;
+  /** For "Get an email when new … vacancies are posted". */
+  alertNoun: string;
 };
 
 export const EMPLOYER_TYPE_PAGES: EmployerTypePage[] = [
@@ -19,9 +21,10 @@ export const EMPLOYER_TYPE_PAGES: EmployerTypePage[] = [
     orgtype: "un",
     path: "/un-jobs",
     title: "UN jobs",
-    label: "UN agencies",
+    label: "UN system",
     metaTitle: "UN jobs: vacancies at UN agencies, funds and programmes",
     intro: "Vacancies at UN agencies, funds and programmes. Each one links to the agency's own careers site, where you apply.",
+    alertNoun: "UN",
   },
   {
     orgtype: "eu",
@@ -30,6 +33,7 @@ export const EMPLOYER_TYPE_PAGES: EmployerTypePage[] = [
     label: "EU institutions",
     metaTitle: "EU jobs: vacancies at EU institutions and agencies",
     intro: "Vacancies at EU institutions and agencies. Each one links to the institution's own careers page, where you apply.",
+    alertNoun: "EU",
   },
   {
     orgtype: "ifi",
@@ -38,6 +42,7 @@ export const EMPLOYER_TYPE_PAGES: EmployerTypePage[] = [
     label: "Development banks",
     metaTitle: "Development bank jobs: vacancies at development banks and IFIs",
     intro: "Vacancies at development banks and other international financial institutions. Each one links to the employer's own careers site, where you apply.",
+    alertNoun: "development bank",
   },
   {
     orgtype: "ngo",
@@ -46,6 +51,7 @@ export const EMPLOYER_TYPE_PAGES: EmployerTypePage[] = [
     label: "NGOs",
     metaTitle: "NGO jobs: vacancies at international NGOs",
     intro: "Vacancies at international non-governmental organizations. Each one links to the NGO's own careers site, where you apply.",
+    alertNoun: "NGO",
   },
 ];
 

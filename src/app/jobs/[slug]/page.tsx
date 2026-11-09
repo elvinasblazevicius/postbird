@@ -13,6 +13,8 @@ import { LISTING_SETTINGS } from "@/config/import";
 import { applyDestination, applyLinkKind } from "@/lib/apply-link";
 import { displayGrade, isLocalOnly } from "@/lib/grades";
 import { similarJobs, type JobDetail } from "@/lib/jobs";
+import { nonAffiliationLine, orgInText } from "@/lib/org-names";
+import { extraLocation } from "@/lib/place-text";
 import { titleLanguage } from "@/lib/title-language";
 import { absoluteUrl, categoryName, escapeHtml, jsonLd, deadlineLabel, formatDate, jobPath, locationLabel, NOT_SPECIFIED, siteConfig } from "@/lib/site";
 import { isJobOpen as isOpen, loadJob } from "./job-data";
@@ -93,12 +95,22 @@ function categoryPhrase(slug: string): string {
   return /^[A-Z]{2,4}$/.test(name) ? `${name} ` : `${name.charAt(0).toLowerCase()}${name.slice(1)} `;
 }
 
-/** One known detail in the compact strip. */
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+/** One known detail in the compact strip (a dt/dd pair in its own div, which <dl> allows). */
+function Fact({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className="min-w-0">
+    <div className={`min-w-0 ${className}`}>
       <dt className="text-xs text-slate">{label}</dt>
       <dd className="mt-0.5 text-[0.95rem] text-ink">{children}</dd>
+    </div>
+  );
+}
+
+/** One row of the "At a glance" list: label on the left, value on the right (stacked on narrow phones). */
+function GlanceRow({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`grid gap-x-4 gap-y-0.5 py-2.5 min-[420px]:grid-cols-[9.5rem_1fr] ${className}`}>
+      <dt className="text-sm text-slate">{label}</dt>
+      <dd className="min-w-0 text-[0.95rem] text-ink">{children}</dd>
     </div>
   );
 }
@@ -123,6 +135,7 @@ export default async function JobPage({ params }: Props) {
   const dutyCountry = countryByCode(job.country_code)?.name ?? null;
   const destination = applyDestination(applyLinkKind(job.apply_url));
   const description = hasDescription(job);
+  const publishedPlace = where !== NOT_SPECIFIED ? extraLocation(where, job.location_text) : null;
   // Everything our source doesn't give, said once in one line instead of a row each.
   const missing = [
     !grade && "grade",
@@ -135,6 +148,15 @@ export default async function JobPage({ params }: Props) {
     !job.languages?.length && "language requirements",
     !localOnly && "eligibility",
   ].filter((x): x is string => Boolean(x));
+  const experience = job.min_experience_years != null ? `${job.min_experience_years}+ ${job.min_experience_years === 1 ? "year" : "years"}` : null;
+  const whoCanApply = `Usually only nationals or legal residents of ${dutyCountry ?? "the duty-station country"}.`;
+  const missingLine = missing.length ? (
+    <p className="mt-3 text-sm text-slate">
+      {listPhrase(missing)} {missing.length === 1 ? "isn't" : "aren't"} in our source.{" "}
+      <a href={job.apply_url} target="_blank" rel="nofollow noopener noreferrer" className="text-accent underline">See the employer&apos;s page</a>
+      {description ? "." : " for the full description."}
+    </p>
+  ) : null;
   // The free weekly email when it is on; otherwise the paid alerts' trial page.
   const alertHref = `${siteConfig.freeWeeklyEmail ? "/alerts" : "/pricing/trial"}?search=${encodeURIComponent(`category=${job.category}`)}`;
 
@@ -175,9 +197,10 @@ export default async function JobPage({ params }: Props) {
                 <p className="mt-1 flex items-center gap-1.5 text-slate">
                   <Flag code={job.country_code} className="shadow-[0_0_0_1px_rgba(14,31,61,0.15)]" />
                   {where}
-                  {job.location_text && job.location_text !== where ? <span className="text-sm">({job.location_text})</span> : null}
+                  {publishedPlace ? <span className="text-sm">({publishedPlace})</span> : null}
                 </p>
               ) : null}
+              <p className="mt-2 text-sm text-slate">{nonAffiliationLine(siteConfig.name, orgInText(job.org_name, job.org_short) ?? "the employer")}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {job.is_demo ? <Tag tone="demo">Demo data — not a real vacancy</Tag> : null}
                 {job.is_remote ? <Tag tone="remote">Remote / home-based</Tag> : null}
@@ -194,40 +217,58 @@ export default async function JobPage({ params }: Props) {
 
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_20rem] lg:gap-10">
         <div className="min-w-0">
-          <section aria-labelledby="facts-heading">
-            <h2 id="facts-heading" className="sr-only">Vacancy details</h2>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-xl border border-rule px-4 py-4 sm:grid-cols-3 sm:px-5">
-              {job.deadline ? <div className="lg:hidden"><Fact label="Closing date">{formatDate(job.deadline)}</Fact></div> : null}
-              {grade ? (
-                <Fact label="Grade">
-                  {grade} <Link href="/grades" className="text-sm text-accent underline">What grades mean</Link>
-                </Fact>
+          {description ? (
+            <section aria-labelledby="facts-heading">
+              <h2 id="facts-heading" className="sr-only">Vacancy details</h2>
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-xl border border-rule px-4 py-4 sm:grid-cols-3 sm:px-5">
+                {job.deadline ? <Fact label="Closing date" className="lg:hidden">{formatDate(job.deadline)}</Fact> : null}
+                {grade ? (
+                  <Fact label="Grade">
+                    {grade} <Link href="/grades" className="text-sm text-accent underline">What grades mean</Link>
+                  </Fact>
+                ) : null}
+                {job.job_type ? <Fact label="Contract type">{job.job_type}</Fact> : null}
+                {category && category.slug !== "other" ? (
+                  <Fact label="Category"><Link href={`/categories/${category.slug}`} className="text-accent underline">{category.name}</Link></Fact>
+                ) : null}
+                {job.published_at ? <Fact label="Posted">{formatDate(job.published_at)}</Fact> : null}
+                {job.min_experience_years != null ? <Fact label="Experience">{experience}</Fact> : null}
+                {job.languages?.length ? <Fact label="Languages besides English">{job.languages.join(", ")}</Fact> : null}
+                {job.reference ? <Fact label="Reference"><span className="break-all">{job.reference}</span></Fact> : null}
+              </dl>
+              {localOnly ? (
+                <p className="mt-3 rounded-xl bg-mist px-4 py-3 text-[0.95rem] text-ink">
+                  <span className="font-semibold">Who can apply:</span> {whoCanApply}{" "}
+                  <Link href="/grades" className="text-accent underline">About grades and contract types</Link>
+                </p>
               ) : null}
-              {job.job_type ? <Fact label="Contract type">{job.job_type}</Fact> : null}
-              {category && category.slug !== "other" ? (
-                <Fact label="Category"><Link href={`/categories/${category.slug}`} className="text-accent underline">{category.name}</Link></Fact>
-              ) : null}
-              {job.published_at ? <Fact label="Posted">{formatDate(job.published_at)}</Fact> : null}
-              {job.min_experience_years != null ? (
-                <Fact label="Experience">{job.min_experience_years}+ {job.min_experience_years === 1 ? "year" : "years"}</Fact>
-              ) : null}
-              {job.languages?.length ? <Fact label="Languages besides English">{job.languages.join(", ")}</Fact> : null}
-              {job.reference ? <Fact label="Reference"><span className="break-all">{job.reference}</span></Fact> : null}
-            </dl>
-            {localOnly ? (
-              <p className="mt-3 rounded-xl bg-mist px-4 py-3 text-[0.95rem] text-ink">
-                <span className="font-semibold">Who can apply:</span> usually only nationals or legal residents of {dutyCountry ?? "the duty-station country"}.{" "}
-                <Link href="/grades" className="text-accent underline">About grades and contract types</Link>
+              {missingLine}
+            </section>
+          ) : (
+            <section aria-labelledby="facts-heading">
+              <h2 id="facts-heading" className="text-[1.45rem] font-semibold leading-tight text-ink">At a glance</h2>
+              <dl className="mt-3 divide-y divide-rule border-y border-rule">
+                {job.deadline ? <GlanceRow label="Closing date" className="lg:hidden">{formatDate(job.deadline)}</GlanceRow> : null}
+                {grade ? (
+                  <GlanceRow label="Grade">
+                    {grade} <Link href="/grades" className="text-sm text-accent underline">What grades mean</Link>
+                  </GlanceRow>
+                ) : null}
+                {job.job_type ? <GlanceRow label="Contract type">{job.job_type}</GlanceRow> : null}
+                {job.min_experience_years != null ? <GlanceRow label="Experience">{experience}</GlanceRow> : null}
+                {job.languages?.length ? <GlanceRow label="Languages besides English">{job.languages.join(", ")}</GlanceRow> : null}
+                {localOnly ? <GlanceRow label="Who can apply">{whoCanApply}</GlanceRow> : null}
+                {job.published_at ? <GlanceRow label="Posted">{formatDate(job.published_at)}</GlanceRow> : null}
+                {category && category.slug !== "other" ? (
+                  <GlanceRow label="Category"><Link href={`/categories/${category.slug}`} className="text-accent underline">{category.name}</Link></GlanceRow>
+                ) : null}
+                {job.reference ? <GlanceRow label="Reference number"><span className="break-all">{job.reference}</span></GlanceRow> : null}
+              </dl>
+              <p className="mt-3 text-[0.95rem] text-ink">
+                The full description, requirements and application instructions are on the employer&apos;s own page.
               </p>
-            ) : null}
-            {missing.length ? (
-              <p className="mt-3 text-sm text-slate">
-                {listPhrase(missing)} {missing.length === 1 ? "isn't" : "aren't"} in our source.{" "}
-                <a href={job.apply_url} target="_blank" rel="nofollow noopener noreferrer" className="text-accent underline">See the employer&apos;s page</a>
-                {description ? "." : " for the full description."}
-              </p>
-            ) : null}
-          </section>
+            </section>
+          )}
 
           {description ? (
             <section aria-labelledby="desc-heading" className="mt-8">
@@ -255,6 +296,7 @@ export default async function JobPage({ params }: Props) {
               <a href={`/api/calendar/${job.id}`} className="mt-2 inline-block font-medium text-accent underline" rel="nofollow">Add closing date to calendar</a>
             ) : null}
           </div>
+          {!description && missingLine ? <div className="lg:hidden">{missingLine}</div> : null}
 
           <div className="sticky bottom-0 z-30 -mx-4 flex items-center gap-3 border-t border-rule bg-paper/95 px-4 py-3 backdrop-blur lg:hidden">
             {dl ? <p className={`shrink-0 text-sm ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>{dl.text}</p> : null}
@@ -288,6 +330,7 @@ export default async function JobPage({ params }: Props) {
                 Add closing date to calendar
               </a>
             ) : null}
+            {!description && missingLine ? <div className="mt-3 border-t border-rule pt-1 [&>p]:text-xs [&>p]:leading-relaxed">{missingLine}</div> : null}
           </div>
           <p className="flex items-start gap-2 px-1 text-sm">
             <svg viewBox="0 0 16 16" className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true"><path d="M8 2a4 4 0 0 0-4 4v2.5L2.5 11h11L12 8.5V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
