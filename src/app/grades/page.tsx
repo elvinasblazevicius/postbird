@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
+import { PAY_SOURCES } from "@/lib/grades";
 
 export const metadata: Metadata = {
   title: "UN and international job grades explained",
@@ -8,15 +9,8 @@ export const metadata: Metadata = {
   alternates: { canonical: "/grades" },
 };
 
-/**
- * Official pay sources, linked (no figures: they change every year and by duty station).
- * Checked on 9 November 2026: ICSC salary scales (Professional and higher, and General Service
- * and related categories), ICSC post adjustment, EU Careers salary tables, EU Staff Regulations.
- */
-const ICSC_SALARY_SCALES = "https://icsc.un.org/home/salaryscales";
-const ICSC_POST_ADJUSTMENT = "https://icsc.un.org/Home/PostAdjustment";
-const EU_SALARIES = "https://eu-careers.europa.eu/benefits-and-pay/salary-and-allowances/salary-levels-and-progression_en";
-const EU_STAFF_REGULATIONS = "https://eur-lex.europa.eu/eli/reg/1962/31(1)";
+/** Official pay sources, linked (no figures): see PAY_SOURCES in src/lib/grades.ts. */
+const { icscSalaryScales: ICSC_SALARY_SCALES, icscPostAdjustment: ICSC_POST_ADJUSTMENT, euSalaries: EU_SALARIES, euStaffRegulations: EU_STAFF_REGULATIONS } = PAY_SOURCES;
 
 function Pay({ children }: { children: React.ReactNode }) {
   return <p className="text-[0.95rem] text-slate"><span className="font-medium text-ink">Pay:</span> {children}</p>;

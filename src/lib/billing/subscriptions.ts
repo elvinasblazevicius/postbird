@@ -28,15 +28,24 @@
  *     that isn't confirmed yet gets a confirmation email once the trial (or
  *     plan) starts, and the welcome email and alerts follow its confirmation.
  *     Until then the plan doesn't count against the address's one free trial
- *     (hadTrialBefore needs confirmed_at), and leaves no trial marker.
+ *     (hadTrialBefore needs confirmed_at), and leaves no trial marker. The
+ *     confirmation email goes out again on days 3 and 10 of the trial, and a
+ *     trial still unconfirmed 2 days before it ends is canceled in Paddle by
+ *     the daily job (runBillingSafety), so it never turns into a payment.
+ *  4. One running subscription per address: a second one (two checkouts
+ *     finished at once) is canceled in Paddle and never applied, and the
+ *     public form doesn't prepare a second trial checkout for an address
+ *     while one from the last 30 minutes is still open.
  */
 import { randomBytes } from "node:crypto";
 import { recordEvent } from "@/lib/analytics";
 import { PADDLE_PRICE_MONTHLY, PADDLE_PRICE_QUARTERLY } from "@/lib/billing/live";
 import {
-  cancelSubscriptionNow, getCustomer, getSubscription, isPaddleApiConfigured, isPaddleCustomerId, type PaddleSubscription,
+  cancelSubscriptionNow, getCustomer, getSubscription, isPaddleApiConfigured, isPaddleCustomerId, WEBHOOK_PADDLE_TIMEOUT_MS,
+  type PaddleCallOptions, type PaddleSubscription,
 } from "@/lib/billing/paddle";
 import { trialUsedElsewhere } from "@/lib/billing/trial-markers";
+import { UNCONFIRMED_CANCEL_DAYS } from "@/lib/early-access-copy";
 import { sql, transaction, type Db, type Tx } from "@/lib/db";
 import { addSavedSearch } from "@/lib/saved-searches";
 import { normalizeEmail } from "@/lib/subscribers";
@@ -70,6 +79,11 @@ export type StartCheckoutResult =
 /** Shown when a returning customer's checkout (no trial) can't be prepared. */
 export const CHECKOUT_UNAVAILABLE = "We couldn't open checkout. Please try again or email us.";
 
+/** Shown when this address started a checkout in the last OPEN_CHECKOUT_MINUTES that hasn't led to a subscription yet. */
+export const CHECKOUT_ALREADY_OPEN = "Your checkout is already open. If you closed it, try again in a few minutes.";
+/** How long a checkout started from the public form blocks a second one for the same address. */
+export const OPEN_CHECKOUT_MINUTES = 30;
+
 /** The subscriber fields that show whether an address has had a plan before. */
 export type PlanHistory = {
   /** Set once the address was confirmed (by its owner, or by paying through an emailed link); never cleared. */
@@ -90,6 +104,8 @@ export type PlanHistory = {
  * Only once the address is confirmed (confirmed_at): a plan someone started
  * with an address its owner never confirmed doesn't use up the owner's trial,
  * so if it is canceled before confirmation the address may start a trial again.
+ * The SQL function had_plan() (db/migrations/015_billing_safety.sql) is the
+ * same rule for queries; a test checks that both agree.
  * `elsewhere`: the one-trial rule applies through something other than this
  * row: a trial marker (the address had a plan and its row was deleted; kept
  * 24 months) or another row with the same canonical address (trialUsedElsewhere
@@ -167,6 +183,15 @@ export async function startCheckout(opts: {
   // the same reply for both; the next step goes to the address itself.
   const live = LIVE_STATUSES.includes(existing.billing_status);
   if (live || hadTrialBefore(existing, await trialUsedElsewhere(email, existing.id))) return { ok: true, inbox: true, email, subscriberId: existing.id, live };
+
+  // A checkout for this address started in the last 30 minutes and no subscription came of it
+  // yet: the first one may still be open (or being paid), so a second free trial isn't
+  // prepared alongside it (two finished checkouts would be two subscriptions).
+  const [open] = await sql`
+    select 1 from paddle_checkouts
+    where subscriber_id = ${existing.id} and subscription_id is null
+      and created_at > now() - make_interval(mins => ${OPEN_CHECKOUT_MINUTES}) limit 1`;
+  if (open) return { ok: false, error: CHECKOUT_ALREADY_OPEN };
 
   // First-touch attribution only, as in the early-access sign-up.
   if (attribution) await sql`update subscribers set attribution = coalesce(attribution, ${sql.json(attribution)}) where id = ${existing.id}`;
@@ -272,15 +297,28 @@ export type WelcomeInfo = {
   trialEndsAt: string | null;
   planInterval: PlanInterval | null;
 };
-export type ConfirmInfo = { subscriberId: number; email: string; confirmToken: string; subscriptionId: string };
+export type ConfirmInfo = {
+  subscriberId: number;
+  email: string;
+  confirmToken: string;
+  subscriptionId: string;
+  /** The account link (works before the address is confirmed: it opens billing, where the plan can be canceled). */
+  manageToken: string;
+  /** The trial's end, while the subscription is in its trial; null otherwise. */
+  trialEndsAt: string | null;
+  planInterval: PlanInterval | null;
+  /** Which send this is: "start" when the plan was linked, "day3" / "day10" for the reminders during the trial. */
+  sendDay?: ConfirmSendDay;
+};
+export type ConfirmSendDay = "start" | "day3" | "day10";
 export type HandleResult = {
   /** flagged: held back for the owner to look at (Admin → Overview → Billing flags); nothing applied. */
   outcome: "duplicate" | "ignored" | "unmatched" | "applied" | "stale" | "flagged";
   welcome?: WelcomeInfo;
   /** A subscription started at an address that isn't confirmed (new or existing): email it a confirmation link. */
   confirm?: ConfirmInfo;
-  /** A free trial this address may not have: cancel it in Paddle after the commit (cancelBlockedTrial). */
-  cancel?: { subscriptionId: string };
+  /** A subscription that must not run (see CancelKind): cancel it in Paddle after the commit (cancelFlaggedSubscription). */
+  cancel?: { subscriptionId: string; kind: CancelKind };
 };
 
 /** Analytics recorded after the transaction commits. */
@@ -357,7 +395,7 @@ async function subscriptionForTransaction(data: Record<string, unknown>): Promis
   if (!subId) return null;
   const [known] = await sql`select 1 from subscribers where paddle_subscription_id = ${subId}`;
   if (known || !isPaddleApiConfigured()) return null;
-  const sub = await getSubscription(subId);
+  const sub = await getSubscription(subId, { timeoutMs: WEBHOOK_PADDLE_TIMEOUT_MS });
   // The fetched snapshot is current, so it may stand in for any event up to now.
   return { ...sub, custom_data: sub.custom_data ?? (data.custom_data as Record<string, unknown> | null) };
 }
@@ -394,10 +432,10 @@ export type CustomerStatus = "verified" | "mismatch" | "unverified" | "none";
 type CustomerCheck = { subscriberId: number; customerId: string | null; status: CustomerStatus; reason?: string };
 
 /** Compares the Paddle customer's email (GET /customers/{id}, customer.read) with the address. */
-export async function verifyCustomerEmail(customerId: string, email: string): Promise<{ status: Exclude<CustomerStatus, "none">; reason?: string }> {
+export async function verifyCustomerEmail(customerId: string, email: string, opts: PaddleCallOptions = {}): Promise<{ status: Exclude<CustomerStatus, "none">; reason?: string }> {
   if (!isPaddleApiConfigured()) return { status: "unverified", reason: "PADDLE_API_KEY is not set" };
   try {
-    const c = await getCustomer(customerId);
+    const c = await getCustomer(customerId, opts);
     return normalizeEmail(String(c?.email ?? "")) === email ? { status: "verified" } : { status: "mismatch" };
   } catch (e) {
     return { status: "unverified", reason: (e as Error).message };
@@ -419,10 +457,17 @@ async function checkCustomer(sub: PaddleSubscription): Promise<CustomerCheck | n
   const [known] = await sql`
     select 1 from billing_flags where subscription_id = ${sub.id} and kind = 'customer_mismatch' and customer_id = ${customerId} and resolved_at is null`;
   if (known) return { subscriberId: target.subscriberId, customerId, status: "mismatch" };
-  return { subscriberId: target.subscriberId, customerId, ...(await verifyCustomerEmail(customerId, row.email)) };
+  return { subscriberId: target.subscriberId, customerId, ...(await verifyCustomerEmail(customerId, row.email, { timeoutMs: WEBHOOK_PADDLE_TIMEOUT_MS })) };
 }
 
-export type BillingFlagKind = "trial_blocked" | "customer_mismatch" | "customer_unverified";
+export type BillingFlagKind = "trial_blocked" | "customer_mismatch" | "customer_unverified" | "duplicate_subscription" | "trial_unconfirmed";
+/**
+ * Flags whose subscription is canceled in Paddle at once:
+ *  trial_blocked           a free trial this address may not have (one per email address);
+ *  duplicate_subscription  a second running subscription for an address that has one;
+ *  trial_unconfirmed       a trial at an address nobody confirmed, about to end.
+ */
+export type CancelKind = Extract<BillingFlagKind, "trial_blocked" | "duplicate_subscription" | "trial_unconfirmed">;
 
 /** Records (or refreshes) a flag shown on Admin → Overview. No email address is stored in it. */
 async function flag(db: Db, f: { subscriptionId: string; kind: BillingFlagKind; subscriberId: number | null; customerId: string | null; detail: string }) {
@@ -433,28 +478,51 @@ async function flag(db: Db, f: { subscriptionId: string; kind: BillingFlagKind; 
       subscriber_id = excluded.subscriber_id, customer_id = excluded.customer_id, detail = excluded.detail, updated_at = now(), resolved_at = null`;
 }
 
-const TRIAL_BLOCKED_PENDING = "A free trial this address may not have (one per email address). Canceling it in Paddle; alerts stay off.";
-const TRIAL_BLOCKED_DONE = "Canceled in Paddle at once, so nothing is charged. Alerts stayed off; no welcome was sent.";
+/** What each cancel flag says while the cancel is on its way, and once Paddle confirmed it (cancel_done_at). */
+export const CANCEL_DETAIL: Record<CancelKind, { pending: string; done: string }> = {
+  trial_blocked: {
+    pending: "A free trial this address may not have (one per email address). Canceling it in Paddle; alerts stay off.",
+    done: "Canceled in Paddle at once, so nothing is charged. Alerts stayed off; no welcome was sent.",
+  },
+  duplicate_subscription: {
+    pending: "A second running subscription for an address that already has one. Canceling it in Paddle; it was not applied.",
+    done: "Canceled in Paddle at once; it was never applied. If Paddle took a payment for it, refund that payment in Paddle.",
+  },
+  trial_unconfirmed: {
+    pending: "A free trial at an address that was never confirmed, ending within 2 days. Canceling it in Paddle so nothing is charged.",
+    done: "Canceled in Paddle at once, so nothing is charged: the address was never confirmed. No email was sent about it.",
+  },
+};
 
 /**
- * After the commit: cancels a blocked trial in Paddle straight away
- * (POST /subscriptions/{id}/cancel, effective_from immediately; needs
- * subscription.write) and records the outcome on its flag. If Paddle refuses,
- * the flag says so (the owner cancels it by hand) and later events for the
- * subscription try again; alerts stay off either way.
+ * Cancels a flagged subscription in Paddle straight away (POST
+ * /subscriptions/{id}/cancel, effective_from immediately; needs
+ * subscription.write) and records the outcome on its flag: cancel_done_at once
+ * Paddle confirmed it. If Paddle refuses, the flag says so and the daily job
+ * (runBillingSafety) tries again until it works or the owner resolves the flag;
+ * a subscription Paddle already shows as canceled counts as done. Alerts stay
+ * off either way. Never throws.
  */
-export async function cancelBlockedTrial(subscriptionId: string): Promise<boolean> {
+export async function cancelFlaggedSubscription(subscriptionId: string, kind: CancelKind, opts: PaddleCallOptions = {}): Promise<boolean> {
+  const done = async () => {
+    await sql`
+      update billing_flags set detail = ${CANCEL_DETAIL[kind].done}, cancel_done_at = coalesce(cancel_done_at, now()), updated_at = now()
+      where subscription_id = ${subscriptionId} and kind = ${kind}`;
+    return true;
+  };
   try {
     if (!isPaddleApiConfigured()) throw new Error("PADDLE_API_KEY is not set");
-    await cancelSubscriptionNow(subscriptionId);
-    await sql`update billing_flags set detail = ${TRIAL_BLOCKED_DONE}, updated_at = now() where subscription_id = ${subscriptionId} and kind = 'trial_blocked'`;
-    return true;
+    await cancelSubscriptionNow(subscriptionId, opts);
+    return await done();
   } catch (e) {
     const msg = (e as Error).message;
-    console.error("paddle: blocked trial not canceled", msg);
+    // Already canceled (by hand, or by an earlier try whose answer was lost): nothing left to do.
+    const status = isPaddleApiConfigured() ? await getSubscription(subscriptionId, opts).then((x) => x.status, () => null) : null;
+    if (status === "canceled") return done().catch(() => false);
+    console.error(`paddle: flagged subscription (${kind}) not canceled`, msg);
     await sql`
-      update billing_flags set detail = ${`Cancel in Paddle failed (${msg}). Cancel this subscription by hand in Paddle. Alerts stay off.`.slice(0, 500)}, updated_at = now()
-      where subscription_id = ${subscriptionId} and kind = 'trial_blocked'`.catch(() => {});
+      update billing_flags set detail = ${`Cancel in Paddle failed (${msg}). The daily job tries again; you can also cancel this subscription by hand in Paddle. Alerts stay off.`.slice(0, 500)}, updated_at = now()
+      where subscription_id = ${subscriptionId} and kind = ${kind}`.catch(() => {});
     return false;
   }
 }
@@ -470,14 +538,15 @@ async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: st
   const b = billingFromSubscription(sub);
   if (b.status === "none") return { result: { outcome: "ignored" } };
 
-  // A subscription held back earlier stays held back. A blocked trial whose
-  // cancel hasn't gone through yet is canceled again while it is still trialing.
-  const [held] = await tx<{ kind: BillingFlagKind; detail: string | null }[]>`
-    select kind, detail from billing_flags
-    where subscription_id = ${sub.id} and kind in ('trial_blocked', 'customer_mismatch') and resolved_at is null order by kind desc limit 1`;
+  // A subscription held back earlier stays held back. One whose cancel hasn't gone
+  // through yet is canceled again while it still runs (a blocked trial while trialing).
+  const [held] = await tx<{ kind: BillingFlagKind; done: boolean }[]>`
+    select kind, cancel_done_at is not null as done from billing_flags
+    where subscription_id = ${sub.id} and kind in ('trial_blocked', 'duplicate_subscription', 'customer_mismatch') and resolved_at is null
+    order by kind = 'customer_mismatch', kind limit 1`;
   if (held) {
-    const retry = held.kind === "trial_blocked" && b.status === "trialing" && held.detail !== TRIAL_BLOCKED_DONE;
-    return { result: { outcome: "flagged", ...(retry ? { cancel: { subscriptionId: sub.id } } : {}) } };
+    const retry = !held.done && (held.kind === "trial_blocked" ? b.status === "trialing" : held.kind === "duplicate_subscription" && LIVE_STATUSES.includes(b.status));
+    return { result: { outcome: "flagged", ...(retry ? { cancel: { subscriptionId: sub.id, kind: held.kind as CancelKind } } : {}) } };
   }
 
   // The customer check was made for this subscriber before the transaction; if the
@@ -495,6 +564,20 @@ async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: st
     return { result: { outcome: "flagged" } };
   }
 
+  // One running subscription per address. Two checkouts finished at about the same time
+  // (two tabs, or two emailed links) make two subscriptions: the one applied first stays,
+  // any other that runs while it runs is canceled in Paddle and never applied. The row is
+  // locked, so two such events can't both see the address without a subscription.
+  if (LIVE_STATUSES.includes(b.status)) {
+    const [cur] = await tx<{ paddle_subscription_id: string | null; billing_status: BillingStatus }[]>`
+      select paddle_subscription_id, billing_status from subscribers where id = ${target.subscriberId} for update`;
+    if (cur?.paddle_subscription_id && cur.paddle_subscription_id !== sub.id && LIVE_STATUSES.includes(cur.billing_status)) {
+      await flag(tx, { subscriptionId: sub.id, kind: "duplicate_subscription", subscriberId: target.subscriberId, customerId, detail: CANCEL_DETAIL.duplicate_subscription.pending });
+      console.warn(`paddle webhook: ${sub.id} is a second running subscription for one address; canceling`);
+      return { result: { outcome: "flagged", cancel: { subscriptionId: sub.id, kind: "duplicate_subscription" } } };
+    }
+  }
+
   // One free trial per person. A trial arriving for a checkout that didn't
   // allow one (a returning customer's reference used with the catalog price),
   // or for a confirmed address that had another subscription, or one whose
@@ -506,9 +589,9 @@ async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: st
     if (h && h.paddle_subscription_id !== sub.id) {
       const notAllowed = target.checkout?.trial_allowed === false;
       if (notAllowed || hadTrialBefore(h, await trialUsedElsewhere(h.email, target.subscriberId, tx))) {
-        await flag(tx, { subscriptionId: sub.id, kind: "trial_blocked", subscriberId: target.subscriberId, customerId, detail: TRIAL_BLOCKED_PENDING });
+        await flag(tx, { subscriptionId: sub.id, kind: "trial_blocked", subscriberId: target.subscriberId, customerId, detail: CANCEL_DETAIL.trial_blocked.pending });
         console.warn(`paddle webhook: trial ${sub.id} not allowed for this address; canceling`);
-        return { result: { outcome: "flagged", cancel: { subscriptionId: sub.id } } };
+        return { result: { outcome: "flagged", cancel: { subscriptionId: sub.id, kind: "trial_blocked" } } };
       }
     }
   }
@@ -526,7 +609,8 @@ async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: st
   // One statement: lock the row, keep its previous values, apply the change.
   // Skipped when the event is older than the last one applied for this
   // subscription, or when it would overwrite a different subscription that
-  // is still running with a canceled one.
+  // is still running (a second running one is canceled above; a canceled one
+  // never replaces it).
   const [row] = await tx<{
     prev_sub: string | null; prev_status: BillingStatus; prev_welcome: boolean;
     email: string; status: string; manage_token: string; unsubscribe_token: string; confirm_token: string | null;
@@ -588,7 +672,7 @@ async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: st
     from prev
     where s.id = prev.id
       and (prev.paddle_subscription_id is distinct from ${sub.id} or s.billing_event_at is null or s.billing_event_at <= ${occurredAt})
-      and (prev.paddle_subscription_id is null or prev.paddle_subscription_id = ${sub.id} or ${live}
+      and (prev.paddle_subscription_id is null or prev.paddle_subscription_id = ${sub.id}
            or prev.billing_status not in ('trialing', 'active', 'past_due', 'paused'))
     returning prev.paddle_subscription_id as prev_sub, prev.billing_status as prev_status, prev.welcome as prev_welcome,
               s.email, s.status, s.manage_token, s.unsubscribe_token, s.confirm_token, s.attribution, s.trial_ends_at, s.plan_interval`;
@@ -629,7 +713,10 @@ async function applySubscription(tx: Tx, sub: PaddleSubscription, occurredAt: st
           }
         : undefined,
       confirm: fx.askConfirm && row.confirm_token
-        ? { subscriberId: target.subscriberId, email: row.email, confirmToken: row.confirm_token, subscriptionId: sub.id }
+        ? {
+            subscriberId: target.subscriberId, email: row.email, confirmToken: row.confirm_token, subscriptionId: sub.id, manageToken: row.manage_token,
+            trialEndsAt: welcomeTrialEnd(b.status, row.trial_ends_at), planInterval: row.plan_interval, sendDay: "start",
+          }
         : undefined,
     },
     effects: { trialStarted: fx.trialStarted, canceled: fx.canceled, visitor: target.checkout?.visitor ?? null, props },
@@ -644,6 +731,95 @@ export async function welcomeNotSent(subscriberId: number): Promise<void> {
 /** Called once Resend accepted the welcome email: ends the claim's lease (see db/migrations/009_email_claim_leases.sql). */
 export async function welcomeSent(subscriberId: number): Promise<void> {
   await sql`update subscribers set welcome_claimed_at = null where id = ${subscriberId}`;
+}
+
+// ── Daily safety checks ──────────────────────────────────────
+
+/** A trial at an address nobody confirmed is canceled once it ends within this many days (the daily job runs once a day). */
+export { UNCONFIRMED_CANCEL_DAYS };
+
+export type BillingSafetyResult =
+  | {
+      /** Trials at addresses nobody confirmed, canceled before their first payment. */
+      unconfirmed: { canceled: number; failed: number };
+      /** Earlier cancels (blocked trials, second subscriptions) that hadn't gone through. */
+      cancelRetries: { canceled: number; failed: number };
+      /** Paddle customers that couldn't be checked against the address when their event came in. */
+      customers: { verified: number; mismatch: number; unverified: number };
+    }
+  | { skipped: string };
+
+/**
+ * Daily job (scheduled emails run), before the plan emails:
+ *  1. A trial whose address is still waiting for confirmation (the SQL function
+ *     awaiting_confirmation(), db/migrations/015) and which ends within
+ *     UNCONFIRMED_CANCEL_DAYS is canceled in Paddle at once and flagged
+ *     (trial_unconfirmed), so it never turns into a payment. No email is sent.
+ *  2. Cancels of blocked trials and second subscriptions that failed earlier
+ *     (open flags without cancel_done_at) are tried again.
+ *  3. Paddle customers that couldn't be checked against the address (open
+ *     customer_unverified flags) are checked again: a match is linked, a
+ *     mismatch is flagged for the owner.
+ * Needs PADDLE_API_KEY (and NEXT_PUBLIC_PADDLE_ENV for live) in the scheduled job.
+ */
+export async function runBillingSafety(limit = 200): Promise<BillingSafetyResult> {
+  if (!isPaddleApiConfigured()) return { skipped: "PADDLE_API_KEY is not set, so nothing could be canceled or checked in Paddle." };
+
+  // 1. Unconfirmed trials about to end.
+  const unconfirmed = { canceled: 0, failed: 0 };
+  const ending = await sql<{ id: number; sub: string; customer: string | null }[]>`
+    select s.id::int as id, s.paddle_subscription_id as sub, s.paddle_customer_id as customer from subscribers s
+    where s.billing_status = 'trialing' and s.paddle_subscription_id is not null and awaiting_confirmation(s)
+      and s.trial_ends_at is not null and s.trial_ends_at <= now() + make_interval(days => ${UNCONFIRMED_CANCEL_DAYS})
+      -- A cancel already scheduled for the trial's end: nothing will be charged.
+      and (s.cancel_at is null or s.cancel_at > s.trial_ends_at)
+      and not exists (select 1 from billing_flags f where f.subscription_id = s.paddle_subscription_id and f.kind = 'trial_unconfirmed' and f.cancel_done_at is not null)
+    order by s.trial_ends_at limit ${limit}`;
+  for (const r of ending) {
+    await flag(sql, { subscriptionId: r.sub, kind: "trial_unconfirmed", subscriberId: r.id, customerId: r.customer, detail: CANCEL_DETAIL.trial_unconfirmed.pending });
+    if (await cancelFlaggedSubscription(r.sub, "trial_unconfirmed")) unconfirmed.canceled++;
+    else unconfirmed.failed++;
+  }
+
+  // 2. Cancels that didn't go through when the webhook asked for them.
+  const cancelRetries = { canceled: 0, failed: 0 };
+  const pending = await sql<{ subscription_id: string; kind: CancelKind }[]>`
+    select subscription_id, kind from billing_flags
+    where kind in ('trial_blocked', 'duplicate_subscription') and resolved_at is null and cancel_done_at is null
+    order by updated_at limit ${limit}`;
+  for (const f of pending) {
+    if (await cancelFlaggedSubscription(f.subscription_id, f.kind)) cancelRetries.canceled++;
+    else cancelRetries.failed++;
+  }
+
+  // 3. Customers not checked yet.
+  const customers = { verified: 0, mismatch: 0, unverified: 0 };
+  const unchecked = await sql<{ subscription_id: string; customer_id: string; subscriber_id: number; email: string }[]>`
+    select f.subscription_id, f.customer_id, s.id::int as subscriber_id, s.email
+    from billing_flags f join subscribers s on s.id = f.subscriber_id
+    where f.kind = 'customer_unverified' and f.resolved_at is null and f.customer_id is not null
+    order by f.updated_at limit ${limit}`;
+  for (const u of unchecked) {
+    if (!isPaddleCustomerId(u.customer_id)) continue;
+    const v = await verifyCustomerEmail(u.customer_id, u.email);
+    if (v.status === "verified") {
+      customers.verified++;
+      await sql`
+        update subscribers set paddle_customer_id = ${u.customer_id}, paddle_customer_verified_at = now()
+        where id = ${u.subscriber_id} and paddle_subscription_id = ${u.subscription_id}`;
+      await sql`update billing_flags set resolved_at = now(), updated_at = now() where subscription_id = ${u.subscription_id} and kind = 'customer_unverified' and resolved_at is null`;
+    } else if (v.status === "mismatch") {
+      customers.mismatch++;
+      await flag(sql, {
+        subscriptionId: u.subscription_id, kind: "customer_mismatch", subscriberId: u.subscriber_id, customerId: u.customer_id,
+        detail: "Found by the daily check: the Paddle customer's email is not this subscriber's address. The customer was not linked; cancel or refund the subscription in Paddle if it shouldn't run.",
+      });
+      await sql`update billing_flags set resolved_at = now(), updated_at = now() where subscription_id = ${u.subscription_id} and kind = 'customer_unverified' and resolved_at is null`;
+    } else {
+      customers.unverified++;
+    }
+  }
+  return { unconfirmed, cancelRetries, customers };
 }
 
 // ── Opening billing (customer portal) ────────────────────────

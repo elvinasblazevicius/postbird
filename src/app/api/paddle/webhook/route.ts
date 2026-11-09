@@ -1,7 +1,7 @@
 import { after } from "next/server";
-import { verifyPaddleSignature } from "@/lib/billing/paddle";
+import { verifyPaddleSignature, WEBHOOK_PADDLE_TIMEOUT_MS } from "@/lib/billing/paddle";
 import { confirmationNotSent, confirmationSent, sendPaidConfirmation, sendWelcomeEmail } from "@/lib/billing/notices";
-import { cancelBlockedTrial, handlePaddleEvent, welcomeNotSent, welcomeSent, type PaddleEvent } from "@/lib/billing/subscriptions";
+import { cancelFlaggedSubscription, handlePaddleEvent, welcomeNotSent, welcomeSent, type PaddleEvent } from "@/lib/billing/subscriptions";
 import { recordOpsEvent } from "@/lib/ops-events";
 import { readCapped } from "@/lib/read-capped";
 
@@ -18,9 +18,10 @@ const reply = (status: number, body = "") => new Response(body, { status, header
  * event once (by event_id) and mirrors the subscription onto the subscriber,
  * both in one transaction (see handlePaddleEvent).
  * Answers within Paddle's 5-second limit: the database work is a few small
- * queries (plus at most two short calls to Paddle's API before it), and emails
+ * queries (plus at most two calls to Paddle's API before it, each given up
+ * after WEBHOOK_PADDLE_TIMEOUT_MS), and emails
  * (welcome, or a confirmation link for an address the checkout didn't create)
- * and canceling a trial the address may not have happen after the response.
+ * and canceling a subscription that must not run happen after the response.
  * Status codes: 200 handled or ignored, 401 bad signature, 400 unreadable
  * body, 413 body over 512 KB, 500 processing failed (Paddle retries; it is
  * also recorded for Admin → Overview).
@@ -75,10 +76,11 @@ export async function POST(req: Request) {
       });
     }
     if (res.cancel) {
-      // A free trial this address may not have: canceled in Paddle at once (the result is on its flag).
+      // A free trial this address may not have, or a second running subscription: canceled in
+      // Paddle at once (the result is on its flag; if it fails, the daily job tries again).
       const c = res.cancel;
       after(async () => {
-        await cancelBlockedTrial(c.subscriptionId).catch(() => {});
+        await cancelFlaggedSubscription(c.subscriptionId, c.kind, { timeoutMs: WEBHOOK_PADDLE_TIMEOUT_MS }).catch(() => {});
       });
     }
     return reply(200, res.outcome);

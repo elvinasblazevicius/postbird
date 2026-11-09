@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { categoryBySlug } from "@/config/categories";
 import { gradeShortName, orList, placeNames } from "@/lib/filter-labels";
 import { activeFilterCount, getOrganization, parseFilters, type JobFilters } from "@/lib/jobs";
+import { withArticle } from "@/lib/org-names";
 
 export const dynamic = "force-dynamic";
 
@@ -14,12 +15,12 @@ async function describe(f: JobFilters): Promise<string> {
   if (f.remote) parts.push("Remote");
   if (f.grade?.length) parts.push(orList(f.grade.map(gradeShortName)));
   if (f.category) parts.push(categoryBySlug(f.category)?.name ?? "");
-  let title = parts.filter(Boolean).join(" ") || "International";
-  title += " jobs";
-  if (f.org) {
-    const org = await getOrganization(f.org);
-    if (org) title += ` at ${org.name}`;
-  }
+  const org = f.org ? await getOrganization(f.org) : null;
+  // "Jobs at the International Organization for Migration", not "International jobs at the International …":
+  // with an organization named, "International" adds nothing.
+  let title = parts.filter(Boolean).join(" ") || (org ? "" : "International");
+  title = title ? `${title} jobs` : "Jobs";
+  if (org) title += ` at ${withArticle(org.name)}`;
   const places = placeNames(f);
   if (places.length) title += ` in ${orList(places)}`;
   if (f.q) title = `“${f.q}” — ${title}`;

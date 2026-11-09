@@ -146,7 +146,8 @@ export async function checkMarkerKey(db: Db = sql): Promise<MarkerKeyCheck> {
 /**
  * Whether the one-trial rule applies to this address because of something
  * other than its own row: a trial marker, or another subscriber row with the
- * same canonical form that had a plan while confirmed (see hadTrialBefore).
+ * same canonical form that had a plan while confirmed (the SQL function
+ * had_plan(), the same rule as hadTrialBefore).
  * `selfId`: the address's own row, left out (its history is checked by the
  * caller).
  */
@@ -155,8 +156,7 @@ export async function trialUsedElsewhere(email: string, selfId: number | null = 
   const [row] = await db`
     select 1 from subscribers
     where canonical_email = ${canonicalTrialEmail(email)} and id <> ${selfId ?? 0}
-      and confirmed_at is not null
-      and (paddle_subscription_id is not null or billing_status <> 'none' or trial_ends_at is not null or canceled_at is not null)
+      and had_plan(subscribers)
     limit 1`;
   return Boolean(row);
 }
@@ -171,8 +171,7 @@ export async function trialUsedElsewhereIds(rows: { id: number; email: string }[
     from unnest(${rows.map((r) => r.id)}::bigint[], ${canon}::text[]) as r(id, canonical_email)
     where exists (
       select 1 from subscribers s
-      where s.canonical_email = r.canonical_email and s.id <> r.id and s.confirmed_at is not null
-        and (s.paddle_subscription_id is not null or s.billing_status <> 'none' or s.trial_ends_at is not null or s.canceled_at is not null))`;
+      where s.canonical_email = r.canonical_email and s.id <> r.id and had_plan(s))`;
   const out = new Set(others.map((o) => o.id));
   for (const r of rows) if (marked.has(r.email)) out.add(r.id);
   return out;

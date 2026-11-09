@@ -203,7 +203,8 @@ export async function purgeStaleSubscribers(): Promise<number> {
     await storeMarkerFingerprint();
   }
   // Each delete and the markers of the addresses it removed commit together.
-  // "Had a plan" is the same test as hadTrialBefore in src/lib/billing/subscriptions.ts.
+  // "Had a plan" is the SQL function had_plan() (db/migrations/015), the same test as
+  // hadTrialBefore in src/lib/billing/subscriptions.ts.
   type Deleted = { email: string; had_plan: boolean }[];
   const purge = (del: (tx: Tx) => Promise<Deleted>) => transaction(async (tx) => {
     const rows = await del(tx);
@@ -219,23 +220,23 @@ export async function purgeStaleSubscribers(): Promise<number> {
       and (status = 'pending' or (status = 'unsubscribed' and unsubscribed_at < now() - interval '30 days'))
       and billing_status in ('none', 'canceled')
       and (canceled_at is null or canceled_at < now() - interval '30 days')
-      and (${canMark}::boolean or not (confirmed_at is not null and (paddle_subscription_id is not null or billing_status <> 'none' or trial_ends_at is not null or canceled_at is not null)))
-    returning email, (confirmed_at is not null and (paddle_subscription_id is not null or billing_status <> 'none' or trial_ends_at is not null or canceled_at is not null)) as had_plan`);
+      and (${canMark}::boolean or not had_plan(subscribers))
+    returning email, had_plan(subscribers) as had_plan`);
   const canceled = await purge((tx) => tx<Deleted>`
     delete from subscribers
     where billing_status = 'canceled'
       and coalesce(canceled_at, billing_event_at) < now() - interval '30 days'
       and not (weekly_email and status = 'confirmed')
-      and (${canMark}::boolean or confirmed_at is null)
-    returning email, (confirmed_at is not null and (paddle_subscription_id is not null or billing_status <> 'none' or trial_ends_at is not null or canceled_at is not null)) as had_plan`);
+      and (${canMark}::boolean or not had_plan(subscribers))
+    returning email, had_plan(subscribers) as had_plan`);
   // Early access only: on the list, never asked for the free weekly email, never had a plan.
   const waitlist = await purge((tx) => tx<Deleted>`
     delete from subscribers
     where premium_waitlist and not wants_alerts and not weekly_email
       and billing_status = 'none' and paddle_subscription_id is null
       and waitlist_notified_at < now() - interval '30 days'
-      and (${canMark}::boolean or not (confirmed_at is not null and (trial_ends_at is not null or canceled_at is not null)))
-    returning email, (confirmed_at is not null and (paddle_subscription_id is not null or billing_status <> 'none' or trial_ends_at is not null or canceled_at is not null)) as had_plan`);
+      and (${canMark}::boolean or not had_plan(subscribers))
+    returning email, had_plan(subscribers) as had_plan`);
   // Checkout references (they link a daily visitor code to a subscriber) are only
   // needed until Paddle's webhooks arrive; webhook ids for a year (late retries).
   await sql`delete from paddle_checkouts where created_at < now() - interval '30 days'`;

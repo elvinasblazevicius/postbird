@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { categoryBySlug } from "@/config/categories";
 import { countryBySlug } from "@/config/countries";
 import { ORG_TYPES, regionBySlug } from "@/config/regions";
-import { orList, placeNames } from "@/lib/filter-labels";
+import { orList, placeNames, resultsHeading } from "@/lib/filter-labels";
 import { gradeLabel } from "@/lib/grades";
 import { activeFilterCount, EXPERIENCE_BANDS, filteredFacets, getOrganization, jobsUrl, latestJobs, searchJobs, searchSuggestion, withSearchIntent, type FilteredFacets, type FilterKey, type JobFilters } from "@/lib/jobs";
 import { interpretQuery } from "@/lib/search-intent";
@@ -235,13 +235,7 @@ export async function JobsBrowser({
 
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="results-heading" className="font-sans text-base font-medium text-slate">
-            {result.total === 0
-              ? "No open vacancies match"
-              : result.total === 1
-                ? "1 open vacancy"
-                : showTotal
-                  ? `Showing ${from}–${to} of ${result.total.toLocaleString("en-US")} open vacancies`
-                  : `${result.sort === "deadline" ? "Closing soonest first" : result.sort === "relevance" ? "Best match first" : "Newest first"} · ${from}–${to}`}
+            {resultsHeading({ total: result.total, from, to, pages: result.pages, sort: result.sort, showTotal })}
           </h2>
           {result.total > 0 ? (
             <div className="flex items-center gap-1 text-sm" aria-label="Sort">
@@ -344,12 +338,16 @@ export async function JobsBrowser({
             ) : emptyHint ? (
               <p className="mt-2 text-slate">{emptyHint}</p>
             ) : null}
-            <div className="mt-5 flex flex-wrap gap-3">
-              <Link href="/jobs" className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-accent">See all open vacancies</Link>
-              {base !== "/jobs" && removals.length ? (
-                <Link href={base} className="rounded-lg border border-rule px-4 py-2 text-sm font-medium text-ink hover:bg-mist">Clear filters on this page</Link>
-              ) : null}
-            </div>
+            {/* One way out per destination: with a single filter, "Remove …" above already leads to this page
+                without it (all open vacancies on /jobs), so the same link isn't offered twice. */}
+            {removals.length === 1 && base === "/jobs" ? null : (
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link href="/jobs" className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-accent">See all open vacancies</Link>
+                {base !== "/jobs" && removals.length > 1 ? (
+                  <Link href={base} className="rounded-lg border border-rule px-4 py-2 text-sm font-medium text-ink hover:bg-mist">Clear filters on this page</Link>
+                ) : null}
+              </div>
+            )}
             <p className="mt-5 flex items-start gap-2 border-t border-rule pt-4 text-[0.95rem] text-ink">
               <svg viewBox="0 0 16 16" className="mt-1 h-4 w-4 shrink-0 text-accent" aria-hidden="true"><path d="M8 2a4 4 0 0 0-4 4v2.5L2.5 11h11L12 8.5V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
               <Link href={alertHref} className="font-medium text-accent underline-offset-2 hover:underline">

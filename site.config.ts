@@ -56,6 +56,16 @@ const siteConfig = {
     headline: "Jobs at the UN, EU and international organizations",
     subheadline:
       "UN agencies, EU institutions and other international organizations in one place. Every listing links to the employer's own website or application form.",
+    /**
+     * Used instead of the lines above (and of `tagline` on the homepage) while no EU institution
+     * has an open vacancy on the site, so the site never promises EU jobs it doesn't list.
+     */
+    withoutEu: {
+      headline: "Jobs at the UN and international organizations",
+      subheadline:
+        "UN agencies and other international organizations in one place. Every listing links to the employer's own website or application form.",
+      tagline: "UN and international organization jobs in one place",
+    },
   },
 
   /**
@@ -98,14 +108,15 @@ const siteConfig = {
     priceSummary: "$9.99/month or $19.99 for 3 months",
     /**
      * What the paid plan adds, and only that: the free weekly email (one search) has the same
-     * filters, closing dates and links. The first line assumes freeWeeklyEmail is on. The last
-     * line is the "Closing in the next 3 days" section of paid alerts (CLOSING_SOON_DAYS in
-     * src/lib/email-templates.ts).
+     * filters, closing dates and links. Most distinctive first: the first line is the "Closing in
+     * the next 3 days" section of paid alerts (CLOSING_SOON_DAYS in src/lib/email-templates.ts);
+     * alerts honour each search's filters, "Hide local-only posts" included (filterConditions in
+     * src/lib/jobs.ts). The last line assumes freeWeeklyEmail is on.
      */
     features: [
-      "New matches every day, up to 6 days before the weekly email",
-      "Up to 5 searches, each with full filters",
       "A reminder of matching vacancies that close in the next 3 days",
+      "Up to 5 searches, each with full filters, such as leaving out local-only posts",
+      "New matches every day, up to 6 days before the weekly email",
     ],
   },
 

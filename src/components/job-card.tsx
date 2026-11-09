@@ -6,7 +6,8 @@ import { displayGrade, isLocalOnly } from "@/lib/grades";
 import { titleLanguage } from "@/lib/title-language";
 import { Flag } from "./flag";
 import { SaveButton } from "./job-tools";
-import { formatShortDate, jobPath, locationLabel, monogram, NOT_SPECIFIED, relativeDeadline } from "@/lib/site";
+import { jobPath, locationLabel, monogram, NOT_SPECIFIED } from "@/lib/site";
+import { ClosingPostmark } from "./postmark";
 
 /**
  * Organization badge: always a text monogram (the organization's short name, e.g. "WFP", "MSF",
@@ -14,26 +15,26 @@ import { formatShortDate, jobPath, locationLabel, monogram, NOT_SPECIFIED, relat
  * than another and nothing suggests the organization endorses the site.
  */
 export function OrgBadge({ name, short, size = "md" }: { name: string | null; short: string | null; size?: "sm" | "md" | "lg" }) {
-  const box = size === "lg" ? "h-14 w-14" : size === "sm" ? "h-10 w-10" : "h-11 w-11";
-  const frame = `${box} flex shrink-0 items-center justify-center rounded-xl border border-rule bg-white`;
   const text = badgeText(name ? monogram(name, short) : "–");
-  // Six letters (UNESCO, UNICEF) are set a little tighter so they fit at a readable size.
-  const tracking = text.length >= 6 ? "tracking-[-0.04em]" : "tracking-[-0.02em]";
+  // One height per size; the tile is at least square and widens into a rounded rectangle for
+  // five- and six-letter monograms (UNESCO, UNICEF, ACTED) instead of shrinking the letters.
+  const box = size === "lg" ? "h-14 min-w-14 px-2" : size === "sm" ? "h-10 min-w-10 px-1.5" : "h-11 min-w-11 px-1.5";
+  const frame = `${box} inline-flex shrink-0 items-center justify-center rounded-xl border border-rule bg-white`;
   return (
-    <span aria-hidden="true" className={`${frame} ${badgeFontSize(text, size)} ${tracking} overflow-hidden whitespace-nowrap px-px text-center font-semibold leading-none text-slate`}>
+    <span aria-hidden="true" className={`${frame} ${badgeFontSize(text, size)} tracking-[-0.01em] whitespace-nowrap text-center font-semibold leading-none text-slate`}>
       {text}
     </span>
   );
 }
 
 /**
- * Font sizes by badge length (up to 3, 4, 5 and 6 characters): one line, never split, smaller for
- * longer monograms but never below 0.5625rem (9px). Measured to fit the widest (UNESCO, UNHCR) in each box.
+ * Font sizes by badge length (up to 3, 4, 5 and 6 characters): one line, never split, a little
+ * smaller for longer monograms but never below 0.6875rem (11px); the tile widens instead.
  */
 const BADGE_SIZES: Record<"sm" | "md" | "lg", [string, string, string, string]> = {
-  sm: ["text-[0.75rem]", "text-[0.68rem]", "text-[0.6rem]", "text-[0.5625rem]"],
-  md: ["text-[0.85rem]", "text-[0.76rem]", "text-[0.66rem]", "text-[0.6rem]"],
-  lg: ["text-base", "text-[0.92rem]", "text-[0.82rem]", "text-[0.72rem]"],
+  sm: ["text-[0.75rem]", "text-[0.72rem]", "text-[0.6875rem]", "text-[0.6875rem]"],
+  md: ["text-[0.85rem]", "text-[0.8rem]", "text-[0.75rem]", "text-[0.75rem]"],
+  lg: ["text-base", "text-[0.95rem]", "text-[0.9rem]", "text-[0.875rem]"],
 };
 
 export function badgeFontSize(text: string, size: "sm" | "md" | "lg"): string {
@@ -61,17 +62,10 @@ export function Tag({ children, tone = "plain" }: { children: React.ReactNode; t
   return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[0.8rem] font-medium ${tones[tone]}`}>{children}</span>;
 }
 
-/** Closing date at the right of a row: "12 Nov" (with the year when it isn't this year) and "in 5 days" when close. */
+/** Closing date at the right of a row: a postmark ("Closes / 12 Nov", red with "in 3 days" when close). */
 function Deadline({ deadline }: { deadline: string | null }) {
-  if (!deadline) return <span className="text-xs text-slate">No closing date in our source</span>;
-  const rel = relativeDeadline(deadline);
-  return (
-    <span className="block">
-      <span className="block text-xs text-slate">Closes</span>
-      <span className="block whitespace-nowrap font-semibold text-ink">{formatShortDate(deadline)}</span>
-      {rel && rel.urgent ? <span className="block whitespace-nowrap text-xs font-semibold text-signal">{rel.text}</span> : null}
-    </span>
-  );
+  if (!deadline) return <span className="block w-[4.25rem] text-center text-xs leading-snug text-slate">No closing date in our source</span>;
+  return <ClosingPostmark deadline={deadline} />;
 }
 
 /** "New" for a listing posted in the last 48 hours, "3d ago" up to 30 days, nothing after that. */
@@ -154,7 +148,7 @@ export function JobCard({ job, headingLevel = 3 }: { job: JobListItem; headingLe
           ))}
         </p>
       </div>
-      <div className="flex shrink-0 items-start gap-1 text-right text-sm">
+      <div className="flex shrink-0 items-center gap-1 self-center text-right text-sm">
         <Deadline deadline={job.deadline} />
         <SaveButton compact job={{ id: job.id, path: href, title: job.title, org: job.org_name }} />
       </div>

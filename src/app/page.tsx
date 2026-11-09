@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertSignup } from "@/components/alert-signup";
 import { JobGrid, OrgBadge } from "@/components/job-card";
@@ -8,13 +9,21 @@ import { WeekInReviewStrip } from "@/components/week-in-review";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { closingSoonJobs, categoryFacets, countryFacets, experienceFacets, gradeFacets, jobTypeFacets, languageFacets, latestJobs, organizationFacets, orgTypeFacets, regionFacets, siteStats, weekInReview } from "@/lib/jobs";
 import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
+import { euListingsOpen, homeCopy } from "@/lib/eu-claim";
 import { absoluteUrl, jsonLd, siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  alternates: { canonical: "/" },
-};
+/** The title names the EU only while EU institutions have open vacancies here (see src/lib/eu-claim.ts). */
+export async function generateMetadata(): Promise<Metadata> {
+  const { tagline } = homeCopy(await euListingsOpen());
+  const title = `${siteConfig.name} — ${tagline}`;
+  return {
+    title: { absolute: title },
+    alternates: { canonical: "/" },
+    openGraph: { type: "website", siteName: siteConfig.name, title, description: siteConfig.description },
+  };
+}
 
 /** What is true of every listing (see the comment above the facts strip below). */
 const FACTS = ["Updated every 2 hours", "Apply links go to the employer", "Local-only posts flagged", "No sign-in needed"];
@@ -43,6 +52,8 @@ export default async function HomePage() {
   const showTotal = stats.active >= siteConfig.showVacancyCountFrom;
   // Entry points by employer type (the row under the hero search): every type, with its count when it has open jobs.
   const employerTypes = EMPLOYER_TYPE_PAGES.map((t) => ({ ...t, count: orgTypes.find((o) => o.value === t.orgtype)?.count ?? 0 }));
+  // The headline names the EU only while EU institutions have open vacancies here.
+  const copy = homeCopy((orgTypes.find((o) => o.value === "eu")?.count ?? 0) > 0);
 
   const websiteLd = {
     "@context": "https://schema.org",
@@ -66,9 +77,9 @@ export default async function HomePage() {
         <img src="/world-dots.svg" alt="" aria-hidden="true" className="world-dots hero-dots" />
         <div className="relative mx-auto max-w-6xl px-4 pb-5 pt-5 sm:px-6 sm:pb-12 sm:pt-16">
           <div className="max-w-3xl">
-            <h1 className="max-w-[20ch] text-[1.7rem] font-semibold leading-[1.1] text-white sm:text-[3.5rem]">{siteConfig.home.headline}</h1>
+            <h1 className="max-w-[20ch] text-[1.7rem] font-semibold leading-[1.1] text-white sm:text-[3.5rem]">{copy.headline}</h1>
             <p className="mt-5 hidden max-w-2xl text-lg leading-relaxed text-white/85 sm:block">
-              {siteConfig.home.subheadline}
+              {copy.subheadline}
             </p>
           </div>
           <div className="mt-4 max-w-4xl sm:mt-9">
@@ -96,9 +107,10 @@ export default async function HomePage() {
                   <strong className="font-semibold">{stats.active.toLocaleString("en-US")}</strong> open vacancies
                   {stats.orgs ? <> from <strong className="font-semibold">{stats.orgs}</strong> organizations</> : null}
                 </>
-              ) : (
-                <>Updated every 2 hours</>
-              )}
+              ) : stats.orgs ? (
+                // "Updated every 2 hours" is said once on this page, in the facts strip below.
+                <>Vacancies from <strong className="font-semibold">{stats.orgs}</strong> organizations</>
+              ) : null}
             </span>
             <Link href="/alerts" className="font-semibold text-highlight underline decoration-highlight/50 underline-offset-4 hover:decoration-highlight">Get new ones by email</Link>
           </p>

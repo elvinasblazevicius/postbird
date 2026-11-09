@@ -499,15 +499,24 @@ export async function searchSuggestion(q: string | undefined): Promise<{ q: stri
  * The newest open listings ("Recently posted" on the home page, the alert example, the fallback
  * under empty results): posts open to international applicants first, local-only ones (the same
  * rule as the "Hide local-only posts" filter) after them; within each, recent UN system posts first.
+ * That order only picks WHICH listings are shown: they are returned newest first, as a list headed
+ * "Recently posted" reads.
  */
 export async function latestJobs(limit = 8) {
-  return sql<JobListItem[]>`
+  const rows = await sql<JobListItem[]>`
     select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
     where ${isOpen()}
     order by (coalesce(j.grade, '') ~ ${LOCAL_ONLY_GRADE_SQL} or lower(j.title) ~ ${LOCAL_ONLY_TITLE_SQL}) asc,
              (o.org_type = 'UN system' and coalesce(j.published_at, j.first_seen_at) >= now() - interval '10 days') desc nulls last,
              coalesce(j.published_at, j.first_seen_at) desc, j.id desc
     limit ${limit}`;
+  return newestFirst([...rows]);
+}
+
+/** Listings newest first (posting date, or first seen when the source gives none; then the newer id). */
+export function newestFirst<T extends { id: number; published_at: Date | null; first_seen_at: Date }>(jobs: T[]): T[] {
+  const at = (j: T) => new Date(j.published_at ?? j.first_seen_at).getTime();
+  return jobs.sort((a, b) => at(b) - at(a) || b.id - a.id);
 }
 
 export type WeekInReview = {

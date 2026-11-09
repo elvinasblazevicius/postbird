@@ -17,7 +17,7 @@ import { createPortalSession, isPaddleApiConfigured } from "@/lib/billing/paddle
 import { checkoutAccountToken, hadTrialBefore, LIVE_STATUSES, startCheckout, verifiedCustomerFor, type BillingTarget, type CheckoutPlan } from "@/lib/billing/subscriptions";
 import { trialUsedElsewhere } from "@/lib/billing/trial-markers";
 import { sql } from "@/lib/db";
-import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { clientIp, rateLimit, safeRateLimit } from "@/lib/rate-limit";
 import { addSavedSearch, normalizeSearch, removeSavedSearch, searchFromSignupForm } from "@/lib/saved-searches";
 import { findByUnsubscribeToken, normalizeEmail } from "@/lib/subscribers";
 import { jobsUrl, parseFilters } from "@/lib/jobs";
@@ -44,7 +44,9 @@ export async function startCheckoutAction(_prev: CheckoutState, form: FormData):
   // Honeypot: real visitors never fill this hidden field. Pretend nothing happened.
   if (String(form.get("website") ?? "")) return { status: "idle", message: "" };
   const h = await headers();
-  if (!(await rateLimit(`checkout:${clientIp(h)}`, 8, 3600))) {
+  const limit = await safeRateLimit(`checkout:${clientIp(h)}`, 8, 3600);
+  if (limit === "error") return { status: "error", message: SERVER_ERROR };
+  if (limit === "limited") {
     return { status: "error", message: "Too many attempts from this connection. Please try again in an hour." };
   }
   const email = normalizeEmail(String(form.get("email") ?? ""));
@@ -87,7 +89,9 @@ export async function continueCheckoutAction(_prev: CheckoutState, form: FormDat
   const plan = planFrom(form);
   if (!plan) return { status: "error", message: "Choose a plan." };
   const h = await headers();
-  if (!(await rateLimit(`checkout:${clientIp(h)}`, 8, 3600))) {
+  const limit = await safeRateLimit(`checkout:${clientIp(h)}`, 8, 3600);
+  if (limit === "error") return { status: "error", message: SERVER_ERROR };
+  if (limit === "limited") {
     return { status: "error", message: "Too many attempts from this connection. Please try again in an hour." };
   }
   try {
@@ -108,8 +112,8 @@ export async function continueCheckoutAction(_prev: CheckoutState, form: FormDat
 export async function checkoutDoneAction(ref: string): Promise<{ linked: boolean; accountUrl: string | null }> {
   if (typeof ref !== "string") return { linked: false, accountUrl: null };
   const h = await headers();
-  if (!(await rateLimit(`checkout-done:${clientIp(h)}`, 40, 3600))) return { linked: false, accountUrl: null };
-  const res = await checkoutAccountToken(ref);
+  if ((await safeRateLimit(`checkout-done:${clientIp(h)}`, 40, 3600)) !== "ok") return { linked: false, accountUrl: null };
+  const res = await checkoutAccountToken(ref).catch(() => ({ linked: false, manageToken: null }));
   return { linked: res.linked, accountUrl: res.manageToken ? accountUrl(res.manageToken) : null };
 }
 
@@ -204,7 +208,9 @@ async function openPortal(target: BillingTarget): Promise<FormState> {
   if (!target.paddle_customer_id && !target.paddle_subscription_id) return { status: "error", message: "There's no billing account for this address yet." };
   if (!isPaddleApiConfigured()) return { status: "error", message: "Billing management isn't available right now. Please email us and we'll help." };
   const h = await headers();
-  if (!(await rateLimit(`portal:${clientIp(h)}`, 20, 3600))) return { status: "error", message: "Too many attempts. Please try again later." };
+  const limit = await safeRateLimit(`portal:${clientIp(h)}`, 20, 3600);
+  if (limit === "error") return { status: "error", message: "We couldn't open billing just now. Please try again in a minute." };
+  if (limit === "limited") return { status: "error", message: "Too many attempts. Please try again later." };
   let url: string;
   try {
     const customerId = await verifiedCustomerFor(target);
@@ -251,7 +257,9 @@ export async function unsubscribeCancelLinkAction(_prev: FormState, form: FormDa
   const sub = await findByUnsubscribeToken(form.get("token"));
   if (!sub) return { status: "error", message: "This link isn't valid any more. Use the link in your latest email from us." };
   const h = await headers();
-  if (!(await rateLimit(`account-login:${clientIp(h)}`, 5, 3600))) {
+  const limit = await safeRateLimit(`account-login:${clientIp(h)}`, 5, 3600);
+  if (limit === "error") return { status: "error", message: SERVER_ERROR };
+  if (limit === "limited") {
     return { status: "error", message: "Too many requests from this connection. Please try again in an hour." };
   }
   try {
@@ -268,7 +276,9 @@ const LOGIN_MESSAGE = "If this address has an account with us, we've emailed it 
 export async function accountLinkAction(_prev: FormState, form: FormData): Promise<FormState> {
   if (String(form.get("website") ?? "")) return { status: "success", message: LOGIN_MESSAGE };
   const h = await headers();
-  if (!(await rateLimit(`account-login:${clientIp(h)}`, 5, 3600))) {
+  const limit = await safeRateLimit(`account-login:${clientIp(h)}`, 5, 3600);
+  if (limit === "error") return { status: "error", message: SERVER_ERROR };
+  if (limit === "limited") {
     return { status: "error", message: "Too many requests from this connection. Please try again in an hour." };
   }
   const email = normalizeEmail(String(form.get("email") ?? ""));

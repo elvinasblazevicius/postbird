@@ -4,11 +4,13 @@ import { headers } from "next/headers";
 import { after } from "next/server";
 import siteConfig from "@site-config";
 import { cleanCampaign, recordEvent, visitorFromHeaders } from "@/lib/analytics";
-import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { clientIp, safeRateLimit } from "@/lib/rate-limit";
 import { planRenewal, runWelcomeRetries } from "@/lib/billing/notices";
 import { confirmSubscriber, findByUnsubscribeToken, signup, unsubscribe, type SignupKind } from "@/lib/subscribers";
 
 export type FormState = { status: "idle" | "success" | "error"; message: string };
+
+const SERVER_ERROR = "Something went wrong on our side. Please try again in a minute.";
 
 const MESSAGES = {
   check_email: "Almost done. We've sent you an email — click the link inside to confirm.",
@@ -27,7 +29,9 @@ export async function signupAction(_prev: FormState, form: FormData): Promise<Fo
   // Honeypot: real visitors never fill this hidden field.
   if (String(form.get("website") ?? "")) return { status: "success", message: MESSAGES.check_email };
   const h = await headers();
-  if (!(await rateLimit(`signup:${clientIp(h)}`, 8, 3600))) {
+  const limit = await safeRateLimit(`signup:${clientIp(h)}`, 8, 3600);
+  if (limit === "error") return { status: "error", message: SERVER_ERROR };
+  if (limit === "limited") {
     return { status: "error", message: "Too many sign-ups from this connection. Please try again in an hour." };
   }
   const isWaitlist = form.get("kind") === "waitlist";
@@ -66,7 +70,7 @@ export async function signupAction(_prev: FormState, form: FormData): Promise<Fo
     return { status: "success", message: isWaitlist ? WAITLIST_MESSAGES[res.state]() : MESSAGES[res.state] };
   } catch (e) {
     console.error("signup failed", e);
-    return { status: "error", message: "Something went wrong on our side. Please try again in a minute." };
+    return { status: "error", message: SERVER_ERROR };
   }
 }
 
@@ -97,7 +101,7 @@ export async function planChoiceAction(choice: string, source: string): Promise<
   if (typeof choice !== "string" || typeof source !== "string" || choice.length > 40 || source.length > 100) return false;
   if (!(PLAN_CHOICES as readonly string[]).includes(choice)) return false;
   const h = await headers();
-  if (!(await rateLimit(`plan:${clientIp(h)}`, 10, 3600))) return false;
+  if ((await safeRateLimit(`plan:${clientIp(h)}`, 10, 3600)) !== "ok") return false;
   await recordEvent({ type: "plan_choice", visitor: visitorFromHeaders(h), props: { plan: choice, source: source.slice(0, 40) } });
   return true;
 }

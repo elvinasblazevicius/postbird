@@ -343,19 +343,42 @@ export function planStillActiveEmail(opts: { renewal: string; accountUrl: string
 }
 
 /**
- * A plan was started at checkout with an address that was already on our
- * list (pending or unsubscribed). Nothing is sent to it until its owner confirms.
+ * A plan was started at checkout with an address nobody has confirmed yet (any
+ * address typed into the public trial form). Alerts wait for its confirmation;
+ * a trial that is still unconfirmed shortly before it ends is canceled, so
+ * nothing is charged. Sent when the plan starts and again on days 3 and 10 of
+ * the trial. `confirmBy`: the last day to confirm (2 days before the trial
+ * ends, see confirmDeadline); null without a trial.
  */
-export function paidConfirmationEmail(opts: { confirmUrl: string }) {
+export function paidConfirmationEmail(opts: {
+  confirmUrl: string; accountUrl: string; trialEndsAt: string | null; confirmBy: string | null; price: string; period: string;
+}) {
+  const p = siteConfig.premium;
   const subject = `Confirm your email for ${siteConfig.name} alerts`;
+  const plan = `${siteConfig.name} ${p.name.toLowerCase()}`;
+  const intro = opts.trialEndsAt
+    ? `You started a ${p.trialDays}-day free trial of ${plan}. Confirm this address to start your alerts.`
+    : `A ${plan} plan was started with this email address. Confirm this address to start your alerts.`;
+  const terms = opts.trialEndsAt
+    ? [
+        `Your trial ends on ${formatDate(opts.trialEndsAt)}; then ${opts.price} ${opts.period}, renewing automatically until you cancel.`,
+        `If you don't confirm by ${formatDate(opts.confirmBy ?? opts.trialEndsAt)}, we cancel the trial and nothing is charged.`,
+      ]
+    : [`The plan costs ${opts.price} ${opts.period}, renewing automatically until you cancel.`];
+  const notYou = opts.trialEndsAt
+    ? "Didn't start this? Ignore this email and nothing will be charged."
+    : "Didn't start this? Cancel the plan from your account, or reply to this email and we'll help.";
+  const cancelLine = "To cancel now, open your account and choose \u201cCancel or manage billing\u201d.";
   const html = layout(
     subject,
-    `<p style="font-size:16px;line-height:1.6;margin:0 0 16px">A ${esc(siteConfig.name)} ${esc(siteConfig.premium.name.toLowerCase())} plan was started with this email address. Before we send any alerts here, please confirm that it was you.</p>
+    `<p style="font-size:16px;line-height:1.6;margin:0 0 16px">${esc(intro)}</p>
      <p style="margin:0 0 20px">${button(opts.confirmUrl, "Confirm my email")}</p>
-     <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">If it wasn't you, ignore this email: we won't send alerts to this address. The plan is billed to whoever paid for it, not to you.</p>`,
+     ${terms.map((l) => `<p style="font-size:16px;line-height:1.6;margin:0 0 12px">${esc(l)}</p>`).join("")}
+     <p style="font-size:16px;line-height:1.6;margin:0 0 12px">${esc(notYou)}</p>
+     <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">${esc(cancelLine)} <a href="${esc(opts.accountUrl)}" style="color:#566476">Your account</a>. Keep this email private: the link opens your account.</p>`,
     `You received this because this address was entered at checkout on ${esc(siteConfig.name)}.`,
   );
-  const text = `A ${siteConfig.name} ${siteConfig.premium.name.toLowerCase()} plan was started with this email address. Before we send any alerts here, please confirm that it was you.\n\nConfirm: ${opts.confirmUrl}\n\nIf it wasn't you, ignore this email: we won't send alerts to this address. The plan is billed to whoever paid for it, not to you.\n\n${postal()}`;
+  const text = `${intro}\n\nConfirm: ${opts.confirmUrl}\n\n${terms.join("\n\n")}\n\n${notYou}\n\n${cancelLine} Your account: ${opts.accountUrl}\n\n${postal()}`;
   return { subject, html, text };
 }
 

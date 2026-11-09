@@ -4,7 +4,8 @@
  * Microsoft Advertising (Bing Ads) support:
  *  - remembers which campaign a visitor came from (utm_* and msclkid), first touch, 90 days
  *  - loads the UET conversion tag when NEXT_PUBLIC_MS_UET_TAG_ID is set
- *  - in the EEA, UK and Switzerland (or when the country is unknown) nothing is
+ *  - where /api/geo says to ask first (the EEA, UK, Switzerland, Türkiye, South
+ *    Korea, Brazil and Québec, or when the place is unknown) nothing is
  *    stored on the device and Microsoft's script is not loaded until the
  *    visitor clicks "Allow"; elsewhere visitors can opt out any time
  *  - never runs on /alerts/* (confirm/unsubscribe links carry personal tokens), /account (private link) or /admin
@@ -13,8 +14,9 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ATTRIBUTION_KEY, clearAdStorage } from "@/lib/ad-storage";
 
-const ATTR_KEY = "gch_attr";
+const ATTR_KEY = ATTRIBUTION_KEY;
 const CONSENT_KEY = "gch_ads_consent";
 const GEO_KEY = "gch_geo";
 const OPEN_EVENT = "postbird:cookie-settings";
@@ -36,6 +38,14 @@ export function isPrivatePath(path: string) {
 function local(): Storage | null {
   try {
     return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function session(): Storage | null {
+  try {
+    return window.sessionStorage;
   } catch {
     return null;
   }
@@ -117,10 +127,10 @@ export function adMeasurementAllowed(): boolean {
   return storageAllowed;
 }
 
-/** Report a conversion to Microsoft Ads (no-op when UET isn't loaded). */
+/** Report a conversion to Microsoft Ads (no-op when UET isn't loaded, or advertising measurement isn't allowed). */
 export function uetEvent(action: string, params: Record<string, string | number> = {}) {
   try {
-    if (!document.getElementById("uet-tag")) return;
+    if (!storageAllowed || !document.getElementById("uet-tag")) return;
     window.uetq = window.uetq || ([] as unknown as NonNullable<Window["uetq"]>);
     window.uetq.push("event", action, params);
   } catch {
@@ -178,8 +188,8 @@ async function fetchGeo(): Promise<Geo> {
 }
 
 /**
- * Whether this visitor is where consent is asked before anything optional loads: the EEA, the UK
- * and Switzerland, or unknown (the same /api/geo answer, cached for the tab, as the cookie choice).
+ * Whether this visitor is where consent is asked before anything optional loads (see
+ * src/app/api/geo/route.ts), or unknown (the same /api/geo answer, cached for the tab, as the cookie choice).
  * Never rejects; true until known or when the check fails.
  */
 export function consentRegion(): Promise<boolean> {
@@ -241,7 +251,7 @@ export function AdsManager({ tagId }: { tagId: string | null }) {
       firstPath.current = pathname;
       return;
     }
-    if (!document.getElementById("uet-tag") || isPrivatePath(pathname)) return;
+    if (!storageAllowed || !document.getElementById("uet-tag") || isPrivatePath(pathname)) return;
     try {
       window.uetq?.push("event", "page_view", { page_path: pathname });
     } catch {
@@ -258,12 +268,10 @@ export function AdsManager({ tagId }: { tagId: string | null }) {
     }
     if (value === "denied") {
       storageAllowed = false;
-      try {
-        local()?.removeItem(ATTR_KEY);
-      } catch {
-        /* ignore */
-      }
       window.uetq?.push("consent", "update", { ad_storage: "denied" });
+      // Whatever the tag (or we) already stored during this visit goes too: UET's cookies and
+      // storage entries, and the remembered campaign (gch_attr).
+      clearAdStorage({ doc: document, hostname: window.location.hostname, stores: [local(), session()] });
       window.dispatchEvent(new Event(CONSENT_EVENT));
     } else {
       storageAllowed = true;

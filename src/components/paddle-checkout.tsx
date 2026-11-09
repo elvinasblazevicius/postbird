@@ -8,10 +8,13 @@ import siteConfig from "@site-config";
  * only once someone starts using the form, never on page load (see usePaddleWarmup).
  */
 import Link from "next/link";
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { checkoutDoneAction, continueCheckoutAction, startCheckoutAction, type CheckoutState } from "@/app/billing-actions";
 import { PADDLE_CLIENT_TOKEN, PADDLE_ENV, PADDLE_PRICE_MONTHLY, PADDLE_PRICE_QUARTERLY } from "@/lib/billing/live";
-import { NO_TRIAL_CONSENT, noTrialButton, noTrialLine, planOptions, RENEWING, RENEWS, TAX_LINE, TRIAL_CONSENT, trialButton, trialLine } from "@/lib/early-access-copy";
+import {
+  CONFIRM_FIRST_DONE, NO_TRIAL_CONSENT, NO_TRIAL_RENEWAL_ACK, noTrialButton, noTrialLine, planOptions, RENEWING, RENEWS, TAX_LINE, TRIAL_CONSENT,
+  TRIAL_RENEWAL_ACK, trialButton, trialLine,
+} from "@/lib/early-access-copy";
 import { AttributionField, consentRegion, uetEvent } from "./ads";
 
 // ── Paddle.js loader ─────────────────────────────────────────
@@ -131,8 +134,8 @@ function DoneBox({ phase, dark }: { phase: Extract<Phase, { step: "done" }>; dar
     // The public form: the address isn't proven yet, so alerts wait for its confirmation.
     return (
       <div role="status" className={`rounded-xl p-5 text-[1.02rem] leading-relaxed ${dark ? "bg-white/10 text-white" : "bg-remote-bg text-ink"}`}>
-        <p className="font-semibold">{phase.trial ? "Your trial has started." : "Your plan has started."}</p>
-        <p className="mt-2">Check your inbox and confirm your address to start your alerts.</p>
+        <p className="font-semibold">{phase.trial ? `Your ${siteConfig.premium.trialDays}-day trial is running now.` : "Your plan has started."}</p>
+        <p className="mt-2">{phase.trial ? CONFIRM_FIRST_DONE : "Check your inbox and confirm your address to start your alerts."} The link is in your inbox.</p>
         <p className="mt-3">
           <Link href="/jobs" className={`font-semibold underline ${dark ? "text-white" : "text-accent"}`}>Keep browsing jobs</Link>
         </p>
@@ -163,7 +166,8 @@ function PlanChoice({ dark, compact, plan, setPlan, locked = false }: { dark: bo
   return (
     <fieldset className="mb-4" disabled={locked}>
       <legend className={`mb-2 block text-sm font-medium ${dark ? "text-white/90" : "text-ink"}`}>Choose your plan</legend>
-      <div className={`grid gap-3 ${compact ? "@md:grid-cols-2" : "sm:grid-cols-2"}`}>
+      {/* Room above each card for the "Best value" badge that sits on its top edge (also when the cards stack on phones). */}
+      <div className={`grid gap-x-3 gap-y-5 pt-3 ${compact ? "@md:grid-cols-2" : "sm:grid-cols-2"}`}>
         {plans.map((p) => (
           <label
             key={p.value}
@@ -198,13 +202,17 @@ function PlanChoice({ dark, compact, plan, setPlan, locked = false }: { dark: bo
   );
 }
 
-/** The terms right above the button, the button, and the consent line right under it. */
+/**
+ * The terms, the consent line right under them, the required "renews automatically" checkbox
+ * (the browser won't submit the form without it; the button stays enabled), then the button.
+ */
 function TermsAndButton({ dark, trial, plan, trialEnds, busy, label, type = "submit", onClick }: {
   dark: boolean; trial: boolean; plan: "monthly" | "quarterly"; trialEnds: string | null; busy: boolean; label: string; type?: "submit" | "button"; onClick?: () => void;
 }) {
   // Never the trial terms for an address that has had a trial before.
   const bold = trial ? RENEWS : RENEWING;
   const [before, after = ""] = (trial ? trialLine(plan, trialEnds) : noTrialLine(plan)).split(bold);
+  const ackId = useId();
   return (
     <>
       {/* The terms come before the button, so they are read before starting. */}
@@ -213,6 +221,17 @@ function TermsAndButton({ dark, trial, plan, trialEnds, busy, label, type = "sub
         <Link href="/terms#subscriptions" className="underline">Subscription terms</Link> ·{" "}
         <Link href="/privacy" className="underline">Privacy</Link>
       </p>
+      <p className={`mt-2 text-xs ${dark ? "text-white/75" : "text-slate"}`}>{trial ? TRIAL_CONSENT : NO_TRIAL_CONSENT}</p>
+      <div className="mt-3 flex items-start gap-2">
+        <input
+          id={ackId}
+          name="renewal_ack"
+          type="checkbox"
+          required
+          className={`mt-0.5 h-4 w-4 shrink-0 ${dark ? "accent-[var(--highlight)]" : "accent-[var(--accent)]"}`}
+        />
+        <label htmlFor={ackId} className={`text-sm ${dark ? "text-white/90" : "text-ink"}`}>{trial ? TRIAL_RENEWAL_ACK : NO_TRIAL_RENEWAL_ACK}</label>
+      </div>
       <div className="mt-3">
         <button
           type={type}
@@ -222,15 +241,14 @@ function TermsAndButton({ dark, trial, plan, trialEnds, busy, label, type = "sub
         >
           {label}
         </button>
-        <p className={`mt-2 text-xs ${dark ? "text-white/75" : "text-slate"}`}>{trial ? TRIAL_CONSENT : NO_TRIAL_CONSENT}</p>
       </div>
     </>
   );
 }
 
 /**
- * When to start fetching Paddle.js ahead of the checkout. In the EEA, the UK and Switzerland (or
- * when the region is unknown, the same rule as the cookie choice in ./ads) only once the visitor
+ * When to start fetching Paddle.js ahead of the checkout. Where the cookie choice is asked first
+ * (or when the region is unknown, the same rule as in ./ads) only once the visitor
  * clicks into the email field or submits (submitting loads it anyway); elsewhere also on pointing
  * at the form. Returns the handlers for the form and for the email field.
  */
@@ -308,6 +326,12 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
     <form
       action={(fd) => {
         setLoadError(null);
+        // The same address again after closing the checkout: reopen the one already prepared
+        // (the server doesn't prepare a second one for the same address for 30 minutes).
+        if (state.status === "ready" && String(fd.get("email") ?? "").trim().toLowerCase() === state.email) {
+          openPaddleCheckout({ ...state, plan }, { source, setPhase, setLoadError, cancelled: () => false });
+          return;
+        }
         opened.current = null;
         action(fd);
       }}

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { RefundPolicyText } from "@/components/refund-policy";
 import { BILLING_LIVE } from "@/lib/billing/live";
-import { ONE_TRIAL_RULE } from "@/lib/early-access-copy";
+import { ONE_TRIAL_RULE, UNCONFIRMED_CANCEL_DAYS } from "@/lib/early-access-copy";
 import { siteConfig } from "@/lib/site";
 
 export const metadata: Metadata = { title: "Terms", alternates: { canonical: "/terms" } };
@@ -81,6 +81,11 @@ export default function TermsPage() {
                 <strong>Free trial:</strong> new subscriptions start with a {p.trialDays}-day free trial. A card is required. If you don&apos;t cancel before the trial
                 ends, the plan you chose starts and you are charged automatically. We email you a reminder about 3 days before the trial ends.{" "}
                 {ONE_TRIAL_RULE}
+              </li>
+              <li>
+                <strong>Confirming your email address:</strong> a trial started from our sign-up form starts your alerts only once you confirm your email address
+                with the link we send you. If you don&apos;t confirm it at least {UNCONFIRMED_CANCEL_DAYS} days before the trial ends, we cancel the trial and you
+                aren&apos;t charged. Until you confirm, we send the confirmation link again instead of the trial reminder.
               </li>
               <li><strong>Renewal:</strong> plans renew automatically at the end of each period (every month or every 3 months) until you cancel.</li>
             </ul>

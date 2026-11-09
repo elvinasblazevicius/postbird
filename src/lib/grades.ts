@@ -104,6 +104,39 @@ export function displayGrade(job: { grade: string | null | undefined; title: str
   return group ? GROUP_DISPLAY[group] : null;
 }
 
+/**
+ * Official pay sources, linked (no figures: they change every year and by duty station). Used on
+ * /grades and on job pages. Checked on 9 November 2026: ICSC salary scales (Professional and higher,
+ * and General Service and related categories), ICSC post adjustment, EU Careers salary tables, EU
+ * Staff Regulations.
+ */
+export const PAY_SOURCES = {
+  icscSalaryScales: "https://icsc.un.org/home/salaryscales",
+  icscPostAdjustment: "https://icsc.un.org/Home/PostAdjustment",
+  euSalaries: "https://eu-careers.europa.eu/benefits-and-pay/salary-and-allowances/salary-levels-and-progression_en",
+  euStaffRegulations: "https://eur-lex.europa.eu/eli/reg/1962/31(1)",
+} as const;
+
+/** UN common-system grades whose pay the ICSC publishes: Professional, Director, ASG/USG, National Officer, General Service. */
+const UN_PAY_GRADE_RE = /^(P-[1-7]|D-[12]|ASG|USG|NO-[A-E]|GS?-\d{1,2})$/;
+/** EU staff categories named in a title: AD 5, AST 3, AST-SC 2, contract agent, function group FG IV. */
+const EU_PAY_TITLE_RE = /\b(AD|AST)[ -]?\d{1,2}\b|\bAST[- ]SC\b|\bcontract agents?\b|\bFG[ -]?(I{1,3}|IV)\b/i;
+
+/**
+ * Where the official pay for this post's grade family is published: the ICSC salary scales for a
+ * UN grade (parsed, or the group the title names), the EU salary tables for an EU institution's
+ * post whose title names an EU staff category. Null when the family isn't known.
+ */
+export function payScaleFor(job: { grade: string | null | undefined; title: string | null | undefined; org_type?: string | null }): { family: "UN" | "EU"; label: string; href: string } | null {
+  if ((job.grade && UN_PAY_GRADE_RE.test(job.grade)) || (!job.grade && titleGradeGroup(job.title))) {
+    return { family: "UN", label: "ICSC salary scales", href: PAY_SOURCES.icscSalaryScales };
+  }
+  if (job.org_type === "EU institution" && job.title && EU_PAY_TITLE_RE.test(job.title)) {
+    return { family: "EU", label: "EU salary levels", href: PAY_SOURCES.euSalaries };
+  }
+  return null;
+}
+
 /** The grade groups shown in the filter (the overlapping "entry" group is kept only for old links). */
 export const FILTER_GRADE_GROUPS = GRADE_GROUPS.filter((g) => g.value !== "entry");
 

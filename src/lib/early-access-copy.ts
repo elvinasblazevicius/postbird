@@ -48,13 +48,30 @@ export function trialLine(plan: "monthly" | "quarterly" = "quarterly", trialEnds
   return `Card required. $0 today. ${when}; then ${price}. Your plan ${RENEWS} until you cancel. Cancel any time before the trial ends and you pay nothing.`;
 }
 
+/**
+ * A trial started from the public form at an address nobody has confirmed is canceled once it
+ * ends within this many days (the daily job, runBillingSafety), so nothing is charged. The
+ * address must be confirmed before then: the terms, the checkout and the confirmation email say so.
+ */
+export const UNCONFIRMED_CANCEL_DAYS = 2;
+/** How many days a trial gives to confirm the address (the trial length minus UNCONFIRMED_CANCEL_DAYS). */
+export const CONFIRM_WITHIN_DAYS = siteConfig.premium.trialDays - UNCONFIRMED_CANCEL_DAYS;
+
+/** After checkout from the public form: the trial runs, and the address must be confirmed. */
+export const CONFIRM_FIRST_DONE = `Confirm your address within ${CONFIRM_WITHIN_DAYS} days to start your alerts; if you don't, we cancel the trial and you pay nothing.`;
+
 /** One free trial per email address (terms, pricing FAQ). */
 export const ONE_TRIAL_RULE = "One free trial per email address, counting forms like name+tag@ and dotted Gmail addresses as the same address. If you've had a trial before, your plan starts and is charged straight away.";
 
-/** Under the button that starts a trial. */
+/** Right under the trial terms, above the button that starts a trial. */
 export const TRIAL_CONSENT = "By starting the trial you agree to automatic renewal as described above.";
-/** Under the button that starts a plan without a trial. */
+/** Right under the terms, above the button that starts a plan without a trial. */
 export const NO_TRIAL_CONSENT = "By continuing you agree to automatic renewal as described above.";
+
+/** The checkbox that must be ticked before a trial checkout opens. */
+export const TRIAL_RENEWAL_ACK = "I understand my plan renews automatically after the trial until I cancel.";
+/** The same checkbox before a plan without a trial. */
+export const NO_TRIAL_RENEWAL_ACK = "I understand my plan renews automatically until I cancel.";
 
 /** The words the no-trial line sets in bold. */
 export const RENEWING = "renewing automatically";

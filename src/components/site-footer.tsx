@@ -62,7 +62,8 @@ export function SiteFooter() {
       </div>
       <div className="border-t border-rule">
         <p className="mx-auto max-w-6xl px-4 py-5 text-xs text-slate sm:px-6">
-          © {year} {siteConfig.operator.name}. Vacancy details belong to the organizations that publish them; always check the employer&apos;s own posting before applying.
+          {/* The disclaimer above already says where applications are made; this line doesn't repeat it. */}
+          © {year} {siteConfig.operator.name}. Vacancy details belong to the organizations that publish them.
         </p>
       </div>
     </footer>

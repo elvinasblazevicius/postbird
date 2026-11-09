@@ -423,7 +423,7 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
       id: sub, status: "trialing", customer_id: null, custom_data: { ref: "ref-variant-0123456789abcd" },
       billing_cycle: { interval: "month", frequency: 1 }, items: [{ price: { id: PRICE_MONTHLY }, trial_dates: { starts_at: "2026-11-09T10:00:00Z", ends_at: "2026-11-23T10:00:00Z" } }],
     }));
-    expect(out).toEqual({ outcome: "flagged", cancel: { subscriptionId: sub } });
+    expect(out).toEqual({ outcome: "flagged", cancel: { subscriptionId: sub, kind: "trial_blocked" } });
     expect((await sql`select kind from billing_flags where subscription_id = ${sub}`)[0].kind).toBe("trial_blocked");
 
     // A plan at a form of the address that was never confirmed doesn't count.

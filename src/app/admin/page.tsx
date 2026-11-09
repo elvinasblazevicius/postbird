@@ -386,6 +386,8 @@ const FLAG_LABELS: Record<string, string> = {
   trial_blocked: "Second free trial blocked",
   customer_mismatch: "Paddle customer's email doesn't match",
   customer_unverified: "Paddle customer not checked yet",
+  duplicate_subscription: "Second subscription for one address",
+  trial_unconfirmed: "Trial canceled: address never confirmed",
 };
 
 type CampaignRow = { source: string; campaign: string; content: string; visitors: number; alerts: number; waitlist: number; trialClicks: number };

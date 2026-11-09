@@ -23,3 +23,18 @@ export function placeNames(f: { country?: string[]; region?: string[] }): string
 export function gradeShortName(value: string): string {
   return GRADE_GROUPS.find((g) => g.value === value)?.name.replace(/ \(.*\)$/, "") ?? value;
 }
+
+const SORT_HEADINGS = { newest: "Newest first", deadline: "Closing soonest first", relevance: "Best match first" } as const;
+
+/**
+ * The line above a page of results, the same on /jobs and on every landing page: "Newest first ·
+ * 21–40 of 340" (the total only where it is shown: `showTotal`), "Newest first · 5 open vacancies"
+ * when they all fit on one page, "1 open vacancy", "No open vacancies match".
+ */
+export function resultsHeading(r: { total: number; from: number; to: number; pages: number; sort: keyof typeof SORT_HEADINGS; showTotal: boolean }): string {
+  if (r.total === 0) return "No open vacancies match";
+  if (r.total === 1) return "1 open vacancy";
+  const order = SORT_HEADINGS[r.sort];
+  if (r.pages <= 1) return `${order} · ${r.total.toLocaleString("en-US")} open vacancies`;
+  return `${order} · ${r.from.toLocaleString("en-US")}–${r.to.toLocaleString("en-US")}${r.showTotal ? ` of ${r.total.toLocaleString("en-US")}` : ""}`;
+}

@@ -84,15 +84,26 @@ export class PaddleApiError extends Error {
   }
 }
 
+/** Default time limit for one Paddle API call. */
+const PADDLE_TIMEOUT_MS = 8000;
+/**
+ * Time limit for Paddle calls made while handling a webhook: Paddle waits at most 5 seconds for
+ * the answer, so a slow call must give up early (the event is retried, or the daily job retries).
+ */
+export const WEBHOOK_PADDLE_TIMEOUT_MS = 2500;
+
+/** Options for one API call: timeoutMs (default 8 seconds; WEBHOOK_PADDLE_TIMEOUT_MS on the webhook path). */
+export type PaddleCallOptions = { timeoutMs?: number };
+
 /** Calls the Paddle API. Errors carry only the status and Paddle's error code, never the key. */
-async function paddleFetch<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+async function paddleFetch<T>(path: string, init: { method?: string; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
   const key = process.env.PADDLE_API_KEY;
   if (!key) throw new Error("PADDLE_API_KEY is not set");
   const res = await fetch(`${paddleApiBase()}${path}`, {
     method: init.method ?? "GET",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", Accept: "application/json" },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(init.timeoutMs ?? PADDLE_TIMEOUT_MS),
     cache: "no-store",
   });
   const data = (await res.json().catch(() => null)) as { data?: T; error?: { code?: string } } | null;
@@ -135,28 +146,29 @@ export type PaddleSubscription = {
 };
 
 /** Fetches a subscription (needs the subscription.read permission). */
-export async function getSubscription(subscriptionId: string): Promise<PaddleSubscription> {
+export async function getSubscription(subscriptionId: string, opts: PaddleCallOptions = {}): Promise<PaddleSubscription> {
   if (!PADDLE_ID("sub").test(subscriptionId)) throw new Error("Invalid Paddle subscription id");
-  return paddleFetch<PaddleSubscription>(`/subscriptions/${subscriptionId}`);
+  return paddleFetch<PaddleSubscription>(`/subscriptions/${subscriptionId}`, { timeoutMs: opts.timeoutMs });
 }
 
 /**
  * Cancels a subscription at once, not at the end of its period (needs the
  * subscription.write permission). Used for a free trial the address may not
- * have (one per email address): no charge is ever taken for it.
+ * have (one per email address), a second running subscription for one
+ * address, and a trial at an address nobody confirmed: no further charge is taken.
  */
-export async function cancelSubscriptionNow(subscriptionId: string): Promise<void> {
+export async function cancelSubscriptionNow(subscriptionId: string, opts: PaddleCallOptions = {}): Promise<void> {
   if (!PADDLE_ID("sub").test(subscriptionId)) throw new Error("Invalid Paddle subscription id");
-  await paddleFetch<{ id: string }>(`/subscriptions/${subscriptionId}/cancel`, { method: "POST", body: { effective_from: "immediately" } });
+  await paddleFetch<{ id: string }>(`/subscriptions/${subscriptionId}/cancel`, { method: "POST", body: { effective_from: "immediately" }, timeoutMs: opts.timeoutMs });
 }
 
 /** Customer fields this site reads (a subset of Paddle's customer entity). */
 export type PaddleCustomer = { id: string; email: string; status?: string };
 
 /** Fetches a customer (needs the customer.read permission). The id goes in the path; never an email address. */
-export async function getCustomer(customerId: string): Promise<PaddleCustomer> {
+export async function getCustomer(customerId: string, opts: PaddleCallOptions = {}): Promise<PaddleCustomer> {
   if (!PADDLE_ID("ctm").test(customerId)) throw new Error("Invalid Paddle customer id");
-  return paddleFetch<PaddleCustomer>(`/customers/${customerId}`);
+  return paddleFetch<PaddleCustomer>(`/customers/${customerId}`, { timeoutMs: opts.timeoutMs });
 }
 
 export const isPaddleCustomerId = (id: unknown): id is string => typeof id === "string" && PADDLE_ID("ctm").test(id);

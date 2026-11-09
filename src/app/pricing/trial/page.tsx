@@ -6,20 +6,25 @@ import { WatchFields } from "@/components/alert-watch-step";
 import { PageHeader } from "@/components/page-header";
 import { PremiumInterestForm } from "@/components/token-forms";
 import { BILLING_LIVE } from "@/lib/billing/live";
+import { employersPhrase, euListingsOpen } from "@/lib/eu-claim";
 import { getJob } from "@/lib/jobs";
 import { describeSearch, searchFromAlertStep } from "@/lib/saved-searches";
 import { siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: BILLING_LIVE ? "Daily alerts: free trial" : "Daily alerts: early access",
-  description: BILLING_LIVE
-    ? `Start a ${siteConfig.premium.trialDays}-day free trial of ${siteConfig.name} daily alerts: new UN, EU and international organization vacancies that match your searches, by email. Then ${siteConfig.premium.priceSummary}; cancel any time.`
-    : `Join early access to ${siteConfig.name} daily alerts: new UN, EU and international organization vacancies that match your searches, by email. Nothing is charged now.`,
-  robots: { index: false, follow: true },
-  alternates: { canonical: "/pricing/trial" },
-};
+/** The description names the EU only while EU institutions have open vacancies here (see src/lib/eu-claim.ts). */
+export async function generateMetadata(): Promise<Metadata> {
+  const employers = employersPhrase(await euListingsOpen());
+  return {
+    title: BILLING_LIVE ? "Daily alerts: free trial" : "Daily alerts: early access",
+    description: BILLING_LIVE
+      ? `Start a ${siteConfig.premium.trialDays}-day free trial of ${siteConfig.name} daily alerts: new ${employers} vacancies that match your searches, by email. Then ${siteConfig.premium.priceSummary}; cancel any time.`
+      : `Join early access to ${siteConfig.name} daily alerts: new ${employers} vacancies that match your searches, by email. Nothing is charged now.`,
+    robots: { index: false, follow: true },
+    alternates: { canonical: "/pricing/trial" },
+  };
+}
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -45,7 +50,7 @@ export default async function TrialPage({ searchParams }: Props) {
         intro={
           BILLING_LIVE ? (
             <>
-              New vacancies matching your searches, by email every day. {p.trialDays} days free, then {p.priceSummary}.
+              A reminder before matching vacancies close, up to 5 searches, and new matches by email every day. {p.trialDays} days free, then {p.priceSummary}.
               Cancel any time before the trial ends and you pay nothing.
             </>
           ) : (

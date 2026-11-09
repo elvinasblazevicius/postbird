@@ -22,7 +22,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   // Only the kinds of post the organization has open right now.
   const kinds = [types.has("Consultancy") ? "consultancies" : null, types.has("Internship") ? "internships" : null].filter(Boolean);
   return landingMetadata({
-    title: `${org.short_name ?? org.name} jobs — ${count} open vacancies`,
+    title: `${org.short_name ?? org.name} jobs — ${count === 1 ? "1 open vacancy" : `${count} open vacancies`}`,
     description: `Open vacancies at ${label}${kinds.length ? `, including ${kinds.join(" and ")},` : ""} with locations and application deadlines. Apply on the employer's own website.`,
     path: `/organizations/${slug}`,
     count,

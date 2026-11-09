@@ -16,6 +16,7 @@ export default function RefundsPage() {
     <>
       <PageHeader width="max-w-3xl" title="Refunds" crumbs={[{ href: "/", label: "Home" }, { href: "/refunds", label: "Refunds" }]} />
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-12 text-[1.02rem] leading-relaxed text-ink sm:px-6">
+        <p className="text-sm text-slate">Last updated 9 November 2026</p>
         {BILLING_LIVE ? null : (
           <p className="rounded-xl bg-mist px-4 py-3">
             Paid email alerts aren&apos;t open yet and nothing is charged. This policy will apply once they are.

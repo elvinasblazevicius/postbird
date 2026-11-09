@@ -302,6 +302,36 @@ function titleTailSegments(title: string): string[] {
   return parts.length > 1 ? parts.slice(1) : [];
 }
 
+/** "(France)" after a territory ("Nouméa, New Caledonia (France)"): the administering country, not where the post is. */
+const ADMINISTERING_COUNTRY_RE = /\s*\((?:France|United Kingdom|UK|Netherlands|United States(?: of America)?|USA|Denmark|Norway|Australia|New Zealand|China)\)/gi;
+
+export function stripAdministeringCountry(text: string): string {
+  return text.replace(ADMINISTERING_COUNTRY_RE, "");
+}
+
+/**
+ * A stored listing's country worked out again with the current rules, from what is stored: the
+ * location text (the territory, not the administering country in brackets), else a title segment
+ * that is only a place ("Analyst - Nairobi, Kenya"), else a known duty station in either. Returns
+ * the country code when exactly one country is named, null when none or several (the importer then
+ * keeps no single country). Used by scripts/reclassify.ts for listings no longer re-read by a sync.
+ */
+export function countryFromStoredPlace(title: string, locationText: string | null): string | null {
+  const loc = locationText ? stripAdministeringCountry(locationText) : "";
+  let countries = loc ? findCountries(loc) : [];
+  let city: string | null = loc ? findCity(loc) : null;
+  if (countries.length === 0) {
+    for (const seg of titleTailSegments(title)) {
+      const place = placeOnly(seg);
+      if (place && place.countries.length) { countries = place.countries; break; }
+      if (place?.city) city ??= place.city;
+    }
+  }
+  if (countries.length === 1) return countries[0];
+  if (countries.length === 0 && city) return DUTY_STATIONS[city] ?? null;
+  return null;
+}
+
 // ── Main ─────────────────────────────────────────────────────
 
 export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
@@ -359,8 +389,7 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   let locationText: string | null = locLabel ?? ([cityLabel, countryLabel].filter(Boolean).join(", ") || null);
 
   // "Martinique (France)", "Greenland (Denmark)": the territory, not the administering country
-  const fromLabels = [locLabel, countryLabel].filter(Boolean).join(" ; ")
-    .replace(/\s*\((?:France|United Kingdom|UK|Netherlands|United States(?: of America)?|USA|Denmark|Norway|Australia|New Zealand|China)\)/gi, "");
+  const fromLabels = stripAdministeringCountry([locLabel, countryLabel].filter(Boolean).join(" ; "));
   let countries = fromLabels ? findCountries(fromLabels) : [];
   if (countries.length === 0) {
     // A feed tag counts only when the whole tag is a country name ("Kenya", not "Jordan Smith").

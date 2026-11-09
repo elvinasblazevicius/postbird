@@ -12,10 +12,11 @@
  *    listed once per subscriber). The free weekly email never has that section.
  * Both are safe to run more often than needed (they skip what was already sent).
  */
+import { createHash } from "node:crypto";
 import siteConfig from "@site-config";
 import { hadTrialBefore, type PlanHistory } from "@/lib/billing/subscriptions";
 import { trialUsedElsewhereIds } from "@/lib/billing/trial-markers";
-import { sql } from "@/lib/db";
+import { sql, transaction } from "@/lib/db";
 import { batchKey, isEmailConfigured, sendBatch, type OutgoingEmail } from "@/lib/email";
 import { alertEmail, CLOSING_SOON_DAYS, CLOSING_SOON_MAX, weeklyEmail, type AlertGroup } from "@/lib/email-templates";
 import { acquireLock, releaseLock } from "@/lib/feeds/sync";
@@ -268,6 +269,22 @@ const MAX_WINDOW_HOURS = { daily: 7 * 24, weekly: 14 * 24 } as const;
 export type AlertsResult = { status: "sent" | "skipped" | "failed"; due: number; sent: number; failed: number; empty: number; message: string | null };
 
 type DueRow = { id: number; email: string; frequency: "daily" | "weekly" };
+
+/**
+ * The idempotency key of one paid alert: the subscriber and where each of its
+ * searches' windows starts (its last_sent_at, or "new" for a search never
+ * emailed). A run that stopped after Resend accepted the email but before
+ * last_sent_at was written builds the same key again, so a run soon after
+ * can't send the same email twice; once last_sent_at moves on, the next email
+ * gets a new key. Pure, so it is unit-tested.
+ */
+export function alertKey(subscriberId: number, searches: { id: number; last_sent_at: Date | string | null }[]): string {
+  const windows = [...searches]
+    .sort((a, b) => a.id - b.id)
+    .map((x) => `${x.id}@${x.last_sent_at ? new Date(x.last_sent_at).toISOString() : "new"}`)
+    .join(",");
+  return `alert:${subscriberId}:${createHash("sha256").update(windows).digest("hex").slice(0, 32)}`;
+}
 type SearchRow = { id: number; subscriber_id: number; search: string; label: string | null; last_sent_at: Date | null };
 
 /**
@@ -283,7 +300,9 @@ type SearchRow = { id: number; subscriber_id: number; search: string; label: str
  * accepted the email). Subscribers with neither new matches nor closing-soon
  * vacancies get nothing and stay due. After a
  * successful send every search of that subscriber gets last_sent_at = the
- * run's start time, so nothing is sent twice and nothing falls between runs.
+ * run's start time, together with the closing-soon record in one transaction,
+ * so nothing is sent twice and nothing falls between runs. Each email's
+ * idempotency key comes from its searches' windows (alertKey).
  * The account and unsubscribe links are read just before each batch is sent,
  * so they are always the subscriber's current ones (the account link changes
  * when someone asks for it by email), and anyone who unsubscribed or stopped
@@ -315,7 +334,7 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
 
     let sent = 0, failed = 0, empty = 0;
     const errors: string[] = [];
-    const outbox: { sub: DueRow; groups: AlertGroup[]; closing: JobListItem[] }[] = [];
+    const outbox: { sub: DueRow; groups: AlertGroup[]; closing: JobListItem[]; key: string }[] = [];
 
     const flush = async () => {
       if (!outbox.length) return;
@@ -335,29 +354,33 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
           to: c.email,
           ...alertEmail({ groups: o.groups, closing: o.closing, frequency: o.sub.frequency, accountUrl: absoluteUrl(`/account?t=${c.manage_token}`), unsubscribeUrl }),
           headers: { "List-Unsubscribe": `<${oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
-          idempotencyKey: `alert:${o.sub.id}:${now.toISOString()}`,
+          idempotencyKey: o.key,
         };
       });
-      // Resend takes one idempotency key per batch: built from each message's
-      // key alert:{subscriberId}:{run start}, so a retry within this run can't send twice.
-      // If Resend rejects the batch (422), its messages go one by one under their own keys.
-      const res = await sendBatch(msgs, () => batchKey("alerts", chunk.map((o) => `alert:${o.sub.id}:${now.toISOString()}`)));
+      // Resend takes one idempotency key per batch: built from each message's key (see alertKey),
+      // so a retry can't send twice. If Resend rejects the batch (422), its messages go one by
+      // one under their own keys.
+      const res = await sendBatch(msgs, () => batchKey("alerts", chunk.map((o) => o.key)));
       sent += res.sent;
       failed += res.failed;
       errors.push(...res.errors);
       // Only subscribers whose email Resend accepted move on; the others stay due.
       const done = chunk.filter((_, j) => res.delivered[j]);
       if (done.length) {
-        await sql`update saved_searches set last_sent_at = ${now} where subscriber_id = any(${done.map((o) => o.sub.id)})`;
-        // The closing-soon vacancies these emails listed are never listed again for the same subscriber.
+        // Both records of what was sent commit together, or neither does (then the next run
+        // builds the same keys again, see alertKey).
         const listed = done.flatMap((o) => o.closing.map((j) => [o.sub.id, Number(j.id)] as const));
-        if (listed.length) {
-          await sql`
-            insert into alert_closing_sent (subscriber_id, job_id)
-            select t.s, t.j from unnest(${listed.map((x) => x[0])}::bigint[], ${listed.map((x) => x[1])}::bigint[]) as t(s, j)
-            where exists (select 1 from jobs where id = t.j) and exists (select 1 from subscribers where id = t.s)
-            on conflict do nothing`;
-        }
+        await transaction(async (tx) => {
+          await tx`update saved_searches set last_sent_at = ${now} where subscriber_id = any(${done.map((o) => o.sub.id)})`;
+          // The closing-soon vacancies these emails listed are never listed again for the same subscriber.
+          if (listed.length) {
+            await tx`
+              insert into alert_closing_sent (subscriber_id, job_id)
+              select t.s, t.j from unnest(${listed.map((x) => x[0])}::bigint[], ${listed.map((x) => x[1])}::bigint[]) as t(s, j)
+              where exists (select 1 from jobs where id = t.j) and exists (select 1 from subscribers where id = t.s)
+              on conflict do nothing`;
+          }
+        });
       }
     };
 
@@ -419,7 +442,7 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
       }));
       built.forEach(({ sub, groups }, k) => {
         if (groups.length === 0 && closing[k].length === 0) { empty++; return; }
-        outbox.push({ sub, groups, closing: closing[k] });
+        outbox.push({ sub, groups, closing: closing[k], key: alertKey(sub.id, searches.filter((x) => x.subscriber_id === sub.id)) });
       });
       await flush();
     }

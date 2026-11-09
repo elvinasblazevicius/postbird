@@ -272,7 +272,8 @@ const moreIsOpen = (f: JobFilters) => Boolean(f.grade?.length || f.type || f.pos
 /** Homepage search: What / Where / Search; every other filter under "More filters" so jobs stay close to the top. */
 export function HeroSearch({ facets }: { facets: FacetData }) {
   return (
-    <form id="hero-search" action="/jobs" method="get" role="search" className="rounded-2xl bg-paper p-3 shadow-[0_20px_50px_-20px_rgba(11,27,63,0.55)] sm:p-5">
+    <form id="hero-search" action="/jobs" method="get" role="search">
+      {/* No card around it: the fields sit on the hero itself (white labels and focus ring: #hero-search in globals.css). */}
       {/* On phones the labels are visually hidden (still read by screen readers) and Where sits beside the button, to keep jobs near the top. */}
       <div className="hero-main grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1.7fr_1fr_auto] sm:items-end sm:gap-3">
         <div className="col-span-2 sm:col-span-1">

@@ -93,7 +93,7 @@ export default async function PricingPage() {
         crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Pricing" }]}
         intro={
           siteConfig.freeWeeklyEmail
-            ? `Every vacancy, search and filter is free, and so is a weekly email for one search. Paid daily alerts${BILLING_LIVE ? "" : ", launching soon,"} bring new matches for up to 5 searches every day.`
+            ? `Every vacancy, search and filter is free, and so is a weekly email for one search. Paid daily alerts${BILLING_LIVE ? "" : ", launching soon,"} add a reminder before matching vacancies close, up to 5 searches, and new matches every day.`
             : `Every vacancy, search and filter is free. Paid email alerts${BILLING_LIVE ? "" : ", launching soon,"} bring new matches to your inbox so you don't have to keep checking.`
         }
       />
@@ -125,8 +125,15 @@ export default async function PricingPage() {
             <h2 id="plan-premium" className="text-2xl font-semibold leading-tight text-ink">{siteConfig.freeWeeklyEmail ? "Daily alerts" : p.name}</h2>
             {BILLING_LIVE ? null : <span className="rounded-full bg-paper px-2.5 py-0.5 text-xs font-semibold text-ink">Launching soon</span>}
           </div>
+          {/* What only the paid plan does comes first; the prices follow. */}
+          <ul className="mt-4 space-y-3 text-ink">
+            {p.features.map((f, i) => (
+              <li key={f} className={`flex gap-2.5 ${i === 0 ? "font-semibold" : ""}`}><Check />{f}</li>
+            ))}
+            {siteConfig.freeWeeklyEmail ? <li className="flex gap-2.5 text-slate"><Check />Everything in Free, with alerts in place of the weekly email</li> : null}
+          </ul>
           {/* Plain price text: the plan is chosen at the trial form, not here. */}
-          <dl className="mt-3 space-y-3">
+          <dl className="mt-6 flex-1 space-y-3 border-t border-rule pt-5">
             {[...p.plans].reverse().map((plan) => (
               <div key={plan.label}>
                 <dt className="text-sm font-medium text-ink">
@@ -143,12 +150,6 @@ export default async function PricingPage() {
               </div>
             ))}
           </dl>
-          <ul className="mt-6 flex-1 space-y-3 text-ink">
-            {siteConfig.freeWeeklyEmail ? <li className="flex gap-2.5"><Check />Everything in Free, with alerts in place of the weekly email</li> : null}
-            {p.features.map((f) => (
-              <li key={f} className="flex gap-2.5"><Check />{f}</li>
-            ))}
-          </ul>
           <TrackedLink href="/pricing/trial" event="premium_cta_click" source="pricing" className="mt-8 rounded-lg bg-brand px-5 py-3 text-center font-semibold text-white hover:bg-accent">
             {BILLING_LIVE ? `Start ${p.trialDays}-day free trial` : EARLY_ACCESS_BUTTON}
           </TrackedLink>
@@ -156,7 +157,7 @@ export default async function PricingPage() {
         </section>
       </div>
 
-      <div className="mx-auto grid max-w-4xl gap-8 px-4 sm:px-6 md:grid-cols-2">
+      <div className="mx-auto grid max-w-4xl gap-8 px-4 sm:px-6 md:grid-cols-[1fr_1.35fr]">
         <section aria-labelledby="why-heading">
           <h2 id="why-heading" className="text-xl font-semibold text-ink">Why alerts help</h2>
           <p className="mt-3 leading-relaxed text-ink">

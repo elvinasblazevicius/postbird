@@ -191,7 +191,13 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(sent[0]).toMatchObject({ to: "new.person@example.org", key: `paid-confirm:${s.id}:${SUB_ID}` });
       expect(sent[0].subject).toMatch(/^Confirm your email/);
       expect(sent[0].text).toContain(`/alerts/confirm?token=${s.confirm_token}`);
-      expect(sent[0].text).not.toContain("/account?t=");
+      // Written for whoever started the trial: its end, the price, the deadline to confirm, and
+      // the account link (it works before confirming) to cancel straight away.
+      expect(sent[0].text).toContain("You started a 14-day free trial of Postbird daily alerts. Confirm this address to start your alerts.");
+      expect(sent[0].text).toContain("Your trial ends on 23 Nov 2026; then $19.99 every 3 months, renewing automatically until you cancel.");
+      expect(sent[0].text).toContain("If you don't confirm by 21 Nov 2026, we cancel the trial and nothing is charged.");
+      expect(sent[0].text).toContain("Didn't start this? Ignore this email and nothing will be charged.");
+      expect(sent[0].text).toMatch(/Your account: http:\/\/localhost:3000\/account\?t=[0-9a-f]{64}/);
       const [ev] = await sql`select type, visitor, props from events where type = 'trial_started'`;
       expect(ev).toMatchObject({ visitor: "visitor-hash", props: { plan: "quarter", campaign: { msclkid: "abc123", utm_medium: "cpc" } } });
       // The browser that paid gets no account link: it comes with the welcome email, after confirming.
@@ -448,7 +454,7 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(sent[0]).toMatchObject({ to: "gone-away@example.org", key: `paid-confirm:${s.id}:${subId}`, replyTo: "info@nuevanova.com" });
       expect(sent[0].subject).toMatch(/^Confirm your email/);
       expect(sent[0].text).toContain(`/alerts/confirm?token=${s.confirm_token}`);
-      expect(sent[0].text).not.toContain("/account?t=");
+      expect(sent[0].text).toMatch(/\/account\?t=[0-9a-f]{64}/);
 
       // Not confirmed: no welcome from the daily job, no alerts.
       expect(await notices.runWelcomeRetries()).toEqual({ sent: 0, failed: 0 });
@@ -480,8 +486,8 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
   describe("plan emails", () => {
     async function mk(email: string, over: { status?: string; billing?: string; trialEndsInDays?: number | null; cancel?: boolean; interval?: string; periodEndInDays?: number } = {}) {
       const [r] = await sql`
-        insert into subscribers (email, status, wants_alerts, billing_status, plan_interval, trial_ends_at, current_period_end, cancel_at, unsubscribe_token, welcome_sent_at)
-        values (${email}, ${over.status ?? "confirmed"}, true, ${over.billing ?? "trialing"}, ${over.interval ?? "quarter"},
+        insert into subscribers (email, status, confirmed_at, wants_alerts, billing_status, plan_interval, trial_ends_at, current_period_end, cancel_at, unsubscribe_token, welcome_sent_at)
+        values (${email}, ${over.status ?? "confirmed"}, ${over.status === "pending" ? null : sql`now() - interval '20 days'`}, true, ${over.billing ?? "trialing"}, ${over.interval ?? "quarter"},
                 ${over.trialEndsInDays == null ? null : sql`now() + make_interval(days => ${over.trialEndsInDays})`},
                 ${over.periodEndInDays == null ? null : sql`now() + make_interval(days => ${over.periodEndInDays})`},
                 ${over.cancel ? sql`now() + interval '2 days'` : null}, ${tok(email)}, now())
@@ -635,7 +641,8 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
 
     it("emails the early-access list once, only confirmed members without a plan", async () => {
       const add = async (email: string, status: string, billing = "none") =>
-        sql`insert into subscribers (email, status, premium_waitlist, billing_status, unsubscribe_token) values (${email}, ${status}, true, ${billing}, ${`unsub-${email}`})`;
+        sql`insert into subscribers (email, status, confirmed_at, premium_waitlist, billing_status, unsubscribe_token)
+            values (${email}, ${status}, ${status === "confirmed" ? sql`now() - interval '40 days'` : null}, true, ${billing}, ${`unsub-${email}`})`;
       await add("early1@example.org", "confirmed");
       await add("early2@example.org", "pending");
       await add("early3@example.org", "confirmed", "trialing");
@@ -720,6 +727,8 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
 
     it("paying through the second checkout sends one confirmation email; the welcome follows confirmation", async () => {
       const first = await billing.startCheckout({ email: "twice@example.org", plan: "monthly", search: "q=nurse" });
+      // The first checkout was closed and is now over 30 minutes old: a second one is prepared.
+      await sql`update paddle_checkouts set created_at = now() - interval '31 minutes' where ref = ${(first as { ref: string }).ref}`;
       const second = await billing.startCheckout({ email: "twice@example.org", plan: "quarterly", search: "q=nurse" });
       const ref2 = (second as { ref: string }).ref;
       expect(ref2).not.toBe((first as { ref: string }).ref);
@@ -751,6 +760,7 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
 
     it("an address its owner touched in between (a sign-up) is not confirmed by paying", async () => {
       await billing.startCheckout({ email: "touched@example.org", plan: "monthly", search: null });
+      await sql`update paddle_checkouts c set created_at = now() - interval '31 minutes' from subscribers s where s.id = c.subscriber_id and s.email = 'touched@example.org'`;
       await subscribers.signup({ email: "touched@example.org", kind: "alerts" });
       const second = await billing.startCheckout({ email: "touched@example.org", plan: "monthly", search: null });
       const [c] = await sql`select new_subscriber from paddle_checkouts where ref = ${(second as { ref: string }).ref}`;
@@ -886,7 +896,7 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(await (await postEvent(ev(1))).text()).toBe("flagged");
       await settle();
       const [f] = await sql`select detail from billing_flags where subscription_id = ${subId} and kind = 'trial_blocked'`;
-      expect(f.detail).toMatch(/^Cancel in Paddle failed \(Paddle API returned HTTP 500 \(internal_error\)\)\. Cancel this subscription by hand/);
+      expect(f.detail).toMatch(/^Cancel in Paddle failed \(Paddle API returned HTTP 500 \(internal_error\)\)\. The daily job tries again/);
       expect((await sql`select billing_status from subscribers where id = ${r.id}`)[0].billing_status).toBe("canceled");
       // Paddle is back: the next event for the still-trialing subscription cancels it.
       paddleDown = false;

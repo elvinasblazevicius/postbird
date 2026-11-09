@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { EpsoBook, isEuInstitution } from "@/components/epso-book";
 import { JobList, OrgBadge, Tag } from "@/components/job-card";
+import { ClosingPostmark } from "@/components/postmark";
 import { SaveButton, ShareButton } from "@/components/job-tools";
 import { Breadcrumbs } from "@/components/page-header";
 import { ApplyLink, TrackedLink, TrackOnMount } from "@/components/tracking";
@@ -11,9 +12,10 @@ import { categoryBySlug } from "@/config/categories";
 import { countryByCode } from "@/config/countries";
 import { LISTING_SETTINGS } from "@/config/import";
 import { applyLinkKind } from "@/lib/apply-link";
-import { displayGrade, isLocalOnly } from "@/lib/grades";
-import { similarJobs, type JobDetail } from "@/lib/jobs";
+import { displayGrade, isLocalOnly, payScaleFor } from "@/lib/grades";
+import { searchJobs, similarJobs, type JobDetail } from "@/lib/jobs";
 import { orgInText } from "@/lib/org-names";
+import { applyTarget } from "@/lib/recruitment-system";
 import { extraLocation } from "@/lib/place-text";
 import { titleLanguage } from "@/lib/title-language";
 import { absoluteUrl, categoryName, escapeHtml, jsonLd, deadlineLabel, formatDate, jobPath, locationLabel, NOT_SPECIFIED, siteConfig } from "@/lib/site";
@@ -138,7 +140,11 @@ export default async function JobPage({ params }: Props) {
   // Closed vacancies are a 404 that says so and lists similar open ones (see layout.tsx).
   if (!isOpen(job)) notFound();
 
-  const similar = await similarJobs(job);
+  const [similar, orgOpen] = await Promise.all([
+    similarJobs(job),
+    // How many open vacancies the organization has (this one included), for "4 other open vacancies at IOM".
+    job.org_slug ? searchJobs({ org: job.org_slug }, 1).then((r) => r.total).catch(() => 0) : Promise.resolve(0),
+  ]);
   const ld = jobPostingLd(job);
   const dl = deadlineLabel(job.deadline);
   const category = categoryBySlug(job.category);
@@ -149,6 +155,7 @@ export default async function JobPage({ params }: Props) {
   const dutyCountry = countryByCode(job.country_code)?.name ?? null;
   const description = hasDescription(job);
   const publishedPlace = where !== NOT_SPECIFIED ? extraLocation(where, job.location_text) : null;
+  const pay = payScaleFor(job);
   // Everything our source doesn't give, said once in one line instead of a row each.
   const missing = [
     !grade && "grade",
@@ -159,10 +166,13 @@ export default async function JobPage({ params }: Props) {
     !job.org_name && "organization",
     job.min_experience_years == null && "required experience",
     !job.languages?.length && !job.desirable_languages?.length && "language requirements",
-    !localOnly && "eligibility",
   ].filter((x): x is string => Boolean(x));
   const experience = job.min_experience_years != null ? `${job.min_experience_years}+ ${job.min_experience_years === 1 ? "year" : "years"}` : null;
-  const whoCanApply = `Usually only nationals or legal residents of ${dutyCountry ?? "the duty-station country"}.`;
+  // Local-only posts: the rule they usually follow. Any other post: no general claim (eligibility
+  // differs by employer: EU citizenship, member-country nationality, work permits), so the posting decides.
+  const whoCanApply = localOnly
+    ? `Usually only nationals or legal residents of ${dutyCountry ?? "the duty-station country"}.`
+    : "Set by the employer: check the posting for any nationality, residence or work-permit requirement.";
   const missingLine = missing.length ? (
     <p className="mt-3 text-sm text-slate">
       {listPhrase(missing)} {missing.length === 1 ? "isn't" : "aren't"} in our source.{" "}
@@ -170,9 +180,11 @@ export default async function JobPage({ params }: Props) {
       {description ? "." : " for the full description."}
     </p>
   ) : null;
-  // Where Apply goes: "WFP's careers site", "the World Bank's careers site", or "the employer's site".
   const orgRef = orgInText(job.org_name, job.org_short);
-  const destination = orgRef ? `${orgRef}\u2019s careers site` : "the employer\u2019s site";
+  // Where Apply goes, in plain words: "Opens IOM's recruitment system (Oracle)"; the address only for the organization's own site.
+  const homepage = applyLinkKind(job.apply_url) === "homepage";
+  const target = applyTarget({ url: job.apply_url, host: job.apply_host, orgName: job.org_name, orgShort: job.org_short, homepage });
+  const otherAtOrg = Math.max(0, orgOpen - 1);
   // The free weekly email when it is on; otherwise the paid alerts' trial page.
   const alertHref = `${siteConfig.freeWeeklyEmail ? "/alerts" : "/pricing/trial"}?search=${encodeURIComponent(`category=${job.category}`)}`;
 
@@ -182,11 +194,56 @@ export default async function JobPage({ params }: Props) {
       jobId={job.id}
       className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-3.5 text-base font-semibold text-white hover:bg-accent"
     >
-      {applyLinkKind(job.apply_url) === "homepage" ? "Find it on the careers site" : "Apply"}
+      {homepage ? "Find it on the careers site" : "Apply"}
       <span className="sr-only"> (opens the employer&apos;s site in a new tab)</span>
       <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true"><path d="M6 3h7v7M13 3 4 12" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
     </ApplyLink>
   );
+
+  /** The closing date as a postmark, how long is left, and the time-zone caveat (desktop card and phone box). */
+  const deadlineBlock = job.deadline ? (
+    <div>
+      <div className="flex items-center gap-4">
+        <ClosingPostmark deadline={job.deadline} size="lg" waves />
+        <div className="min-w-0 text-sm leading-snug">
+          <p className="font-medium text-ink">{formatDate(job.deadline)}</p>
+          {dl && !dl.urgent && /in \d/.test(dl.text) ? <p className="text-slate">{dl.text}</p> : null}
+          <a href={`/api/calendar/${job.id}`} className="mt-1.5 inline-block font-medium text-accent underline underline-offset-2" rel="nofollow">Add to calendar</a>
+        </div>
+      </div>
+      <p className="mt-3 text-xs leading-relaxed text-slate">
+        Check the time zone in the posting: deadlines are often set in the duty station&apos;s or headquarters&apos; local time.
+      </p>
+    </div>
+  ) : (
+    <p className="text-sm text-slate">No closing date in our source. Check the employer&apos;s page.</p>
+  );
+
+  /** Where Apply goes, that applying is free, and the guide to reading a vacancy. */
+  const applyNotes = (
+    <>
+      <p className="mt-3 text-sm leading-snug text-slate">
+        {target.text}
+        {target.host ? <span className="mt-0.5 block break-all text-xs text-slate">{target.host}</span> : null}
+      </p>
+      <p className="mt-2 text-sm leading-snug text-ink">Applying is free. {siteConfig.name} never charges a fee to apply.</p>
+      <p className="mt-2 text-sm">
+        <Link href="/guides/how-to-read-a-un-vacancy" className="font-medium text-accent underline-offset-2 hover:underline">How to read a UN vacancy</Link>
+      </p>
+    </>
+  );
+
+  /** "Who can apply" and "Pay": said for every post, as far as Postbird can say it honestly. */
+  const payLink = pay ? (
+    <>
+      See the <a href={pay.href} className="text-accent underline" rel="noopener">official {pay.label}</a>
+    </>
+  ) : null;
+  const orgLink = job.org_slug && otherAtOrg > 0 ? (
+    <Link href={`/organizations/${job.org_slug}`} className="font-medium text-accent underline-offset-2 hover:underline">
+      {otherAtOrg.toLocaleString("en-US")} other open {otherAtOrg === 1 ? "vacancy" : "vacancies"} at {orgRef ?? job.org_name}
+    </Link>
+  ) : null;
 
   return (
     <>
@@ -232,7 +289,7 @@ export default async function JobPage({ params }: Props) {
         </div>
       </div>
 
-      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_20rem] lg:gap-10">
+      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_21rem] lg:gap-12">
         <div className="min-w-0">
           {description ? (
             <section aria-labelledby="facts-heading">
@@ -251,15 +308,15 @@ export default async function JobPage({ params }: Props) {
                 {job.published_at ? <Fact label="Posted">{formatDate(job.published_at)}</Fact> : null}
                 {job.min_experience_years != null ? <Fact label="Experience">{experience}</Fact> : null}
                 {job.languages?.length || job.desirable_languages?.length ? <Fact label="Languages besides English"><Languages job={job} /></Fact> : null}
+                {payLink ? <Fact label="Pay">{payLink}</Fact> : null}
                 {job.reference ? <Fact label="Reference"><span className="break-all">{job.reference}</span></Fact> : null}
               </dl>
-              {localOnly ? (
-                <p className="mt-3 rounded-xl bg-mist px-4 py-3 text-[0.95rem] text-ink">
-                  <span className="font-semibold">Who can apply:</span> {whoCanApply}{" "}
-                  <Link href="/grades" className="text-accent underline">About grades and contract types</Link>
-                </p>
-              ) : null}
+              <p className={`mt-3 rounded-xl px-4 py-3 text-[0.95rem] text-ink ${localOnly ? "bg-mist" : "border border-rule"}`}>
+                <span className="font-semibold">Who can apply:</span> {whoCanApply}{" "}
+                {localOnly ? <Link href="/grades" className="text-accent underline">About grades and contract types</Link> : null}
+              </p>
               {missingLine}
+              {orgLink ? <p className="mt-3 text-[0.95rem]">{orgLink}</p> : null}
             </section>
           ) : (
             <section aria-labelledby="facts-heading">
@@ -274,16 +331,19 @@ export default async function JobPage({ params }: Props) {
                 {job.job_type ? <GlanceRow label="Contract type">{job.job_type}</GlanceRow> : null}
                 {job.min_experience_years != null ? <GlanceRow label="Experience">{experience}</GlanceRow> : null}
                 {job.languages?.length || job.desirable_languages?.length ? <GlanceRow label="Languages besides English"><Languages job={job} /></GlanceRow> : null}
-                {localOnly ? <GlanceRow label="Who can apply">{whoCanApply}</GlanceRow> : null}
+                <GlanceRow label="Who can apply">{whoCanApply}</GlanceRow>
+                {payLink ? <GlanceRow label="Pay">{payLink}</GlanceRow> : null}
                 {job.published_at ? <GlanceRow label="Posted">{formatDate(job.published_at)}</GlanceRow> : null}
                 {category && category.slug !== "other" ? (
                   <GlanceRow label="Category"><Link href={`/categories/${category.slug}`} className="text-accent underline">{category.name}</Link></GlanceRow>
                 ) : null}
                 {job.reference ? <GlanceRow label="Reference number"><span className="break-all">{job.reference}</span></GlanceRow> : null}
+                {orgLink ? <GlanceRow label="Organization">{orgLink}</GlanceRow> : null}
               </dl>
               <p className="mt-3 text-[0.95rem] text-ink">
                 The full description, requirements and application instructions are on the employer&apos;s own page.
               </p>
+              {missingLine}
             </section>
           )}
 
@@ -301,18 +361,11 @@ export default async function JobPage({ params }: Props) {
             </section>
           ) : null}
 
-          <div className="mt-8 rounded-xl border border-rule p-4 text-sm lg:hidden">
-            <p className="text-slate">
-              Apply opens {destination}
-              <span className="mt-0.5 block break-all text-xs text-slate">{job.apply_host}</span>
-            </p>
-            <p className="mt-1 text-slate">Applying is free. {siteConfig.name} never charges a fee to apply.</p>
-            <p className="mt-1 text-xs text-slate">Listing last updated from our source {formatDate(job.last_seen_at)}.</p>
-            {job.deadline ? (
-              <a href={`/api/calendar/${job.id}`} className="mt-2 inline-block font-medium text-accent underline" rel="nofollow">Add closing date to calendar</a>
-            ) : null}
+          <div className="mt-8 rounded-xl border border-rule p-4 lg:hidden">
+            {deadlineBlock}
+            <div className="mt-4 border-t border-rule pt-1 [&>p:first-child]:mt-3">{applyNotes}</div>
+            <p className="mt-3 text-xs text-slate">Listing last updated from our source {formatDate(job.last_seen_at)}.</p>
           </div>
-          {!description && missingLine ? <div className="lg:hidden">{missingLine}</div> : null}
 
           <div className="sticky bottom-0 z-30 -mx-4 flex items-center gap-3 border-t border-rule bg-paper/95 px-4 py-3 backdrop-blur lg:hidden">
             {dl ? <p className={`shrink-0 text-sm ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>{dl.text}</p> : null}
@@ -331,24 +384,13 @@ export default async function JobPage({ params }: Props) {
 
         <aside className="space-y-4">
           <div className="z-10 hidden rounded-xl border border-rule bg-paper p-5 lg:sticky lg:top-24 lg:block">
-            <p className="text-sm text-slate">Closing date</p>
-            <p className="font-display text-2xl font-semibold text-ink">{job.deadline ? formatDate(job.deadline) : NOT_SPECIFIED}</p>
-            {dl && /in \d|today|tomorrow/.test(dl.text) ? <p className={`text-sm ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>{dl.text}</p> : null}
+            <h2 className="sr-only">Closing date and how to apply</h2>
+            {deadlineBlock}
             <div className="mt-4">{applyButton}</div>
-            <p className="mt-3 text-sm leading-snug text-slate">
-              Opens {destination}
-              <span className="mt-0.5 block break-all text-xs text-slate">{job.apply_host}</span>
-            </p>
-            <p className="mt-2 text-sm leading-snug text-ink">Applying is free. {siteConfig.name} never charges a fee to apply.</p>
+            {applyNotes}
             <p className="mt-3 border-t border-rule pt-3 text-xs leading-relaxed text-slate">
               Listing last updated from our source {formatDate(job.last_seen_at)}.
             </p>
-            {job.deadline ? (
-              <a href={`/api/calendar/${job.id}`} className="mt-3 block rounded-lg border border-rule px-3 py-2 text-center text-sm font-medium text-accent hover:bg-tint" rel="nofollow">
-                Add closing date to calendar
-              </a>
-            ) : null}
-            {!description && missingLine ? <div className="mt-3 border-t border-rule pt-1 [&>p]:text-xs [&>p]:leading-relaxed">{missingLine}</div> : null}
           </div>
           <p className="flex items-start gap-2 px-1 text-sm">
             <svg viewBox="0 0 16 16" className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true"><path d="M8 2a4 4 0 0 0-4 4v2.5L2.5 11h11L12 8.5V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>

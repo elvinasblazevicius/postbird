@@ -1,5 +1,6 @@
 import { cleanCampaign, recordEvent, isBot, visitorHash, type EventType } from "@/lib/analytics";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { readCapped } from "@/lib/read-capped";
 import { cleanTrackedPath } from "./clean-path";
 
 export const dynamic = "force-dynamic";
@@ -10,14 +11,17 @@ const CLIENT_EVENTS: EventType[] = ["pageview", "job_view", "search", "apply_cli
 /** Per visitor IP: at most this many events per window. */
 const EVENTS_PER_WINDOW = 120;
 const WINDOW_SECONDS = 600;
+/** Events are a few hundred bytes; anything larger is refused. */
+const MAX_BODY_BYTES = 4000;
 
 export async function POST(req: Request) {
   const ua = req.headers.get("user-agent");
   if (isBot(ua)) return new Response(null, { status: 204 });
   let body: { type?: string; path?: string; jobId?: unknown; ref?: string; props?: Record<string, unknown> };
   try {
-    const text = await req.text();
-    if (text.length > 4000) return new Response(null, { status: 413 });
+    // Read with a cap, so an oversized body is never held in memory in full.
+    const text = await readCapped(req, MAX_BODY_BYTES);
+    if (text === null) return new Response(null, { status: 413 });
     body = JSON.parse(text);
     if (!body || typeof body !== "object") return new Response(null, { status: 400 });
   } catch {

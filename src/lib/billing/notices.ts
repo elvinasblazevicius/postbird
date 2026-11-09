@@ -16,7 +16,9 @@ import siteConfig from "@site-config";
 import { accountUrl } from "@/lib/account";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { trialUsedElsewhereIds } from "@/lib/billing/trial-markers";
-import { LIVE_STATUSES, welcomeTrialEnd, type BillingStatus, type ConfirmInfo, type PlanInterval, type WelcomeInfo } from "@/lib/billing/subscriptions";
+import {
+  LIVE_STATUSES, UNCONFIRMED_CANCEL_DAYS, welcomeTrialEnd, type BillingStatus, type ConfirmInfo, type ConfirmSendDay, type PlanInterval, type WelcomeInfo,
+} from "@/lib/billing/subscriptions";
 import { sql } from "@/lib/db";
 import { planDescription } from "@/lib/early-access-copy";
 import { batchKey, isEmailConfigured, sendBatch, sendEmail, type OutgoingEmail, type SendResult } from "@/lib/email";
@@ -29,6 +31,14 @@ export function planPrice(interval: PlanInterval | null): string {
   if (interval === "quarter") return q.price;
   if (interval === "month") return m.price;
   return siteConfig.premium.priceSummary;
+}
+
+/** How often a plan of this interval renews, after its price: "per month" or "every 3 months". */
+export function planPeriod(interval: PlanInterval | null): string {
+  const [m, q] = siteConfig.premium.plans;
+  if (interval === "quarter") return `every ${q.per}`;
+  if (interval === "month") return `per ${m.per}`;
+  return "per period";
 }
 
 /** List-Unsubscribe headers for emails that have an unsubscribe link (RFC 8058 one-click). */
@@ -146,11 +156,29 @@ export async function runWelcomeRetries(limit = 200, onlyId: number | null = nul
 
 // ── Confirmation for an address a checkout didn't prove ──────
 
+/**
+ * The last day to confirm before a trial at an unconfirmed address is canceled: the daily job
+ * cancels it once the trial ends within UNCONFIRMED_CANCEL_DAYS, so confirming before this
+ * date always keeps it.
+ */
+export function confirmDeadline(trialEndsAt: Date | string): string {
+  return new Date(new Date(trialEndsAt).getTime() - UNCONFIRMED_CANCEL_DAYS * 86_400_000).toISOString();
+}
+
 export async function sendPaidConfirmation(c: ConfirmInfo): Promise<SendResult> {
+  const day = c.sendDay ?? "start";
   return sendEmail({
     to: c.email,
-    ...paidConfirmationEmail({ confirmUrl: absoluteUrl(`/alerts/confirm?token=${encodeURIComponent(c.confirmToken)}`) }),
-    idempotencyKey: `paid-confirm:${c.subscriberId}:${c.subscriptionId}`,
+    ...paidConfirmationEmail({
+      confirmUrl: absoluteUrl(`/alerts/confirm?token=${encodeURIComponent(c.confirmToken)}`),
+      accountUrl: accountUrl(c.manageToken),
+      trialEndsAt: c.trialEndsAt,
+      confirmBy: c.trialEndsAt ? confirmDeadline(c.trialEndsAt) : null,
+      price: planPrice(c.planInterval),
+      period: planPeriod(c.planInterval),
+    }),
+    // One key per send day: the first email, and the reminders on days 3 and 10 of the trial.
+    idempotencyKey: day === "start" ? `paid-confirm:${c.subscriberId}:${c.subscriptionId}` : `paid-confirm:${c.subscriberId}:${c.subscriptionId}:${day}`,
   });
 }
 
@@ -164,27 +192,55 @@ export async function confirmationSent(subscriberId: number): Promise<void> {
   await sql`update subscribers set confirm_claimed_at = null where id = ${subscriberId}`;
 }
 
+/** The days of a trial on which the confirmation email is sent again while the address isn't confirmed. */
+export const CONFIRM_RESEND_DAYS = [3, 10] as const;
+
 /**
- * Daily job: confirmation links that failed to send (see confirmationNotSent)
- * or whose claim was left open, for every address with a running plan that
- * isn't confirmed: new addresses from the public trial form as well as
- * existing ones.
+ * Daily job, for every address with a running plan that isn't confirmed (new
+ * addresses from the public trial form as well as existing ones):
+ *  - confirmation links that failed to send (see confirmationNotSent) or whose
+ *    claim was left open;
+ *  - during a free trial, the confirmation email again on day 3 and on day 10
+ *    (counted from the trial's start, trial_ends_at minus the trial length),
+ *    each once: the last one sent before that day is older than the day. A
+ *    trial already canceled for want of confirmation gets nothing.
+ * The send day is part of the idempotency key.
  */
 export async function runConfirmationRetries(limit = 200): Promise<{ sent: number; failed: number }> {
-  const rows = await sql<{ id: number; email: string; confirm_token: string; paddle_subscription_id: string }[]>`
-    update subscribers set confirm_sent_at = now(), confirm_claimed_at = now()
-    where id in (
-      select id from subscribers
-      where (confirm_sent_at is null or confirm_claimed_at < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES}))
-        and confirm_token is not null and status <> 'confirmed'
-        and paddle_subscription_id is not null and billing_status in ('trialing', 'active', 'past_due', 'paused')
-      order by id limit ${limit}
-    ) and (confirm_sent_at is null or confirm_claimed_at < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES}))
-    returning id::int as id, email, confirm_token, paddle_subscription_id`;
+  const trialDays = siteConfig.premium.trialDays;
+  const [d1, d2] = CONFIRM_RESEND_DAYS;
+  const rows = await sql<{ id: number; email: string; confirm_token: string; paddle_subscription_id: string; manage_token: string; billing_status: BillingStatus; trial_ends_at: Date | null; plan_interval: PlanInterval | null; send_day: ConfirmSendDay }[]>`
+    with due as (
+      select s.id,
+             case when s.billing_status = 'trialing' and s.trial_ends_at is not null
+                    and now() >= s.trial_ends_at - make_interval(days => ${trialDays - d2}) then 'day10'
+                  when s.billing_status = 'trialing' and s.trial_ends_at is not null
+                    and now() >= s.trial_ends_at - make_interval(days => ${trialDays - d1}) then 'day3'
+                  else 'start' end as send_day,
+             s.trial_ends_at - make_interval(days => ${trialDays}) as trial_start
+      from subscribers s
+      where s.confirm_token is not null and s.status <> 'confirmed'
+        and s.paddle_subscription_id is not null and s.billing_status in ('trialing', 'active', 'past_due', 'paused')
+        and not exists (select 1 from billing_flags f where f.subscription_id = s.paddle_subscription_id and f.kind = 'trial_unconfirmed' and f.cancel_done_at is not null)
+    ), picked as (
+      select s.id, d.send_day from subscribers s join due d on d.id = s.id
+      where (s.confirm_sent_at is null or s.confirm_claimed_at < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES}))
+         -- A reminder day reached since the last send (and no send still in flight).
+         or (s.confirm_claimed_at is null and d.send_day = 'day3' and s.confirm_sent_at < d.trial_start + make_interval(days => ${d1}))
+         or (s.confirm_claimed_at is null and d.send_day = 'day10' and s.confirm_sent_at < d.trial_start + make_interval(days => ${d2}))
+      order by s.id limit ${limit}
+      for update of s skip locked
+    )
+    update subscribers s set confirm_sent_at = now(), confirm_claimed_at = now()
+    from picked where s.id = picked.id
+    returning s.id::int as id, s.email, s.confirm_token, s.paddle_subscription_id, s.manage_token, s.billing_status, s.trial_ends_at, s.plan_interval, picked.send_day`;
   let sent = 0, failed = 0;
   for (const [i, r] of rows.entries()) {
     await spaced(i);
-    const res = await sendPaidConfirmation({ subscriberId: r.id, email: r.email, confirmToken: r.confirm_token, subscriptionId: r.paddle_subscription_id });
+    const res = await sendPaidConfirmation({
+      subscriberId: r.id, email: r.email, confirmToken: r.confirm_token, subscriptionId: r.paddle_subscription_id, manageToken: r.manage_token,
+      trialEndsAt: welcomeTrialEnd(r.billing_status, r.trial_ends_at), planInterval: r.plan_interval, sendDay: r.send_day,
+    });
     if (res.ok) {
       sent++;
       await confirmationSent(r.id);
@@ -206,14 +262,17 @@ const REMINDER_DAYS_BEFORE = 3;
  * next 3 days and who hasn't canceled: the plan, the amount, the date of the
  * first payment and the link to cancel. Sent at most once
  * (trial_reminder_sent_at), also to addresses that unsubscribed from alerts,
- * because it is about a payment.
+ * because it is about a payment. Not to an address still waiting for
+ * confirmation (awaiting_confirmation(), db/migrations/015): its trial is
+ * canceled before it ends unless it is confirmed, and it gets the
+ * confirmation email again instead (runConfirmationRetries).
  */
 export async function runTrialReminders(limit = 500): Promise<{ sent: number; failed: number }> {
   const rows = await sql<{ id: number; email: string; manage_token: string; trial_ends_at: Date; plan_interval: PlanInterval | null }[]>`
     update subscribers set trial_reminder_sent_at = now(), trial_reminder_claimed_at = now()
     where id in (
       select id from subscribers
-      where billing_status = 'trialing' and cancel_at is null
+      where billing_status = 'trialing' and cancel_at is null and not awaiting_confirmation(subscribers)
         and (trial_reminder_sent_at is null or trial_reminder_claimed_at < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES}))
         and trial_ends_at > now() and trial_ends_at <= now() + make_interval(days => ${REMINDER_DAYS_BEFORE})
       order by trial_ends_at limit ${limit}
@@ -278,7 +337,7 @@ export async function notifyWaitlist(limit = 300): Promise<WaitlistNoticeResult>
       select id from subscribers
       where premium_waitlist and status = 'confirmed' and waitlist_notified_at is null and billing_status <> all(${live})
         -- The email offers the free trial: not to an address that has had a plan (see hadTrialBefore).
-        and billing_status = 'none' and paddle_subscription_id is null and trial_ends_at is null and canceled_at is null
+        and not had_plan(subscribers)
       order by id limit ${limit}
     ) and waitlist_notified_at is null
     returning id::int as id, email, unsubscribe_token`;
@@ -307,7 +366,7 @@ export async function notifyWaitlist(limit = 300): Promise<WaitlistNoticeResult>
   const [{ remaining }] = await sql<{ remaining: number }[]>`
     select count(*)::int as remaining from subscribers
     where premium_waitlist and status = 'confirmed' and waitlist_notified_at is null and billing_status <> all(${live})
-      and billing_status = 'none' and paddle_subscription_id is null and trial_ends_at is null and canceled_at is null`;
+      and not had_plan(subscribers)`;
   const message = rows.length === 0
     ? "Nobody left to email: every confirmed early-access member has had this email."
     : `Sent ${sent}${failed ? `, ${failed} failed (they stay on the list for the next try)` : ""}. ${remaining ? `${remaining} still to send: click again.` : "Everyone has been emailed."}`;

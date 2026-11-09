@@ -231,15 +231,20 @@ describe("job page and card helpers", () => {
     expect(extraLocation("Addis Ababa, Ethiopia", "Addis Ababa")).toBeNull();
   });
 
-  it("keeps badge text on one line, smaller for longer monograms", async () => {
+  it("keeps badge text on one line and never below 11px (the tile widens instead)", async () => {
     const { badgeFontSize, badgeText } = await import("@/components/job-card");
     expect(badgeText("WFP")).toBe("WFP");
     expect(badgeText("UNICEF")).toBe("UNICEF");
     expect(badgeText("ABCDEFGHIJ")).toBe("ABCDE");
     expect(badgeFontSize("WFP", "sm")).toBe("text-[0.75rem]");
-    expect(badgeFontSize("UNHCR", "sm")).toBe("text-[0.6rem]");
-    expect(badgeFontSize("UNICEF", "sm")).toBe("text-[0.5625rem]");
+    expect(badgeFontSize("UNHCR", "sm")).toBe("text-[0.6875rem]");
+    expect(badgeFontSize("UNICEF", "sm")).toBe("text-[0.6875rem]");
     expect(badgeFontSize("A", "lg")).toBe("text-base");
+    // Every size class is 11px (0.6875rem) or larger.
+    const rem = (cls: string) => (cls === "text-base" ? 1 : Number(cls.match(/\[([\d.]+)rem\]/)![1]));
+    for (const text of ["A", "WFP", "UNDP", "UNHCR", "UNESCO", "ACTED"]) {
+      for (const size of ["sm", "md", "lg"] as const) expect(rem(badgeFontSize(text, size)) * 16, `${text} ${size}`).toBeGreaterThanOrEqual(11);
+    }
   });
 
   it("never makes a monogram longer than 5 characters, except a known 6-letter acronym", async () => {

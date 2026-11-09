@@ -112,3 +112,19 @@ export async function rateLimit(key: string, limit: number, windowSeconds: numbe
     throw e;
   }
 }
+
+/**
+ * rateLimit for server actions, which must answer with a form state rather
+ * than crash: "ok" (allowed), "limited" (over the limit) or "error" (the
+ * database couldn't be asked; logged). Callers fail closed on "error" with a
+ * "try again in a minute" answer, since a limit that can't be checked
+ * protects nothing.
+ */
+export async function safeRateLimit(key: string, limit: number, windowSeconds: number): Promise<"ok" | "limited" | "error"> {
+  try {
+    return (await rateLimit(key, limit, windowSeconds)) ? "ok" : "limited";
+  } catch (e) {
+    console.error("rate-limit: check failed", (e as Error)?.message ?? e);
+    return "error";
+  }
+}

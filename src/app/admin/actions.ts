@@ -10,7 +10,7 @@ import { sql, transaction, type Db } from "@/lib/db";
 import { batchKey, isEmailConfigured, sendBatch, sendEmail, type OutgoingEmail } from "@/lib/email";
 import { confirmationEmail } from "@/lib/email-templates";
 import { parseFeed } from "@/lib/feeds/parse";
-import { clientIp, hashKey, rateLimit } from "@/lib/rate-limit";
+import { clientIp, hashKey, safeRateLimit } from "@/lib/rate-limit";
 import { absoluteUrl, parseId } from "@/lib/site";
 import { requireAdmin } from "./guard";
 import siteConfig from "@site-config";
@@ -38,11 +38,16 @@ export async function loginAction(_prev: AdminState, form: FormData): Promise<Ad
   // Stored as a salted hash, never the IP itself; rows are deleted after 24 hours.
   const who = hashKey(`admin-login|${ip}`);
   const locked = { ok: false, message: `Too many wrong passwords. Try again in ${LOCK_MINUTES} minutes.` };
-  if (!(await rateLimit(`admin-login|${ip}`, 30, LOCK_MINUTES * 60))) return locked;
-  const [{ mine }] = await sql<{ mine: number }[]>`
+  // Fails closed: if the database can't be asked, nobody signs in (the limits couldn't be checked).
+  const unavailable = { ok: false, message: "Sign-in isn't available right now. Please try again in a minute." };
+  const limit = await safeRateLimit(`admin-login|${ip}`, 30, LOCK_MINUTES * 60);
+  if (limit === "error") return unavailable;
+  if (limit === "limited") return locked;
+  const failures = await sql<{ mine: number }[]>`
     select count(*)::int as mine from admin_login_failures
-    where who = ${who} and at > now() - make_interval(mins => ${LOCK_MINUTES})`;
-  if (mine >= MAX_FAILURES_PER_IP) return locked;
+    where who = ${who} and at > now() - make_interval(mins => ${LOCK_MINUTES})`.catch(() => null);
+  if (!failures) return unavailable;
+  if (failures[0].mine >= MAX_FAILURES_PER_IP) return locked;
   if (!checkPassword(String(form.get("password") ?? ""))) {
     await sql`insert into admin_login_failures (who) values (${who})`;
     await sql`delete from admin_login_failures where at < now() - interval '24 hours'`;
@@ -272,7 +277,7 @@ export async function resolveBillingFlagAction(form: FormData): Promise<void> {
   await requireAdmin();
   const subscriptionId = String(form.get("subscription_id") ?? "").slice(0, 100);
   const kind = String(form.get("kind") ?? "");
-  if (/^sub_[a-z\d]{26}$/.test(subscriptionId) && ["trial_blocked", "customer_mismatch", "customer_unverified"].includes(kind)) {
+  if (/^sub_[a-z\d]{26}$/.test(subscriptionId) && ["trial_blocked", "customer_mismatch", "customer_unverified", "duplicate_subscription", "trial_unconfirmed"].includes(kind)) {
     await sql`update billing_flags set resolved_at = now(), updated_at = now() where subscription_id = ${subscriptionId} and kind = ${kind} and resolved_at is null`;
   }
   revalidatePath("/admin");

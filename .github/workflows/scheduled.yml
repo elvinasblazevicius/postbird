@@ -13,6 +13,10 @@
 #   NEXT_PUBLIC_PADDLE_CLIENT_TOKEN, NEXT_PUBLIC_PADDLE_PRICE_MONTHLY, NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY
 #                    (optional, once billing is live) same as on your host: the free
 #                    weekly email then offers the free trial instead of early access
+#   PADDLE_API_KEY, NEXT_PUBLIC_PADDLE_ENV
+#                    (required once billing is live) same as on your host: the daily run
+#                    cancels free trials at addresses nobody confirmed before they turn
+#                    into a payment, and retries Paddle cancels that failed (README Step 4)
 name: Scheduled jobs
 
 on:
@@ -67,6 +71,8 @@ jobs:
           NEXT_PUBLIC_PADDLE_CLIENT_TOKEN: ${{ secrets.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN }}
           NEXT_PUBLIC_PADDLE_PRICE_MONTHLY: ${{ secrets.NEXT_PUBLIC_PADDLE_PRICE_MONTHLY }}
           NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY: ${{ secrets.NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY }}
+          NEXT_PUBLIC_PADDLE_ENV: ${{ secrets.NEXT_PUBLIC_PADDLE_ENV }}
+          PADDLE_API_KEY: ${{ secrets.PADDLE_API_KEY }}
         run: |
           if [ -z "$DATABASE_URL" ]; then echo "::error::Add the DATABASE_URL repository secret."; exit 1; fi
           if [ -z "$ANALYTICS_SALT" ] && [ -z "$CRON_SECRET" ]; then

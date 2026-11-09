@@ -25,6 +25,8 @@
   --tint-ink: #33405a;
   --lilac: #f1f3f7;
   --lilac-ink: #33405a;
+  /* Postmark ink (the closing-date stamps): a deep franking blue, about 10:1 on white. */
+  --postmark: #2b4170;
 }
 
 @theme inline {
@@ -202,4 +204,115 @@ a {
     clip: rect(0 0 0 0);
     white-space: nowrap;
   }
+}
+
+/*
+ * Postmark: the site's one signature element (src/components/postmark.tsx). A round date stamp
+ * with a double ring, set at a slight angle like a real cancellation; dates only. Transparent
+ * inside, so it sits on white rows, their grey hover and the grey bands alike.
+ */
+@layer components {
+  .postmark {
+    display: inline-flex;
+    align-items: center;
+    color: var(--postmark);
+    flex-shrink: 0;
+  }
+  .postmark-urgent {
+    color: var(--signal);
+  }
+  .postmark-ring {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid currentColor;
+    border-radius: 9999px;
+    text-align: center;
+    line-height: 1.1;
+    transform: rotate(-7deg);
+  }
+  .postmark-ring::before {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border: 1px solid currentColor;
+    border-radius: inherit;
+    opacity: 0.45;
+  }
+  .postmark-top {
+    font-size: 0.6875rem;
+    font-weight: 500;
+  }
+  .postmark-main {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-variant-numeric: lining-nums tabular-nums;
+    white-space: nowrap;
+  }
+  .postmark-bottom {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .postmark-sm .postmark-ring {
+    width: 4.25rem;
+    height: 4.25rem;
+  }
+  .postmark-sm .postmark-main {
+    font-size: 0.95rem;
+    margin: 0.05rem 0;
+  }
+  .postmark-lg .postmark-ring {
+    width: 6.5rem;
+    height: 6.5rem;
+  }
+  .postmark-lg .postmark-top {
+    font-size: 0.8125rem;
+  }
+  .postmark-lg .postmark-main {
+    font-size: 1.6rem;
+    margin: 0.1rem 0;
+  }
+  .postmark-lg .postmark-bottom {
+    font-size: 0.8125rem;
+  }
+  .postmark-waves {
+    width: 2.75rem;
+    height: 2rem;
+    margin-right: -0.45rem;
+    opacity: 0.55;
+    transform: rotate(-7deg);
+  }
+  .postmark-lg .postmark-waves {
+    width: 3.5rem;
+    height: 2.6rem;
+  }
+}
+
+/*
+ * Home search on the dark hero, without a white card around it: white fields, white labels, and
+ * a white focus ring that shows on the deep blue (the fields' own blue ring would not).
+ */
+#hero-search label,
+#hero-search legend {
+  color: #ffffff;
+}
+#hero-search summary {
+  color: #ffffff;
+}
+#hero-search summary:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+#hero-search :is(input, select, button, summary):focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+#hero-search label:has(> input[type="checkbox"]) {
+  color: var(--ink);
+}
+#hero-search label:has(> input[type="checkbox"]) input:focus-visible {
+  outline-color: var(--accent);
 }

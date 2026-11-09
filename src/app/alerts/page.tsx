@@ -88,7 +88,7 @@ export default async function AlertsPage({ searchParams }: Props) {
                 <Link href="/pricing" className="font-medium text-accent hover:underline">Compare free and paid</Link>
               </p>
             </section>
-            <AlertExample heading="What the email looks like" />
+            <AlertExample heading="What the weekly email looks like" kind="weekly" />
           </div>
         </div>
       </>
