@@ -6,10 +6,12 @@ import { findByUnsubscribeToken } from "@/lib/subscribers";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Unsubscribe", robots: { index: false, follow: false } };
 
-type Props = { searchParams: Promise<{ token?: string }> };
+type Props = { searchParams: Promise<{ token?: string | string[] }> };
 
 export default async function UnsubscribePage({ searchParams }: Props) {
-  const token = (await searchParams).token ?? "";
+  const raw = (await searchParams).token;
+  // A repeated parameter arrives as an array; findByUnsubscribeToken accepts only a well-formed token.
+  const token = typeof raw === "string" ? raw : "";
   const sub = await findByUnsubscribeToken(token);
   // A running plan (trial, paying, payment overdue or paused): unsubscribing stops emails, not the plan.
   const renewal = sub ? planRenewal(sub) : null;
@@ -29,7 +31,8 @@ export default async function UnsubscribePage({ searchParams }: Props) {
           <p className="mt-3 rounded-xl bg-signal-bg p-4 text-[1.02rem] leading-relaxed text-ink">{renewal.sentence}</p>
           {renewal.chargesAhead ? (
             <p className="mt-3 text-[0.95rem] text-slate">
-              To stop payments, cancel the plan. You&apos;ll still get emails about the plan itself, such as a reminder before a free trial ends, and Paddle&apos;s receipts.
+              To stop payments, cancel the plan: &quot;Cancel my plan&quot; emails you a link to your account, where you cancel it. You&apos;ll still get emails about the
+              plan itself, such as a reminder before a free trial ends, and Paddle&apos;s receipts.
             </p>
           ) : null}
           <div className="mt-6 flex flex-wrap items-start gap-3">

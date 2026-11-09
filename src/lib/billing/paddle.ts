@@ -78,7 +78,7 @@ export function verifyPaddleSignature(
 
 // ── API calls ────────────────────────────────────────────────
 
-class PaddleApiError extends Error {
+export class PaddleApiError extends Error {
   constructor(public status: number, public code: string | null) {
     super(`Paddle API returned HTTP ${status}${code ? ` (${code})` : ""}`);
   }
@@ -140,7 +140,69 @@ export async function getSubscription(subscriptionId: string): Promise<PaddleSub
   return paddleFetch<PaddleSubscription>(`/subscriptions/${subscriptionId}`);
 }
 
-// ── Checkout without a trial (one free trial per person) ─────
+/**
+ * Cancels a subscription at once, not at the end of its period (needs the
+ * subscription.write permission). Used for a free trial the address may not
+ * have (one per email address): no charge is ever taken for it.
+ */
+export async function cancelSubscriptionNow(subscriptionId: string): Promise<void> {
+  if (!PADDLE_ID("sub").test(subscriptionId)) throw new Error("Invalid Paddle subscription id");
+  await paddleFetch<{ id: string }>(`/subscriptions/${subscriptionId}/cancel`, { method: "POST", body: { effective_from: "immediately" } });
+}
+
+/** Customer fields this site reads (a subset of Paddle's customer entity). */
+export type PaddleCustomer = { id: string; email: string; status?: string };
+
+/** Fetches a customer (needs the customer.read permission). The id goes in the path; never an email address. */
+export async function getCustomer(customerId: string): Promise<PaddleCustomer> {
+  if (!PADDLE_ID("ctm").test(customerId)) throw new Error("Invalid Paddle customer id");
+  return paddleFetch<PaddleCustomer>(`/customers/${customerId}`);
+}
+
+export const isPaddleCustomerId = (id: unknown): id is string => typeof id === "string" && PADDLE_ID("ctm").test(id);
+
+// ── Billing self-check (Admin → Overview) ────────────────────
+
+export type SelfCheckItem = { name: string; ok: boolean; detail: string };
+
+/** What a failed call says about the key, in plain words. */
+function failureDetail(e: unknown, permission: string): string {
+  if (e instanceof PaddleApiError) {
+    if (e.status === 401) return "Paddle doesn't accept the API key (wrong key, revoked, or for the other environment: sandbox vs live).";
+    if (e.status === 403) return `The API key lacks the "${permission}" permission. Add it to the key in Paddle → My account → Settings → Authentication → API keys.`;
+    if (e.status === 404) return "Paddle doesn't know this id in this environment (check the price id and NEXT_PUBLIC_PADDLE_ENV).";
+    return `Paddle answered with an error (HTTP ${e.status}${e.code ? `, ${e.code}` : ""}).`;
+  }
+  if (/^Invalid Paddle/.test((e as Error)?.message ?? "")) return `${(e as Error).message}: check the id in the environment variables.`;
+  return `Paddle couldn't be reached (${(e as Error)?.message ?? "unknown error"}).`;
+}
+
+/**
+ * Checks the API key with two harmless reads: the monthly price (price.read)
+ * and one customer (customer.read; GET /customers?per_page=1, no email in the
+ * URL). The permissions that change things (transaction.write,
+ * subscription.write, customer_portal_session.write) can't be tested without
+ * making changes, so they are listed for checking by hand.
+ */
+export async function billingSelfCheck(monthlyPriceId: string): Promise<SelfCheckItem[]> {
+  if (!isPaddleApiConfigured()) return [{ name: "API key", ok: false, detail: "PADDLE_API_KEY is not set." }];
+  const out: SelfCheckItem[] = [];
+  try {
+    await getPrice(monthlyPriceId);
+    out.push({ name: "Price read", ok: true, detail: "OK: the monthly price can be read." });
+  } catch (e) {
+    out.push({ name: "Price read", ok: false, detail: monthlyPriceId ? failureDetail(e, "Price: read") : "NEXT_PUBLIC_PADDLE_PRICE_MONTHLY is not set." });
+  }
+  try {
+    await paddleFetch<unknown[]>("/customers?per_page=1");
+    out.push({ name: "Customer read", ok: true, detail: "OK: customers can be read." });
+  } catch (e) {
+    out.push({ name: "Customer read", ok: false, detail: failureDetail(e, "Customer: read") });
+  }
+  return out;
+}
+
+// ── Checkout without a trial (one free trial per email address) ─
 
 type Money = { amount: string; currency_code: string };
 
@@ -179,7 +241,7 @@ export function noTrialPrice(price: PaddlePrice) {
   const base = (price.description || "Plan").trim();
   return {
     // Internal only (not shown to customers), 2–500 characters.
-    description: `${base} (no trial: one free trial per person)`.slice(0, 500),
+    description: `${base} (no trial: one free trial per email address)`.slice(0, 500),
     name: price.name ?? null,
     product_id: price.product_id,
     unit_price: price.unit_price,

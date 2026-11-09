@@ -252,3 +252,29 @@ export async function notifyWaitlistAction(form: FormData): Promise<void> {
   const r = await notifyWaitlist();
   redirect(`/admin/subscribers?msg=${encodeURIComponent(`Early access email: ${r.message}`)}`);
 }
+
+// ── Billing ──
+export type SelfCheckState = { checked: boolean; items: { name: string; ok: boolean; detail: string }[] };
+
+/**
+ * "Billing self-check": two harmless reads with the Paddle API key (the monthly
+ * price and one customer) that show which permission is missing, if any.
+ */
+export async function billingSelfCheckAction(): Promise<SelfCheckState> {
+  await requireAdmin();
+  const { billingSelfCheck } = await import("@/lib/billing/paddle");
+  const { PADDLE_PRICE_MONTHLY } = await import("@/lib/billing/live");
+  return { checked: true, items: await billingSelfCheck(PADDLE_PRICE_MONTHLY) };
+}
+
+/** Marks a billing flag (Admin → Overview) as dealt with. */
+export async function resolveBillingFlagAction(form: FormData): Promise<void> {
+  await requireAdmin();
+  const subscriptionId = String(form.get("subscription_id") ?? "").slice(0, 100);
+  const kind = String(form.get("kind") ?? "");
+  if (/^sub_[a-z\d]{26}$/.test(subscriptionId) && ["trial_blocked", "customer_mismatch", "customer_unverified"].includes(kind)) {
+    await sql`update billing_flags set resolved_at = now(), updated_at = now() where subscription_id = ${subscriptionId} and kind = ${kind} and resolved_at is null`;
+  }
+  revalidatePath("/admin");
+  redirect("/admin");
+}

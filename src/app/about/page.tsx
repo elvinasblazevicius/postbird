@@ -59,7 +59,7 @@ export default async function AboutPage() {
           </p>
         </section>
         {covered.length ? (
-          <section aria-labelledby="covered-heading">
+          <section id="organizations" aria-labelledby="covered-heading" className="scroll-mt-24">
             <h2 id="covered-heading" className="text-2xl font-semibold leading-tight">Organizations we cover</h2>
             <p className="mt-3">Organizations with open vacancies on {siteConfig.name} right now. The list changes as vacancies open and close.</p>
             <div className="mt-4 space-y-5">
@@ -82,7 +82,10 @@ export default async function AboutPage() {
         <section>
           <h2 className="text-2xl font-semibold leading-tight">Independence</h2>
           <p className="mt-3">{siteConfig.disclaimer}</p>
-          <p className="mt-3">{siteConfig.name} is built and run by {siteConfig.operator.name}, {siteConfig.operator.legalForm} and a small independent company. Postal address: {siteConfig.operator.address}.</p>
+          <p className="mt-3">
+            {siteConfig.name} is built and run by {siteConfig.operator.name}, a small independent {siteConfig.operator.legalForm.replace(/^an? /, "")}. Postal address:{" "}
+            {siteConfig.operator.address}.
+          </p>
           <p className="mt-3">
             Spotted a mistake or a listing that shouldn&apos;t be here?{" "}
             {siteConfig.contactEmail ? <a href={`mailto:${siteConfig.contactEmail}`} className="text-accent underline">Email us at {siteConfig.contactEmail}</a> : "Let us know"} and we&apos;ll fix or remove it.

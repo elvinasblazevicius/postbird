@@ -17,7 +17,7 @@ export const metadata = {
 
 export default async function HomePage() {
   const [latest, orgs, countries, categories, stats, types, regions, grades, langs, exps, orgTypes, closing] = await Promise.all([
-    latestJobs(9),
+    latestJobs(8),
     organizationFacets(),
     countryFacets(),
     categoryFacets(),
@@ -30,13 +30,13 @@ export default async function HomePage() {
     orgTypeFacets(),
     closingSoonJobs(12),
   ]);
-  const closingFresh = closing.filter((j) => !latest.some((l) => l.id === j.id)).slice(0, 3);
-  // A row of one or two looks broken; show the section only with three cards.
-  const closingSoon = closingFresh.length === 3 ? closingFresh : [];
+  const closingFresh = closing.filter((j) => !latest.some((l) => l.id === j.id));
+  // The grid has two columns on wide screens: show 4 or 2 so no row is half empty, none below 2.
+  const closingSoon = closingFresh.slice(0, closingFresh.length >= 4 ? 4 : closingFresh.length >= 2 ? 2 : 0);
 
   const showTotal = stats.active >= siteConfig.showVacancyCountFrom;
-  // Entry points by employer type; a type with no open jobs is left out.
-  const employerTypes = EMPLOYER_TYPE_PAGES.map((t) => ({ ...t, count: orgTypes.find((o) => o.value === t.orgtype)?.count ?? 0 })).filter((t) => t.count > 0);
+  // Entry points by employer type (the row under the hero search): every type, with its count when it has open jobs.
+  const employerTypes = EMPLOYER_TYPE_PAGES.map((t) => ({ ...t, count: orgTypes.find((o) => o.value === t.orgtype)?.count ?? 0 }));
 
   const websiteLd = {
     "@context": "https://schema.org",
@@ -68,6 +68,21 @@ export default async function HomePage() {
           <div className="mt-4 max-w-4xl sm:mt-9">
             <HeroSearch facets={{ orgs, countries, regions, categories, types, grades, langs, exps, orgTypes }} />
           </div>
+          <nav aria-label="Employer types" className="mt-4 max-w-4xl">
+            <ul className="flex flex-wrap gap-2">
+              {employerTypes.map((t) => (
+                <li key={t.path}>
+                  <Link
+                    href={t.path}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-white/30 px-3 py-1 text-sm font-medium text-white hover:border-white hover:bg-white/10"
+                  >
+                    {t.label}
+                    {t.count > 0 ? <span className="font-normal text-white/75">{t.count.toLocaleString("en-US")}</span> : null}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
           <p className="mt-5 hidden flex-wrap gap-x-5 gap-y-2 text-[0.95rem] text-white/85 sm:flex">
             <span className="text-white">
               {showTotal ? (
@@ -119,26 +134,9 @@ export default async function HomePage() {
           <div className="mt-5"><JobGrid jobs={closingSoon} /></div>
         </section>
       ) : null}
-      {employerTypes.length || countries.length ? (
-        <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6" aria-label="Browse by employer and place">
+      {countries.length ? (
+        <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6" aria-label="Browse by duty station">
           <div className="space-y-3">
-            {employerTypes.length ? (
-              <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
-                <span className="shrink-0 text-sm font-medium text-slate sm:w-28 sm:pt-1.5">Employers</span>
-                <div className="flex flex-wrap items-center gap-2">
-                  {employerTypes.map((t) => (
-                    <Link
-                      key={t.path}
-                      href={t.path}
-                      className="rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm font-semibold text-ink hover:border-accent hover:text-accent"
-                    >
-                      {t.label}
-                      <span className="ml-1.5 font-normal text-slate">{t.count}</span>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : null}
             {countries.length ? (
               <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
                 <span className="shrink-0 text-sm font-medium text-slate sm:w-28 sm:pt-1.5">Duty stations</span>
@@ -177,7 +175,10 @@ export default async function HomePage() {
               </li>
             ))}
           </ul>
-          <Link href="/about" className="shrink-0 text-sm font-medium text-accent hover:underline">How it works</Link>
+          <div className="flex shrink-0 flex-wrap gap-x-5 gap-y-1 text-sm font-medium">
+            <Link href="/guides/how-to-read-a-un-vacancy" className="text-accent hover:underline">How to read a UN vacancy</Link>
+            <Link href="/about" className="text-accent hover:underline">How it works</Link>
+          </div>
         </div>
       </section>
 
@@ -192,7 +193,7 @@ export default async function HomePage() {
             {orgs.slice(0, 8).map((o) => (
               <li key={o.slug}>
                 <Link href={`/organizations/${o.slug}`} className="flex items-center gap-3 py-3 hover:bg-mist">
-                  <OrgBadge name={o.name} short={o.short_name} logo={o.logo} />
+                  <OrgBadge name={o.name} short={o.short_name} />
                   <span className="flex-1 text-ink">{o.name}</span>
                   <span className="pr-2 text-sm tabular-nums text-slate">{o.count} {o.count === 1 ? "job" : "jobs"}</span>
                 </Link>

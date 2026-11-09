@@ -12,11 +12,12 @@
  */
 import siteConfig from "@site-config";
 import { hadTrialBefore, type PlanHistory } from "@/lib/billing/subscriptions";
+import { markedEmails } from "@/lib/billing/trial-markers";
 import { sql } from "@/lib/db";
 import { batchKey, isEmailConfigured, sendBatch, type OutgoingEmail } from "@/lib/email";
 import { alertEmail, weeklyEmail, type AlertGroup } from "@/lib/email-templates";
 import { acquireLock, releaseLock } from "@/lib/feeds/sync";
-import { jobsUrl, parseFilters, searchJobs, type JobListItem } from "@/lib/jobs";
+import { filtersFromQuery, jobsUrl, searchJobs, type JobListItem } from "@/lib/jobs";
 import { describeSearch } from "@/lib/saved-searches";
 import { absoluteUrl } from "@/lib/site";
 
@@ -148,6 +149,8 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
       const byId = new Map(current.map((c) => [c.id, c]));
       const chunk = pending.filter((o) => byId.has(o.row.id));
       if (!chunk.length) return;
+      // Addresses deleted after a plan and signed up again keep their trial marker (one trial per email address).
+      const marked = await markedEmails(current.map((c) => c.email));
       const msgs: OutgoingEmail[] = chunk.map((o) => {
         const c = byId.get(o.row.id)!;
         const oneClick = absoluteUrl(`/api/unsubscribe?token=${c.unsubscribe_token}`);
@@ -158,7 +161,7 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
             search: o.row.search,
             trialUrl: o.trialUrl,
             // One free trial per person: someone who had a plan isn't offered another trial.
-            hadTrial: hadTrialBefore(c),
+            hadTrial: hadTrialBefore(c, marked.has(c.email)),
             accountUrl: absoluteUrl(`/account?t=${c.manage_token}`),
             unsubscribeUrl: absoluteUrl(`/alerts/unsubscribe?token=${c.unsubscribe_token}`),
           }),
@@ -193,7 +196,7 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
         r.last_digest_at ? new Date(r.last_digest_at).getTime() : 0,
         r.last_sent_at ? new Date(r.last_sent_at).getTime() : 0,
       ));
-      const filters = parseFilters(Object.fromEntries(new URLSearchParams(r.search)));
+      const filters = filtersFromQuery(r.search);
       const key = `${r.search}|${since.getTime()}`;
       if (!cache.has(key)) {
         cache.set(key, searchJobs({ ...filters, page: undefined, posted: undefined, sort: "newest", firstSeenAfter: since, firstSeenUntil: until, excludeDemo: true }, WEEKLY_JOBS_PER_SEARCH));
@@ -333,7 +336,7 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
           s.last_sent_at ? new Date(s.last_sent_at).getTime() : now.getTime() - firstHours * 3_600_000,
           now.getTime() - maxHours * 3_600_000,
         ));
-        const filters = parseFilters(Object.fromEntries(new URLSearchParams(s.search)));
+        const filters = filtersFromQuery(s.search);
         const res = await searchJobs({ ...filters, page: undefined, posted: undefined, sort: "newest", firstSeenAfter: since, firstSeenUntil: now, excludeDemo: true }, JOBS_PER_SEARCH);
         if (res.total === 0) continue;
         // "See all" opens the search on the site, limited to the last day or week (close to, not exactly, the email's window).

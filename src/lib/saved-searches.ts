@@ -4,10 +4,11 @@
  * Paid alerts use up to MAX_SAVED_SEARCHES; the free weekly email uses one.
  */
 import { categoryBySlug } from "@/config/categories";
-import { countryBySlug } from "@/config/countries";
-import { GRADE_GROUPS, regionBySlug } from "@/config/regions";
+import { ORG_TYPES } from "@/config/regions";
 import { sql, type Db } from "@/lib/db";
-import { getOrganization, jobsUrl, parseFilters } from "@/lib/jobs";
+import { orList, placeNames } from "@/lib/filter-labels";
+import { gradeLabel } from "@/lib/grades";
+import { EXPERIENCE_BANDS, filtersFromQuery, getOrganization, jobsUrl } from "@/lib/jobs";
 
 export const MAX_SAVED_SEARCHES = 5;
 /** Saved searches without a plan: the one the free weekly email uses. */
@@ -47,7 +48,8 @@ export function normalizeSearch(raw: string | null | undefined): string | null {
     s = s.replace(/^\?/, "");
   }
   if (s.length > 400 || !SEARCH_RE.test(s)) return null;
-  const f = parseFilters(Object.fromEntries(new URLSearchParams(s)));
+  // Repeated filters (grade=P-3&grade=P-4) are kept, in a fixed order (see parseFilters).
+  const f = filtersFromQuery(s);
   return jobsUrl({ ...f, page: undefined, sort: undefined, posted: undefined }).replace(/^\/jobs\??/, "");
 }
 
@@ -56,6 +58,10 @@ const STEP_KEEP = ["category", "grade", "type", "remote", "lang", "exp", "orgtyp
 
 type SP = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
+/** Every value of a field that may be repeated (where, grade), at most 10. */
+const all = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v === undefined ? [] : [v]).slice(0, 10);
+/** Filters that may hold several values. */
+const MULTI = new Set(["where", "grade"]);
 
 /**
  * The saved search for the alert sign-up pages (/alerts, /pricing/trial): from the "What should we
@@ -66,8 +72,10 @@ export function searchFromAlertStep(sp: SP): string | null {
   if (one(sp.step) === "watch") {
     const p = new URLSearchParams();
     for (const k of ["q", "org", "where", ...STEP_KEEP]) {
-      const v = one(sp[k]).trim().slice(0, 120);
-      if (v) p.set(k, v);
+      for (const raw of MULTI.has(k) ? all(sp[k]) : [one(sp[k])]) {
+        const v = raw.trim().slice(0, 120);
+        if (v) p.append(k, v);
+      }
     }
     return normalizeSearch(p.toString()) || null;
   }
@@ -78,7 +86,7 @@ export function searchFromAlertStep(sp: SP): string | null {
 /** The "What should we watch for?" fields inside the alert sign-up form. */
 export const WATCH_FIELDS = { q: "watch_q", org: "watch_org", where: "watch_where" } as const;
 
-type FormLike = { get(name: string): FormDataEntryValue | null; has(name: string): boolean };
+type FormLike = { get(name: string): FormDataEntryValue | null; getAll(name: string): FormDataEntryValue[]; has(name: string): boolean };
 
 /**
  * The saved search an alert sign-up form sends: its `search` field (a search started on the jobs
@@ -92,33 +100,51 @@ export function searchFromSignupForm(form: FormLike): string {
   if (Object.values(WATCH_FIELDS).some((k) => form.has(k))) {
     for (const k of ["q", "org", "where", "country", "region"]) p.delete(k);
     for (const [key, field] of Object.entries(WATCH_FIELDS)) {
-      const v = String(form.get(field) ?? "").trim().slice(0, 120);
-      if (v) p.set(key, v);
+      // The location may be several places (one field each).
+      for (const raw of key === "where" ? form.getAll(field).slice(0, 10) : [form.get(field)]) {
+        const v = String(raw ?? "").trim().slice(0, 120);
+        if (v) p.append(key, v);
+      }
     }
   }
   return normalizeSearch(p.toString()) ?? "";
 }
 
-/** The parts of a saved search the step's fields don't show, as hidden form fields. */
-export function alertStepKeep(search: string | null): Record<string, string> {
-  if (!search) return {};
+/** The parts of a saved search the step's fields don't show, as hidden form fields (a repeated grade gives several). */
+export function alertStepKeep(search: string | null): [string, string][] {
+  if (!search) return [];
   const p = new URLSearchParams(search);
-  return Object.fromEntries(STEP_KEEP.filter((k) => p.get(k)).map((k) => [k, p.get(k)!]));
+  return STEP_KEEP.flatMap((k) => p.getAll(k).filter(Boolean).map((v): [string, string] => [k, v]));
 }
 
-/** Plain-language summary of a saved search, e.g. "Data and analytics jobs, in Africa, grade P-3". */
+const POSTED: Record<string, string> = { "1": "posted in the last 24 hours", "7": "posted in the last 7 days", "30": "posted in the last 30 days" };
+const ORG_TYPE_PHRASE: Record<string, string> = {
+  un: "in the UN system",
+  eu: "at EU institutions",
+  ifi: "at development banks",
+  io: "at other international organizations",
+  ngo: "at NGOs",
+};
+
+/**
+ * Plain-language summary of a saved search, naming every filter it carries, e.g.
+ * "Data and analytics jobs, in Kenya or Uganda, grade P-3 or P-4, French mentioned".
+ */
 export async function describeSearch(query: string): Promise<string | null> {
-  const f = parseFilters(Object.fromEntries(new URLSearchParams(query)));
+  const f = filtersFromQuery(query);
   const parts: string[] = [];
   if (f.q) parts.push(`“${f.q}”`);
   if (f.category) parts.push(`${categoryBySlug(f.category)?.name} jobs`);
   if (f.org) parts.push(`at ${(await getOrganization(f.org).catch(() => null))?.name ?? f.org}`);
-  if (f.country) parts.push(`in ${countryBySlug(f.country)?.name}`);
-  if (f.region) parts.push(`in ${regionBySlug(f.region)?.name}`);
+  if (f.orgtype) parts.push(ORG_TYPE_PHRASE[f.orgtype] ?? `at ${ORG_TYPES.find((o) => o.value === f.orgtype)?.name ?? f.orgtype}`);
+  const places = placeNames(f);
+  if (places.length) parts.push(`in ${orList(places)}`);
   if (f.remote) parts.push("remote / home-based");
-  if (f.grade) parts.push(`grade ${GRADE_GROUPS.find((g) => g.value === f.grade)?.name ?? f.grade}`);
+  if (f.grade?.length) parts.push(`grade ${orList(f.grade.map(gradeLabel))}`);
   if (f.type) parts.push(f.type.toLowerCase());
-  if (f.lang) parts.push(`${f.lang} required`);
+  if (f.exp) parts.push(`experience ${EXPERIENCE_BANDS.find((b) => b.value === f.exp)?.name.toLowerCase() ?? f.exp}`);
+  if (f.lang) parts.push(`${f.lang} mentioned`);
+  if (f.posted) parts.push(POSTED[f.posted]);
   if (f.closing) parts.push(`closing within ${f.closing} days`);
   if (f.hidelocal) parts.push("without local-only posts");
   return parts.length ? parts.join(", ") : null;

@@ -66,11 +66,11 @@ export default function TermsPage() {
           </>
         ) : null}
 
-        <h2 className="pt-2 text-xl font-semibold">{siteConfig.freeWeeklyEmail ? "Paid email alerts" : "Email alerts"}</h2>
+        <h2 className="pt-2 text-xl font-semibold">{siteConfig.freeWeeklyEmail ? "Paid daily alerts" : "Email alerts"}</h2>
         {BILLING_LIVE ? (
           <>
             <p>
-              Email alerts are a paid subscription: {p.priceSummary}. Our order process is conducted by our online reseller Paddle.com, which is the merchant of
+              {p.name} are a paid subscription: {p.priceSummary}. Our order process is conducted by our online reseller Paddle.com, which is the merchant of
               record for all orders and handles payment, invoices, sales tax and VAT. Paddle&apos;s{" "}
               <a className="text-accent underline" href="https://www.paddle.com/legal/checkout-buyer-terms" rel="noopener">buyer terms</a> also apply to your purchase.
             </p>
@@ -95,12 +95,12 @@ export default function TermsPage() {
             <p>The same policy is on our <Link href="/refunds" className="text-accent underline">refunds page</Link>.</p>
             <h3 className="pt-1 text-lg font-semibold">Price changes</h3>
             <p>We&apos;ll email you at least 30 days before any price change takes effect, so you can cancel first.</p>
-            <h3 className="pt-1 text-lg font-semibold">If we stop offering email alerts</h3>
-            <p>If we stop offering email alerts, we&apos;ll tell you at least 30 days ahead, cancel your plan and refund the unused part of any period you&apos;ve paid for.</p>
+            <h3 className="pt-1 text-lg font-semibold">If we stop offering daily alerts</h3>
+            <p>If we stop offering daily alerts, we&apos;ll tell you at least 30 days ahead, cancel your plan and refund the unused part of any period you&apos;ve paid for.</p>
           </>
         ) : (
           <p>
-            Paid email alerts are not open yet; we are measuring interest first. Joining early access is free and creates no obligation. When alerts open they will cost{" "}
+            Paid daily alerts are not open yet; we are measuring interest first. Joining early access is free and creates no obligation. When alerts open they will cost{" "}
             {p.priceSummary}, with a {p.trialDays}-day free trial. We will publish the full billing terms here before taking any payment.
           </p>
         )}

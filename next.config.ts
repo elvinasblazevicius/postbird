@@ -102,6 +102,7 @@ const securityHeaders = [
 const CDN_CACHED_PAGES = [
   "/", "/jobs", "/jobs/:slug", "/organizations", "/organizations/:slug", "/locations", "/locations/:slug",
   "/categories", "/categories/:slug", "/remote-jobs", "/un-jobs", "/eu-jobs", "/development-bank-jobs", "/ngo-jobs",
+  "/international-organization-jobs",
   "/pricing", "/pricing/trial", "/about", "/refunds", "/saved", "/sitemap.xml", "/robots.txt",
   // A vacancy's share image: rendered from the database like the page (force-dynamic), and fetched
   // by every chat app and social network a link is pasted into.

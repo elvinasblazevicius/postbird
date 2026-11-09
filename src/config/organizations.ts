@@ -20,6 +20,8 @@ export type KnownOrg = {
   name: string;
   /** Short name or acronym, if commonly used. */
   short?: string;
+  /** Text of the organization's badge (a monogram, at most 6 characters) when the short name doesn't fit or there is none. */
+  badge?: string;
   type: OrgType;
   /** Other spellings seen in feeds (case-insensitive, exact match after trimming). */
   aliases?: string[];
@@ -39,7 +41,7 @@ export const KNOWN_ORGS: KnownOrg[] = [
   { name: "International Labour Organization", short: "ILO", type: "UN system", aliases: ["ILO"], domains: ["ilo.org"] },
   { name: "International Organization for Migration", short: "IOM", type: "UN system", aliases: ["IOM", "UN Migration", "OIM"], domains: ["iom.int"] },
   { name: "UNFPA", short: "UNFPA", type: "UN system", aliases: ["United Nations Population Fund"], domains: ["unfpa.org"] },
-  { name: "UN Women", short: "UN Women", type: "UN system", aliases: ["United Nations Entity for Gender Equality and the Empowerment of Women"], domains: ["unwomen.org"] },
+  { name: "UN Women", short: "UN Women", badge: "UNW", type: "UN system", aliases: ["United Nations Entity for Gender Equality and the Empowerment of Women"], domains: ["unwomen.org"] },
   { name: "UNESCO", short: "UNESCO", type: "UN system", aliases: ["United Nations Educational, Scientific and Cultural Organization"], domains: ["unesco.org"] },
   { name: "UNEP", short: "UNEP", type: "UN system", aliases: ["United Nations Environment Programme", "UN Environment Programme"], domains: ["unep.org"] },
   { name: "UN-Habitat", short: "UN-Habitat", type: "UN system", aliases: ["United Nations Human Settlements Programme"], domains: ["unhabitat.org"] },
@@ -53,7 +55,7 @@ export const KNOWN_ORGS: KnownOrg[] = [
   { name: "IAEA", short: "IAEA", type: "UN system", aliases: ["International Atomic Energy Agency"], domains: ["iaea.org"] },
   { name: "WIPO", short: "WIPO", type: "UN system", aliases: ["World Intellectual Property Organization"], domains: ["wipo.int"] },
   { name: "IFAD", short: "IFAD", type: "UN system", aliases: ["International Fund for Agricultural Development"], domains: ["ifad.org"] },
-  { name: "World Bank Group", short: "World Bank", type: "International financial institution", aliases: ["World Bank", "The World Bank", "IFC", "International Finance Corporation"], domains: ["worldbank.org", "ifc.org"] },
+  { name: "World Bank Group", short: "World Bank", badge: "WB", type: "International financial institution", aliases: ["World Bank", "The World Bank", "IFC", "International Finance Corporation"], domains: ["worldbank.org", "ifc.org"] },
   { name: "International Monetary Fund", short: "IMF", type: "International financial institution", aliases: ["IMF"], domains: ["imf.org"] },
   { name: "Asian Development Bank", short: "ADB", type: "International financial institution", aliases: ["ADB"], domains: ["adb.org"] },
   { name: "African Development Bank", short: "AfDB", type: "International financial institution", aliases: ["AfDB", "African Development Bank Group"], domains: ["afdb.org"] },
@@ -62,7 +64,7 @@ export const KNOWN_ORGS: KnownOrg[] = [
   { name: "European Investment Bank", short: "EIB", type: "International financial institution", aliases: ["EIB"], domains: ["eib.org"] },
   { name: "OECD", short: "OECD", type: "International organization", aliases: ["Organisation for Economic Co-operation and Development", "Organization for Economic Cooperation and Development"], domains: ["oecd.org"] },
   { name: "OSCE", short: "OSCE", type: "International organization", aliases: ["Organization for Security and Co-operation in Europe"], domains: ["osce.org"] },
-  { name: "Council of Europe", type: "International organization", domains: ["coe.int"] },
+  { name: "Council of Europe", badge: "CoE", type: "International organization", domains: ["coe.int"] },
   { name: "European Commission", type: "EU institution", aliases: ["EC"], domains: ["commission.europa.eu"] },
   { name: "EPSO (EU institutions)", short: "EPSO", type: "EU institution", aliases: ["EPSO", "European Personnel Selection Office"], domains: ["epso.europa.eu", "eu-careers.europa.eu"] },
   { name: "International Committee of the Red Cross", short: "ICRC", type: "International organization", aliases: ["ICRC"], domains: ["icrc.org"] },

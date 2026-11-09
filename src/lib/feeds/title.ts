@@ -33,3 +33,24 @@ export function cleanTitle(raw: string): string {
   t = t.replace(/(?<=\S)(?:\s+-\s*|-\s+)(?!(?:and|or|to)\s)(?=\S)/gi, " – ");
   return t.replace(/\s{2,}/g, " ").trim();
 }
+
+/**
+ * The title as used for the job's URL slug: without a source's reference number at the start, which
+ * cleanTitle keeps when it isn't a plain requisition number ("VA-2026-045: Finance Officer",
+ * "(JO 12345) Finance Officer", "No. 123 – Finance Officer"), and without the vacancy's own
+ * reference when the title starts with it. Only the slug changes; the title shown is cleanTitle's.
+ */
+export function titleForSlug(title: string, reference?: string | null): string {
+  let t = title.trim();
+  if (reference) {
+    const ref = reference.trim();
+    if (ref && t.toLowerCase().startsWith(ref.toLowerCase())) t = t.slice(ref.length);
+  }
+  // A bracketed reference: "(12345)", "[VA 2026/45]".
+  t = t.replace(/^\s*[([][^)\]]*\d[^)\]]*[)\]]\s*[-–—:|]?\s*/u, "");
+  // A reference-like first token (letters, digits and -/._#) with at least one digit, followed by a separator:
+  // "VA-2026-045:", "JO 12345 –", "No. 123 -", "#456 |": at least 3 digits, so "COVID-19 – …" stays.
+  // Not a year on its own ("2026 Graduate Programme").
+  t = t.replace(/^\s*(?:(?:ref(?:erence)?|no|nr|vacancy|va|jo|job(?:\s+opening)?|req(?:uisition)?)\.?\s*(?:no\.?|number|id)?\s*[:#]?\s*)?(?!(?:19|20)\d\d\s)(?=[a-z]{0,6}[-/._#]?(?:[\w\-/.#]*?\d){3})[a-z]{0,6}[-/._#]?\d[\w\-/.#]*\s*[-–—:|]\s*(?=\p{L})/iu, "");
+  return t.trim() || title.trim();
+}

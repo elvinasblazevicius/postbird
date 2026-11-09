@@ -24,7 +24,7 @@ export function orgInText(name: string | null | undefined, short: string | null 
   return name ? withArticle(name) : null;
 }
 
-/** "Postbird is independent and not affiliated with WFP. You apply on the employer's own website." */
+/** "Postbird is independent and not affiliated with WFP." One sentence, for the organization and employer-type landing pages. */
 export function nonAffiliationLine(siteName: string, org: string | null): string {
-  return `${siteName} is independent and not affiliated with ${org ?? "these organizations"}. You apply on the employer's own website.`;
+  return `${siteName} is independent and not affiliated with ${org ?? "these organizations"}.`;
 }

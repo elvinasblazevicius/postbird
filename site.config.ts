@@ -82,7 +82,11 @@ const siteConfig = {
   conceptTest: { successRate: 0.03, failRate: 0.01, minVisitors: 300 },
 
   premium: {
-    name: "Email alerts",
+    /**
+     * The paid plan's name. "Email alerts" is only the umbrella (the /alerts page and
+     * its menu label), which offers both the free weekly email and daily alerts.
+     */
+    name: "Daily alerts",
     trialDays: 14,
     /** Shown on /pricing; the first plan is the headline price. */
     plans: [

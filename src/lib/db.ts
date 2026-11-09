@@ -12,7 +12,8 @@ export function isDbConfigured(): boolean {
   return Boolean(process.env.DATABASE_URL);
 }
 
-function createClient() {
+/** queryTimeout: seconds, see query_timeout below (0 = none; only the migration script uses that). */
+function createClient({ queryTimeout = 12 }: { queryTimeout?: number } = {}) {
   // "?pgbouncer=true" is a Prisma-only flag sometimes copied from Supabase; Postgres would reject it.
   const url = process.env.DATABASE_URL?.trim().replace(/([?&])pgbouncer=[^&]*&?/i, "$1").replace(/[?&]$/, "");
   if (!url) {
@@ -22,22 +23,30 @@ function createClient() {
   return postgres(url, {
     // Supabase's transaction pooler does not support prepared statements.
     prepare: false,
-    // Pool size must stay at least as large as the most queries any page runs at
-    // once. postgres.js has no way to switch off pipelining: when every connection
-    // is busy it queues further queries on an existing connection, and Supabase's
-    // transaction pooler (Supavisor) stalls on those pipelined queries. The public
-    // pages get all their filter counts from one shared query (facetSnapshot in
-    // src/lib/jobs.ts), so the busiest ones run at most 5 queries at once (a job
-    // list: results, their count, organizations, the counts, and one from the
-    // page's metadata), and the admin dashboard runs its queries in batches of
-    // at most 6. Keep new pages within this number, or raise it with
-    // DATABASE_POOL_SIZE. Each serverless instance handles one request at a
-    // time, so this stays bounded, and transaction-pooler connections are cheap
-    // (they are multiplexed).
+    // One query at a time per connection (no pipelining). Supavisor, Supabase's
+    // transaction pooler, hangs on pipelined queries before version 2.10, and
+    // postgres.js otherwise pipelines up to 100 queries on a busy connection.
+    // With max_pipeline: 1 a query that finds every connection busy waits for a
+    // free one instead, so the pool size is how many queries a request can run
+    // at once. The public pages get all their filter counts from one shared
+    // query (facetSnapshot in src/lib/jobs.ts), so the busiest ones run at most
+    // 5 queries at once (a job list: results, their count, organizations, the
+    // counts, and one from the page's metadata), and the admin dashboard runs
+    // its queries in batches of at most 6. Raise it with DATABASE_POOL_SIZE if a
+    // page needs more. Each serverless instance handles one request at a time,
+    // so this stays bounded, and transaction-pooler connections are cheap (they
+    // are multiplexed).
+    max_pipeline: 1,
     max: Math.max(1, Number(process.env.DATABASE_POOL_SIZE) || 6),
     idle_timeout: 20,
     // Netlify stops a request after 10 seconds; fail fast instead of waiting 15 s for a connection.
     connect_timeout: 5,
+    // Client-side limit in seconds for each query, waiting for a connection and running together.
+    // The server's statement_timeout (8 s in transactions, see below, and the role setting in the
+    // README) is the normal limit; this is the backstop for a pooler or network that goes silent,
+    // which would otherwise leave a query waiting for many minutes. A timed-out query is canceled
+    // and rejects with QUERY_TIMEOUT. Migrations (scripts/migrate.ts) may build indexes for longer.
+    query_timeout: queryTimeout,
     ssl: local ? false : "require",
     onnotice: () => {},
   });
@@ -73,8 +82,9 @@ export type Db = ISql;
 /** A transaction (has savepoint()). */
 export type Tx = TransactionSql;
 
-export function getSql() {
-  if (!globalThis.__gchSql) globalThis.__gchSql = createClient();
+/** The shared pool. Options only apply to the call that creates it (the first one). */
+export function getSql(opts?: { queryTimeout?: number }) {
+  if (!globalThis.__gchSql) globalThis.__gchSql = createClient(opts);
   return globalThis.__gchSql;
 }
 

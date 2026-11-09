@@ -41,7 +41,7 @@ export default async function OrganizationPage({ params, searchParams }: Props) 
     <>
       <PageHeader
         title={isAcronym(org.short_name) ? `${org.short_name}: open vacancies` : `Vacancies at ${withArticle(org.name)}`}
-        badge={<OrgBadge name={org.name} short={org.short_name} logo={org.logo} size="lg" />}
+        badge={<OrgBadge name={org.name} short={org.short_name} size="lg" />}
         crumbs={[{ href: "/", label: "Home" }, { href: "/organizations", label: "Organizations" }, { href: `/organizations/${slug}`, label: org.short_name ?? org.name }]}
         intro={
           <>

@@ -2,6 +2,7 @@ import siteConfig from "@site-config";
 import { categoryBySlug } from "@/config/categories";
 import { countryByCode } from "@/config/countries";
 import { LISTING_SETTINGS } from "@/config/import";
+import { KNOWN_ORGS, type KnownOrg } from "@/config/organizations";
 
 /** Shown for a detail our source doesn't give (it may still be on the employer's page). */
 export const NOT_SPECIFIED = "Not in our source";
@@ -112,10 +113,25 @@ export function categoryName(slug: string): string {
   return categoryBySlug(slug)?.name ?? "Other";
 }
 
-/** Short text badge for an organization (no logos: avoids implying endorsement). */
+/** Known organizations by every folded name, short name and alias (for their badge text). */
+const KNOWN_BY_NAME = new Map<string, KnownOrg>();
+const foldName = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+for (const o of KNOWN_ORGS) for (const n of [o.name, o.short, ...(o.aliases ?? [])]) if (n && !KNOWN_BY_NAME.has(foldName(n))) KNOWN_BY_NAME.set(foldName(n), o);
+
+/**
+ * Short text badge for an organization: every organization gets a monogram in the same frame,
+ * never a logo, so the badges don't suggest an organization endorses the site. The text comes
+ * from the known-organizations list where the organization is in it ("MSF" for Médecins Sans
+ * Frontières even when the stored record has no short name), otherwise from the stored short
+ * name, otherwise from the initials of the name.
+ */
 export function monogram(name: string | null, short: string | null): string {
-  const s = (short || "").replace(/[^A-Za-z0-9-]/g, "");
-  if (s && s.length <= 6) return s;
+  const known = KNOWN_BY_NAME.get(foldName(name ?? "")) ?? KNOWN_BY_NAME.get(foldName(short ?? ""));
+  if (known?.badge) return known.badge;
+  for (const candidate of [known?.short, short]) {
+    const s = (candidate || "").replace(/[^A-Za-z0-9-]/g, "");
+    if (s && s.length <= 6) return s;
+  }
   // Initials of the meaningful words: "Agency for Technical Cooperation and Development" → "ATCD"
   const small = new Set(["for", "and", "of", "the", "de", "du", "des", "la", "le", "les", "et", "en", "pour", "y", "del", "in", "on"]);
   const words = (name || short || "?").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 ]/g, " ")

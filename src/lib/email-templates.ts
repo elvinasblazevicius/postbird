@@ -27,9 +27,9 @@ function button(href: string, label: string): string {
 
 export function confirmationEmail(opts: { confirmUrl: string; waitlist: boolean; alerts: boolean }) {
   const what = opts.alerts && opts.waitlist
-    ? "the free weekly email with new vacancies, and early access to paid email alerts"
+    ? "the free weekly email with new vacancies, and early access to paid daily alerts"
     : opts.waitlist
-      ? "early access to paid email alerts (one email when they open; nothing is charged)"
+      ? "early access to paid daily alerts (one email when they open; nothing is charged)"
       : "the free weekly email with new vacancies (sent on Mondays, only when there is something new for your search)";
   const subject = `Confirm your email for ${siteConfig.name}`;
   const html = layout(
@@ -175,17 +175,60 @@ export function welcomeEmail(opts: { accountUrl: string; unsubscribeUrl: string;
   return { subject, html, text };
 }
 
-/** "Email me my account link" (sent only to the address itself). */
-export function accountLinkEmail(opts: { accountUrl: string; unsubscribeUrl: string }) {
-  const subject = `Your ${siteConfig.name} account link`;
+/**
+ * "Email me my account link" (sent only to the address itself). purpose
+ * "cancel": the same link, worded for cancelling a plan; "already": someone
+ * started a checkout with this address, which already has daily alerts.
+ */
+export function accountLinkEmail(opts: { accountUrl: string; unsubscribeUrl: string; purpose?: "manage" | "cancel" | "already" }) {
+  const purpose = opts.purpose ?? "manage";
+  const plan = siteConfig.premium.name.toLowerCase();
+  const copy = purpose === "cancel"
+    ? {
+        subject: `Your link to cancel your ${siteConfig.name} plan`,
+        lead: `Here is the link to your ${siteConfig.name} account. To cancel your plan, open it and choose “Cancel or manage billing”: Paddle, our reseller, shows the cancel option there. You keep alerts until the end of the period you've paid for and aren't charged again.`,
+        button: "Open my account to cancel",
+      }
+    : purpose === "already"
+      ? {
+          subject: `You already have ${siteConfig.name} ${plan}`,
+          lead: `Someone, probably you, started a checkout for ${plan} with this address. You already have ${plan}, so there's nothing to buy. Here is the link to your account, where you can add searches, choose daily or weekly emails and manage billing.`,
+          button: "Open my account",
+        }
+      : {
+          subject: `Your ${siteConfig.name} account link`,
+          lead: `Here is the link to your ${siteConfig.name} account, where you can change your saved searches, choose daily or weekly emails and, if you have a plan, cancel it or manage billing (“Cancel or manage billing”).`,
+          button: "Open my account",
+        };
   const html = layout(
-    subject,
-    `<p style="font-size:16px;line-height:1.6;margin:0 0 16px">Here is the link to your ${esc(siteConfig.name)} account, where you can change your saved searches, choose daily or weekly emails and, if you have a plan, cancel it or manage billing (&ldquo;Cancel or manage billing&rdquo;).</p>
-     <p style="margin:0 0 20px">${button(opts.accountUrl, "Open my account")}</p>
+    copy.subject,
+    `<p style="font-size:16px;line-height:1.6;margin:0 0 16px">${esc(copy.lead)}</p>
+     <p style="margin:0 0 20px">${button(opts.accountUrl, copy.button)}</p>
      <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">This is a new link: account links in older emails no longer work. If you didn't ask for this, you can ignore this email; the link only works for this address.</p>`,
     accountFooter(opts.accountUrl, opts.unsubscribeUrl),
   );
-  const text = `Your ${siteConfig.name} account: ${opts.accountUrl}\n\nThere you can change your saved searches, choose daily or weekly emails and, if you have a plan, cancel it or manage billing ("Cancel or manage billing").\n\nThis is a new link: account links in older emails no longer work. If you didn't ask for this, ignore this email.\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
+  const text = `${copy.lead}\n\n${copy.button}: ${opts.accountUrl}\n\nThis is a new link: account links in older emails no longer work. If you didn't ask for this, ignore this email.\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
+  return { subject: copy.subject, html, text };
+}
+
+/**
+ * The single-use link to continue a checkout, sent when the address on the
+ * form has had a plan before (the page shows the terms for this address:
+ * no second free trial). Sent only to the address itself.
+ */
+export function checkoutLinkEmail(opts: { continueUrl: string; hours: number }) {
+  const plan = siteConfig.premium.name.toLowerCase();
+  const subject = `Continue to ${siteConfig.name} ${plan}`;
+  const lead = `Someone, probably you, asked to start ${plan} with this address. Open the link to see the plan's terms for this address and continue to payment.`;
+  const note = `The link works once and expires in ${opts.hours} hours. If you didn't ask for this, ignore this email: nothing happens and nothing is charged.`;
+  const html = layout(
+    subject,
+    `<p style="font-size:16px;line-height:1.6;margin:0 0 16px">${esc(lead)}</p>
+     <p style="margin:0 0 20px">${button(opts.continueUrl, "Continue")}</p>
+     <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">${esc(note)}</p>`,
+    `You received this because this address was entered at checkout on ${esc(siteConfig.name)}.`,
+  );
+  const text = `${lead}\n\nContinue: ${opts.continueUrl}\n\n${note}\n\n${postal()}`;
   return { subject, html, text };
 }
 

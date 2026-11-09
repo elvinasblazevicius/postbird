@@ -1,41 +1,46 @@
 "use server";
 
 /**
- * Server actions for paid email alerts: starting a Paddle checkout and the
+ * Server actions for paid daily alerts: starting a Paddle checkout and the
  * account page. Only used when billing is live (src/lib/billing/live.ts).
  */
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { refresh } from "next/cache";
+import { after } from "next/server";
 import { cleanCampaign, visitorFromHeaders } from "@/lib/analytics";
 import { accountUrl, findByManageToken, sendAccountLink } from "@/lib/account";
 import { BILLING_LIVE } from "@/lib/billing/live";
+import { checkoutReply, continueCheckout, createCheckoutLink, sendCheckoutLink, type CheckoutState } from "@/lib/billing/checkout-links";
 import { planRenewal } from "@/lib/billing/notices";
 import { createPortalSession, isPaddleApiConfigured } from "@/lib/billing/paddle";
-import { checkoutAccountToken, startCheckout, type CheckoutPlan } from "@/lib/billing/subscriptions";
+import { checkoutAccountToken, hadTrialBefore, LIVE_STATUSES, startCheckout, verifiedCustomerFor, type BillingTarget, type CheckoutPlan } from "@/lib/billing/subscriptions";
+import { hasTrialMarker } from "@/lib/billing/trial-markers";
 import { sql } from "@/lib/db";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { addSavedSearch, normalizeSearch, removeSavedSearch, searchFromSignupForm } from "@/lib/saved-searches";
 import { findByUnsubscribeToken, normalizeEmail } from "@/lib/subscribers";
 import { jobsUrl, parseFilters } from "@/lib/jobs";
-import { parseId } from "@/lib/site";
+import { parseId, siteConfig } from "@/lib/site";
 import type { FormState } from "@/app/actions";
 
-export type CheckoutState =
-  /** noTrial: the address has had a trial before, so the form must not show the trial terms. */
-  | { status: "idle" | "error"; message: string; noTrial?: boolean }
-  /**
-   * trial: false for an address that has had a trial before; the browser then opens
-   * Paddle Checkout for transactionId (the plan without its trial), not the catalog price.
-   */
-  | { status: "ready"; message: string; ref: string; email: string; plan: CheckoutPlan; trial: boolean; transactionId: string | null }
-  | { status: "already"; message: string };
+export type { CheckoutState };
 
 const SERVER_ERROR = "Something went wrong on our side. Please try again in a minute.";
 
-/** Validates the trial form and prepares the subscriber; the browser then opens Paddle Checkout. */
+const planFrom = (form: FormData): CheckoutPlan | null => {
+  const raw = String(form.get("plan") ?? "");
+  return raw === "monthly" || raw === "quarterly" ? raw : null;
+};
+
+/**
+ * Validates the trial form and prepares the subscriber; the browser then opens
+ * Paddle Checkout with the trial. An address that has or had a plan gets the
+ * same "check your inbox" reply either way, and its next step by email (sent
+ * after the response, so the reply takes as long as for anyone else).
+ */
 export async function startCheckoutAction(_prev: CheckoutState, form: FormData): Promise<CheckoutState> {
-  if (!BILLING_LIVE) return { status: "error", message: "Email alerts aren't open yet." };
+  if (!BILLING_LIVE) return { status: "error", message: "Daily alerts aren't open yet." };
   // Honeypot: real visitors never fill this hidden field. Pretend nothing happened.
   if (String(form.get("website") ?? "")) return { status: "idle", message: "" };
   const h = await headers();
@@ -44,9 +49,8 @@ export async function startCheckoutAction(_prev: CheckoutState, form: FormData):
   }
   const email = normalizeEmail(String(form.get("email") ?? ""));
   if (!email) return { status: "error", message: "Enter a valid email address." };
-  const planRaw = String(form.get("plan") ?? "");
-  if (planRaw !== "monthly" && planRaw !== "quarterly") return { status: "error", message: "Choose a plan." };
-  const plan: CheckoutPlan = planRaw;
+  const plan = planFrom(form);
+  if (!plan) return { status: "error", message: "Choose a plan." };
   // The saved search: a search started on the jobs page, with the form's "What should we watch for?" answers.
   const search = searchFromSignupForm(form);
   let attribution: Record<string, string> | null = null;
@@ -56,22 +60,42 @@ export async function startCheckoutAction(_prev: CheckoutState, form: FormData):
     attribution = null;
   }
   try {
-    const res = await startCheckout({
-      email,
-      plan,
-      search: search || null,
-      source: String(form.get("source") ?? "").slice(0, 40) || undefined,
-      attribution,
-      visitor: visitorFromHeaders(h),
-    });
-    if (!res.ok) return { status: "error", message: res.error, ...(res.noTrial ? { noTrial: true } : {}) };
-    if ("alreadySubscribed" in res) {
-      if (await rateLimit(`account-link:${res.email}`, 3, 3600)) await sendAccountLink(res.email);
-      return { status: "already", message: "This address already has email alerts. We've emailed you the link to your account, where you can add searches or manage billing." };
+    const visitor = visitorFromHeaders(h);
+    const res = await startCheckout({ email, plan, search: search || null, source: String(form.get("source") ?? "").slice(0, 40) || undefined, attribution, visitor });
+    if (res.ok && "inbox" in res) {
+      // Per address too (like the account link), so nobody can flood someone's inbox from many connections.
+      if (await rateLimit(`checkout-link:${res.email}`, 3, 3600)) {
+        const target = { subscriberId: res.subscriberId, email: res.email, live: res.live };
+        after(async () => {
+          await sendCheckoutLink(target, { plan, search: search || null, visitor }).catch((e: Error) => console.error("checkout link failed", e.message));
+        });
+      }
     }
-    return { status: "ready", message: "", ref: res.ref, email: res.email, plan, trial: res.trial, transactionId: res.trial ? null : res.transactionId };
+    return checkoutReply(res, plan);
   } catch (e) {
     console.error("checkout start failed", (e as Error).message);
+    return { status: "error", message: SERVER_ERROR };
+  }
+}
+
+/**
+ * The button on /account/continue (the emailed checkout link): uses the link
+ * up and prepares the checkout with the terms shown on that page.
+ */
+export async function continueCheckoutAction(_prev: CheckoutState, form: FormData): Promise<CheckoutState> {
+  if (!BILLING_LIVE) return { status: "error", message: "Daily alerts aren't open yet." };
+  const plan = planFrom(form);
+  if (!plan) return { status: "error", message: "Choose a plan." };
+  const h = await headers();
+  if (!(await rateLimit(`checkout:${clientIp(h)}`, 8, 3600))) {
+    return { status: "error", message: "Too many attempts from this connection. Please try again in an hour." };
+  }
+  try {
+    const res = await continueCheckout(form.get("token"), plan);
+    if (!res.ok) return { status: "error", message: res.error };
+    return { status: "ready", message: "", ref: res.ref, email: res.email, plan, trial: res.trial, transactionId: res.transactionId };
+  } catch (e) {
+    console.error("checkout continue failed", (e as Error).message);
     return { status: "error", message: SERVER_ERROR };
   }
 }
@@ -172,15 +196,23 @@ export async function resubscribeAction(_prev: FormState, form: FormData): Promi
   return { status: "success", message: "Emails are back on." };
 }
 
-/** Opens a fresh Paddle customer portal session (rate-limited per connection). */
-async function openPortal(customerId: string | null, subscriptionId: string | null): Promise<FormState> {
-  if (!customerId) return { status: "error", message: "There's no billing account for this address yet." };
+/**
+ * Opens a fresh Paddle customer portal session (rate-limited per connection),
+ * only for a Paddle customer whose email is this subscriber's address.
+ */
+async function openPortal(target: BillingTarget): Promise<FormState> {
+  if (!target.paddle_customer_id && !target.paddle_subscription_id) return { status: "error", message: "There's no billing account for this address yet." };
   if (!isPaddleApiConfigured()) return { status: "error", message: "Billing management isn't available right now. Please email us and we'll help." };
   const h = await headers();
   if (!(await rateLimit(`portal:${clientIp(h)}`, 20, 3600))) return { status: "error", message: "Too many attempts. Please try again later." };
   let url: string;
   try {
-    url = await createPortalSession(customerId, subscriptionId);
+    const customerId = await verifiedCustomerFor(target);
+    if (!customerId) {
+      const mail = siteConfig.contactEmail;
+      return { status: "error", message: `We couldn't open billing for this address. Please email us${mail ? ` at ${mail}` : ""} and we'll help.` };
+    }
+    url = await createPortalSession(customerId, target.paddle_subscription_id);
   } catch (e) {
     console.error("portal session failed", (e as Error).message);
     return { status: "error", message: "We couldn't open billing just now. Please try again in a minute." };
@@ -192,17 +224,42 @@ async function openPortal(customerId: string | null, subscriptionId: string | nu
 export async function portalAction(_prev: FormState, form: FormData): Promise<FormState> {
   const acct = await accountFrom(form);
   if (!acct) return INVALID_LINK;
-  return openPortal(acct.paddle_customer_id, acct.paddle_subscription_id);
+  return openPortal(acct);
 }
 
 /**
- * "Cancel my plan" on the unsubscribe page, which only has the unsubscribe
- * link's token: the same Paddle portal session, where the plan is canceled.
+ * "Restart daily alerts" on the account page, for an address that had a plan:
+ * the account link proves the address, so this goes straight to the continue
+ * page (no second free trial: one per email address).
  */
-export async function unsubscribePortalAction(_prev: FormState, form: FormData): Promise<FormState> {
-  const sub = await findByUnsubscribeToken(String(form.get("token") ?? ""));
+export async function restartPlanAction(_prev: FormState, form: FormData): Promise<FormState> {
+  if (!BILLING_LIVE) return { status: "error", message: "Daily alerts aren't open yet." };
+  const acct = await accountFrom(form);
+  if (!acct) return INVALID_LINK;
+  if (LIVE_STATUSES.includes(acct.billing_status)) return { status: "error", message: "You already have daily alerts." };
+  if (!hadTrialBefore(acct, await hasTrialMarker(acct.email))) redirect("/pricing/trial");
+  const token = await createCheckoutLink(acct.id, { plan: "quarterly", search: null });
+  redirect(`/account/continue?token=${token}`);
+}
+
+/**
+ * "Cancel my plan" on the unsubscribe page. Its token is the unsubscribe
+ * link's, which is in every email and never changes, so it doesn't open
+ * billing itself: it emails the account link, worded for cancelling.
+ */
+export async function unsubscribeCancelLinkAction(_prev: FormState, form: FormData): Promise<FormState> {
+  const sub = await findByUnsubscribeToken(form.get("token"));
   if (!sub) return { status: "error", message: "This link isn't valid any more. Use the link in your latest email from us." };
-  return openPortal(sub.paddle_customer_id, sub.paddle_subscription_id);
+  const h = await headers();
+  if (!(await rateLimit(`account-login:${clientIp(h)}`, 5, 3600))) {
+    return { status: "error", message: "Too many requests from this connection. Please try again in an hour." };
+  }
+  try {
+    if (await rateLimit(`account-link:${sub.email}`, 3, 3600)) await sendAccountLink(sub.email, "cancel");
+  } catch (e) {
+    console.error("cancel link failed", (e as Error).message);
+  }
+  return { status: "success", message: "We've emailed you a link to cancel your plan." };
 }
 
 const LOGIN_MESSAGE = "If this address has an account with us, we've emailed it the link. It can take a minute or two to arrive; check your spam folder too.";
@@ -216,9 +273,10 @@ export async function accountLinkAction(_prev: FormState, form: FormData): Promi
   }
   const email = normalizeEmail(String(form.get("email") ?? ""));
   if (!email) return { status: "error", message: "Enter a valid email address." };
+  const purpose = form.get("intent") === "cancel" ? "cancel" : "manage";
   try {
     // Per address too, so nobody can flood someone's inbox from many connections.
-    if (await rateLimit(`account-link:${email}`, 3, 3600)) await sendAccountLink(email);
+    if (await rateLimit(`account-link:${email}`, 3, 3600)) await sendAccountLink(email, purpose);
   } catch (e) {
     console.error("account link failed", (e as Error).message);
   }

@@ -51,11 +51,11 @@ describe.skipIf(!TEST_DB)("job search (database)", () => {
   const titles = async (f: Parameters<typeof jobs.searchJobs>[0]) => (await jobs.searchJobs(f, 50, { looseFallback: true })).items.map((j) => j.title).sort();
 
   it("matches a country named in the location text, not only the country column", async () => {
-    expect(await titles({ country: "uganda" })).toEqual(["Field Assistant", "Regional WASH Specialist"]);
+    expect(await titles({ country: ["uganda"] })).toEqual(["Field Assistant", "Regional WASH Specialist"]);
     expect(await titles({ q: "jobs in uganda" })).toEqual(["Field Assistant", "Regional WASH Specialist"]);
     // "South Sudan" is not "Sudan".
-    expect(await titles({ country: "sudan" })).toEqual(["Humanitarian Coordinator"]);
-    expect(await countFor({ country: "uganda" })).toBe(2);
+    expect(await titles({ country: ["sudan"] })).toEqual(["Humanitarian Coordinator"]);
+    expect(await countFor({ country: ["uganda"] })).toBe(2);
   });
 
   it("counts a listing under every country it names, and once per region", async () => {
@@ -84,14 +84,14 @@ describe.skipIf(!TEST_DB)("job search (database)", () => {
   });
 
   it("hides local-only posts and filters by grade group or single grade", async () => {
-    expect(await titles({ country: "kenya", hidelocal: true })).toEqual(["Regional WASH Specialist"]);
-    expect(await titles({ grade: "SC" })).toEqual(["Field Assistant"]);
-    expect(await titles({ grade: "P" })).toEqual(["Logistics Officer", "Regional WASH Specialist"]);
-    expect(await titles({ grade: "P-3" })).toEqual(["Logistics Officer"]);
+    expect(await titles({ country: ["kenya"], hidelocal: true })).toEqual(["Regional WASH Specialist"]);
+    expect(await titles({ grade: ["SC"] })).toEqual(["Field Assistant"]);
+    expect(await titles({ grade: ["P"] })).toEqual(["Logistics Officer", "Regional WASH Specialist"]);
+    expect(await titles({ grade: ["P-3"] })).toEqual(["Logistics Officer"]);
   });
 
   it("gives option counts for the other filters and the count without each filter", async () => {
-    const f = await jobs.filteredFacets({ country: "kenya", grade: "D-1" });
+    const f = await jobs.filteredFacets({ country: ["kenya"], grade: ["D-1"] });
     expect(f.without).toEqual({ where: 1, grade: 2 });
     expect(f.grades.map((g) => g.grade).sort()).toEqual(["NO-B", "P-4"]);
     expect(f.countries.find((c) => c.slug === "sudan")?.count).toBe(1);

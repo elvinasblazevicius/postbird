@@ -5,7 +5,8 @@ import { sql } from "@/lib/db";
 import { isEmailConfigured } from "@/lib/email";
 import { BILLING_LIVE, PADDLE_ENV } from "@/lib/billing/live";
 import { planPriceNumber } from "@/lib/early-access-copy";
-import { sendTestEmailAction, syncNowAction } from "./actions";
+import { resolveBillingFlagAction, sendTestEmailAction, syncNowAction } from "./actions";
+import { BillingSelfCheck } from "./billing-check";
 import { requireAdmin } from "./guard";
 import { AdminShell, Card, fmtDateTime, olderThanHours, Stat, StatusPill, Table } from "./ui";
 
@@ -126,6 +127,11 @@ export default async function AdminHome({ searchParams }: Props) {
       where type = 'trial_started'
         and (props->'campaign' ? 'msclkid' or lower(props->'campaign'->>'utm_medium') in ('cpc', 'ppc', 'paid'))`,
   ]);
+  // Subscriptions the webhook held back or couldn't fully check (see db/migrations/010_billing_integrity.sql).
+  const flags = await sql<{ subscription_id: string; kind: string; customer_id: string | null; detail: string | null; updated_at: Date; email: string | null }[]>`
+    select f.subscription_id, f.kind, f.customer_id, f.detail, f.updated_at, s.email
+    from billing_flags f left join subscribers s on s.id = f.subscriber_id
+    where f.resolved_at is null order by f.updated_at desc limit 20`.catch(() => []);
   // Monthly recurring revenue estimate: paying subscribers only (not trials), 3-month plans counted at a third. Before Paddle's fees and taxes.
   const mrr = bill.active_month * planPriceNumber("month") + (bill.active_quarter * planPriceNumber("quarter")) / 3;
   const money = (x: number) => `$${x.toFixed(2)}`;
@@ -198,6 +204,35 @@ export default async function AdminHome({ searchParams }: Props) {
         <Stat label="Canceled" value={bill.canceled} hint={`${bill.canceled_30} in the last 30 days`} />
         <Stat label="MRR estimate" value={money(mrr)} hint="paying only; 3-month plans ÷ 3; before Paddle fees and tax" />
       </div>
+      {BILLING_LIVE ? (
+        <Card className="mt-4">
+          <div className="mb-2 text-sm font-medium text-ink">Billing self-check</div>
+          <BillingSelfCheck />
+        </Card>
+      ) : null}
+      {flags.length ? (
+        <div className="mt-4">
+          <h3 className="mb-2 text-base font-semibold text-ink">Billing flags ({flags.length})</h3>
+          <Table head={["When", "What", "Subscriber", "Paddle subscription", "Details", ""]}>
+            {flags.map((f) => (
+              <tr key={`${f.subscription_id}|${f.kind}`}>
+                <td className="px-4 py-2 whitespace-nowrap">{fmtDateTime(f.updated_at)}</td>
+                <td className="px-4 py-2">{FLAG_LABELS[f.kind] ?? f.kind}</td>
+                <td className="px-4 py-2">{f.email ?? "—"}</td>
+                <td className="px-4 py-2 font-mono text-xs">{f.subscription_id}{f.customer_id ? <><br />{f.customer_id}</> : null}</td>
+                <td className="px-4 py-2">{f.detail}</td>
+                <td className="px-4 py-2">
+                  <form action={resolveBillingFlagAction}>
+                    <input type="hidden" name="subscription_id" value={f.subscription_id} />
+                    <input type="hidden" name="kind" value={f.kind} />
+                    <button className="text-accent hover:underline">Mark dealt with</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </Table>
+        </div>
+      ) : null}
 
       <div className="mt-10 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-ink">Is the site useful? Last {days} days</h2>
@@ -305,6 +340,12 @@ export default async function AdminHome({ searchParams }: Props) {
     </AdminShell>
   );
 }
+
+const FLAG_LABELS: Record<string, string> = {
+  trial_blocked: "Second free trial blocked",
+  customer_mismatch: "Paddle customer's email doesn't match",
+  customer_unverified: "Paddle customer not checked yet",
+};
 
 type CampaignRow = { source: string; campaign: string; content: string; visitors: number; alerts: number; waitlist: number; trialClicks: number };
 

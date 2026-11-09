@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { countriesInLocation, locationPatterns, normalizePlace } from "@/lib/country-match";
 import { gradeGroupOf, gradeMatches, isLocalOnlyGrade, LOCAL_ONLY_GRADE_SQL } from "@/lib/grades";
-import { jobsUrl, parseFilters, wantsLooseMatch, withSearchIntent } from "@/lib/jobs";
-import { alertStepKeep, searchFromAlertStep } from "@/lib/saved-searches";
+import { activeFilterCount, filtersFromQuery, jobsUrl, parseFilters, wantsLooseMatch, withSearchIntent } from "@/lib/jobs";
+import { alertStepKeep, describeSearch, normalizeSearch, searchFromAlertStep, searchFromSignupForm } from "@/lib/saved-searches";
 import { categoriesForWord, interpretQuery } from "@/lib/search-intent";
 
 describe("interpretQuery", () => {
@@ -47,19 +47,20 @@ describe("interpretQuery", () => {
   });
 
   it("turns a grade in the words into the grade filter, unless one is set (withSearchIntent)", () => {
-    expect(withSearchIntent({ q: "p3 data" })).toMatchObject({ q: "data", grade: "P-3" });
-    expect(withSearchIntent({ q: "p3 data", grade: "D" })).toMatchObject({ q: "data", grade: "D" });
+    expect(withSearchIntent({ q: "p3 data" })).toMatchObject({ q: "data", grade: ["P-3"] });
+    expect(withSearchIntent({ q: "p3 data", grade: ["D"] })).toMatchObject({ q: "data", grade: ["D"] });
     // Every grade the search reads is one parseFilters accepts, so the chip's links keep it.
     for (const q of ["p3", "d2", "noe", "g7", "gs1", "fs-7"]) {
       const grade = interpretQuery(q).grade!;
-      expect(parseFilters({ grade }).grade, q).toBe(grade);
+      expect(parseFilters({ grade }).grade, q).toEqual([grade]);
     }
   });
 
   it("leaves explicit filters alone (withSearchIntent)", () => {
-    const f = withSearchIntent({ q: "kenya internship", country: "uganda", type: "Consultancy" });
-    expect(f).toMatchObject({ q: undefined, country: "uganda", type: "Consultancy" });
-    expect(withSearchIntent({ q: "kenya", region: "africa" }).country).toBeUndefined();
+    const f = withSearchIntent({ q: "kenya internship", country: ["uganda"], type: "Consultancy" });
+    expect(f).toMatchObject({ q: undefined, country: ["uganda"], type: "Consultancy" });
+    expect(withSearchIntent({ q: "kenya", region: ["africa"] }).country).toBeUndefined();
+    expect(withSearchIntent({ q: "kenya" }).country).toEqual(["kenya"]);
   });
 });
 
@@ -94,7 +95,7 @@ describe("local-only grades", () => {
   it("is a filter in the URL", () => {
     expect(parseFilters({ hidelocal: "1" }).hidelocal).toBe(true);
     expect(parseFilters({ hidelocal: "yes" }).hidelocal).toBeUndefined();
-    expect(jobsUrl({ hidelocal: true, country: "kenya" })).toBe("/jobs?country=kenya&hidelocal=1");
+    expect(jobsUrl({ hidelocal: true, country: ["kenya"] })).toBe("/jobs?country=kenya&hidelocal=1");
   });
 });
 
@@ -117,10 +118,43 @@ describe("grade filter values", () => {
   });
 
   it("accepts groups and single grades in the URL, including SC grades", () => {
-    expect(parseFilters({ grade: "P" }).grade).toBe("P");
-    expect(parseFilters({ grade: "P-3" }).grade).toBe("P-3");
-    expect(parseFilters({ grade: "SC-5" }).grade).toBe("SC-5");
+    expect(parseFilters({ grade: "P" }).grade).toEqual(["P"]);
+    expect(parseFilters({ grade: "P-3" }).grade).toEqual(["P-3"]);
+    expect(parseFilters({ grade: "SC-5" }).grade).toEqual(["SC-5"]);
     expect(parseFilters({ grade: "X-9" }).grade).toBeUndefined();
+  });
+});
+
+describe("filters with several values", () => {
+  it("reads repeated grade and where parameters, drops invalid ones and keeps a fixed order", () => {
+    const f = parseFilters({ grade: ["P-4", "X-9", "P-3", "P-4"], where: ["uganda", "region-africa", "nowhere", "kenya"] });
+    expect(f.grade).toEqual(["P-3", "P-4"]);
+    expect(f.country).toEqual(["kenya", "uganda"]);
+    expect(f.region).toEqual(["africa"]);
+    expect(jobsUrl(f)).toBe("/jobs?country=kenya&country=uganda&region=africa&grade=P-3&grade=P-4");
+    // The URL it builds reads back the same.
+    expect(filtersFromQuery(jobsUrl(f).split("?")[1])).toEqual(f);
+  });
+
+  it("counts each value as a filter in use", () => {
+    expect(activeFilterCount({ grade: ["P-3", "P-4"], country: ["kenya"], q: "data" })).toBe(4);
+  });
+
+  it("keeps every value in a saved search, in the same order whatever order they came in", () => {
+    expect(normalizeSearch("grade=P-4&grade=P-3&where=uganda&where=kenya")).toBe("country=kenya&country=uganda&grade=P-3&grade=P-4");
+    expect(normalizeSearch("where=kenya&grade=P-3&where=uganda&grade=P-4")).toBe("country=kenya&country=uganda&grade=P-3&grade=P-4");
+    expect(normalizeSearch("https://example.org/jobs?grade=NO&grade=P&sort=deadline")).toBe("grade=NO&grade=P");
+  });
+
+  it("carries several places from the alert sign-up form, and several grades from its search", () => {
+    const form = new FormData();
+    form.set("search", "grade=P-3&grade=P-4&country=france");
+    form.set("watch_q", "data");
+    form.append("watch_where", "kenya");
+    form.append("watch_where", "region-asia-pacific");
+    form.append("watch_where", "");
+    expect(searchFromSignupForm(form)).toBe("q=data&country=kenya&region=asia-pacific&grade=P-3&grade=P-4");
+    expect(searchFromAlertStep({ step: "watch", where: ["kenya", "uganda"], grade: ["P-3", "P-2"] })).toBe("country=kenya&country=uganda&grade=P-2&grade=P-3");
   });
 });
 
@@ -157,9 +191,10 @@ describe("countries named in a location", () => {
 });
 
 describe("any-word fallback", () => {
-  it("is tried only for a search of several words that found nothing", () => {
+  it("is tried for a search that found nothing: several words, or one word long enough to be a typo", () => {
     expect(wantsLooseMatch("data zzzz", 0)).toBe(true);
     expect(wantsLooseMatch("data zzzz", 3)).toBe(false);
+    expect(wantsLooseMatch("finanse", 0)).toBe(true);
     expect(wantsLooseMatch("zzzz", 0)).toBe(false);
     expect(wantsLooseMatch(undefined, 0)).toBe(false);
   });
@@ -179,7 +214,22 @@ describe("alert sign-up step", () => {
   });
 
   it("carries the filters the step doesn't show", () => {
-    expect(alertStepKeep("q=data&category=health&grade=P&country=kenya")).toEqual({ category: "health", grade: "P" });
-    expect(alertStepKeep(null)).toEqual({});
+    expect(alertStepKeep("q=data&category=health&grade=P&country=kenya")).toEqual([["category", "health"], ["grade", "P"]]);
+    expect(alertStepKeep("grade=P-3&grade=P-4")).toEqual([["grade", "P-3"], ["grade", "P-4"]]);
+    expect(alertStepKeep(null)).toEqual([]);
+  });
+});
+
+describe("describeSearch", () => {
+  it("names every filter a saved search carries", async () => {
+    expect(await describeSearch("q=data&category=data-analytics&country=kenya&country=uganda&grade=P-3&grade=P-4&type=Consultancy&exp=3-5&lang=French&orgtype=un&posted=7&closing=7&hidelocal=1&remote=1")).toBe(
+      "“data”, Data and analytics jobs, in the UN system, in Kenya or Uganda, remote / home-based, grade P-3 or P-4, consultancy, experience 3–5 years, French mentioned, posted in the last 7 days, closing within 7 days, without local-only posts",
+    );
+  });
+
+  it("names regions and grade groups, and says nothing for an empty search", async () => {
+    expect(await describeSearch("region=africa&country=france&grade=P")).toBe("in Africa or France, grade Professional (P-1 to P-5)");
+    expect(await describeSearch("orgtype=io&lang=Spanish")).toBe("at other international organizations, Spanish mentioned");
+    expect(await describeSearch("")).toBeNull();
   });
 });

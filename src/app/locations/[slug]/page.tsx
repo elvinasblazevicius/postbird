@@ -15,9 +15,9 @@ type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<s
 /** A country (e.g. /locations/kenya) or a world region (e.g. /locations/africa). */
 function resolve(slug: string): { name: string; fixed: Partial<JobFilters>; isRegion: boolean; code?: string } | null {
   const country = countryBySlug(slug);
-  if (country) return { name: country.name, fixed: { country: slug }, isRegion: false, code: country.code };
+  if (country) return { name: country.name, fixed: { country: [slug] }, isRegion: false, code: country.code };
   const region = regionBySlug(slug);
-  if (region) return { name: region.name, fixed: { region: slug }, isRegion: true };
+  if (region) return { name: region.name, fixed: { region: [slug] }, isRegion: true };
   return null;
 }
 

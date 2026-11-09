@@ -30,13 +30,14 @@ export function SiteHeader() {
             <NavLink key={n.href} href={n.href}>{n.label}</NavLink>
           ))}
           <span className="h-6 w-px bg-rule" aria-hidden="true" />
-          <AlertsButton className="rounded-lg bg-highlight px-4 py-2 text-[0.95rem] font-semibold text-ink shadow-[inset_0_-2px_0_rgba(11,27,63,0.12)] hover:brightness-[0.97]">
+          {/* Secondary (outline), so blue stays the one colour of primary actions. */}
+          <AlertsButton className="rounded-lg border border-rule bg-paper px-4 py-2 text-[0.95rem] font-semibold text-ink hover:border-ink/40 hover:bg-mist">
             Get email alerts
           </AlertsButton>
         </nav>
 
         <div className="flex items-center gap-2 md:hidden">
-          <AlertsButton className="rounded-lg bg-highlight px-3 py-2 text-sm font-semibold text-ink">Email alerts</AlertsButton>
+          <AlertsButton className="rounded-lg border border-rule bg-paper px-3 py-2 text-sm font-semibold text-ink hover:bg-mist">Email alerts</AlertsButton>
           <MobileMenu
             main={[{ href: "/jobs", label: "Find jobs" }, ...NAV]}
             employers={EMPLOYER_NAV}

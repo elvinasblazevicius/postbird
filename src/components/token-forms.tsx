@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useActionState, useEffect } from "react";
 import { confirmAction, unsubscribeAction, type FormState } from "@/app/actions";
 import { alertSignupAction } from "@/app/alert-actions";
-import { unsubscribePortalAction } from "@/app/billing-actions";
+import { unsubscribeCancelLinkAction } from "@/app/billing-actions";
 import siteConfig from "@site-config";
 import { AttributionField, uetEvent } from "./ads";
 import { EarlyAccessDone } from "./early-access";
@@ -54,14 +54,18 @@ export function UnsubscribeForm({ token, label = "Unsubscribe", secondary = fals
   );
 }
 
-/** "Cancel my plan" on the unsubscribe page: opens a fresh Paddle customer portal session. */
+/**
+ * "Cancel my plan" on the unsubscribe page: emails the account link, worded for
+ * cancelling (the unsubscribe link never changes, so it doesn't open billing).
+ */
 export function CancelPlanForm({ token }: { token: string }) {
-  const [state, action, pending] = useActionState(unsubscribePortalAction, initial);
+  const [state, action, pending] = useActionState(unsubscribeCancelLinkAction, initial);
+  if (state.status === "success") return <Result state={state} />;
   return (
     <form action={action}>
       <input type="hidden" name="token" value={token} />
       <button disabled={pending} className="rounded-lg bg-brand px-6 py-3 text-base font-semibold text-white hover:bg-accent disabled:opacity-60">
-        {pending ? "Opening billing…" : "Cancel my plan"}
+        {pending ? "Sending…" : "Cancel my plan"}
       </button>
       {state.status === "error" ? <p role="alert" className="mt-2 text-sm text-[#9b1c1c]">{state.message}</p> : null}
     </form>

@@ -54,20 +54,71 @@ function Select({ name, label, value, options, groups, all, idPrefix = "f" }: { 
 
 const withCount = (name: string, count: number) => `${name} (${count})`;
 
-/** One "Where" field: world regions first, then countries. Options without jobs are left out, except the one chosen. */
+/** The chosen places as "where" values: "region-africa", "kenya". */
+const chosenPlaces = (f: JobFilters) => [...(f.region ?? []).map((r) => `region-${r}`), ...(f.country ?? [])];
+
+/** Regions first, then countries. Options without jobs are left out, except the ones chosen. */
+function placeGroups(facets: FacetData, filters: JobFilters): Group[] {
+  return [
+    { label: "Regions", options: facets.regions.filter((r) => r.count > 0 || filters.region?.includes(r.slug)).map((r) => ({ value: `region-${r.slug}`, label: withCount(r.name, r.count) })) },
+    { label: "Countries", options: facets.countries.filter((c) => c.count > 0 || filters.country?.includes(c.slug)).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) })) },
+  ];
+}
+
+/** One "Where" field (the homepage search): world regions first, then countries. */
 export function WhereSelect({ facets, filters, idPrefix, label = "Where", name = "where" }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string; name?: string }) {
+  return <Select idPrefix={idPrefix} name={name} label={label} all="Anywhere" value={chosenPlaces(filters)[0]} groups={placeGroups(facets, filters)} />;
+}
+
+/** Most places one search can hold. */
+const MAX_PLACES = 5;
+
+/**
+ * "Where" for result pages and alerts, with room for several places (a listing in any of them
+ * matches). One select per chosen place, plus "Add another place" once one is chosen. Works
+ * without JavaScript: each select is a repeated "where" field, and an empty one is ignored.
+ */
+export function WhereFields({ facets, filters, idPrefix, label = "Where", name = "where" }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string; name?: string }) {
+  const chosen = chosenPlaces(filters);
+  if (!chosen.length) return <WhereSelect facets={facets} filters={filters} idPrefix={idPrefix} label={label} name={name} />;
+  const groups = placeGroups(facets, filters);
+  const options = (empty: string) => (
+    <>
+      <option value="">{empty}</option>
+      {groups.filter((g) => g.options.length).map((g) => (
+        <optgroup key={g.label} label={g.label}>
+          {g.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </optgroup>
+      ))}
+    </>
+  );
   return (
-    <Select
-      idPrefix={idPrefix}
-      name={name}
-      label={label}
-      all="Anywhere"
-      value={filters.region ? `region-${filters.region}` : filters.country}
-      groups={[
-        { label: "Regions", options: facets.regions.filter((r) => r.count > 0 || r.slug === filters.region).map((r) => ({ value: `region-${r.slug}`, label: withCount(r.name, r.count) })) },
-        { label: "Countries", options: facets.countries.filter((c) => c.count > 0 || c.slug === filters.country).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) })) },
-      ]}
-    />
+    <fieldset>
+      <legend className="mb-1.5 block text-sm font-medium text-ink">{label}</legend>
+      <div className="space-y-2">
+        {chosen.map((v, i) => (
+          <select
+            key={v}
+            id={`${idPrefix}-${name}-${i}`}
+            name={name}
+            defaultValue={v}
+            aria-label={chosen.length > 1 ? `${label}, place ${i + 1} of ${chosen.length}` : label}
+            className={fieldCls}
+            style={chevron}
+          >
+            {options(chosen.length > 1 ? "Remove this place" : "Anywhere")}
+          </select>
+        ))}
+        {chosen.length < MAX_PLACES ? (
+          <div>
+            <label htmlFor={`${idPrefix}-${name}-add`} className="mb-1 block text-xs text-slate">Add another place (jobs in any of them)</label>
+            <select id={`${idPrefix}-${name}-add`} name={name} defaultValue="" className={fieldCls} style={chevron}>
+              {options("Choose a place")}
+            </select>
+          </div>
+        ) : null}
+      </div>
+    </fieldset>
   );
 }
 
@@ -77,7 +128,7 @@ export function WhereSelect({ facets, filters, idPrefix, label = "Where", name =
  * Grades outside the groups are listed last.
  */
 function GradeSelect({ facets, filters, idPrefix }: { facets: FacetData; filters: JobFilters; idPrefix: string }) {
-  const selected = filters.grade;
+  const selected = filters.grade?.[0];
   const groups: Group[] = FILTER_GRADE_GROUPS.map((g) => {
     const grades = facets.grades.filter((x) => gradeGroupOf(x.grade) === g.value);
     const count = grades.reduce((n, x) => n + x.count, 0);
@@ -102,6 +153,54 @@ function GradeSelect({ facets, filters, idPrefix }: { facets: FacetData; filters
       options={legacy}
       groups={[...groups, { label: "Other grades", options: other.map((x) => ({ value: x.grade, label: withCount(x.grade, x.count) })) }]}
     />
+  );
+}
+
+/**
+ * Grade as checkboxes (result pages): by grade group, each starting with "All … grades" (the whole
+ * group) and then the single grades in it that have open jobs. Several can be ticked; a listing
+ * with any of them matches. Grades outside the groups are listed last.
+ */
+function GradeChecks({ facets, filters, idPrefix }: { facets: FacetData; filters: JobFilters; idPrefix: string }) {
+  const selected = new Set(filters.grade ?? []);
+  const groups = FILTER_GRADE_GROUPS.map((g) => {
+    const grades = facets.grades.filter((x) => gradeGroupOf(x.grade) === g.value);
+    const count = grades.reduce((n, x) => n + x.count, 0);
+    const exact = grades.filter((x) => x.count > 0 || selected.has(x.grade));
+    const show = count > 0 || selected.has(g.value) || exact.length > 0;
+    return {
+      key: g.value,
+      label: g.name.replace(/ \(.*\)$/, ""),
+      options: show ? [{ value: g.value, label: "All grades", count }, ...exact.map((x) => ({ value: x.grade, label: x.grade, count: x.count }))] : [],
+    };
+  });
+  const other = facets.grades.filter((x) => !gradeGroupOf(x.grade) && (x.count > 0 || selected.has(x.grade)));
+  // An old link may use the "entry" group, which is not offered any more: keep it while chosen.
+  const legacy = selected.has("entry") ? [{ key: "entry", label: "Entry level", options: [{ value: "entry", label: "P-1, P-2, NO-A", count: 0 }] }] : [];
+  const all = [...legacy, ...groups, { key: "other", label: "Other grades", options: other.map((x) => ({ value: x.grade, label: x.grade, count: x.count })) }]
+    .filter((g) => g.options.length);
+  if (!all.length) return null;
+  return (
+    <fieldset>
+      <legend className="mb-1.5 block text-sm font-medium text-ink">Grade</legend>
+      <div className="space-y-3">
+        {all.map((g) => (
+          <div key={g.key} role="group" aria-labelledby={`${idPrefix}-grade-${g.key}`}>
+            <p id={`${idPrefix}-grade-${g.key}`} className="text-xs font-medium text-slate">{g.label}</p>
+            <ul className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5">
+              {g.options.map((o) => (
+                <li key={o.value} className={o.value === g.key ? "col-span-2" : ""}>
+                  <label className="flex cursor-pointer items-center gap-2 py-1 text-[0.95rem] text-ink">
+                    <input type="checkbox" name="grade" value={o.value} defaultChecked={selected.has(o.value)} className="h-4 w-4 shrink-0 accent-[var(--accent)]" />
+                    <span>{o.label} <span className="text-slate">({o.count})</span></span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 
@@ -155,7 +254,7 @@ function MoreToggle() {
   );
 }
 
-const moreIsOpen = (f: JobFilters) => Boolean(f.type || f.posted || f.closing || f.lang || f.exp || f.orgtype);
+const moreIsOpen = (f: JobFilters) => Boolean(f.grade?.length || f.type || f.posted || f.closing || f.lang || f.exp || f.orgtype);
 
 /** Homepage search: What / Where / Search; every other filter under "More filters" so jobs stay close to the top. */
 export function HeroSearch({ facets }: { facets: FacetData }) {
@@ -188,32 +287,31 @@ export function HeroSearch({ facets }: { facets: FacetData }) {
 /**
  * Filter panel for result pages. Works without JavaScript. With `submitOnChange` (the desktop
  * panel) a changed select or checkbox applies at once; on phones people set several filters and
- * then tap "Show jobs", so the panel there waits for the button.
+ * then tap "Show jobs", so the panel there waits for the button. Without `keyword` the panel has
+ * no keyword field: on phones the keyword box above the results belongs to this form instead
+ * (its `form` attribute), so there is one keyword field and every submit carries it.
  */
-export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, formId = "job-filters", submitOnChange = true }: { filters: JobFilters; facets: FacetData; action?: string; hidden?: Record<string, string>; formId?: string; submitOnChange?: boolean }) {
+export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, formId = "job-filters", submitOnChange = true, keyword = true }: { filters: JobFilters; facets: FacetData; action?: string; hidden?: Record<string, string>; formId?: string; submitOnChange?: boolean; keyword?: boolean }) {
   const P = formId;
-  // Grades are only stated in some postings; when few have one, the grade filter moves under "More filters".
-  const graded = (facets.grades ?? []).reduce((n, g) => n + g.count, 0);
-  const all = facets.categories.reduce((n, c) => n + c.count, 0);
-  const gradeUpFront = Boolean(filters.grade) || (all > 0 && graded / all >= 0.3);
   return (
     <form id={formId} action={action} method="get" className="space-y-4" role="search" aria-label="Filter jobs">
       {Object.entries(hidden).map(([k, v]) => (
         <input key={k} type="hidden" name={k} value={v} />
       ))}
       {filters.sort ? <input type="hidden" name="sort" value={filters.sort} /> : null}
-      <div>
-        <label htmlFor={`${P}-q`} className="mb-1.5 block text-sm font-medium text-ink">What</label>
-        <input id={`${P}-q`} name="q" type="search" defaultValue={filters.q ?? ""} placeholder="Title, skill or organization" className={fieldCls} />
-      </div>
-      {!("country" in hidden) && !("region" in hidden) ? <WhereSelect facets={facets} filters={filters} idPrefix={P} /> : null}
+      {keyword ? (
+        <div>
+          <label htmlFor={`${P}-q`} className="mb-1.5 block text-sm font-medium text-ink">What</label>
+          <input id={`${P}-q`} name="q" type="search" defaultValue={filters.q ?? ""} placeholder="Title, skill or organization" className={fieldCls} />
+        </div>
+      ) : null}
+      {!("country" in hidden) && !("region" in hidden) ? <WhereFields facets={facets} filters={filters} idPrefix={P} /> : null}
       {!("org" in hidden) ? (
         <Select idPrefix={P} name="org" label="Organization" value={filters.org} all="Any organization" options={facets.orgs.filter((o) => o.count > 0 || o.slug === filters.org).map((o) => ({ value: o.slug, label: withCount(o.name, o.count) }))} />
       ) : null}
       {!("category" in hidden) ? (
         <Select idPrefix={P} name="category" label="Category" value={filters.category} all="Any category" options={facets.categories.filter((c) => c.count > 0 || c.slug === filters.category).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) }))} />
       ) : null}
-      {gradeUpFront ? <GradeSelect facets={facets} filters={filters} idPrefix={P} /> : null}
       {!("remote" in hidden) ? (
         <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-rule px-3 py-2.5 text-[0.95rem] text-ink">
           <input type="checkbox" name="remote" value="1" defaultChecked={!!filters.remote} className="h-4 w-4 accent-[var(--accent)]" />
@@ -230,7 +328,7 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
       <details className="group/more" open={moreIsOpen(filters)}>
         <MoreToggle />
         <div className="mt-3 space-y-4">
-          {gradeUpFront ? null : <GradeSelect facets={facets} filters={filters} idPrefix={P} />}
+          <GradeChecks facets={facets} filters={filters} idPrefix={P} />
           <MoreFilterFields idPrefix={P} filters={filters} facets={facets} hideOrgType={"orgtype" in hidden} />
         </div>
       </details>
@@ -262,7 +360,7 @@ export function WatchFieldset({ facets, filters, hint }: { facets: FacetData; fi
       <div className="grid gap-4 sm:grid-cols-2">
         <Select idPrefix="watch" name="watch_org" label="Organization" value={filters.org} all="Any organization"
           options={facets.orgs.filter((o) => o.count > 0 || o.slug === filters.org).map((o) => ({ value: o.slug, label: o.name }))} />
-        <WhereSelect idPrefix="watch" name="watch_where" facets={facets} filters={filters} label="Location" />
+        <WhereFields idPrefix="watch" name="watch_where" facets={facets} filters={filters} label="Location" />
       </div>
     </fieldset>
   );

@@ -6,10 +6,12 @@ import { findByConfirmToken } from "@/lib/subscribers";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Confirm your email", robots: { index: false, follow: false } };
 
-type Props = { searchParams: Promise<{ token?: string }> };
+type Props = { searchParams: Promise<{ token?: string | string[] }> };
 
 export default async function ConfirmPage({ searchParams }: Props) {
-  const token = (await searchParams).token ?? "";
+  const raw = (await searchParams).token;
+  // A repeated parameter arrives as an array; findByConfirmToken accepts only a well-formed token.
+  const token = typeof raw === "string" ? raw : "";
   const sub = token ? await findByConfirmToken(token) : null;
   return (
     <div className="mx-auto max-w-xl px-4 py-20 sm:px-6">

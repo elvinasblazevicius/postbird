@@ -4,7 +4,7 @@
 import { useActionState } from "react";
 import type { FormState } from "@/app/actions";
 import {
-  accountLinkAction, accountUnsubscribeAction, addSearchAction, frequencyAction, portalAction, removeSearchAction, resubscribeAction,
+  accountLinkAction, accountUnsubscribeAction, addSearchAction, frequencyAction, portalAction, removeSearchAction, restartPlanAction, resubscribeAction,
 } from "@/app/billing-actions";
 
 const initial: FormState = { status: "idle", message: "" };
@@ -134,6 +134,18 @@ export function PortalButton({ t }: { t: string }) {
   );
 }
 
+/** "Restart daily alerts" for an address that had a plan: opens the checkout page with the terms for it (no second trial). */
+export function RestartPlanButton({ t }: { t: string }) {
+  const [state, action, pending] = useActionState(restartPlanAction, initial);
+  return (
+    <form action={action}>
+      <input type="hidden" name="t" value={t} />
+      <button disabled={pending} className={primary}>{pending ? "Opening…" : "Restart daily alerts"}</button>
+      <Message state={state} />
+    </form>
+  );
+}
+
 export function AccountUnsubscribe({ t, unsubscribed, paying }: { t: string; unsubscribed: boolean; paying: boolean }) {
   const [state, action, pending] = useActionState(unsubscribed ? resubscribeAction : accountUnsubscribeAction, initial);
   return (
@@ -152,7 +164,7 @@ export function AccountUnsubscribe({ t, unsubscribed, paying }: { t: string; uns
 
 /**
  * "Email me my account link" (/account/login). `intent: "cancel"` is the same request worded for
- * cancelling: the emailed link opens the account page, where "Cancel or manage billing" cancels.
+ * cancelling: the email (worded for it too) links to the account page, where "Cancel or manage billing" cancels.
  */
 export function AccountLinkForm({ intent = "manage" }: { intent?: "manage" | "cancel" }) {
   const [state, action, pending] = useActionState(accountLinkAction, initial);
@@ -160,6 +172,7 @@ export function AccountLinkForm({ intent = "manage" }: { intent?: "manage" | "ca
   if (state.status === "success") return <p role="status" className="rounded-xl bg-remote-bg p-5 text-[1.02rem] leading-relaxed text-ink">{state.message}</p>;
   return (
     <form action={action} className="space-y-3">
+      <input type="hidden" name="intent" value={intent} />
       <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
         <label>Leave empty<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label>
       </div>

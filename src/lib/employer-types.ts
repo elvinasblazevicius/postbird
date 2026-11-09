@@ -1,10 +1,11 @@
 /**
- * Landing pages by type of employer (/un-jobs, /eu-jobs, /development-bank-jobs, /ngo-jobs),
+ * Landing pages by type of employer (/un-jobs, /eu-jobs, /development-bank-jobs, /ngo-jobs,
+ * /international-organization-jobs),
  * built on the organization-type filter (ORG_TYPES in src/config/regions.ts).
  */
 export type EmployerTypePage = {
   /** The ORG_TYPES value the page is fixed to. */
-  orgtype: "un" | "eu" | "ifi" | "ngo";
+  orgtype: "un" | "eu" | "ifi" | "ngo" | "io";
   path: string;
   /** Page heading and breadcrumb. */
   title: string;
@@ -52,6 +53,15 @@ export const EMPLOYER_TYPE_PAGES: EmployerTypePage[] = [
     metaTitle: "NGO jobs: vacancies at international NGOs",
     intro: "Vacancies at international non-governmental organizations. Each one links to the NGO's own careers site, where you apply.",
     alertNoun: "NGO",
+  },
+  {
+    orgtype: "io",
+    path: "/international-organization-jobs",
+    title: "International organization jobs",
+    label: "Other international organizations",
+    metaTitle: "International organization jobs: vacancies outside the UN and EU",
+    intro: "Vacancies at international and intergovernmental organizations outside the UN system and the EU. Each one links to the organization's own careers site, where you apply.",
+    alertNoun: "international organization",
   },
 ];
 

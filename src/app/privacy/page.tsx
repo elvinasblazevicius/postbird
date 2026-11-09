@@ -76,11 +76,11 @@ export default function PrivacyPage() {
           interest-based ads generally at <a className="text-accent underline" href="https://optout.aboutads.info" rel="noopener">optout.aboutads.info</a>.
         </p>
 
-        <H2>{siteConfig.freeWeeklyEmail ? "Weekly email, email alerts and early access" : "Email alerts and early access"}</H2>
+        <H2>{siteConfig.freeWeeklyEmail ? "Weekly email, daily alerts and early access" : "Email alerts and early access"}</H2>
         <p>
           If you sign up, we store your email address, what you signed up for, the search or vacancy you were looking at, any note you type in the optional
           &quot;Anything else&quot; box, the campaign tags of the ad or link that brought you here (the click id only if allowed, see above), and when you confirmed. We use this only to send the emails you asked
-          for and to measure interest in email alerts. Every email has a one-click unsubscribe link. We never sell or share your address.
+          for and to measure interest in daily alerts. Every email has a one-click unsubscribe link. We never sell or share your address.
           {mail ? <> If you reply to one of our emails, your reply goes to {mailLink}.</> : null}
         </p>
         {siteConfig.freeWeeklyEmail ? (
@@ -145,6 +145,12 @@ export default function PrivacyPage() {
               : "Early-access list: until paid alerts launch; if we decide not to launch, we tell you and delete the list within 30 days."}
           </li>
           {BILLING_LIVE ? <li>Subscription records: while you subscribe, then as long as tax and accounting law requires (Paddle keeps payment records as merchant of record).</li> : null}
+          {BILLING_LIVE ? (
+            <li>
+              If you start a checkout and don&apos;t finish it, we keep the address and search you entered for 30 days, then delete them. We don&apos;t email you about it.
+            </li>
+          ) : null}
+          {BILLING_LIVE ? <li>Addresses that started a free trial: a one-way code (not the address), kept 24 months, only to apply the one-trial rule.</li> : null}
         </ul>
 
         <H2>Applications</H2>

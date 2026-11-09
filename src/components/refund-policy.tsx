@@ -10,6 +10,7 @@ export function RefundPolicyText() {
         charge after your trial or any renewal — and we&apos;ll refund that charge in full, no questions asked. Refunds are issued by Paddle to your original payment
         method, usually within 5–10 days.
       </p>
+      <p>When we refund a charge, we also cancel your plan and alerts stop, unless you ask us to keep it running.</p>
       <p>
         Customers in the EU and UK also have the statutory right to withdraw set out in Paddle&apos;s{" "}
         <a className="text-accent underline" href="https://www.paddle.com/legal/checkout-buyer-terms" rel="noopener">buyer terms</a>. Nothing here limits rights you

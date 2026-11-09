@@ -15,7 +15,9 @@ export default async function ImportRunPage({ params, searchParams }: Props) {
   await requireAdmin();
   const id = parseId((await params).id);
   if (id === null) notFound();
-  const outcome = (await searchParams).outcome;
+  // Only a known outcome reaches the query (a repeated parameter or a NUL byte would make Postgres fail).
+  const rawOutcome = (await searchParams).outcome;
+  const outcome = typeof rawOutcome === "string" && (OUTCOMES as readonly string[]).includes(rawOutcome) ? rawOutcome : undefined;
   const [run] = await sql<{ id: number; status: string; trigger: string; started_at: Date; finished_at: Date | null; message: string | null; jobs_created: number; jobs_updated: number; jobs_unchanged: number; duplicates: number; items_failed: number; feeds_failed: number; jobs_expired: number }[]>`
     select * from sync_runs where id = ${id}`;
   if (!run) notFound();

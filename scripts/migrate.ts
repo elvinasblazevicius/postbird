@@ -20,7 +20,8 @@ import { getSql } from "../src/lib/db";
 const MIGRATION_LOCK = 4_812_309_117;
 
 async function main() {
-  const sql = getSql();
+  // No client-side query time limit: building an index on a large table may take a while.
+  const sql = getSql({ queryTimeout: 0 });
   const dir = path.join(process.cwd(), "db", "migrations");
   const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
   await sql.begin(async (tx) => {

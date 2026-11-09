@@ -16,6 +16,6 @@ export default async function Image({ params }: { params: Promise<{ slug: string
     eyebrow: job.org_name ?? undefined,
     title: job.title,
     lines: [where !== NOT_SPECIFIED ? where : null, job.deadline ? `Closes ${formatDate(job.deadline)}` : null].filter((x): x is string => Boolean(x)),
-    footer: "Apply on the employer's own website",
+    footer: "Independent listing · apply on the employer's site",
   });
 }

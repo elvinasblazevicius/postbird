@@ -1,4 +1,4 @@
-import { countryFacets, organizationFacets, parseFilters, regionFacets } from "@/lib/jobs";
+import { countryFacets, filtersFromQuery, organizationFacets, regionFacets } from "@/lib/jobs";
 import { WatchFieldset, type FacetData } from "./search-forms";
 
 /**
@@ -13,7 +13,7 @@ export async function WatchFields({ search, searchLabel, hint }: { search: strin
     regionFacets(false).catch(() => []),
   ]);
   const facets: FacetData = { orgs: orgs.map((o) => ({ slug: o.slug, name: o.name, count: o.count })), countries, regions, categories: [], grades: [] };
-  const filters = search ? parseFilters(Object.fromEntries(new URLSearchParams(search))) : {};
+  const filters = search ? filtersFromQuery(search) : {};
   return (
     <div className="rounded-xl border border-rule p-5">
       {searchLabel ? <p className="mb-4 rounded-lg bg-mist px-3 py-2 text-sm text-ink">From your search: {searchLabel}</p> : null}

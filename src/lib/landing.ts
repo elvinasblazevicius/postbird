@@ -10,11 +10,14 @@ export async function countFor(fixed: Partial<JobFilters>, includeDemo = true): 
   let w = sql`j.status = 'active' and (j.deadline is null or j.deadline >= (now() at time zone 'utc')::date) and (${includeDemo} or not j.is_demo)`;
   if (fixed.org) w = sql`${w} and o.slug = ${fixed.org}`;
   if (fixed.category) w = sql`${w} and j.category = ${fixed.category}`;
-  if (fixed.country) {
-    const c = countryBySlug(fixed.country);
-    w = c ? sql`${w} and ${placeCondition([c.code])}` : sql`${w} and false`;
+  if (fixed.country?.length || fixed.region?.length) {
+    // Any of the countries and regions, like the "where" filter (filterConditions in src/lib/jobs.ts).
+    const codes = [
+      ...(fixed.country ?? []).flatMap((s) => countryBySlug(s)?.code ?? []),
+      ...(fixed.region ?? []).flatMap((s) => regionBySlug(s)?.codes ?? []),
+    ];
+    w = codes.length ? sql`${w} and ${placeCondition([...new Set(codes)])}` : sql`${w} and false`;
   }
-  if (fixed.region) w = sql`${w} and ${placeCondition(regionBySlug(fixed.region)?.codes ?? [])}`;
   if (fixed.remote) w = sql`${w} and j.is_remote is true`;
   if (fixed.orgtype) w = sql`${w} and o.org_type = ${ORG_TYPES.find((t) => t.value === fixed.orgtype)?.type ?? "--"}`;
   const [r] = await sql<{ n: number }[]>`select count(*)::int as n from jobs j left join organizations o on o.id = j.organization_id where ${w}`;

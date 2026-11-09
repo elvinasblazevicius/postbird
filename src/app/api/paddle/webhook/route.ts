@@ -1,7 +1,7 @@
 import { after } from "next/server";
 import { verifyPaddleSignature } from "@/lib/billing/paddle";
 import { confirmationNotSent, confirmationSent, sendPaidConfirmation, sendWelcomeEmail } from "@/lib/billing/notices";
-import { handlePaddleEvent, welcomeNotSent, welcomeSent, type PaddleEvent } from "@/lib/billing/subscriptions";
+import { cancelBlockedTrial, handlePaddleEvent, welcomeNotSent, welcomeSent, type PaddleEvent } from "@/lib/billing/subscriptions";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +16,9 @@ const reply = (status: number, body = "") => new Response(body, { status, header
  * event once (by event_id) and mirrors the subscription onto the subscriber,
  * both in one transaction (see handlePaddleEvent).
  * Answers within Paddle's 5-second limit: the database work is a few small
- * queries, and emails (welcome, or a confirmation link for an address the
- * checkout didn't create) are sent after the response.
+ * queries (plus at most two short calls to Paddle's API before it), and emails
+ * (welcome, or a confirmation link for an address the checkout didn't create)
+ * and canceling a trial the address may not have happen after the response.
  * Status codes: 200 handled or ignored, 401 bad signature, 400 unreadable
  * body, 500 processing failed (Paddle retries).
  */
@@ -65,6 +66,13 @@ export async function POST(req: Request) {
           console.warn("paddle webhook: confirmation email not sent", sent.error);
           await confirmationNotSent(c.subscriberId).catch(() => {});
         }
+      });
+    }
+    if (res.cancel) {
+      // A free trial this address may not have: canceled in Paddle at once (the result is on its flag).
+      const c = res.cancel;
+      after(async () => {
+        await cancelBlockedTrial(c.subscriptionId).catch(() => {});
       });
     }
     return reply(200, res.outcome);

@@ -57,9 +57,12 @@ export const EXPERIENCE_BANDS = [
 export type JobFilters = {
   q?: string;
   org?: string;
-  country?: string; // country slug
-  region?: string; // region slug
-  grade?: string; // grade group ("P", "NO", "entry"…) or exact grade ("P-3")
+  /** Country slugs; several are matched as "any of them" together with `region` (one "where" filter). Sorted, no repeats. */
+  country?: string[];
+  /** Region slugs (see `country`). Sorted, no repeats. */
+  region?: string[];
+  /** Grade groups ("P", "NO", "entry"…) or exact grades ("P-3"); a listing matches any of them. Sorted, no repeats. */
+  grade?: string[];
   orgtype?: string;
   lang?: string;
   exp?: string;
@@ -80,7 +83,34 @@ export type JobFilters = {
 
 type SP = Record<string, string | string[] | undefined>;
 
-const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)?.trim() || undefined;
+/** Control characters (NUL, line breaks, DEL…): Postgres rejects NUL in text, and none belongs in a filter. */
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g;
+
+/** A query parameter's first value, without control characters and surrounding spaces. */
+const first = (v: string | string[] | undefined) => {
+  const x = Array.isArray(v) ? v[0] : v;
+  return typeof x === "string" ? x.replace(CONTROL_CHARS, " ").trim() || undefined : undefined;
+};
+
+/** Every value of a parameter that may be repeated, tidied like first() (at most 10). */
+const every = (v: string | string[] | undefined): string[] =>
+  (Array.isArray(v) ? v : v === undefined ? [] : [v]).slice(0, 10).map((x) => first(x)).filter((x): x is string => Boolean(x));
+
+/** The values without repeats, in a fixed (sorted) order, so the same choice always gives the same URL and saved search. */
+const tidyList = (xs: string[]): string[] => [...new Set(xs)].sort();
+
+/** URL query parameters (a URLSearchParams or query string) as parseFilters reads them, keeping repeated parameters. */
+export function searchParamsRecord(params: URLSearchParams | string): SP {
+  const p = typeof params === "string" ? new URLSearchParams(params) : params;
+  const out: Record<string, string[]> = {};
+  for (const [k, v] of p) (out[k] ??= []).push(v);
+  return out;
+}
+
+/** Filters from a query string such as a saved search ("grade=P-3&grade=P-4&where=kenya"). */
+export function filtersFromQuery(query: string): JobFilters {
+  return parseFilters(searchParamsRecord(query));
+}
 
 /** Read filters from the URL, ignoring anything invalid. */
 export function parseFilters(sp: SP): JobFilters {
@@ -89,16 +119,20 @@ export function parseFilters(sp: SP): JobFilters {
   if (q) f.q = q.slice(0, 120);
   const org = first(sp.org);
   if (org && /^[a-z0-9-]{1,80}$/.test(org)) f.org = org;
-  // "where" is the combined region/country field used by the search forms.
-  const where = first(sp.where);
-  if (where?.startsWith("region-") && regionBySlug(where.slice(7))) f.region = where.slice(7);
-  else if (where && countryBySlug(where)) f.country = where;
-  const country = first(sp.country);
-  if (country && countryBySlug(country)) f.country = country;
-  const region = first(sp.region);
-  if (region && regionBySlug(region)) f.region = region;
-  const grade = first(sp.grade);
-  if (grade && (GRADE_GROUPS.some((g) => g.value === grade) || /^(P|D|NO|G|GS|FS)-[0-9A-E]$|^(ASG|USG)$|^(SB|SC|LICA|NPSA|IPSA|ICS)-\d{1,2}$/.test(grade))) f.grade = grade;
+  // "where" is the combined region/country field used by the search forms; it, "country", "region"
+  // and "grade" may be repeated (where=kenya&where=uganda): a listing then matches any of them.
+  const countries: string[] = [];
+  const regions: string[] = [];
+  for (const where of every(sp.where)) {
+    if (where.startsWith("region-") && regionBySlug(where.slice(7))) regions.push(where.slice(7));
+    else if (countryBySlug(where)) countries.push(where);
+  }
+  for (const country of every(sp.country)) if (countryBySlug(country)) countries.push(country);
+  for (const region of every(sp.region)) if (regionBySlug(region)) regions.push(region);
+  if (countries.length) f.country = tidyList(countries);
+  if (regions.length) f.region = tidyList(regions);
+  const grades = every(sp.grade).filter((grade) => GRADE_GROUPS.some((g) => g.value === grade) || /^(P|D|NO|G|GS|FS)-[0-9A-E]$|^(ASG|USG)$|^(SB|SC|LICA|NPSA|IPSA|ICS)-\d{1,2}$/.test(grade));
+  if (grades.length) f.grade = tidyList(grades);
   const orgtype = first(sp.orgtype);
   if (orgtype && ORG_TYPES.some((o) => o.value === orgtype)) f.orgtype = orgtype;
   const lang = first(sp.lang);
@@ -127,9 +161,9 @@ export function jobsUrl(f: JobFilters, base = "/jobs"): string {
   const p = new URLSearchParams();
   if (f.q) p.set("q", f.q);
   if (f.org) p.set("org", f.org);
-  if (f.country) p.set("country", f.country);
-  if (f.region) p.set("region", f.region);
-  if (f.grade) p.set("grade", f.grade);
+  for (const c of f.country ?? []) p.append("country", c);
+  for (const r of f.region ?? []) p.append("region", r);
+  for (const g of f.grade ?? []) p.append("grade", g);
   if (f.orgtype) p.set("orgtype", f.orgtype);
   if (f.lang) p.set("lang", f.lang);
   if (f.exp) p.set("exp", f.exp);
@@ -145,8 +179,10 @@ export function jobsUrl(f: JobFilters, base = "/jobs"): string {
   return s ? `${base}?${s}` : base;
 }
 
+/** How many filters are in use; each place and each grade of a multiple choice counts once. */
 export function activeFilterCount(f: JobFilters): number {
-  return [f.q, f.org, f.country, f.region, f.grade, f.orgtype, f.lang, f.exp, f.category, f.remote, f.type, f.posted, f.closing, f.hidelocal].filter(Boolean).length;
+  const multi = (f.country?.length ?? 0) + (f.region?.length ?? 0) + (f.grade?.length ?? 0);
+  return multi + [f.q, f.org, f.orgtype, f.lang, f.exp, f.category, f.remote, f.type, f.posted, f.closing, f.hidelocal].filter(Boolean).length;
 }
 
 /** A listing is shown while active and not past its published closing date (checked at query time, between syncs). */
@@ -164,8 +200,8 @@ export function withSearchIntent(f: JobFilters): JobFilters {
     orgtype: f.orgtype ?? i.orgtype,
     remote: f.remote || i.remote || undefined,
     type: f.type ?? i.type,
-    grade: f.grade ?? i.grade,
-    country: f.country ?? (f.region ? undefined : i.country),
+    grade: f.grade?.length ? f.grade : i.grade ? [i.grade] : undefined,
+    country: f.country?.length ? f.country : f.region?.length || !i.country ? undefined : [i.country],
     sort: !i.text && f.sort === "relevance" ? undefined : f.sort,
   };
 }
@@ -204,9 +240,21 @@ function searchWords(q: string): string[] {
   return searchTerms(q);
 }
 
-/** The any-word fallback is tried only when an all-words search of two or more words found nothing. */
+/** Words this long or longer may also match a title word spelled a little differently ("finanse" → "Finance"). */
+const TYPO_MIN_LENGTH = 5;
+/** How close a search word must be to a word of the title (pg_trgm word_similarity, 0 to 1; 0.6 is pg_trgm's default). */
+const TYPO_TITLE_SIMILARITY = 0.6;
+/** How close a word must be to be offered as "Did you mean …?" (pg_trgm similarity). */
+const TYPO_SUGGEST_SIMILARITY = 0.4;
+
+/**
+ * The loose fallback is tried when a search found nothing and either has two or more words (any of
+ * them may match) or is one word long enough to be a misspelling of a title word.
+ */
 export function wantsLooseMatch(q: string | undefined, total: number): boolean {
-  return total === 0 && Boolean(q) && searchWords(q!).length > 1;
+  if (total !== 0 || !q) return false;
+  const words = searchWords(q);
+  return words.length > 1 || (words.length === 1 && foldText(words[0]).length >= TYPO_MIN_LENGTH);
 }
 
 /**
@@ -227,10 +275,24 @@ function wordCondition(t: string): Frag {
   return sql`${c})`;
 }
 
+/**
+ * A term in the loose fallback: as wordCondition, or (for words of TYPO_MIN_LENGTH letters or more)
+ * a word of the title spelled almost the same way. pb_word_similarity is pg_trgm's word_similarity,
+ * or always 0 where the database has no pg_trgm (db/migrations/011).
+ */
+function looseWordCondition(t: string): Frag {
+  const folded = foldText(t);
+  if (folded.length < TYPO_MIN_LENGTH || folded.includes(" ")) return wordCondition(t);
+  return sql`(${wordCondition(t)} or pb_word_similarity(${folded}, pb_fold(j.title)) >= ${TYPO_TITLE_SIMILARITY})`;
+}
+
 function textCondition(q: string, mode: MatchMode): Frag {
+  if (mode === "any") {
+    const loose = searchWords(q).map(looseWordCondition);
+    return loose.length ? sql`(${loose.reduce((a, b) => sql`${a} or ${b}`)})` : sql`true`;
+  }
   const parts = searchWords(q).map(wordCondition);
   if (!parts.length) return sql`true`;
-  if (mode === "any") return sql`(${parts.reduce((a, b) => sql`${a} or ${b}`)})`;
   return sql`(j.search_folded @@ websearch_to_tsquery('simple', ${foldText(q)}) or (${parts.reduce((a, b) => sql`${a} and ${b}`)}))`;
 }
 
@@ -248,16 +310,15 @@ function filterConditions(f: JobFilters, mode: MatchMode = "all"): Partial<Recor
   const c: Partial<Record<FilterKey, Frag>> = {};
   if (f.q) c.q = textCondition(f.q, mode);
   if (f.org) c.org = sql`o.slug = ${f.org}`;
-  if (f.country || f.region) {
-    const country = f.country ? countryBySlug(f.country) : undefined;
-    const region = f.region ? regionBySlug(f.region) : undefined;
-    const parts = [
-      ...(f.country ? [country ? placeCondition([country.code]) : sql`false`] : []),
-      ...(f.region ? [region ? placeCondition(region.codes) : sql`false`] : []),
+  if (f.country?.length || f.region?.length) {
+    // Any of the chosen countries and regions (one "where" filter).
+    const codes = [
+      ...(f.country ?? []).flatMap((s) => countryBySlug(s)?.code ?? []),
+      ...(f.region ?? []).flatMap((s) => regionBySlug(s)?.codes ?? []),
     ];
-    c.where = parts.reduce((a, b) => sql`${a} and ${b}`);
+    c.where = codes.length ? placeCondition([...new Set(codes)]) : sql`false`;
   }
-  if (f.grade) c.grade = gradeCondition(f.grade);
+  if (f.grade?.length) c.grade = sql`(${f.grade.map(gradeCondition).reduce((a, b) => sql`${a} or ${b}`)})`;
   if (f.orgtype) c.orgtype = sql`o.org_type = ${ORG_TYPES.find((o) => o.value === f.orgtype)?.type ?? "--"}`;
   if (f.lang) c.lang = sql`${f.lang} = any(j.languages)`;
   if (f.exp) {
@@ -301,7 +362,7 @@ export async function searchJobs(input: JobFilters, pageSize: number = LISTING_S
     const order =
       sort === "deadline" ? sql`j.deadline asc nulls last, coalesce(j.published_at, j.first_seen_at) desc` :
       sort === "relevance" && f.q && mode === "any"
-        ? sql`(${searchWords(f.q).map((t) => sql`(${wordCondition(t)})::int`).reduce((a, b) => sql`${a} + ${b}`)}) desc, coalesce(j.published_at, j.first_seen_at) desc` :
+        ? sql`(${searchWords(f.q).map((t) => sql`(${wordCondition(t)})::int * 2 + (${looseWordCondition(t)})::int`).reduce((a, b) => sql`${a} + ${b}`)}) desc, coalesce(j.published_at, j.first_seen_at) desc` :
       sort === "relevance" && f.q ? sql`ts_rank(j.search_folded, websearch_to_tsquery('simple', ${foldText(f.q)})) desc, coalesce(j.published_at, j.first_seen_at) desc` :
       sql`coalesce(j.published_at, j.first_seen_at) desc, j.id desc`;
     // Each in its own short transaction, which carries the statement time limit (see
@@ -327,6 +388,48 @@ export async function searchJobs(input: JobFilters, pageSize: number = LISTING_S
     }
   }
   return { ...res, page, pageSize, pages: Math.max(1, Math.ceil(res.total / pageSize)), sort, matchMode };
+}
+
+/** Words of the category names and keywords: always offered as "Did you mean …?" even when no open title has them. */
+const CATEGORY_VOCABULARY = [...new Set(ALL_CATEGORIES.flatMap((c) => [c.name, ...c.keywords])
+  .flatMap((s) => foldText(s.replace(/\*/g, "")).split(/[^a-z0-9]+/))
+  .filter((w) => w.length >= TYPO_MIN_LENGTH))];
+
+/**
+ * "Did you mean …?" for a search that matched nothing exactly: each word of the search (of
+ * TYPO_MIN_LENGTH letters or more) that is not a word of any open listing's title or of the
+ * category vocabulary is replaced by the closest such word (pg_trgm similarity). Returns the
+ * corrected search, or null when nothing close was found (or the database has no pg_trgm).
+ */
+export async function searchSuggestion(q: string | undefined): Promise<{ q: string; words: string[] } | null> {
+  const text = q ? interpretQuery(q).text : null;
+  if (!q || !text) return null;
+  const terms = [...new Set(searchWords(text).map(foldText).filter((t) => t.length >= TYPO_MIN_LENGTH && /^[a-z0-9]+$/.test(t)))];
+  if (!terms.length) return null;
+  const rows = await transaction(async (tx) => await tx<{ term: string; known: boolean; best: string | null }[]>`
+    with vocab as materialized (
+      select distinct w from (
+        select regexp_split_to_table(pb_fold(j.title), '[^a-z0-9]+') as w from jobs j where ${isOpen()}
+        union all select unnest(${CATEGORY_VOCABULARY}::text[])
+      ) x where length(w) >= ${TYPO_MIN_LENGTH - 1}
+    )
+    select t.term,
+           exists (select 1 from vocab v where v.w = t.term) as known,
+           (select v.w from vocab v where pb_similarity(v.w, t.term) >= ${TYPO_SUGGEST_SIMILARITY}
+             order by pb_similarity(v.w, t.term) desc, v.w limit 1) as best
+    from unnest(${terms}::text[]) as t(term)`);
+  let out = q;
+  const words: string[] = [];
+  for (const r of rows) {
+    if (r.known || !r.best || r.best === r.term) continue;
+    const re = new RegExp(`(^|[^\\p{L}\\p{N}])${r.term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^\\p{L}\\p{N}])`, "giu");
+    const next = out.replace(re, `$1${r.best}`);
+    if (next !== out) {
+      out = next;
+      words.push(r.best);
+    }
+  }
+  return words.length ? { q: out, words } : null;
 }
 
 /**
@@ -611,6 +714,8 @@ export async function filteredFacets(input: JobFilters, mode: MatchMode = "all")
 }
 
 export async function getOrganization(slug: string) {
+  // Slugs are lower-case letters, digits and hyphens; anything else (e.g. a NUL byte from the URL) is no organization.
+  if (typeof slug !== "string" || !/^[a-z0-9-]{1,80}$/.test(slug)) return null;
   const rows = await sql<{ id: number; slug: string; name: string; short_name: string | null; org_type: string | null; logo: string | null }[]>`
     select id, slug, name, short_name, org_type, case when logo is not null and coalesce(org_type, '') not in ('UN system', 'EU institution') then slug end as logo from organizations where slug = ${slug}`;
   return rows[0] ?? null;

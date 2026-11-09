@@ -1,14 +1,17 @@
 /**
- * One free trial per person: the returning-customer rule, the no-trial price
- * and transaction sent to Paddle (fetch is mocked), and copy and emails that
- * must not promise a trial. No database needed.
+ * One free trial per email address: the returning-customer rule, the no-trial
+ * price and transaction sent to Paddle (fetch is mocked), the other Paddle
+ * calls (customer, cancel, billing self-check), and copy and emails that must
+ * not promise a trial. No database needed.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import siteConfig from "@site-config";
-import { createNoTrialTransaction, noTrialPrice, noTrialTransactionBody, type PaddlePrice } from "@/lib/billing/paddle";
+import { CHECK_INBOX, checkoutReply } from "@/lib/billing/checkout-links";
+import { billingSelfCheck, cancelSubscriptionNow, createNoTrialTransaction, getCustomer, noTrialPrice, noTrialTransactionBody, type PaddlePrice } from "@/lib/billing/paddle";
 import { hadTrialBefore, welcomeTrialEnd } from "@/lib/billing/subscriptions";
-import { noTrialButton, noTrialLine, ONE_TRIAL_RULE, RENEWING, trialButton } from "@/lib/early-access-copy";
-import { welcomeEmail } from "@/lib/email-templates";
+import { trialMarker } from "@/lib/billing/trial-markers";
+import { NO_TRIAL_CONSENT, noTrialButton, noTrialLine, ONE_TRIAL_RULE, RENEWING, TAX_LINE, TRIAL_CONSENT, trialButton } from "@/lib/early-access-copy";
+import { accountLinkEmail, checkoutLinkEmail, welcomeEmail } from "@/lib/email-templates";
 
 const NEVER = { paddle_subscription_id: null, billing_status: "none" as const, trial_ends_at: null, canceled_at: null };
 
@@ -24,6 +27,40 @@ describe("returning-customer rule", () => {
     expect(hadTrialBefore({ ...NEVER, trial_ends_at: new Date("2026-10-01T00:00:00Z") })).toBe(true);
     expect(hadTrialBefore({ ...NEVER, canceled_at: "2026-10-01T00:00:00Z" })).toBe(true);
     expect(hadTrialBefore({ paddle_subscription_id: "sub_01hv8x29kz0t586xy6zn1a62ny", billing_status: "canceled", trial_ends_at: "2026-10-01T00:00:00Z", canceled_at: "2026-09-25T00:00:00Z" })).toBe(true);
+  });
+
+  it("an address whose record was deleted after a plan counts through its trial marker", () => {
+    expect(hadTrialBefore(NEVER, true)).toBe(true);
+    expect(hadTrialBefore(NEVER, false)).toBe(false);
+  });
+});
+
+describe("trial markers", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("are a keyed one-way code of the normalized address, never the address", () => {
+    vi.stubEnv("ANALYTICS_SALT", "salt-one");
+    const m = trialMarker("someone@example.org");
+    expect(m).toMatch(/^[0-9a-f]{64}$/);
+    expect(m).not.toContain("someone");
+    expect(trialMarker(" Someone@Example.org ")).toBe(m);
+    expect(trialMarker("other@example.org")).not.toBe(m);
+    // Another secret gives another code (nobody without it can test an address against the table).
+    vi.stubEnv("ANALYTICS_SALT", "salt-two");
+    expect(trialMarker("someone@example.org")).not.toBe(m);
+  });
+});
+
+describe("the trial form's reply", () => {
+  it("is the same for an address with a running plan and one that had a plan", () => {
+    const live = checkoutReply({ ok: true, inbox: true, email: "a@example.org", subscriberId: 1, live: true }, "monthly");
+    const past = checkoutReply({ ok: true, inbox: true, email: "b@example.org", subscriberId: 2, live: false }, "quarterly");
+    expect(live).toEqual({ status: "inbox", message: CHECK_INBOX });
+    expect(past).toEqual(live);
+    expect(CHECK_INBOX).toBe("Check your inbox: we've emailed this address a link to continue.");
+    // A new address goes straight to the trial checkout.
+    expect(checkoutReply({ ok: true, ref: "r".repeat(32), email: "c@example.org", trial: true }, "quarterly"))
+      .toEqual({ status: "ready", message: "", ref: "r".repeat(32), email: "c@example.org", plan: "quarterly", trial: true, transactionId: null });
   });
 });
 
@@ -44,7 +81,7 @@ const CATALOG: PaddlePrice = {
 describe("no-trial price and transaction", () => {
   it("copies the catalog price without its trial", () => {
     expect(noTrialPrice(CATALOG)).toEqual({
-      description: "Email alerts, 3 months (no trial: one free trial per person)",
+      description: "Email alerts, 3 months (no trial: one free trial per email address)",
       name: "Every 3 months",
       product_id: CATALOG.product_id,
       unit_price: { amount: "1999", currency_code: "USD" },
@@ -136,7 +173,10 @@ describe("copy and emails for someone who has had a trial", () => {
     expect(noTrialLine()).not.toMatch(/\$0|trial ends|trial lasts/);
     expect(noTrialButton).not.toMatch(/trial/i);
     expect(trialButton).toMatch(/trial/i);
-    expect(ONE_TRIAL_RULE).toBe("One free trial per person. If you've had a trial before, your plan starts and is charged straight away.");
+    expect(ONE_TRIAL_RULE).toBe("One free trial per email address. If you've had a trial before, your plan starts and is charged straight away.");
+    expect(TRIAL_CONSENT).toBe("By starting the trial you agree to automatic renewal as described above.");
+    expect(NO_TRIAL_CONSENT).toBe("By continuing you agree to automatic renewal as described above.");
+    expect(NO_TRIAL_CONSENT).not.toMatch(/trial/i);
   });
 
   it("the welcome mentions a trial only while the subscription is trialing", () => {
@@ -168,5 +208,93 @@ describe("copy and emails for someone who has had a trial", () => {
       vi.unstubAllEnvs();
       vi.resetModules();
     }
+  });
+});
+
+describe("Paddle customer, cancel and self-check calls (Paddle API mocked)", () => {
+  const calls: { url: string; method: string; body: unknown }[] = [];
+  let respond: (url: string, method: string) => Response;
+
+  beforeEach(() => {
+    calls.length = 0;
+    process.env.PADDLE_API_KEY = "pdl_sdbx_apikey_test_0123456789";
+    respond = () => Response.json({ error: { code: "not_found" } }, { status: 404 });
+    vi.stubGlobal("fetch", async (url: string | URL, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      calls.push({ url: String(url), method, body: init?.body ? JSON.parse(String(init.body)) : null });
+      return respond(String(url), method);
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.PADDLE_API_KEY;
+  });
+
+  it("reads a customer by id, and cancels a subscription at once", async () => {
+    respond = (url, method) => {
+      if (method === "GET" && url.endsWith("/customers/ctm_01hv6y1jedq4p1n0yqn5ba3ky4")) return Response.json({ data: { id: "ctm_01hv6y1jedq4p1n0yqn5ba3ky4", email: "a@example.org" } });
+      if (method === "POST" && url.endsWith("/subscriptions/sub_01hv8x29kz0t586xy6zn1a62ny/cancel")) return Response.json({ data: { id: "sub_01hv8x29kz0t586xy6zn1a62ny" } });
+      return Response.json({ error: { code: "not_found" } }, { status: 404 });
+    };
+    expect(await getCustomer("ctm_01hv6y1jedq4p1n0yqn5ba3ky4")).toMatchObject({ email: "a@example.org" });
+    await cancelSubscriptionNow("sub_01hv8x29kz0t586xy6zn1a62ny");
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      "GET https://sandbox-api.paddle.com/customers/ctm_01hv6y1jedq4p1n0yqn5ba3ky4",
+      "POST https://sandbox-api.paddle.com/subscriptions/sub_01hv8x29kz0t586xy6zn1a62ny/cancel",
+    ]);
+    expect(calls[1].body).toEqual({ effective_from: "immediately" });
+    // Anything that isn't a Paddle id never reaches a URL (an email address least of all).
+    await expect(getCustomer("a@example.org")).rejects.toThrow(/Invalid Paddle customer id/);
+    await expect(cancelSubscriptionNow("sub_x/../../customers")).rejects.toThrow(/Invalid Paddle subscription id/);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("the billing self-check says OK, or which permission is missing", async () => {
+    const price = "pri_01hv0vax6rv18t4tamj848ne4d";
+    respond = (url) => (url.includes("/prices/") ? Response.json({ data: CATALOG }) : Response.json({ data: [] }));
+    expect(await billingSelfCheck(price)).toEqual([
+      { name: "Price read", ok: true, detail: "OK: the monthly price can be read." },
+      { name: "Customer read", ok: true, detail: "OK: customers can be read." },
+    ]);
+    expect(calls.map((c) => c.url)).toEqual([`https://sandbox-api.paddle.com/prices/${price}`, "https://sandbox-api.paddle.com/customers?per_page=1"]);
+    expect(calls.some((c) => c.url.includes("@") || c.url.includes("email"))).toBe(false);
+
+    respond = (url) => (url.includes("/prices/") ? Response.json({ data: CATALOG }) : Response.json({ error: { code: "forbidden" } }, { status: 403 }));
+    const missing = await billingSelfCheck(price);
+    expect(missing[0].ok).toBe(true);
+    expect(missing[1]).toMatchObject({ name: "Customer read", ok: false });
+    expect(missing[1].detail).toContain('lacks the "Customer: read" permission');
+
+    respond = () => Response.json({ error: { code: "authentication_malformed" } }, { status: 401 });
+    expect((await billingSelfCheck(price)).every((i) => !i.ok && /doesn't accept the API key/.test(i.detail))).toBe(true);
+
+    delete process.env.PADDLE_API_KEY;
+    expect(await billingSelfCheck(price)).toEqual([{ name: "API key", ok: false, detail: "PADDLE_API_KEY is not set." }]);
+  });
+});
+
+describe("emails that lead to a checkout or to billing", () => {
+  it("the checkout link email has the single-use link and no trial promise", () => {
+    const e = checkoutLinkEmail({ continueUrl: "https://x.test/account/continue?token=" + "t".repeat(32), hours: 24 });
+    expect(e.subject).toBe(`Continue to ${siteConfig.name} daily alerts`);
+    expect(e.text).toContain("https://x.test/account/continue?token=");
+    expect(e.text).toContain("works once and expires in 24 hours");
+    expect(e.text).not.toMatch(/free trial/i);
+    expect(e.text).toContain("Nueva Nova LLC");
+  });
+
+  it("the account link email is worded for its purpose", () => {
+    const links = { accountUrl: "https://x.test/account?t=" + "a".repeat(64), unsubscribeUrl: "https://x.test/u" };
+    expect(accountLinkEmail(links).subject).toBe(`Your ${siteConfig.name} account link`);
+    const cancel = accountLinkEmail({ ...links, purpose: "cancel" });
+    expect(cancel.subject).toBe(`Your link to cancel your ${siteConfig.name} plan`);
+    expect(cancel.text).toContain("Cancel or manage billing");
+    const already = accountLinkEmail({ ...links, purpose: "already" });
+    expect(already.subject).toBe(`You already have ${siteConfig.name} daily alerts`);
+    expect(already.text).toContain(links.accountUrl);
+  });
+
+  it("tax wording is true whichever tax mode Paddle uses", () => {
+    expect(TAX_LINE).toBe("Prices in US dollars. Depending on where you live, VAT or sales tax is included or added; Paddle shows the exact total before you pay.");
   });
 });

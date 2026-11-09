@@ -23,6 +23,26 @@ const WEBHOOK_SECRET = "pdl_ntfset_test_secret_0123456789";
 const SUB_ID = "sub_01hv8x29kz0t586xy6zn1a62ny";
 const SUB_ID_2 = "sub_01hv8x29kz0t586xy6zn1a62nz";
 const CUSTOMER = "ctm_01hv6y1jedq4p1n0yqn5ba3ky4";
+const API_KEY = "pdl_sdbx_apikey_test_0123456789";
+
+/**
+ * The Paddle customers the API stub knows, with their email (GET /customers/{id}). The webhook
+ * links a customer only when its email is the subscriber's address.
+ */
+const CUSTOMERS: Record<string, string> = {
+  [CUSTOMER]: "New.Person@example.org",
+  ctm_01hv6y1jedq4p1n0yqn5ba3ky5: "waiting@example.org",
+  ctm_01hv6y1jedq4p1n0yqn5ba3ka2: "gone-away@example.org",
+  ctm_01hv6y1jedq4p1n0yqn5ba3ka3: "maybe@example.org",
+  ctm_01hv6y1jedq4p1n0yqn5ba3kb1: "returning@example.org",
+  ctm_01hv6y1jedq4p1n0yqn5ba3kc1: "twice@example.org",
+  ctm_01hv6y1jedq4p1n0yqn5ba3kc2: "touched@example.org",
+  ctm_01hv6y1jedq4p1n0yqn5ba3kd1: "someone-else@example.org",
+  ctm_01hv6y1jedq4p1n0yqn5ba3kd2: "unchecked@example.org",
+};
+
+/** A well-formed unsubscribe token for a test row (the routes only look up 20–64 characters of [A-Za-z0-9_-]). */
+const tok = (email: string) => `unsub-${email.replace(/[^\w-]/g, "-")}`.padEnd(24, "x");
 
 type Sent = { to: string; subject: string; text: string; headers?: Record<string, string>; replyTo?: string; key?: string };
 
@@ -36,6 +56,8 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
   let subscribers: typeof import("@/lib/subscribers");
   let account: typeof import("@/lib/account");
   const sent: Sent[] = [];
+  const paddleCalls: string[] = [];
+  let paddleDown = false;
   let eventSeq = 0;
 
   /** A Paddle subscription event as the webhook delivers it. */
@@ -71,11 +93,21 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
     process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN = "test_client_token";
     process.env.NEXT_PUBLIC_PADDLE_PRICE_MONTHLY = "pri_monthly_unused";
     process.env.NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY = "pri_quarterly_unused";
-    delete process.env.PADDLE_API_KEY;
+    process.env.PADDLE_API_KEY = API_KEY;
 
-    // Resend stub: records every message instead of sending it.
+    // Resend stub: records every message instead of sending it. Paddle stub: customers and cancels.
     vi.stubGlobal("fetch", async (url: string | URL, init?: RequestInit) => {
       const u = String(url);
+      const method = init?.method ?? "GET";
+      if (u.startsWith("https://sandbox-api.paddle.com/")) {
+        paddleCalls.push(`${method} ${u.replace("https://sandbox-api.paddle.com", "")}`);
+        if (paddleDown) return Response.json({ error: { code: "internal_error" } }, { status: 500 });
+        const ctm = u.match(/\/customers\/(ctm_\w+)$/)?.[1];
+        if (method === "GET" && ctm && CUSTOMERS[ctm]) return Response.json({ data: { id: ctm, email: CUSTOMERS[ctm], status: "active" } });
+        const cancel = u.match(/\/subscriptions\/(sub_\w+)\/cancel$/)?.[1];
+        if (method === "POST" && cancel) return Response.json({ data: { id: cancel, status: "canceled" } });
+        return Response.json({ error: { code: "not_found" } }, { status: 404 });
+      }
       if (u.startsWith("https://api.resend.com/")) {
         const body = JSON.parse(String(init?.body ?? "null"));
         const key = (init?.headers as Record<string, string> | undefined)?.["Idempotency-Key"];
@@ -91,7 +123,7 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       await sql.unsafe(readFileSync(path.join(dir, f), "utf8"));
     }
     await sql.unsafe(`truncate subscribers, saved_searches, paddle_checkouts, paddle_events, events, digests,
-      jobs, job_sources, organizations, rate_limits restart identity cascade`);
+      jobs, job_sources, organizations, rate_limits, billing_flags, checkout_links, trial_markers restart identity cascade`);
     billing = await import("@/lib/billing/subscriptions");
     digest = await import("@/lib/digest");
     paddle = await import("@/lib/billing/paddle");
@@ -102,11 +134,14 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
 
   afterAll(async () => {
     vi.unstubAllGlobals();
+    delete process.env.PADDLE_API_KEY;
     await sql?.end();
   });
 
   beforeEach(async () => {
     sent.length = 0;
+    paddleCalls.length = 0;
+    paddleDown = false;
     afterTasks.length = 0;
     await sql`update locks set locked_until = null, holder = null`;
   });
@@ -135,9 +170,12 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(res.outcome).toBe("applied");
       expect(res.welcome?.email).toBe("new.person@example.org");
       const [s] = await sql`
-        select status, billing_status, plan, plan_interval, paddle_customer_id, paddle_subscription_id, trial_ends_at, welcome_sent_at, confirmed_at
+        select status, billing_status, plan, plan_interval, paddle_customer_id, paddle_customer_verified_at, paddle_subscription_id, trial_ends_at, welcome_sent_at, confirmed_at
         from subscribers where email = 'new.person@example.org'`;
       expect(s).toMatchObject({ status: "confirmed", billing_status: "trialing", plan: "premium", plan_interval: "quarter", paddle_customer_id: CUSTOMER, paddle_subscription_id: SUB_ID });
+      // The customer was checked against the address (Paddle's email, compared case-insensitively) before it was linked.
+      expect(s.paddle_customer_verified_at).not.toBeNull();
+      expect(paddleCalls).toEqual([`GET /customers/${CUSTOMER}`]);
       expect(new Date(s.trial_ends_at).toISOString()).toBe("2026-11-23T10:00:00.000Z");
       expect(s.welcome_sent_at).not.toBeNull();
       expect(s.confirmed_at).not.toBeNull();
@@ -197,9 +235,10 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect((await sql`select search from saved_searches where subscriber_id = ${before.id}`).map((r: { search: string }) => r.search)).toEqual(["category=health"]);
       // It wasn't created by that checkout, so the browser gets no link (it's emailed instead).
       expect((await billing.checkoutAccountToken(wref)).manageToken).toBeNull();
-      // A second checkout for an address that already has a running subscription is refused.
+      // A second checkout for an address that already has a running subscription doesn't reach Paddle:
+      // the page says "check your inbox", and the account link goes to the address.
       const again = await billing.startCheckout({ email: "waiting@example.org", plan: "monthly", search: null });
-      expect(again).toMatchObject({ ok: true, alreadySubscribed: true });
+      expect(again).toEqual({ ok: true, inbox: true, email: "waiting@example.org", subscriberId: Number(before.id), live: true });
     });
 
     it("leaves unknown subscriptions alone", async () => {
@@ -394,7 +433,7 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(c).toMatchObject({ status: "confirmed", unsubscribed_at: null });
       sent.length = 0;
       expect(await notices.runWelcomeRetries()).toEqual({ sent: 1, failed: 0 });
-      expect(sent[0]).toMatchObject({ to: "gone-away@example.org", key: `welcome:${s.id}` });
+      expect(sent[0]).toMatchObject({ to: "gone-away@example.org", key: `welcome:${s.id}:${subId}` });
       expect(sent[0].text).toContain("/account?t=");
       expect(await notices.runWelcomeRetries()).toEqual({ sent: 0, failed: 0 });
     });
@@ -419,7 +458,7 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
         values (${email}, ${over.status ?? "confirmed"}, true, ${over.billing ?? "trialing"}, ${over.interval ?? "quarter"},
                 ${over.trialEndsInDays == null ? null : sql`now() + make_interval(days => ${over.trialEndsInDays})`},
                 ${over.periodEndInDays == null ? null : sql`now() + make_interval(days => ${over.periodEndInDays})`},
-                ${over.cancel ? sql`now() + interval '2 days'` : null}, ${`unsub-${email}`}, now())
+                ${over.cancel ? sql`now() + interval '2 days'` : null}, ${tok(email)}, now())
         returning id::int as id, manage_token`;
       return r as { id: number; manage_token: string };
     }
@@ -444,7 +483,7 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(await notices.runTrialReminders()).toEqual({ sent: 0, failed: 0 });
     });
 
-    it("a later subscription with its own trial (e.g. made in Paddle's dashboard) gets its own reminder", async () => {
+    it("a second trial for an address that had a subscription (e.g. made in Paddle's dashboard) is canceled, not applied", async () => {
       const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString();
       const trial = (id: string, customer: string, ref: string | null, endsAt: string) => ({
         id, customer_id: customer, custom_data: ref ? { ref } : null,
@@ -460,32 +499,40 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(await notices.runTrialReminders()).toEqual({ sent: 1, failed: 0 });
       expect(sent.map((m) => m.to)).toEqual(["returning@example.org"]);
 
-      // Canceled. The site gives no second trial (one per person; without an API key no
-      // checkout at all), but a subscription with a trial made elsewhere (Paddle's dashboard,
-      // matched by customer) still gets its own reminder.
+      // Canceled. A second subscription with a trial, made elsewhere and matched by its (checked) customer:
+      // one free trial per email address, so it is held back and canceled in Paddle at once.
       const canceledAt = new Date(Date.now() + 1_000).toISOString();
       await billing.handlePaddleEvent(subEvent("subscription.canceled", { id: first, customer_id: customer, status: "canceled", canceled_at: canceledAt, current_billing_period: null }, canceledAt));
       expect((await sql`select billing_status from subscribers where email = 'returning@example.org'`)[0].billing_status).toBe("canceled");
-      const start2 = await billing.startCheckout({ email: "returning@example.org", plan: "monthly", search: null });
-      expect(start2).toEqual({ ok: false, error: billing.CHECKOUT_UNAVAILABLE, noTrial: true });
-      const res = await billing.handlePaddleEvent(subEvent("subscription.created", trial(second, customer, null, inDays(1)), new Date(Date.now() + 2_000).toISOString()));
-      expect(res.outcome).toBe("applied");
-      const [s] = await sql`select billing_status, paddle_subscription_id, trial_reminder_sent_at from subscribers where email = 'returning@example.org'`;
-      expect(s).toMatchObject({ billing_status: "trialing", paddle_subscription_id: second, trial_reminder_sent_at: null });
-
-      sent.length = 0;
-      expect(await notices.runTrialReminders()).toEqual({ sent: 1, failed: 0 });
-      expect(sent.map((m) => m.to)).toEqual(["returning@example.org"]);
-      // A repeated snapshot of the same subscription does not reset it.
-      await billing.handlePaddleEvent(subEvent("subscription.updated", trial(second, customer, null, inDays(1)), new Date(Date.now() + 3_000).toISOString()));
+      const { POST } = await import("@/app/api/paddle/webhook/route");
+      const body = JSON.stringify(subEvent("subscription.created", trial(second, customer, null, inDays(1)), new Date(Date.now() + 2_000).toISOString()));
+      const ts = Math.floor(Date.now() / 1000);
+      paddleCalls.length = 0;
+      const res = await POST(new Request("http://localhost/api/paddle/webhook", { method: "POST", body, headers: { "paddle-signature": `ts=${ts};h1=${paddle.signPayload(body, ts, WEBHOOK_SECRET)}` } }));
+      expect(await res.text()).toBe("flagged");
+      await settle();
+      expect(paddleCalls).toEqual([`POST /subscriptions/${second}/cancel`]);
+      const [s] = await sql`select billing_status, plan, paddle_subscription_id from subscribers where email = 'returning@example.org'`;
+      expect(s).toMatchObject({ billing_status: "canceled", plan: "free", paddle_subscription_id: first });
+      const [f] = await sql`select kind, detail, resolved_at from billing_flags where subscription_id = ${second}`;
+      expect(f).toMatchObject({ kind: "trial_blocked", resolved_at: null });
+      expect(f.detail).toMatch(/^Canceled in Paddle at once/);
       sent.length = 0;
       expect(await notices.runTrialReminders()).toEqual({ sent: 0, failed: 0 });
+      expect(await notices.runWelcomeRetries()).toEqual({ sent: 0, failed: 0 });
+      expect(sent).toHaveLength(0);
+      // Paddle's own cancel event for it changes nothing either.
+      paddleCalls.length = 0;
+      const after = await billing.handlePaddleEvent(subEvent("subscription.canceled", { ...trial(second, customer, null, inDays(1)), status: "canceled", canceled_at: new Date().toISOString() }, new Date(Date.now() + 3_000).toISOString()));
+      expect(after).toEqual({ outcome: "flagged" });
+      expect(paddleCalls).toEqual([]);
+      expect((await sql`select paddle_subscription_id from subscribers where email = 'returning@example.org'`)[0].paddle_subscription_id).toBe(first);
     });
 
     it("one-click unsubscribe with a running plan: unsubscribes and sends one notice with the cancel link", async () => {
       const acct = await mk("oneclick@example.org", { billing: "active", interval: "month", periodEndInDays: 20 });
       const { POST } = await import("@/app/api/unsubscribe/route");
-      const post = () => POST(new Request("http://localhost/api/unsubscribe?token=unsub-oneclick@example.org", { method: "POST" }));
+      const post = () => POST(new Request(`http://localhost/api/unsubscribe?token=${tok("oneclick@example.org")}`, { method: "POST" }));
       expect((await post()).status).toBe(200);
       await settle();
       expect((await sql`select status from subscribers where id = ${acct.id}`)[0].status).toBe("unsubscribed");
@@ -501,9 +548,12 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
     });
 
     it("one-click unsubscribe without a plan sends nothing", async () => {
-      await sql`insert into subscribers (email, status, unsubscribe_token) values ('free@example.org', 'confirmed', 'unsub-free')`;
+      await sql`insert into subscribers (email, status, unsubscribe_token) values ('free@example.org', 'confirmed', ${tok("free@example.org")})`;
       const { POST } = await import("@/app/api/unsubscribe/route");
-      await POST(new Request("http://localhost/api/unsubscribe?token=unsub-free", { method: "POST" }));
+      // A malformed token (here with a NUL byte) is not looked up at all, and changes nothing.
+      expect((await POST(new Request("http://localhost/api/unsubscribe?token=unsub%00free", { method: "POST" }))).status).toBe(200);
+      expect((await sql`select status from subscribers where email = 'free@example.org'`)[0].status).toBe("confirmed");
+      await POST(new Request(`http://localhost/api/unsubscribe?token=${tok("free@example.org")}`, { method: "POST" }));
       await settle();
       expect(sent).toHaveLength(0);
       expect((await sql`select status from subscribers where email = 'free@example.org'`)[0].status).toBe("unsubscribed");
@@ -548,7 +598,7 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(to).not.toContain("early3@example.org");
       expect(to).not.toContain("early4@example.org");
       const m = sent.find((x) => x.to === "early1@example.org")!;
-      expect(m.subject).toBe("Postbird email alerts are open");
+      expect(m.subject).toBe("Postbird daily alerts are open");
       expect(m.text).toContain("/pricing/trial");
       expect(m.text).toContain("/alerts/unsubscribe?token=unsub-early1@example.org");
       expect(m.text).toContain("Casper, Wyoming");
@@ -634,7 +684,7 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       expect(s.confirmed_at).not.toBeNull();
       expect(s.welcome_sent_at).not.toBeNull();
       expect(sent).toHaveLength(1);
-      expect(sent[0]).toMatchObject({ to: "twice@example.org", key: `welcome:${s.id}` });
+      expect(sent[0]).toMatchObject({ to: "twice@example.org", key: `welcome:${s.id}:${subId}` });
       expect(sent[0].text).toContain(`/account?t=${s.manage_token}`);
       expect(await billing.checkoutAccountToken(ref2)).toEqual({ linked: true, manageToken: s.manage_token });
     });
@@ -667,10 +717,11 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
 
     it("a welcome claimed over 30 minutes ago and never sent goes out once, under the same key; a fresh claim waits", async () => {
       await sql`update subscribers set welcome_sent_at = coalesce(welcome_sent_at, now()), welcome_claimed_at = null`;
-      const stale = await claimed("lease-welcome@example.org", { welcome_sent_at: ago(45), welcome_claimed_at: ago(45) });
-      const fresh = await claimed("lease-fresh@example.org", { welcome_sent_at: ago(5), welcome_claimed_at: ago(5) });
+      const staleSub = "sub_01hv8x29kz0t586xy6zn1a66aa";
+      const stale = await claimed("lease-welcome@example.org", { paddle_subscription_id: staleSub, welcome_sent_at: ago(45), welcome_claimed_at: ago(45) });
+      const fresh = await claimed("lease-fresh@example.org", { paddle_subscription_id: "sub_01hv8x29kz0t586xy6zn1a66ab", welcome_sent_at: ago(5), welcome_claimed_at: ago(5) });
       expect(await notices.runWelcomeRetries()).toEqual({ sent: 1, failed: 0 });
-      expect(sent.map((m) => [m.to, m.key])).toEqual([["lease-welcome@example.org", `welcome:${stale}`]]);
+      expect(sent.map((m) => [m.to, m.key])).toEqual([["lease-welcome@example.org", `welcome:${stale}:${staleSub}`]]);
       const [s] = await sql`select welcome_sent_at, welcome_claimed_at from subscribers where id = ${stale}`;
       expect(s.welcome_sent_at).not.toBeNull();
       expect(s.welcome_claimed_at).toBeNull();
@@ -679,7 +730,7 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
     });
 
     it("a failed send gives the claim back; the next run sends it", async () => {
-      const id = await claimed("lease-fail@example.org", { welcome_sent_at: null });
+      const id = await claimed("lease-fail@example.org", { paddle_subscription_id: "sub_01hv8x29kz0t586xy6zn1a66ac", welcome_sent_at: null });
       const resendStub = globalThis.fetch;
       vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ name: "validation_error", message: "nope" }), { status: 422 }));
       try {
@@ -732,6 +783,186 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       await sql`insert into subscribers (email, status, unsubscribe_token) values ('uncapped@example.org', 'confirmed', 'unsub-uncapped')`;
       expect(await account.sendAccountLink("uncapped@example.org")).toBe(true);
       expect(sent.filter((m) => m.to === "uncapped@example.org")).toHaveLength(1);
+    });
+  });
+
+  describe("checkout data the browser could change", () => {
+    const at = (s: number) => new Date(Date.now() + s * 1000).toISOString();
+    const postEvent = async (event: ReturnType<typeof subEvent>) => {
+      const { POST } = await import("@/app/api/paddle/webhook/route");
+      const body = JSON.stringify(event);
+      const ts = Math.floor(Date.now() / 1000);
+      return POST(new Request("http://localhost/api/paddle/webhook", { method: "POST", body, headers: { "paddle-signature": `ts=${ts};h1=${paddle.signPayload(body, ts, WEBHOOK_SECRET)}` } }));
+    };
+
+    it("a trialing subscription for a checkout that allowed no trial is canceled in Paddle; alerts stay off, no welcome", async () => {
+      // A returning customer's reference (trial_allowed false) used with the catalog price, which has the trial.
+      const [r] = await sql`
+        insert into subscribers (email, status, billing_status, paddle_subscription_id, canceled_at, unsubscribe_token)
+        values ('no-second@example.org', 'confirmed', 'canceled', 'sub_01hv8x29kz0t586xy6zn1a67aa', now() - interval '3 days', ${tok("no-second@example.org")})
+        returning id::int as id`;
+      await sql`insert into paddle_checkouts (ref, subscriber_id, plan, new_subscriber, trial_allowed) values ('ref-no-trial-0123456789ab', ${r.id}, 'monthly', true, false)`;
+      CUSTOMERS.ctm_01hv6y1jedq4p1n0yqn5ba3kd3 = "no-second@example.org";
+      const subId = "sub_01hv8x29kz0t586xy6zn1a67ab";
+      const ev = subEvent("subscription.created", { id: subId, customer_id: "ctm_01hv6y1jedq4p1n0yqn5ba3kd3", custom_data: { ref: "ref-no-trial-0123456789ab" } }, at(1));
+      expect(await (await postEvent(ev)).text()).toBe("flagged");
+      await settle();
+      expect(paddleCalls).toContain(`POST /subscriptions/${subId}/cancel`);
+      const [s] = await sql`select billing_status, plan, paddle_subscription_id, welcome_sent_at from subscribers where id = ${r.id}`;
+      expect(s).toMatchObject({ billing_status: "canceled", plan: "free", paddle_subscription_id: "sub_01hv8x29kz0t586xy6zn1a67aa", welcome_sent_at: null });
+      expect(sent).toHaveLength(0);
+      expect((await sql`select count(*)::int as n from events where type = 'trial_started' and props->>'plan' is null`)[0].n).toBe(0);
+    });
+
+    it("if Paddle refuses the cancel, alerts stay off, the flag says so, and the next event tries again", async () => {
+      const [r] = await sql`
+        insert into subscribers (email, status, billing_status, paddle_subscription_id, canceled_at, unsubscribe_token)
+        values ('cancel-fails@example.org', 'confirmed', 'canceled', 'sub_01hv8x29kz0t586xy6zn1a68aa', now() - interval '3 days', ${tok("cancel-fails@example.org")})
+        returning id::int as id`;
+      await sql`insert into paddle_checkouts (ref, subscriber_id, plan, new_subscriber, trial_allowed) values ('ref-cancel-fails-0123456789', ${r.id}, 'monthly', true, false)`;
+      const subId = "sub_01hv8x29kz0t586xy6zn1a68ab";
+      const ev = (s: number) => subEvent("subscription.updated", { id: subId, customer_id: null, custom_data: { ref: "ref-cancel-fails-0123456789" } }, at(s));
+      paddleDown = true;
+      expect(await (await postEvent(ev(1))).text()).toBe("flagged");
+      await settle();
+      const [f] = await sql`select detail from billing_flags where subscription_id = ${subId} and kind = 'trial_blocked'`;
+      expect(f.detail).toMatch(/^Cancel in Paddle failed \(Paddle API returned HTTP 500 \(internal_error\)\)\. Cancel this subscription by hand/);
+      expect((await sql`select billing_status from subscribers where id = ${r.id}`)[0].billing_status).toBe("canceled");
+      // Paddle is back: the next event for the still-trialing subscription cancels it.
+      paddleDown = false;
+      paddleCalls.length = 0;
+      expect(await (await postEvent(ev(2))).text()).toBe("flagged");
+      await settle();
+      expect(paddleCalls).toEqual([`POST /subscriptions/${subId}/cancel`]);
+      expect((await sql`select detail from billing_flags where subscription_id = ${subId}`)[0].detail).toMatch(/^Canceled in Paddle at once/);
+    });
+
+    it("a Paddle customer whose email isn't the subscriber's address is not linked; alerts stay off; flagged", async () => {
+      const start = await billing.startCheckout({ email: "victim@example.org", plan: "monthly", search: null });
+      const ref = (start as { ref: string }).ref;
+      const subId = "sub_01hv8x29kz0t586xy6zn1a69aa";
+      const res = await postEvent(subEvent("subscription.created", { id: subId, customer_id: "ctm_01hv6y1jedq4p1n0yqn5ba3kd1", custom_data: { ref } }, at(1)));
+      expect(await res.text()).toBe("flagged");
+      await settle();
+      const [s] = await sql`select status, billing_status, plan, paddle_customer_id, paddle_subscription_id, welcome_sent_at from subscribers where email = 'victim@example.org'`;
+      expect(s).toMatchObject({ status: "pending", billing_status: "none", plan: "free", paddle_customer_id: null, paddle_subscription_id: null, welcome_sent_at: null });
+      expect(sent).toHaveLength(0);
+      const [f] = await sql`select kind, customer_id from billing_flags where subscription_id = ${subId}`;
+      expect(f).toEqual({ kind: "customer_mismatch", customer_id: "ctm_01hv6y1jedq4p1n0yqn5ba3kd1" });
+      // Later events for it are held back without asking Paddle again.
+      paddleCalls.length = 0;
+      expect((await billing.handlePaddleEvent(subEvent("subscription.updated", { id: subId, customer_id: "ctm_01hv6y1jedq4p1n0yqn5ba3kd1", custom_data: { ref } }, at(2)))).outcome).toBe("flagged");
+      expect(paddleCalls).toEqual([]);
+      expect((await sql`select billing_status from subscribers where email = 'victim@example.org'`)[0].billing_status).toBe("none");
+    });
+
+    it("a customer that can't be checked isn't linked; billing checks it before any portal opens", async () => {
+      const start = await billing.startCheckout({ email: "unchecked@example.org", plan: "monthly", search: null });
+      const subId = "sub_01hv8x29kz0t586xy6zn1a6aaa";
+      const customer = "ctm_01hv6y1jedq4p1n0yqn5ba3kd2";
+      paddleDown = true;
+      expect((await billing.handlePaddleEvent(subEvent("subscription.created", { id: subId, customer_id: customer, custom_data: { ref: (start as { ref: string }).ref } }, at(1)))).outcome).toBe("applied");
+      const [s] = await sql`
+        select id::int as id, email, billing_status, paddle_customer_id, paddle_customer_verified_at, paddle_subscription_id from subscribers where email = 'unchecked@example.org'`;
+      expect(s).toMatchObject({ billing_status: "trialing", paddle_customer_id: null, paddle_subscription_id: subId });
+      expect((await sql`select kind, resolved_at from billing_flags where subscription_id = ${subId}`)[0]).toEqual({ kind: "customer_unverified", resolved_at: null });
+      // Still down: no customer to open billing for.
+      expect(await billing.verifiedCustomerFor(s)).toBeNull();
+      // Paddle answers again: the next event checks and links it, and settles the flag.
+      paddleDown = false;
+      await billing.handlePaddleEvent(subEvent("subscription.updated", { id: subId, customer_id: customer, custom_data: null }, at(2)));
+      const [after] = await sql`select paddle_customer_id, paddle_customer_verified_at from subscribers where id = ${s.id}`;
+      expect(after.paddle_customer_id).toBe(customer);
+      expect(after.paddle_customer_verified_at).not.toBeNull();
+      expect((await sql`select resolved_at from billing_flags where subscription_id = ${subId}`)[0].resolved_at).not.toBeNull();
+    });
+
+    it("a customer id stored before the check existed is checked when billing opens, and unlinked if it isn't the address's", async () => {
+      const [ok] = await sql`
+        insert into subscribers (email, status, billing_status, paddle_customer_id, paddle_subscription_id, unsubscribe_token)
+        values ('old-link@example.org', 'confirmed', 'active', 'ctm_01hv6y1jedq4p1n0yqn5ba3kd4', 'sub_01hv8x29kz0t586xy6zn1a6baa', ${tok("old-link@example.org")})
+        returning id::int as id, email, paddle_customer_id, paddle_customer_verified_at, paddle_subscription_id`;
+      CUSTOMERS.ctm_01hv6y1jedq4p1n0yqn5ba3kd4 = "OLD-LINK@example.org";
+      expect(await billing.verifiedCustomerFor(ok)).toBe("ctm_01hv6y1jedq4p1n0yqn5ba3kd4");
+      expect((await sql`select paddle_customer_verified_at from subscribers where id = ${ok.id}`)[0].paddle_customer_verified_at).not.toBeNull();
+
+      const [bad] = await sql`
+        insert into subscribers (email, status, billing_status, paddle_customer_id, paddle_subscription_id, unsubscribe_token)
+        values ('wrong-link@example.org', 'confirmed', 'active', 'ctm_01hv6y1jedq4p1n0yqn5ba3kd1', 'sub_01hv8x29kz0t586xy6zn1a6bbb', ${tok("wrong-link@example.org")})
+        returning id::int as id, email, paddle_customer_id, paddle_customer_verified_at, paddle_subscription_id`;
+      expect(await billing.verifiedCustomerFor(bad)).toBeNull();
+      expect((await sql`select paddle_customer_id from subscribers where id = ${bad.id}`)[0].paddle_customer_id).toBeNull();
+      expect((await sql`select kind from billing_flags where subscription_id = 'sub_01hv8x29kz0t586xy6zn1a6bbb'`)[0].kind).toBe("customer_mismatch");
+      // No customer id ever goes into a URL other than as the id itself; no email in any Paddle URL.
+      expect(paddleCalls.some((c) => c.includes("@") || c.includes("%40"))).toBe(false);
+    });
+  });
+
+  describe("account link rotation", () => {
+    it("the link is replaced only once the email went out: a failed send keeps the old link working", async () => {
+      await sql`delete from rate_limits`;
+      const [r] = await sql`insert into subscribers (email, status, unsubscribe_token) values ('keep-link@example.org', 'confirmed', ${tok("keep-link@example.org")}) returning id::int as id, manage_token`;
+      const stub = globalThis.fetch;
+      vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ name: "validation_error", message: "nope" }), { status: 422 }));
+      try {
+        expect(await account.sendAccountLink("keep-link@example.org")).toBe(false);
+      } finally {
+        vi.stubGlobal("fetch", stub);
+      }
+      expect((await sql`select manage_token from subscribers where id = ${r.id}`)[0].manage_token).toBe(r.manage_token);
+      // Sent: replaced, and the email carries the new one.
+      expect(await account.sendAccountLink("keep-link@example.org", "cancel")).toBe(true);
+      const [{ manage_token: fresh }] = await sql`select manage_token from subscribers where id = ${r.id}`;
+      expect(fresh).not.toBe(r.manage_token);
+      const m = sent.find((x) => x.to === "keep-link@example.org")!;
+      expect(m.subject).toBe("Your link to cancel your Postbird plan");
+      expect(m.text).toContain(`/account?t=${fresh}`);
+    });
+  });
+
+  describe("one free trial per email address, after deletion", () => {
+    it("deleting an address that had a plan leaves a one-way marker for 24 months; others leave none", async () => {
+      const markers = await import("@/lib/billing/trial-markers");
+      await sql`
+        insert into subscribers (email, status, billing_status, canceled_at, unsubscribe_token)
+        values ('had-plan-gone@example.org', 'confirmed', 'canceled', now() - interval '40 days', ${tok("had-plan-gone@example.org")}),
+               ('never-paid-gone@example.org', 'pending', 'none', null, ${tok("never-paid-gone@example.org")})`;
+      await sql`update subscribers set created_at = now() - interval '40 days' where email = 'never-paid-gone@example.org'`;
+      await sql`insert into trial_markers (hash, expires_at) values ('expired-marker', now() - interval '1 day')`;
+      await subscribers.purgeStaleSubscribers();
+      expect(await sql`select 1 from subscribers where email in ('had-plan-gone@example.org', 'never-paid-gone@example.org')`).toHaveLength(0);
+      expect(await markers.hasTrialMarker("had-plan-gone@example.org")).toBe(true);
+      expect(await markers.hasTrialMarker("never-paid-gone@example.org")).toBe(false);
+      const [m] = await sql`select hash, expires_at from trial_markers where hash = ${markers.trialMarker("had-plan-gone@example.org")}`;
+      expect(m.hash).not.toContain("had-plan-gone");
+      const months = (new Date(m.expires_at).getTime() - Date.now()) / (30.44 * 86_400_000);
+      expect(months).toBeGreaterThan(23.5);
+      expect(months).toBeLessThan(24.5);
+      // Expired markers go with the clean-up.
+      expect(await sql`select 1 from trial_markers where hash = 'expired-marker'`).toHaveLength(0);
+
+      // The address comes back: no trial checkout, the same "check your inbox" as any customer,
+      // and a trialing subscription for it would be canceled.
+      const back = await billing.startCheckout({ email: "had-plan-gone@example.org", plan: "monthly", search: "q=data" });
+      expect(back).toMatchObject({ ok: true, inbox: true, live: false });
+      expect(await sql`select 1 from paddle_checkouts c join subscribers s on s.id = c.subscriber_id where s.email = 'had-plan-gone@example.org'`).toHaveLength(0);
+    });
+  });
+
+  describe("NUL bytes and other control characters", () => {
+    it("never reach the database from the job search, organization pages or tokens", async () => {
+      const jobs = await import("@/lib/jobs");
+      const f = jobs.parseFilters({ q: "data\u0000analyst", org: "uni\u0000cef", sort: "newest\u0000" });
+      expect(f.q).toBe("data analyst");
+      expect(f.org).toBeUndefined();
+      expect(f.sort).toBe("newest");
+      await expect(jobs.searchJobs(jobs.parseFilters({ q: "\u0000" }))).resolves.toBeTruthy();
+      expect(await jobs.getOrganization("a\u0000b")).toBeNull();
+      expect(await subscribers.findByUnsubscribeToken("unsub-free\u0000xxxxxxxxxxxxxx")).toBeNull();
+      expect(await subscribers.findByConfirmToken(["a".repeat(32), "b".repeat(32)])).toBeNull();
+      expect(await subscribers.confirmSubscriber("x\u0000".repeat(12))).toEqual({ ok: false });
+      expect(await account.findByManageToken("\u0000")).toBeNull();
+      expect(await billing.checkoutAccountToken("ref\u0000" + "x".repeat(20))).toEqual({ linked: false, manageToken: null });
     });
   });
 

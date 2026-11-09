@@ -15,8 +15,9 @@ const STATUSES = ["active", "expired", "archived", "removed"];
 export default async function AdminJobsPage({ searchParams }: Props) {
   await requireAdmin();
   const sp = await searchParams;
-  const q = sp.q?.trim() || null;
-  const status = STATUSES.includes(sp.status ?? "") ? sp.status! : null;
+  // Without control characters: Postgres rejects a NUL byte in text.
+  const q = typeof sp.q === "string" ? sp.q.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").trim().slice(0, 200) || null : null;
+  const status = typeof sp.status === "string" && STATUSES.includes(sp.status) ? sp.status : null;
   const page = Math.min(Math.max(1, Math.floor(Number(sp.page)) || 1), 100_000);
   const like = q ? `%${q.replace(/[%_\\]/g, "")}%` : null;
   const rows = await sql<{

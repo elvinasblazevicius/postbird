@@ -154,3 +154,72 @@ describe("one-click unsubscribe address opened with GET", () => {
     expect((await unsubscribeGet(new Request("http://localhost/api/unsubscribe"))).headers.get("location")).toBe("/alerts/unsubscribe");
   });
 });
+
+describe("control characters and malformed tokens never reach the database", () => {
+  it("normalizeEmail rejects control characters (NUL, line breaks) inside an address", async () => {
+    const { normalizeEmail } = await import("@/lib/subscribers");
+    expect(normalizeEmail(" Someone@Example.org ")).toBe("someone@example.org");
+    expect(normalizeEmail("some\u0000one@example.org")).toBeNull();
+    expect(normalizeEmail("someone@example.org\r\nBcc: x@example.org")).toBeNull();
+    expect(normalizeEmail("some\u007fone@example.org")).toBeNull();
+    expect(normalizeEmail(["a@example.org"] as unknown as string)).toBeNull();
+  });
+
+  it("link tokens must look like the ones the site creates before anything is looked up", async () => {
+    const { isLinkToken, findByUnsubscribeToken, findByConfirmToken, confirmSubscriber, unsubscribe } = await import("@/lib/subscribers");
+    expect(isLinkToken("abcDEF0123456789_-abcdefghijklmn")).toBe(true);
+    for (const bad of ["", "short", "a".repeat(65), "a".repeat(31) + "\u0000", "a".repeat(30) + "%00", "a b".repeat(10), ["a".repeat(32)], null, 42]) {
+      expect(isLinkToken(bad), String(bad)).toBe(false);
+    }
+    // No DATABASE_URL here: these return before any query (a query would throw).
+    expect(await findByUnsubscribeToken("\u0000".repeat(32))).toBeNull();
+    expect(await findByConfirmToken(["a".repeat(32)])).toBeNull();
+    expect(await confirmSubscriber("x")).toEqual({ ok: false });
+    expect(await unsubscribe("a".repeat(31) + "\u0000")).toBeNull();
+  });
+
+  it("job filters from the URL lose control characters (/jobs?q=%00)", async () => {
+    const { parseFilters } = await import("@/lib/jobs");
+    expect(parseFilters({ q: "\u0000" }).q).toBeUndefined();
+    expect(parseFilters({ q: "data\u0000analyst\u001f" }).q).toBe("data analyst");
+    expect(parseFilters({ q: decodeURIComponent("%00nurse") }).q).toBe("nurse");
+    expect(parseFilters({ org: "unicef\u0000x" }).org).toBeUndefined();
+    expect(parseFilters({ page: "2\u0000" }).page).toBe(2);
+    const { getOrganization } = await import("@/lib/jobs");
+    expect(await getOrganization("unicef\u0000")).toBeNull();
+  });
+});
+
+describe("database client", () => {
+  it("never pipelines queries and has a client-side query time limit", async () => {
+    const before = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = "postgres://user:pass@localhost:5999/never_connected";
+    try {
+      const { getSql } = await import("@/lib/db");
+      const sql = getSql() as unknown as { options: { max_pipeline: number; query_timeout: number; max: number; prepare: boolean } };
+      expect(sql.options.max_pipeline).toBe(1);
+      expect(sql.options.query_timeout).toBe(12);
+      expect(sql.options.max).toBeGreaterThanOrEqual(5);
+      expect(sql.options.prepare).toBe(false);
+    } finally {
+      if (before === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = before;
+    }
+  });
+});
+
+describe("coverage line", () => {
+  it("names up to four well-known organizations with open vacancies, and hides below 5", async () => {
+    const { coverageFrom, joinNames } = await import("@/lib/coverage");
+    const org = (name: string, short_name: string | null, count: number) => ({ name, short_name, count });
+    expect(coverageFrom([org("UNICEF", "UNICEF", 9), org("A", null, 1), org("B", null, 1), org("C", null, 1)])).toBeNull();
+    const c = coverageFrom([
+      org("Small Org", null, 1), org("World Health Organization", "WHO", 30), org("UNICEF", "UNICEF", 50), org("UNDP", "UNDP", 20),
+      org("International Organization for Migration", "IOM", 10), org("UN Women", "UN Women", 5), org("Very Long Organization", "VERYLONGSHORTNAME", 40),
+    ]);
+    expect(c).toEqual({ count: 7, names: ["UNICEF", "WHO", "UNDP", "IOM"] });
+    expect(joinNames(c!.names)).toBe("UNICEF, WHO, UNDP and IOM");
+    expect(coverageFrom([org("Alpha Org", null, 3), org("Beta Org", null, 2), org("Gamma Org", null, 1), org("D", null, 1), org("E", "E", 1)])?.names)
+      .toEqual(["E", "Alpha Org", "Beta Org"]);
+  });
+});

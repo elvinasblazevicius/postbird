@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AccountUnsubscribe, AddSearchForm, FrequencyForm, PortalButton, RemoveSearchButton } from "@/components/account-forms";
+import { AccountUnsubscribe, AddSearchForm, FrequencyForm, PortalButton, RemoveSearchButton, RestartPlanButton } from "@/components/account-forms";
 import { ALL_CATEGORIES } from "@/config/categories";
 import { COUNTRIES } from "@/config/countries";
 import { GRADE_GROUPS, REGIONS } from "@/config/regions";
 import { findByManageToken, type Account } from "@/lib/account";
 import { BILLING_LIVE } from "@/lib/billing/live";
+import { hadTrialBefore } from "@/lib/billing/subscriptions";
+import { hasTrialMarker } from "@/lib/billing/trial-markers";
 import { planDescription } from "@/lib/early-access-copy";
 import { JOB_TYPES } from "@/lib/jobs";
 import { listSavedSearches, MAX_SAVED_SEARCHES, searchLimit } from "@/lib/saved-searches";
@@ -16,7 +18,7 @@ export const dynamic = "force-dynamic";
 // Private page: never indexed (the X-Robots-Tag header in next.config.ts says the same) and never tracked (see isPrivatePath).
 export const metadata: Metadata = { title: "Your account", robots: { index: false, follow: false } };
 
-type Props = { searchParams: Promise<{ t?: string }> };
+type Props = { searchParams: Promise<{ t?: string | string[] }> };
 
 const STATUS_TEXT: Record<Account["billing_status"], string> = {
   none: "No plan",
@@ -59,9 +61,13 @@ export default async function AccountPage({ searchParams }: Props) {
   }
 
   const searches = await listSavedSearches(acct.id);
+  // One free trial per email address: only an address that never had a plan is offered it.
+  const hadPlan = hadTrialBefore(acct, await hasTrialMarker(acct.email));
   const alertsOn = acct.billing_status === "trialing" || acct.billing_status === "active";
   const paying = ["trialing", "active", "past_due", "paused"].includes(acct.billing_status);
   const limit = searchLimit(acct.billing_status);
+  // Billing (Paddle's portal) once there is a Paddle customer or subscription; the customer is checked against this address before it opens.
+  const billing = Boolean(acct.paddle_customer_id || acct.paddle_subscription_id);
   // The free weekly email goes only to confirmed addresses without a plan.
   const weekly = siteConfig.freeWeeklyEmail && !paying && acct.weekly_email && acct.status === "confirmed";
   const where = [
@@ -90,14 +96,18 @@ export default async function AccountPage({ searchParams }: Props) {
           </p>
         ) : null}
         <div className="mt-5 flex flex-wrap items-center gap-3">
-          {acct.paddle_customer_id ? <PortalButton t={acct.manage_token} /> : null}
-          {(acct.billing_status === "none" || acct.billing_status === "canceled") && BILLING_LIVE ? (
-            <Link href="/pricing/trial" className="rounded-lg bg-brand px-5 py-2.5 text-[0.95rem] font-semibold text-white hover:bg-accent">
-              Start your {siteConfig.premium.trialDays}-day free trial
-            </Link>
+          {billing ? <PortalButton t={acct.manage_token} /> : null}
+          {!paying && BILLING_LIVE ? (
+            hadPlan ? (
+              <RestartPlanButton t={acct.manage_token} />
+            ) : (
+              <Link href="/pricing/trial" className="rounded-lg bg-brand px-5 py-2.5 text-[0.95rem] font-semibold text-white hover:bg-accent">
+                Start your {siteConfig.premium.trialDays}-day free trial
+              </Link>
+            )
           ) : null}
         </div>
-        {acct.paddle_customer_id ? (
+        {billing ? (
           <p className="mt-3 text-sm text-slate">Billing is handled by Paddle, our reseller: update your card, see invoices or cancel there.</p>
         ) : null}
       </section>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertExample } from "@/components/alert-example";
+import { CoverageLine } from "@/components/coverage-line";
 import { PageHeader } from "@/components/page-header";
 import { TrackedLink } from "@/components/tracking";
 import { BILLING_LIVE } from "@/lib/billing/live";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Pricing — email alerts for international jobs",
   description: siteConfig.freeWeeklyEmail
-    ? `Browsing every vacancy is free, and so is a weekly email with new matches for one search. Daily ${siteConfig.premium.name.toLowerCase()} with up to 5 searches: ${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}.`
+    ? `Browsing every vacancy is free, and so is a weekly email with new matches for one search. ${siteConfig.premium.name} with up to 5 searches: ${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}.`
     : `Browsing every vacancy is free. ${siteConfig.premium.name}: new vacancies by email, filtered by keyword, organization and location. ${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}.`,
   alternates: { canonical: "/pricing" },
 };
@@ -25,7 +26,7 @@ function Check() {
   );
 }
 
-export default function PricingPage() {
+export default async function PricingPage() {
   const p = siteConfig.premium;
   const billingFaq: [string, React.ReactNode][] = BILLING_LIVE
     ? [
@@ -93,6 +94,9 @@ export default function PricingPage() {
             : `Every vacancy, search and filter is free. Paid email alerts${BILLING_LIVE ? "" : ", launching soon,"} bring new matches to your inbox so you don't have to keep checking.`
         }
       />
+      <div className="mx-auto max-w-4xl px-4 pt-8 sm:px-6">
+        <CoverageLine />
+      </div>
       <div className="mx-auto grid max-w-4xl gap-6 px-4 py-12 sm:px-6 md:grid-cols-2">
         <section className="flex flex-col self-start rounded-2xl border border-rule p-7" aria-labelledby="plan-free">
           <h2 id="plan-free" className="text-2xl font-semibold leading-tight text-ink">Free</h2>

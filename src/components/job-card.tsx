@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Fragment } from "react";
 import type { JobListItem } from "@/lib/jobs";
 import { countryByCode } from "@/config/countries";
 import { displayGrade, isLocalOnly } from "@/lib/grades";
@@ -8,20 +9,13 @@ import { SaveButton } from "./job-tools";
 import { formatShortDate, jobPath, locationLabel, monogram, NOT_SPECIFIED, relativeDeadline } from "@/lib/site";
 
 /**
- * Organization badge: the organization's icon where we have one, otherwise its short name.
- * Both sit in the same neutral frame, so no organization looks more prominent than another.
+ * Organization badge: always a text monogram (the organization's short name, e.g. "WFP", "MSF",
+ * or its initials) in the same neutral frame. No logos, so no organization looks more prominent
+ * than another and nothing suggests the organization endorses the site.
  */
-export function OrgBadge({ name, short, logo, size = "md" }: { name: string | null; short: string | null; logo?: string | null; size?: "sm" | "md" | "lg" }) {
+export function OrgBadge({ name, short, size = "md" }: { name: string | null; short: string | null; size?: "sm" | "md" | "lg" }) {
   const box = size === "lg" ? "h-14 w-14" : size === "sm" ? "h-9 w-9" : "h-11 w-11";
   const frame = `${box} flex shrink-0 items-center justify-center rounded-xl border border-rule bg-white`;
-  if (logo) {
-    return (
-      <span aria-hidden="true" className={`${frame} ${size === "lg" ? "p-2" : "p-1.5"}`}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={`/api/org-logo/${logo}`} alt="" width={40} height={40} loading="lazy" decoding="async" className="h-full w-full object-contain" />
-      </span>
-    );
-  }
   const lines = badgeLines(name ? monogram(name, short) : "–");
   const two = lines.length > 1;
   // Never smaller than 0.68rem: a longer short name goes on two lines of at most 4 characters.
@@ -93,22 +87,28 @@ export function JobCard({ job, headingLevel = 3 }: { job: JobListItem; headingLe
   const where = locationLabel(job);
   const local = isLocalOnly(job);
   const localCountry = local ? countryByCode(job.country_code)?.name : undefined;
+  // "Nationals of Kenya only" is said only for National Officer grades; other local posts (General
+  // Service, service contracts) are usually open to legal residents too, so they are "Local post".
+  const nationalOfficer = Boolean(grade?.startsWith("National Officer"));
+  const localLabel = !local ? null : nationalOfficer && localCountry ? `Nationals of ${localCountry} only` : localCountry ? `Local post · ${localCountry}` : "Local post";
   const posted = postedMarker(job);
-  const meta: React.ReactNode[] = [
-    job.org_name ?? <span className="italic">Organization not in our source</span>,
-    where !== NOT_SPECIFIED ? <span className="inline-flex items-center gap-1"><Flag code={job.country_code} />{where}</span> : null,
+  // Each detail ends with its own separator, glued to its last word by a no-break space, so a
+  // wrapped line can end with "·" but never start with one.
+  type Meta = { node: React.ReactNode; nowrap?: boolean };
+  const meta = ([
+    { node: job.org_name ?? <span className="italic">Organization not in our source</span> },
+    where !== NOT_SPECIFIED ? { node: <><Flag code={job.country_code} className="mr-1 align-[-0.05em]" />{where}</> } : null,
     ...[grade, job.job_type, job.is_remote && where !== "Remote" ? "Remote" : null, lang ? `In ${lang.name}` : null]
       .filter(Boolean)
-      .map((x, i) => <span key={i} className="whitespace-nowrap">{x}</span>),
-    posted ? (
-      <span className={`whitespace-nowrap ${posted.fresh ? "font-medium text-ink/80" : ""}`}>
-        {posted.fresh ? "New" : <><span className="sr-only">Posted </span>{posted.text}</>}
-      </span>
-    ) : null,
-  ].filter(Boolean);
+      .map((x) => ({ node: x, nowrap: true })),
+    posted ? {
+      node: <span className={posted.fresh ? "font-medium text-ink/80" : ""}>{posted.fresh ? "New" : <><span className="sr-only">Posted </span>{posted.text}</>}</span>,
+      nowrap: true,
+    } : null,
+  ] as (Meta | null)[]).filter((m): m is Meta => m !== null);
   return (
     <article className="group relative flex items-start gap-3 bg-paper px-3 py-3 hover:bg-mist sm:px-4">
-      <span className="hidden pt-0.5 sm:block"><OrgBadge name={job.org_name} short={job.org_short} logo={job.org_logo} size="sm" /></span>
+      <span className="hidden pt-0.5 sm:block"><OrgBadge name={job.org_name} short={job.org_short} size="sm" /></span>
       <div className="min-w-0 flex-1">
         <H className="font-sans text-[1.02rem] font-semibold leading-snug text-ink">
           <Link href={href} lang={lang?.code} className="after:absolute after:inset-0 group-hover:text-accent focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-accent">
@@ -117,16 +117,19 @@ export function JobCard({ job, headingLevel = 3 }: { job: JobListItem; headingLe
         </H>
         <p className="mt-0.5 text-sm leading-snug text-slate">
           {job.is_demo ? <span className="mr-1.5"><Tag tone="demo">Demo data</Tag></span> : null}
-          {local ? (
+          {localLabel ? (
             <span className="mr-1.5 inline-flex rounded border border-rule px-1.5 text-[0.75rem] font-medium leading-[1.35rem] text-slate">
-              {localCountry ? `Nationals of ${localCountry} only` : "Local post"}
+              {localLabel}
             </span>
           ) : null}
           {meta.map((m, i) => (
-            <span key={i}>
-              {i > 0 ? <span aria-hidden="true" className="px-1">·</span> : null}
-              {m}
-            </span>
+            <Fragment key={i}>
+              <span className={m.nowrap ? "whitespace-nowrap" : undefined}>
+                {m.node}
+                {i < meta.length - 1 ? <span aria-hidden="true">{"\u00a0·"}</span> : null}
+              </span>
+              {i < meta.length - 1 ? " " : null}
+            </Fragment>
           ))}
         </p>
       </div>

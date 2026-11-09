@@ -42,6 +42,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // /alerts is the free weekly email; without it, once billing is live, /alerts redirects to the trial page.
     ...(BILLING_LIVE && !siteConfig.freeWeeklyEmail ? [] : [{ url: absoluteUrl("/alerts"), changeFrequency: "monthly" as const, priority: 0.4 }]),
     { url: absoluteUrl("/grades"), changeFrequency: "yearly", priority: 0.3 },
+    { url: absoluteUrl("/guides/how-to-read-a-un-vacancy"), changeFrequency: "yearly", priority: 0.3 },
     { url: absoluteUrl("/pricing"), changeFrequency: "monthly", priority: 0.3 },
     { url: absoluteUrl("/about"), changeFrequency: "monthly", priority: 0.3 },
   ];

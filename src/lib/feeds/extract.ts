@@ -12,7 +12,7 @@ import { IMPORT_SETTINGS } from "@/config/import";
 import { escapeRegExp, excerpt, htmlToText, normalizeForCompare, oneLine, sanitizeDescriptionMax, slugify } from "@/lib/text";
 import { extractDeadline, parseFeedDate } from "./dates";
 import type { RawItem } from "./parse";
-import { cleanTitle } from "./title";
+import { cleanTitle, titleForSlug } from "./title";
 import { canonicalizeUrl, hostOf, isListingSite, pickApplyUrl, sha256 } from "./url";
 import { allLinks, endsWithHost, findEmployerLink, findOrgWebsite, PROCUREMENT_HOSTS } from "./employer-link";
 
@@ -424,7 +424,9 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   const titleNorm = ` ${normalizeForCompare(title)} `;
   const extras = [organization?.short ?? organization?.name, city ?? countryByCode(countryCode)?.name]
     .filter((x): x is string => !!x && !titleNorm.includes(` ${normalizeForCompare(x)} `));
-  const slugBase = [title, ...extras].join(" ");
+  // The slug leaves out a reference number at the start of the title (titleForSlug); old URLs still
+  // work, since a job page is found by the id at the end of its URL and redirects to the current slug.
+  const slugBase = [titleForSlug(title, reference), ...extras].join(" ");
 
   return {
     title,

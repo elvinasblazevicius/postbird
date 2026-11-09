@@ -70,8 +70,8 @@ describe.skipIf(!TEST_DB)("search text and local-only titles (database)", () => 
   });
 
   it("hides posts that are local-only by title, and counts NPO titles as grade NO", async () => {
-    expect(await titles({ country: "colombia", hidelocal: true })).toEqual(["Coordinador de Educación", "Health Specialist"]);
-    expect(await titles({ grade: "NO" })).toEqual(["National Professional Officer - Health"]);
+    expect(await titles({ country: ["colombia"], hidelocal: true })).toEqual(["Coordinador de Educación", "Health Specialist"]);
+    expect(await titles({ grade: ["NO"] })).toEqual(["National Professional Officer - Health"]);
   });
 
   it("counts jobs by employer type for the landing pages", async () => {

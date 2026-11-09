@@ -15,6 +15,7 @@
 import siteConfig from "@site-config";
 import { accountUrl } from "@/lib/account";
 import { BILLING_LIVE } from "@/lib/billing/live";
+import { markedEmails } from "@/lib/billing/trial-markers";
 import { LIVE_STATUSES, welcomeTrialEnd, type BillingStatus, type ConfirmInfo, type PlanInterval, type WelcomeInfo } from "@/lib/billing/subscriptions";
 import { sql } from "@/lib/db";
 import { planDescription } from "@/lib/early-access-copy";
@@ -92,7 +93,7 @@ export const CLAIM_LEASE_MINUTES = 30;
 
 // ── Welcome ──────────────────────────────────────────────────
 
-/** The welcome email with the account link (once per subscriber). */
+/** The welcome email with the account link (once per subscription: a returning customer's new plan gets its own). */
 export async function sendWelcomeEmail(w: WelcomeInfo): Promise<SendResult> {
   return sendEmail({
     to: w.email,
@@ -103,7 +104,7 @@ export async function sendWelcomeEmail(w: WelcomeInfo): Promise<SendResult> {
       plan: planDescription(w.planInterval),
     }),
     headers: unsubscribeHeaders(w.unsubscribeToken),
-    idempotencyKey: `welcome:${w.subscriberId}`,
+    idempotencyKey: `welcome:${w.subscriberId}:${w.subscriptionId}`,
   });
 }
 
@@ -114,20 +115,20 @@ export async function sendWelcomeEmail(w: WelcomeInfo): Promise<SendResult> {
  */
 export async function runWelcomeRetries(limit = 200): Promise<{ sent: number; failed: number }> {
   // Claim the rows first, so a run started at the same time can't send them too.
-  const rows = await sql<{ id: number; email: string; manage_token: string; unsubscribe_token: string; billing_status: BillingStatus; trial_ends_at: Date | null; plan_interval: PlanInterval | null }[]>`
+  const rows = await sql<{ id: number; email: string; manage_token: string; unsubscribe_token: string; paddle_subscription_id: string; billing_status: BillingStatus; trial_ends_at: Date | null; plan_interval: PlanInterval | null }[]>`
     update subscribers set welcome_sent_at = now(), welcome_claimed_at = now()
     where id in (
       select id from subscribers
       where (welcome_sent_at is null or welcome_claimed_at < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES}))
-        and status = 'confirmed' and billing_status in ('trialing', 'active')
+        and status = 'confirmed' and billing_status in ('trialing', 'active') and paddle_subscription_id is not null
       order by id limit ${limit}
     ) and (welcome_sent_at is null or welcome_claimed_at < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES}))
-    returning id::int as id, email, manage_token, unsubscribe_token, billing_status, trial_ends_at, plan_interval`;
+    returning id::int as id, email, manage_token, unsubscribe_token, paddle_subscription_id, billing_status, trial_ends_at, plan_interval`;
   let sent = 0, failed = 0;
   for (const [i, r] of rows.entries()) {
     await spaced(i);
     const res = await sendWelcomeEmail({
-      subscriberId: r.id, email: r.email, manageToken: r.manage_token, unsubscribeToken: r.unsubscribe_token,
+      subscriberId: r.id, subscriptionId: r.paddle_subscription_id, email: r.email, manageToken: r.manage_token, unsubscribeToken: r.unsubscribe_token,
       trialEndsAt: welcomeTrialEnd(r.billing_status, r.trial_ends_at), planInterval: r.plan_interval,
     });
     if (res.ok) {
@@ -257,7 +258,7 @@ export type WaitlistNoticeResult = { ok: boolean; sent: number; failed: number; 
 
 /**
  * Admin button: emails each confirmed early-access member who has never had a
- * plan (the email offers the free trial, one per person) that alerts are open
+ * plan (the email offers the free trial, one per email address) that alerts are open
  * (once: waitlist_notified_at). At most `limit` per click
  * so it stays within the website's time limit; click again for the rest.
  */
@@ -276,8 +277,12 @@ export async function notifyWaitlist(limit = 300): Promise<WaitlistNoticeResult>
     returning id::int as id, email, unsubscribe_token`;
   let sent = 0, failed = 0;
   const trialUrl = absoluteUrl("/pricing/trial?utm_source=early-access&utm_medium=email");
-  for (let i = 0; i < rows.length; i += 100) {
-    const chunk = rows.slice(i, i + 100);
+  // An address that had a plan before its row was deleted keeps a trial marker: no trial offer
+  // (it stays marked as notified, so it isn't picked again).
+  const marked = await markedEmails(rows.map((r) => r.email));
+  const toSend = rows.filter((r) => !marked.has(r.email));
+  for (let i = 0; i < toSend.length; i += 100) {
+    const chunk = toSend.slice(i, i + 100);
     const msgs: OutgoingEmail[] = chunk.map((r) => ({
       to: r.email,
       ...alertsOpenEmail({ trialUrl, unsubscribeUrl: absoluteUrl(`/alerts/unsubscribe?token=${r.unsubscribe_token}`) }),

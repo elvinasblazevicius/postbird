@@ -10,10 +10,9 @@ import { ApplyLink, TrackedLink, TrackOnMount } from "@/components/tracking";
 import { categoryBySlug } from "@/config/categories";
 import { countryByCode } from "@/config/countries";
 import { LISTING_SETTINGS } from "@/config/import";
-import { applyDestination, applyLinkKind } from "@/lib/apply-link";
+import { applyLinkKind } from "@/lib/apply-link";
 import { displayGrade, isLocalOnly } from "@/lib/grades";
 import { similarJobs, type JobDetail } from "@/lib/jobs";
-import { nonAffiliationLine, orgInText } from "@/lib/org-names";
 import { extraLocation } from "@/lib/place-text";
 import { titleLanguage } from "@/lib/title-language";
 import { absoluteUrl, categoryName, escapeHtml, jsonLd, deadlineLabel, formatDate, jobPath, locationLabel, NOT_SPECIFIED, siteConfig } from "@/lib/site";
@@ -133,7 +132,6 @@ export default async function JobPage({ params }: Props) {
   const localOnly = isLocalOnly(job);
   const lang = titleLanguage(job.title);
   const dutyCountry = countryByCode(job.country_code)?.name ?? null;
-  const destination = applyDestination(applyLinkKind(job.apply_url));
   const description = hasDescription(job);
   const publishedPlace = where !== NOT_SPECIFIED ? extraLocation(where, job.location_text) : null;
   // Everything our source doesn't give, said once in one line instead of a row each.
@@ -167,6 +165,7 @@ export default async function JobPage({ params }: Props) {
       className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-3.5 text-base font-semibold text-white hover:bg-accent"
     >
       {applyLinkKind(job.apply_url) === "homepage" ? "Find it on the careers site" : "Apply"}
+      <span className="sr-only"> (opens the employer&apos;s site in a new tab)</span>
       <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true"><path d="M6 3h7v7M13 3 4 12" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
     </ApplyLink>
   );
@@ -187,7 +186,7 @@ export default async function JobPage({ params }: Props) {
             ]}
           />
           <div className="mt-5 flex gap-4">
-            <OrgBadge name={job.org_name} short={job.org_short} logo={job.org_logo} size="lg" />
+            <OrgBadge name={job.org_name} short={job.org_short} size="lg" />
             <div className="min-w-0">
               <h1 lang={lang?.code} className="text-[1.75rem] font-semibold leading-tight text-ink sm:text-[2.3rem]">{job.title}</h1>
               <p className="mt-2 text-lg text-ink">
@@ -200,7 +199,6 @@ export default async function JobPage({ params }: Props) {
                   {publishedPlace ? <span className="text-sm">({publishedPlace})</span> : null}
                 </p>
               ) : null}
-              <p className="mt-2 text-sm text-slate">{nonAffiliationLine(siteConfig.name, orgInText(job.org_name, job.org_short) ?? "the employer")}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {job.is_demo ? <Tag tone="demo">Demo data — not a real vacancy</Tag> : null}
                 {job.is_remote ? <Tag tone="remote">Remote / home-based</Tag> : null}
@@ -284,13 +282,9 @@ export default async function JobPage({ params }: Props) {
             </section>
           ) : null}
 
-          <p className="mt-8 text-sm leading-relaxed text-slate">
-            {siteConfig.name} lists this vacancy for discovery only. Details can change, so confirm them on the employer&apos;s page. Applications are made only on the employer&apos;s website.
-          </p>
-
-          <div className="mt-6 rounded-xl border border-rule p-4 text-sm lg:hidden">
+          <div className="mt-8 rounded-xl border border-rule p-4 text-sm lg:hidden">
             <p className="text-slate">
-              <span className="font-medium text-ink">Employer&apos;s page:</span> {job.apply_host}. Last checked {formatDate(job.last_seen_at)}. Apply opens {destination} in a new tab; {siteConfig.name} never charges a fee to apply.
+              <span className="font-medium text-ink">Employer&apos;s page:</span> {job.apply_host}. Listing last updated from our source {formatDate(job.last_seen_at)}. Apply opens it in a new tab. {siteConfig.name} never charges a fee.
             </p>
             {job.deadline ? (
               <a href={`/api/calendar/${job.id}`} className="mt-2 inline-block font-medium text-accent underline" rel="nofollow">Add closing date to calendar</a>
@@ -320,10 +314,10 @@ export default async function JobPage({ params }: Props) {
             {dl && /in \d|today|tomorrow/.test(dl.text) ? <p className={`text-sm ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>{dl.text}</p> : null}
             <div className="mt-4">{applyButton}</div>
             <p className="mt-3 text-xs leading-relaxed text-slate">
-              Opens {destination} in a new tab. {siteConfig.name} doesn&apos;t take applications and never charges a fee to apply.
+              Opens {job.apply_host} in a new tab. {siteConfig.name} never charges a fee.
             </p>
             <p className="mt-3 border-t border-rule pt-3 text-xs leading-relaxed text-slate">
-              <span className="font-medium text-ink">Employer&apos;s page:</span> {job.apply_host}. Last checked {formatDate(job.last_seen_at)}.
+              <span className="font-medium text-ink">Employer&apos;s page:</span> {job.apply_host}. Listing last updated from our source {formatDate(job.last_seen_at)}.
             </p>
             {job.deadline ? (
               <a href={`/api/calendar/${job.id}`} className="mt-3 block rounded-lg border border-rule px-3 py-2 text-center text-sm font-medium text-accent hover:bg-tint" rel="nofollow">

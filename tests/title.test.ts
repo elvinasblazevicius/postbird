@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { cleanTitle } from "@/lib/feeds/title";
+import { cleanTitle, titleForSlug } from "@/lib/feeds/title";
+import { slugify } from "@/lib/text";
 import { interpretQuery } from "@/lib/search-intent";
 import { applyLinkKind } from "@/lib/apply-link";
 
@@ -26,6 +27,27 @@ describe("cleanTitle", () => {
   test("ordinary titles are unchanged", () => {
     expect(cleanTitle("Research Manager")).toBe("Research Manager");
     expect(cleanTitle("2026 Graduate Programme")).toBe("2026 Graduate Programme");
+  });
+});
+
+describe("titleForSlug", () => {
+  const slug = (t: string, ref: string | null = null) => slugify(titleForSlug(cleanTitle(t), ref), 90);
+  test("leaves a source's reference number out of the slug", () => {
+    expect(slug("VA-2026-045: Finance Officer")).toBe("finance-officer");
+    expect(slug("(JO 12345) Finance Officer")).toBe("finance-officer");
+    expect(slug("No. 123 – Finance Officer")).toBe("finance-officer");
+    expect(slug("UNV-2026-001 - Field Officer")).toBe("field-officer");
+    expect(slug("Job Opening ID: 98765 - Analyst")).toBe("analyst");
+    expect(slug("ABC-123 Finance Officer", "ABC-123")).toBe("finance-officer");
+    expect(slug("23559 Monitoring and Evaluation Officer")).toBe("monitoring-and-evaluation-officer");
+  });
+  test("keeps titles that only start with a number or code", () => {
+    expect(slug("2026 Graduate Programme")).toBe("2026-graduate-programme");
+    expect(slug("5G Network Engineer")).toBe("5g-network-engineer");
+    expect(slug("P-3 Programme Officer")).toBe("p-3-programme-officer");
+    expect(slug("COVID-19 – Response Coordinator")).toBe("covid-19-response-coordinator");
+    expect(slug("G5 Sahel Liaison Officer")).toBe("g5-sahel-liaison-officer");
+    expect(slug("Finance Officer")).toBe("finance-officer");
   });
 });
 

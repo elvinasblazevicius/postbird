@@ -142,7 +142,7 @@ describe("dates and paid-alert copy", () => {
   it("spells out the charge and links the refund policy in the welcome email", () => {
     const [m, q] = siteConfig.premium.plans;
     const quarterly = welcomeEmail({ accountUrl: "https://x/a", unsubscribeUrl: "https://x/u", trialEndsAt: "2026-11-23T10:00:00Z", plan: planDescription("quarter") });
-    expect(quarterly.text).toContain(`After your trial you're charged ${q.price} every ${q.per} (plus any sales tax shown at checkout), renewing automatically until you cancel. Cancel any time from your account page.`);
+    expect(quarterly.text).toContain(`After your trial you're charged ${q.price} every ${q.per} (VAT or sales tax included or added, depending on where you live), renewing automatically until you cancel. Cancel any time from your account page.`);
     expect(quarterly.text).toMatch(/Refund policy: https?:\/\/\S+\/refunds/);
     expect(quarterly.html).toContain("/refunds");
     const monthly = welcomeEmail({ accountUrl: "https://x/a", unsubscribeUrl: "https://x/u", trialEndsAt: "2026-11-23T10:00:00Z", plan: planDescription("month") });
@@ -162,7 +162,7 @@ describe("organization names in sentences", () => {
     expect(orgInText("African Development Bank", "AfDB")).toBe("the African Development Bank");
     expect(withArticle("Save the Children")).toBe("Save the Children");
     expect(withArticle("Médecins Sans Frontières")).toBe("Médecins Sans Frontières");
-    expect(nonAffiliationLine("Postbird", null)).toBe("Postbird is independent and not affiliated with these organizations. You apply on the employer's own website.");
+    expect(nonAffiliationLine("Postbird", null)).toBe("Postbird is independent and not affiliated with these organizations.");
   });
 });
 
@@ -181,6 +181,17 @@ describe("job page and card helpers", () => {
     expect(badgeLines("UNHCR")).toEqual(["UN", "HCR"]);
     expect(badgeLines("ACTED")).toEqual(["ACT", "ED"]);
     for (const l of badgeLines("ABCDEFGHIJ")) expect(l.length).toBeLessThanOrEqual(4);
+  });
+
+  it("gives every organization a monogram, from the known-organizations list first", async () => {
+    const { monogram } = await import("@/lib/site");
+    expect(monogram("Médecins Sans Frontières", null)).toBe("MSF");
+    expect(monogram("Medecins Sans Frontieres", null)).toBe("MSF");
+    expect(monogram("Norwegian Refugee Council", null)).toBe("NRC");
+    expect(monogram("World Food Programme", "WFP")).toBe("WFP");
+    expect(monogram("World Bank Group", "World Bank")).toBe("WB");
+    expect(monogram("Helpers International", null)).toBe("HI");
+    expect(monogram("Agency for Technical Cooperation and Development", null)).toBe("ACTED");
   });
 
   it("marks new listings and shows the age of older ones", async () => {
