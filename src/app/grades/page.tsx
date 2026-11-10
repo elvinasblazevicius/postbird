@@ -3,6 +3,7 @@ import { sharedTitle, shareMetadata } from "@/lib/share-metadata";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { PAY_SOURCES } from "@/lib/grades";
+import { INDEPENDENCE_NOTE } from "@/lib/site";
 
 const TITLE = "UN and international job grades explained";
 const DESCRIPTION = "A plain-English guide to P, D, G and NO grades, service contracts, consultancies, internships, UN Volunteers and EU staff categories.";
@@ -167,6 +168,10 @@ const SECTIONS: { id: string; title: string; body: React.ReactNode; search?: [st
   },
 ];
 
+/** The free weekly email, starting from a grade group (a carried-over search on /alerts). */
+const WEEKLY_HREF = (grade: string) => `/alerts?search=${encodeURIComponent(`grade=${grade}`)}`;
+const WEEKLY_OTHER: [string, string][] = [["D", "Director"], ["NO", "National Officer"], ["G", "General Service"]];
+
 export default function GradesPage() {
   return (
     <>
@@ -174,6 +179,7 @@ export default function GradesPage() {
         title="Grades and contract types explained"
         crumbs={[{ href: "/", label: "Home" }, { href: "/grades", label: "Grades explained" }]}
         intro="What the letters and numbers in international vacancies usually mean. These are general descriptions; each posting sets its own requirements."
+        note={INDEPENDENCE_NOTE}
       />
       <div className="mx-auto max-w-3xl px-4 py-10 text-[1.05rem] leading-relaxed text-ink sm:px-6">
         <nav aria-label="On this page" className="rounded-xl border border-rule p-5 text-[0.95rem]">
@@ -202,6 +208,22 @@ export default function GradesPage() {
           </p>
           <p className="mt-3">
             <Link href="/jobs?hidelocal=1" className="font-medium text-accent underline">Browse jobs without local-only posts</Link>
+          </p>
+        </section>
+        <section aria-labelledby="weekly-h" className="mt-12 rounded-xl border border-rule p-6">
+          <h2 id="weekly-h" className="text-xl font-semibold">Get new vacancies for your grade every Monday</h2>
+          <p className="mt-2">Free. Choose a grade or keywords; we email the new matches on Mondays.</p>
+          <p className="mt-4">
+            <Link href={WEEKLY_HREF("P")} className="inline-block rounded-lg bg-brand px-6 py-3 font-semibold text-white hover:bg-accent">Get the free weekly email</Link>
+          </p>
+          <p className="mt-4 text-[0.95rem] text-slate">
+            This starts with Professional grades, and you can change it. Other grades:{" "}
+            {WEEKLY_OTHER.map(([grade, label], i) => (
+              <span key={grade}>
+                {i > 0 ? ", " : null}
+                <Link href={WEEKLY_HREF(grade)} className="font-medium text-accent underline">{label}</Link>
+              </span>
+            ))}
           </p>
         </section>
       </div>

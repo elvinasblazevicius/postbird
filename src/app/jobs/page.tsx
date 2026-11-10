@@ -6,6 +6,7 @@ import { gradeShortName, orList, placeNames } from "@/lib/filter-labels";
 import { activeFilterCount, getOrganizations, parseFilters, type JobFilters } from "@/lib/jobs";
 import { withArticle } from "@/lib/org-names";
 import { sharedTitle, shareMetadata } from "@/lib/share-metadata";
+import { INDEPENDENCE_NOTE } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +57,8 @@ export default async function JobsPage({ searchParams }: Props) {
         compact
         title={heading}
         crumbs={[{ href: "/", label: "Home" }, { href: "/jobs", label: "Jobs" }]}
-        intro="Open vacancies from UN agencies and other international organizations. Filter by place, organization, grade, contract type and closing date."
+        intro="Open vacancies from UN agencies, NGOs and other international organizations. Filter by place, organization, grade, contract type and closing date."
+        note={INDEPENDENCE_NOTE}
       />
       <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-8">
         <JobsBrowser filters={filters} />

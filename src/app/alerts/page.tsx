@@ -10,7 +10,7 @@ import { TrackedLink } from "@/components/tracking";
 import { EARLY_ACCESS_BUTTON, earlyAccessLine } from "@/lib/early-access-copy";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { describeSearch, searchFromAlertStep } from "@/lib/saved-searches";
-import { siteConfig } from "@/lib/site";
+import { INDEPENDENCE_NOTE, siteConfig } from "@/lib/site";
 
 const free = siteConfig.freeWeeklyEmail;
 
@@ -18,8 +18,8 @@ const TITLE = free
   ? "Free weekly job email for UN and international organization vacancies"
   : "Email job alerts for UN and international organization vacancies";
 const DESCRIPTION = free
-  ? "A free Monday email with the past week's new vacancies at UN agencies and international organizations that match your search. No card, no account, one-click unsubscribe."
-  : "New UN and international organization vacancies by email, filtered by role, organization and location, with the closing date whenever the employer publishes one.";
+  ? "A free Monday email with the past week's new vacancies at UN agencies, NGOs and other international organizations that match your search. No card, no account, one-click unsubscribe."
+  : "New UN, NGO and international organization vacancies by email, filtered by role, organization and location, with the closing date whenever the employer publishes one.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -56,7 +56,8 @@ export default async function AlertsPage({ searchParams }: Props) {
         <PageHeader
           title="Free weekly job email"
           crumbs={[{ href: "/", label: "Home" }, { href: "/alerts", label: "Weekly email" }]}
-          intro="Every Monday, the past week's new vacancies that match your search. Free, with no card and no account. If nothing new matches, we don't send anything that week."
+          intro="Every Monday, the past week's new vacancies at UN agencies, NGOs and other international organizations that match your search. Free, with no card and no account. If nothing new matches, we don't send anything that week."
+          note={INDEPENDENCE_NOTE}
         />
         <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1.2fr_1fr] lg:gap-12">
           <section className="max-w-xl" aria-labelledby="free-h">
@@ -65,13 +66,18 @@ export default async function AlertsPage({ searchParams }: Props) {
               <FreeWeeklyForm
                 source={search ? "search-weekly" : "alerts-page"}
                 search={search ?? undefined}
-                watch={<WatchFields search={search} searchLabel={searchLabel} resetHref="/alerts#alert-signup" hint="Leave these empty to get the week's newest vacancies. The weekly email follows one search; you can change it later." />}
+                searchLabel={searchLabel}
+                watch={<WatchFields fold search={search} searchLabel={searchLabel} resetHref="/alerts#alert-signup" hint="Leave these empty to get the week's newest vacancies. The weekly email follows one search; you can change it later." />}
               />
             </div>
           </section>
           <div className="space-y-10">
+            <AlertExample heading="What the weekly email looks like" kind="weekly" />
             <section className="rounded-2xl border border-rule bg-candy-soft p-6" aria-labelledby="daily-h">
-              <h2 id="daily-h" className="text-xl font-semibold text-ink">Want new matches every day?</h2>
+              <h2 id="daily-h" className="text-xl font-semibold text-ink">Optional: paid daily alerts</h2>
+              <p className="mt-2 text-slate">
+                Searching and the weekly email are free. Applying for any job is always free and happens on the employer&apos;s own website.
+              </p>
               <p className="mt-2 text-slate">
                 Daily alerts are the paid plan: {p.priceSummary}{BILLING_LIVE ? `, with a ${p.trialDays}-day free trial` : ", launching soon"}.
               </p>
@@ -89,11 +95,11 @@ export default async function AlertsPage({ searchParams }: Props) {
                 {BILLING_LIVE ? `Start ${p.trialDays}-day free trial` : EARLY_ACCESS_BUTTON}
               </TrackedLink>
               <p className="mt-3 text-sm text-slate">
+                The weekly email stays free. Paid daily alerts are optional.{" "}
                 {BILLING_LIVE ? "Card required to start the trial. Cancel before it ends and you pay nothing. " : `${earlyAccessLine()} `}
                 <Link href="/pricing" className="font-medium text-accent hover:underline">Compare free and paid</Link>
               </p>
             </section>
-            <AlertExample heading="What the weekly email looks like" kind="weekly" />
           </div>
         </div>
       </>

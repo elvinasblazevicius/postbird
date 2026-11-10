@@ -139,8 +139,11 @@ function EarlyAccessForm({ source = "pricing", search, remindJobId, watch }: { s
  * The free weekly email sign-up on /alerts: ONE form with the optional "What should we watch for?"
  * fields (`watch`, rendered on the server). Their answers become the one saved search the weekly
  * email follows ("" = the week's newest vacancies), stored when the address is confirmed.
+ * The email field and button come first; the fields are folded under a native <details> (works
+ * without JavaScript), open when a search was carried over (`search`, summarised as `searchLabel`
+ * above the email field).
  */
-export function FreeWeeklyForm({ source = "alerts-page", search, watch }: { source?: string; search?: string; watch?: React.ReactNode }) {
+export function FreeWeeklyForm({ source = "alerts-page", search, searchLabel, watch }: { source?: string; search?: string; searchLabel?: string | null; watch?: React.ReactNode }) {
   const [state, action, pending] = useActionState(alertSignupAction, initial);
   useEffect(() => {
     if (state.status === "success") uetEvent("subscribe", { event_category: "alerts", event_label: source });
@@ -155,7 +158,7 @@ export function FreeWeeklyForm({ source = "alerts-page", search, watch }: { sour
       <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
         <label>Leave empty<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label>
       </div>
-      {watch ? <div className="pb-2">{watch}</div> : null}
+      {searchLabel ? <p className="rounded-lg bg-mist px-3 py-2 text-sm text-ink">Your weekly email will follow your search: {searchLabel}</p> : null}
       <div>
         <label htmlFor="fw-email" className="mb-1.5 block text-sm font-medium text-ink">Email address</label>
         <input id="fw-email" name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} />
@@ -164,8 +167,31 @@ export function FreeWeeklyForm({ source = "alerts-page", search, watch }: { sour
       <button disabled={pending} className="w-full rounded-lg bg-brand px-6 py-3.5 text-base font-semibold text-white hover:bg-accent disabled:opacity-60">
         {pending ? "Saving…" : "Get the free weekly email"}
       </button>
+      <p className="-mt-2 text-sm text-slate">
+        Run by {siteConfig.operator.name}.
+      </p>
       <p className="text-sm text-slate">Free, no card and no account. We&apos;ll email you once to confirm. Unsubscribe with one click. Each email may include one short line about our paid daily alerts.</p>
       <PrivacyNote />
+      {watch ? (
+        <details open={Boolean(search)} className="group rounded-xl border border-rule">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-5 py-4 hover:bg-mist [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className="block font-semibold text-ink">Narrow it down (optional)</span>
+              <span className="block text-sm text-slate">Keywords, organization or location</span>
+            </span>
+            <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0 text-slate transition-transform group-open:rotate-180" aria-hidden="true">
+              <path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" strokeWidth="1.8" />
+            </svg>
+          </summary>
+          <div className="space-y-5 border-t border-rule px-5 pb-5 pt-4">
+            {watch}
+            {/* The same submit, so the fields can be filled in without going back up to the first button. */}
+            <button disabled={pending} className="w-full rounded-lg border-2 border-brand bg-paper px-6 py-3 text-base font-semibold text-brand hover:bg-mist disabled:opacity-60">
+              {pending ? "Saving…" : "Get the free weekly email"}
+            </button>
+          </div>
+        </details>
+      ) : null}
     </form>
   );
 }

@@ -427,15 +427,17 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
 /**
  * "What should we watch for?": optional keyword, organization and location fields INSIDE the alert
  * sign-up form (no form of their own, so nothing typed is lost). The server turns them into the
- * saved search (searchFromSignupForm in src/lib/saved-searches.ts).
+ * saved search (searchFromSignupForm in src/lib/saved-searches.ts). `hideLegend`: the legend is
+ * for screen readers only, where a visible heading already names the fields (the folded fields of
+ * the free weekly form).
  */
-export function WatchFieldset({ facets, filters, hint }: { facets: FacetData; filters: JobFilters; hint?: React.ReactNode }) {
+export function WatchFieldset({ facets, filters, hint, hideLegend = false }: { facets: FacetData; filters: JobFilters; hint?: React.ReactNode; hideLegend?: boolean }) {
   return (
     <fieldset className="space-y-4">
-      <legend className="text-lg font-semibold text-ink">
+      <legend className={hideLegend ? "sr-only" : "text-lg font-semibold text-ink"}>
         What should we watch for? <span className="text-sm font-normal text-slate">(optional)</span>
       </legend>
-      <p className="-mt-2 text-sm text-slate">{hint ?? `Leave these empty to get every new vacancy.${BILLING_LIVE ? " You can add up to 5 searches later." : ""}`}</p>
+      <p className={`${hideLegend ? "" : "-mt-2 "}text-sm text-slate`}>{hint ??`Leave these empty to get every new vacancy.${BILLING_LIVE ? " You can add up to 5 searches later." : ""}`}</p>
       <div>
         <label htmlFor="watch-q" className="mb-1.5 block text-sm font-medium text-ink">Keywords</label>
         <input id="watch-q" name="watch_q" type="text" defaultValue={filters.q ?? ""} maxLength={120} placeholder="e.g. data analyst, WASH, monitoring" className={fieldCls} autoComplete="off" />

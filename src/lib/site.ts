@@ -7,6 +7,9 @@ import { KNOWN_ORGS, type KnownOrg } from "@/config/organizations";
 /** Shown for a detail our source doesn't give (it may still be on the employer's page). */
 export const NOT_SPECIFIED = "Not in our source";
 
+/** The one-line non-affiliation notice under the header intro of the ad landing pages (/alerts, /jobs, /grades). */
+export const INDEPENDENCE_NOTE = `${siteConfig.name} is independent and not affiliated with the UN or any employer listed. Applications are made on each employer's own website.`;
+
 /**
  * Public base URL: NEXT_PUBLIC_SITE_URL → site.config.ts → Netlify/Vercel
  * address → localhost. The environment variable wins so a test run, preview
