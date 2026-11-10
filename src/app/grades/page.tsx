@@ -30,9 +30,10 @@ function Pay({ children }: { children: React.ReactNode }) {
 
 const ext = { className: "text-accent underline", rel: "noopener" } as const;
 
-const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
+const SECTIONS: { id: string; title: string; body: React.ReactNode; search?: [string, string] }[] = [
   {
     id: "professional",
+    search: ["/jobs?grade=P", "Professional"],
     title: "Professional (P-1 to P-5)",
     body: (
       <>
@@ -53,6 +54,7 @@ const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
   },
   {
     id: "director",
+    search: ["/jobs?grade=D", "Director-level"],
     title: "Director (D-1, D-2) and senior appointments",
     body: (
       <>
@@ -68,6 +70,7 @@ const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
   },
   {
     id: "national-officers",
+    search: ["/jobs?grade=NO", "National Officer"],
     title: "National Officer (NO-A to NO-E)",
     body: (
       <>
@@ -81,6 +84,7 @@ const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
   },
   {
     id: "general-service",
+    search: ["/jobs?grade=G", "General Service"],
     title: "General Service (G-1 to G-7)",
     body: (
       <>
@@ -94,11 +98,13 @@ const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
   },
   {
     id: "field-service",
+    search: ["/jobs?grade=FS", "Field Service"],
     title: "Field Service (FS)",
     body: <p>Internationally recruited staff in UN field missions, mostly in administration, logistics and technical roles.</p>,
   },
   {
     id: "service-contracts",
+    search: ["/jobs?grade=SC", "service contract"],
     title: "Service contracts (NPSA, IPSA, LICA, SB, SC)",
     body: (
       <p>
@@ -140,6 +146,7 @@ const SECTIONS: { id: string; title: string; body: React.ReactNode }[] = [
   },
   {
     id: "eu",
+    search: ["/jobs?orgtype=eu", "EU institution"],
     title: "EU institutions: AD, AST and contract agents",
     body: (
       <>
@@ -180,6 +187,11 @@ export default function GradesPage() {
           <section key={s.id} id={s.id} aria-labelledby={`${s.id}-h`} className="mt-10 scroll-mt-24 space-y-3">
             <h2 id={`${s.id}-h`} className="text-2xl font-semibold leading-tight">{s.title}</h2>
             {s.body}
+            {s.search ? (
+              <p className="text-[0.95rem]">
+                <Link href={s.search[0]} className="font-medium text-accent underline">See open {s.search[1]} vacancies</Link>
+              </p>
+            ) : null}
           </section>
         ))}
         <section aria-labelledby="local-h" className="mt-12 rounded-xl border border-rule bg-mist p-5">
