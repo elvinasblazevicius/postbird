@@ -395,6 +395,8 @@ describe("real-feed regressions (ReliefWeb and Inoreader)", () => {
 
   it("recognises job boards", () => {
     expect(isListingSite("reliefweb.int")).toBe(true);
+    expect(isListingSite("unvacancies.org")).toBe(true);
+    expect(isListingSite("www.unvacancies.org")).toBe(true);
     expect(isListingSite("jobs.undp.org")).toBe(false);
   });
 

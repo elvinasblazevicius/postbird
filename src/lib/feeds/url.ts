@@ -30,6 +30,7 @@ const LISTING_SITES: { re: RegExp; name: string }[] = [
   { re: /(^|\.)devex\.com$/i, name: "Devex" },
   { re: /(^|\.)unjobnet\.org$/i, name: "UNjobnet" },
   { re: /(^|\.)idealist\.org$/i, name: "Idealist" },
+  { re: /(^|\.)unvacancies\.org$/i, name: "unvacancies" },
 ];
 
 export function isListingSite(host: string | null | undefined): boolean {

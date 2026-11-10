@@ -53,7 +53,7 @@ export function cleanLink(raw: string): string | null {
   return u;
 }
 
-const BOARD_NAMES = /reliefweb|unjobs|impactpool|devex|unjobnet|idealist|inoreader/i;
+const BOARD_NAMES = /reliefweb|unjobs|impactpool|devex|unjobnet|idealist|unvacancies|inoreader/i;
 
 /** Remove tracking parameters that name the job board ("?promotion=…-reliefweb", "utm_source=reliefweb"). */
 export function stripBoardTracking(url: string): string {
