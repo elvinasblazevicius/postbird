@@ -48,6 +48,9 @@ export default async function AlertsPage({ searchParams }: Props) {
     redirect(`/pricing/trial${qs.size ? `?${qs}` : ""}`);
   }
   const search = searchFromAlertStep(sp);
+  // Visitors from Meta ads came for the free weekly email; the paid daily plan isn't shown to them on this page
+  // (Employment ads into job-scam-prone markets: no paid offer next to vacancies). /pricing still has it.
+  const fromMeta = [sp.utm_source].flat().includes("meta");
   const searchLabel = search ? await describeSearch(search) : null;
   if (free) {
     const trialHref = `/pricing/trial${search ? `?search=${encodeURIComponent(search)}` : ""}`;
@@ -73,6 +76,7 @@ export default async function AlertsPage({ searchParams }: Props) {
           </section>
           <div className="space-y-10">
             <AlertExample heading="What the weekly email looks like" kind="weekly" />
+            {fromMeta ? null : (
             <section className="rounded-2xl border border-rule bg-candy-soft p-6" aria-labelledby="daily-h">
               <h2 id="daily-h" className="text-xl font-semibold text-ink">Optional: paid daily alerts</h2>
               <p className="mt-2 text-slate">
@@ -100,6 +104,7 @@ export default async function AlertsPage({ searchParams }: Props) {
                 <Link href="/pricing" className="font-medium text-accent hover:underline">Compare free and paid</Link>
               </p>
             </section>
+            )}
           </div>
         </div>
       </>
