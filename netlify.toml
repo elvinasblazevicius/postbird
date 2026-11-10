@@ -10,3 +10,9 @@
 # Deploy previews and branch deploys keep the plain build above.
 [context.production]
   command = "bash scripts/build-netlify.sh"
+
+# Public values built into the production pages. The Meta Pixel ID appears in the page source anyway;
+# it loads only with advertising consent (src/lib/meta-pixel.ts). Production only, so deploy previews
+# and branch deploys don't send test visits to the ad account. A value here wins over the Netlify UI.
+[context.production.environment]
+  NEXT_PUBLIC_META_PIXEL_ID = "678690642892717"

@@ -7,7 +7,7 @@ import { confirmAction, unsubscribeAction, type FormState } from "@/app/actions"
 import { alertSignupAction } from "@/app/alert-actions";
 import { unsubscribeCancelLinkAction } from "@/app/billing-actions";
 import siteConfig from "@site-config";
-import { AttributionField, uetEvent } from "./ads";
+import { adConversion, AttributionField } from "./ads";
 import { EarlyAccessDone } from "./early-access";
 import { EARLY_ACCESS_BUTTON, earlyAccessLine } from "@/lib/early-access-copy";
 import { BILLING_LIVE } from "@/lib/billing/live";
@@ -101,7 +101,7 @@ export function PremiumInterestForm({ source = "pricing", search, remindJobId, w
 function EarlyAccessForm({ source = "pricing", search, remindJobId, watch }: { source?: string; search?: string; remindJobId?: number; watch?: React.ReactNode }) {
   const [state, action, pending] = useActionState(alertSignupAction, initial);
   useEffect(() => {
-    if (state.status === "success") uetEvent("trial_signup", { event_category: "premium" });
+    if (state.status === "success") adConversion("trial_signup", { event_category: "premium" });
   }, [state.status]);
   if (state.status === "success") return <EarlyAccessDone message={state.message} source={source} />;
   return (
@@ -146,7 +146,8 @@ function EarlyAccessForm({ source = "pricing", search, remindJobId, watch }: { s
 export function FreeWeeklyForm({ source = "alerts-page", search, searchLabel, watch }: { source?: string; search?: string; searchLabel?: string | null; watch?: React.ReactNode }) {
   const [state, action, pending] = useActionState(alertSignupAction, initial);
   useEffect(() => {
-    if (state.status === "success") uetEvent("subscribe", { event_category: "alerts", event_label: source });
+    // Microsoft Ads "subscribe"; Meta "Lead" (no email address or search sent).
+    if (state.status === "success") adConversion("subscribe", { event_category: "alerts", event_label: source });
   }, [state.status, source]);
   if (state.status === "success") return <Result state={state} />;
   return (

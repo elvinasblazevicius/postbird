@@ -6,6 +6,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { PageviewTracker } from "@/components/tracking";
 import { defaultSiteCopy } from "@/lib/eu-claim";
+import { META_PIXEL_ID } from "@/lib/meta-pixel";
 import { siteConfig, siteUrl } from "@/lib/site";
 
 /*
@@ -115,7 +116,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </main>
         <SiteFooter />
         <PageviewTracker />
-        <AdsManager tagId={uetTagId} />
+        <AdsManager tagId={uetTagId} metaPixelId={META_PIXEL_ID} />
       </body>
     </html>
   );

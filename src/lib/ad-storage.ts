@@ -3,12 +3,13 @@
  * (used by src/components/ads.tsx; pure helpers, so they are unit-tested):
  * Microsoft UET's first-party cookies (_uetsid, _uetvid, _uetmsclkid, and
  * MUID when it was set on this site's domain), UET's copies of them in local
- * and session storage (with their "_exp" entries), and our own campaign
- * attribution (gch_attr).
+ * and session storage (with their "_exp" entries), the Meta Pixel's
+ * first-party cookies (_fbp, and _fbc after a click on a Meta ad), and our own
+ * campaign attribution (gch_attr).
  */
 
 /** The ad tag's cookie and storage names. */
-export const AD_STORAGE_NAMES = ["_uetsid", "_uetvid", "_uetmsclkid", "MUID"] as const;
+export const AD_STORAGE_NAMES = ["_uetsid", "_uetvid", "_uetmsclkid", "MUID", "_fbp", "_fbc"] as const;
 /** Our first-touch campaign attribution in local storage. */
 export const ATTRIBUTION_KEY = "gch_attr";
 

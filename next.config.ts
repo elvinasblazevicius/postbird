@@ -10,7 +10,7 @@ const isDev = process.env.NODE_ENV === "development";
  * except Microsoft Advertising's UET tag: https://bat.bing.com/bat.js plus the
  * tag-specific script and its conversion beacons (image, fetch or
  * sendBeacon), which use bat.bing.com and, in newer tag versions,
- * bat.bing.net.
+ * bat.bing.net; the Meta Pixel (see below); and Paddle (see below).
  *
  * script-src needs 'unsafe-inline': Next.js emits inline bootstrap scripts
  * (the RSC payload) and the pages emit JSON-LD. Nonces would avoid that, but
@@ -25,6 +25,13 @@ const isDev = process.env.NODE_ENV === "development";
  * inline font/style tags.
  * If "Microsoft Clarity" is switched on in the UET tag settings, add
  * https://*.clarity.ms to script-src, img-src and connect-src.
+ *
+ * Meta Pixel (Facebook and Instagram ads; loaded only with advertising
+ * consent and when NEXT_PUBLIC_META_PIXEL_ID is set, see
+ * src/lib/meta-pixel.ts): fbevents.js and the pixel's config script come from
+ * connect.facebook.net; its events go to www.facebook.com/tr as an image
+ * request, or by fetch/sendBeacon. Allowed here statically, so setting the ID
+ * needs no config change; without the ID nothing loads from these hosts.
  *
  * Paddle Billing (paid alerts; allowed in sandbox and production so the
  * switch needs no config change). Hosts taken from Paddle's docs and from
@@ -43,6 +50,8 @@ const isDev = process.env.NODE_ENV === "development";
  *    JavaScript that is a form submission redirect, which form-action covers.
  */
 const UET = "https://bat.bing.com https://bat.bing.net";
+const META_SCRIPT = "https://connect.facebook.net";
+const META_BEACON = "https://www.facebook.com";
 const PADDLE_CDN = "https://cdn.paddle.com https://sandbox-cdn.paddle.com";
 const PADDLE_SCRIPT = "https://cdn.paddle.com https://public.profitwell.com";
 const PADDLE_FRAME = `https://buy.paddle.com https://sandbox-buy.paddle.com ${PADDLE_CDN}`;
@@ -50,11 +59,11 @@ const PADDLE_CONNECT = "https://api.paddle.com https://sandbox-api.paddle.com ht
 const PADDLE_PORTAL = "https://customer-portal.paddle.com https://sandbox-customer-portal.paddle.com";
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' ${UET} ${PADDLE_SCRIPT}${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline' ${UET} ${META_SCRIPT} ${PADDLE_SCRIPT}${isDev ? " 'unsafe-eval'" : ""}`,
   `style-src 'self' 'unsafe-inline' ${PADDLE_CDN}`,
-  `img-src 'self' data: blob: ${UET} ${PADDLE_CDN}`,
+  `img-src 'self' data: blob: ${UET} ${META_BEACON} ${PADDLE_CDN}`,
   "font-src 'self' data:",
-  `connect-src 'self' ${UET} ${PADDLE_CONNECT}${isDev ? " ws: wss:" : ""}`,
+  `connect-src 'self' ${UET} ${META_SCRIPT} ${META_BEACON} ${PADDLE_CONNECT}${isDev ? " ws: wss:" : ""}`,
   `frame-src ${PADDLE_FRAME}`,
   "worker-src 'self' blob:",
   "manifest-src 'self'",

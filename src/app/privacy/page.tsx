@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/page-header";
 import { BILLING_LIVE } from "@/lib/billing/live";
+import { META_PIXEL_ID } from "@/lib/meta-pixel";
 import { siteConfig } from "@/lib/site";
 
 /**
@@ -21,7 +22,10 @@ const H2 = ({ id, children }: { id?: string; children: React.ReactNode }) => (
 );
 
 // Keep this page in step with the code: analytics (src/lib/analytics.ts), sign-ups
-// (src/lib/subscribers.ts), consent and ads (src/components/ads.tsx).
+// (src/lib/subscribers.ts), consent and ads (src/components/ads.tsx, src/lib/meta-pixel.ts).
+
+/** Meta's pixel is described only while it is switched on (NEXT_PUBLIC_META_PIXEL_ID). */
+const META = Boolean(META_PIXEL_ID);
 
 /** Where we ask before anything optional is stored (consentRequiredFor in src/app/api/geo/route.ts). */
 const ASK_FIRST = "Everywhere except the United States";
@@ -36,7 +40,7 @@ export default function PrivacyPage() {
     <>
       <PageHeader width="max-w-3xl" title="Privacy" crumbs={[{ href: "/", label: "Home" }, { href: "/privacy", label: "Privacy" }]} />
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-12 text-[1.02rem] leading-relaxed text-ink sm:px-6">
-        <p className="text-sm text-slate">Last updated 9 November 2026</p>
+        <p className="text-sm text-slate">Last updated 10 November 2026</p>
         <p>
           This page explains what {siteConfig.name} collects, why, who helps us process it and what you can ask us to do with it.
         </p>
@@ -65,15 +69,17 @@ export default function PrivacyPage() {
           <strong>What is stored on your device.</strong> {ASK_FIRST} ({ASK_FIRST_UNKNOWN}), before you make a choice we store only <code>gch_geo</code> (a session flag in session storage that notes whether we need to ask for consent,
           deleted when you close the tab) and your cookie choice (<code>gch_ads_consent</code>, in local storage) once you make it. In the United States, unless you opt out or
           your browser sends Global Privacy Control, we also store <code>gch_attr</code> in local storage: the campaign tags and Microsoft click id of the ad you came
-          from, used for up to 90 days and then deleted. Microsoft&apos;s tag then also sets the cookies listed below. If you use &quot;Save&quot; on a vacancy,
+          from, used for up to 90 days and then deleted. {META ? "Microsoft's and Meta's tags then also set" : "Microsoft's tag then also sets"} the cookies listed below. If you use &quot;Save&quot; on a vacancy,
           the list of saved vacancies is kept in your browser&apos;s local storage on this device only; to show which saved vacancies are still open, the{" "}
           <a className="text-accent underline" href="/saved">Saved jobs</a> page sends us their vacancy numbers, and nothing else.
         </p>
 
         <H2 id="cookies">Advertising measurement and cookies</H2>
         <p>
-          We advertise on Microsoft Advertising and may advertise on other platforms; only Microsoft&apos;s tag is used on this site. To learn whether ads lead to
-          sign-ups we may:
+          {META
+            ? "We advertise on Microsoft Advertising and on Meta (Facebook and Instagram), and may advertise on other platforms; only Microsoft's and Meta's tags are used on this site."
+            : "We advertise on Microsoft Advertising and may advertise on other platforms; only Microsoft's tag is used on this site."}{" "}
+          To learn whether ads lead to sign-ups we may:
         </p>
         <ul className="list-disc space-y-1 pl-6">
           <li>record the campaign tags of the ad link you clicked (&quot;utm&quot; tags) with page counts and with any sign-up;</li>
@@ -86,19 +92,38 @@ export default function PrivacyPage() {
             (<code>begin_trial</code> for a free trial, <code>purchase</code> for a plan that starts straight away). Microsoft processes this under its own{" "}
             <a className="text-accent underline" href="https://privacy.microsoft.com/privacystatement" rel="noopener">privacy statement</a>.
           </li>
+          {META ? (
+            <li>
+              load the Meta Pixel from Meta Platforms, which measures visits from our Facebook and Instagram ads and the sign-ups they lead to. It sets the
+              cookies <code>_fbp</code> and, when you arrive from a Meta ad link, <code>_fbc</code>, and sends Meta these events: the pages you view here
+              (<code>PageView</code>, with the page address as shown in your address bar, which on search results includes the search filters), signing up
+              for the free weekly email (<code>Lead</code>) and a completed checkout (<code>StartTrial</code> for a free trial, <code>Purchase</code> with the
+              plan&apos;s price for a plan that starts straight away). We never send Meta your email address, your name or what you enter in our sign-up forms
+              (including the search you choose for alerts); search filters reach Meta only as part of a results page&apos;s address. We have switched off the pixel&apos;s automatic detection of buttons and forms, and we don&apos;t send Meta any data from our
+              servers. Meta processes this under its own{" "}
+              <a className="text-accent underline" href="https://www.facebook.com/privacy/policy/" rel="noopener">privacy policy</a>.
+            </li>
+          ) : null}
         </ul>
         <p>
           {ASK_FIRST} ({ASK_FIRST_UNKNOWN}), nothing except the <code>gch_geo</code> session flag (and your choice, once you make it) is stored on your device, and
-          Microsoft&apos;s tag isn&apos;t loaded, unless you click &quot;Allow&quot;. If you click &quot;No thanks&quot; later, we delete the Microsoft cookies and storage entries
-          listed above that were set on this site, and the remembered campaign tags. In the United States it runs unless you opt out; we treat a Global Privacy Control signal from your browser as an opt-out. You can change your choice at any time with &quot;Cookie settings / Your privacy choices&quot; at
+          {META ? " neither Microsoft's nor Meta's tag is loaded," : " Microsoft's tag isn't loaded,"} unless you click &quot;Allow&quot;. If you click &quot;No thanks&quot; later, we delete the {META ? "Microsoft and Meta" : "Microsoft"} cookies and storage entries
+          listed above that were set on this site, and the remembered campaign tags{META ? ", and tell Meta's pixel to stop sending anything" : ""}. In the United States it runs unless you opt out; we treat a Global Privacy Control signal from your browser as an opt-out. You can change your choice at any time with &quot;Cookie settings / Your privacy choices&quot; at
           the bottom of every page. You can also opt out of personalised Microsoft ads at{" "}
           <a className="text-accent underline" href="https://account.microsoft.com/privacy/ad-settings" rel="noopener">account.microsoft.com/privacy/ad-settings</a> and of
-          interest-based ads generally at <a className="text-accent underline" href="https://optout.aboutads.info" rel="noopener">optout.aboutads.info</a>.
+          interest-based ads generally at <a className="text-accent underline" href="https://optout.aboutads.info" rel="noopener">optout.aboutads.info</a>
+          {META ? (
+            <>
+              , and choose how Meta uses your activity for ads in your{" "}
+              <a className="text-accent underline" href="https://accountscenter.facebook.com/ad_preferences" rel="noopener">Meta ad preferences</a>
+            </>
+          ) : null}
+          .
         </p>
 
         <H2 id="us-privacy-choices">Your US privacy choices</H2>
         <p>
-          We don&apos;t sell your data. Microsoft&apos;s advertising tag may count as &quot;sharing&quot; for targeted advertising under some US state
+          We don&apos;t sell your data. {META ? "Microsoft's and Meta's advertising tags" : "Microsoft's advertising tag"} may count as &quot;sharing&quot; for targeted advertising under some US state
           laws; opt out with &quot;Your privacy choices&quot; at the bottom of every page or with Global Privacy Control.
         </p>
 
@@ -145,6 +170,7 @@ export default function PrivacyPage() {
           {mail ? <li>Our email hosting provider: receives and stores the messages you send to {mailLink}.</li> : null}
           <li>GitHub (United States): runs our scheduled jobs, including sending alert emails.</li>
           <li>Microsoft (United States): advertising measurement, only as described above.</li>
+          {META ? <li>Meta Platforms (Ireland and United States): advertising measurement for our Facebook and Instagram ads, only as described above.</li> : null}
           {BILLING_LIVE ? <li>Paddle (United Kingdom): sells subscriptions as merchant of record and processes payments.</li> : null}
           {BILLING_LIVE ? <li>Paddle Retain (part of Paddle): payment recovery and subscription analytics, on live checkouts only.</li> : null}
         </ul>

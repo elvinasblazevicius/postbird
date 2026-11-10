@@ -4,7 +4,7 @@ import { useActionState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { signupAction, type FormState } from "@/app/actions";
 import siteConfig from "@site-config";
-import { AttributionField, uetEvent } from "./ads";
+import { adConversion, AttributionField } from "./ads";
 import { EarlyAccessDone } from "./early-access";
 import { EARLY_ACCESS_BUTTON, earlyAccessLine } from "@/lib/early-access-copy";
 import { BILLING_LIVE } from "@/lib/billing/live";
@@ -32,7 +32,8 @@ function EarlyAccessSignup({ source, tone = "light" }: { source: string; tone?: 
   const paid = !siteConfig.freeWeeklyEmail;
   useEffect(() => {
     if (state.status === "success") {
-      uetEvent(paid ? "trial_signup" : "subscribe", { event_category: paid ? "premium" : "alerts", event_label: source });
+      // "subscribe" (the free weekly email) is also Meta's "Lead".
+      adConversion(paid ? "trial_signup" : "subscribe", { event_category: paid ? "premium" : "alerts", event_label: source });
     }
   }, [state.status, source, paid]);
 
