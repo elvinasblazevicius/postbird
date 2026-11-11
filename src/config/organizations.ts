@@ -62,6 +62,7 @@ export const KNOWN_ORGS: KnownOrg[] = [
   { name: "Inter-American Development Bank", short: "IDB", type: "International financial institution", aliases: ["IDB", "IADB", "IDB Group", "Inter-American Development Bank Group"], domains: ["iadb.org"] },
   { name: "EBRD", short: "EBRD", type: "International financial institution", aliases: ["European Bank for Reconstruction and Development"], domains: ["ebrd.com"] },
   { name: "European Investment Bank", short: "EIB", type: "International financial institution", aliases: ["EIB"], domains: ["eib.org"] },
+  { name: "INTERPOL", short: "INTERPOL", badge: "IPOL", type: "International organization", aliases: ["International Criminal Police Organization", "ICPO-INTERPOL"], domains: ["interpol.int", "209400.jobs2web.com"] },
   { name: "OECD", short: "OECD", type: "International organization", aliases: ["Organisation for Economic Co-operation and Development", "Organization for Economic Cooperation and Development"], domains: ["oecd.org"] },
   { name: "OSCE", short: "OSCE", type: "International organization", aliases: ["Organization for Security and Co-operation in Europe"], domains: ["osce.org"] },
   { name: "Council of Europe", badge: "CoE", type: "International organization", domains: ["coe.int"] },

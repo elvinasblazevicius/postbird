@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { extractDeadline, findDate } from "@/lib/feeds/dates";
-import { detectCategory, detectGrade, detectJobType, detectLanguageRequirements as languagesOf, findCountries, knownOrgByHost, normalizeGrade, normalizeItem, type FeedContext } from "@/lib/feeds/extract";
+import { detectCategory, detectGrade, detectJobType, detectLanguageRequirements as languagesOf, findCountries, knownOrgByAtsPath, knownOrgByHost, normalizeGrade, normalizeItem, type FeedContext } from "@/lib/feeds/extract";
 import { displayGrade, gradeGroupOf, gradeLabel, gradeMatches, isLocalOnlyGrade, payScaleFor } from "@/lib/grades";
 import { parseFilters } from "@/lib/jobs";
 import { parseFeed, type RawItem } from "@/lib/feeds/parse";
@@ -402,6 +402,9 @@ describe("real-feed regressions (ReliefWeb and Inoreader)", () => {
   it("recognises the EEAS from its careers domain", () => {
     expect(knownOrgByHost("eeas.europa.eu")?.short).toBe("EEAS");
     expect(knownOrgByHost("fa-evlj-saasfaprod1.fa.ocs.oraclecloud.com")?.short).toBe("IOM");
+    expect(knownOrgByHost("209400.jobs2web.com")?.name).toBe("INTERPOL");
+    expect(knownOrgByAtsPath("https://jobs.smartrecruiters.com/OECD/744000159633919-auditeur-interne")?.short).toBe("OECD");
+    expect(knownOrgByAtsPath("https://jobs.smartrecruiters.com/SomeCompany/1-x")).toBeUndefined();
   });
 
   it("never imports items from an excluded source", () => {

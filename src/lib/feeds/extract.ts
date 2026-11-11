@@ -129,6 +129,21 @@ export function knownOrgByHost(host: string): KnownOrg | undefined {
   return KNOWN_ORGS.find((o) => o.domains?.some((d) => host === d || host.endsWith(`.${d}`)));
 }
 
+/**
+ * Shared recruitment sites that put the employer's account name in the address
+ * (jobs.smartrecruiters.com/OECD/…): the organization named there, if it is a known one.
+ */
+export function knownOrgByAtsPath(url: string): KnownOrg | undefined {
+  try {
+    const u = new URL(url);
+    if (!/(^|\.)smartrecruiters\.com$/i.test(u.hostname)) return undefined;
+    const account = decodeURIComponent(u.pathname.split("/")[1] ?? "");
+    return account ? knownOrgByName(account) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function toOrgRef(name: string): OrgRef {
   const known =
     knownOrgByName(name) ??
@@ -436,7 +451,7 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   // Organization
   let orgName: string | null = null;
   const labelledOrg = labelled(head, ORG_LABELS, 120);
-  const hostOrg = knownOrgByHost(applyHost);
+  const hostOrg = knownOrgByHost(applyHost) ?? knownOrgByAtsPath(applyUrl);
   const authorOrg = knownOrgByName(raw.author);
   const sourceOrg = knownOrgByName(raw.sourceTitle?.replace(/\b(jobs?|careers?|vacanc(y|ies)|opportunities|rss|feed)\b/gi, ""));
   let titleOrg: KnownOrg | undefined;
