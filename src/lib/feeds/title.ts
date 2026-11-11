@@ -117,8 +117,9 @@ export function stripOrgFromTitle(title: string, names: (string | null | undefin
   t = t.replace(new RegExp(`\\s*(?:[|–—-]|\\bat)\\s+(?:(?:${any})\\s*[–—-]\\s*)?(?:${any})(?:\\s*\\([^()]*\\))?\\s*$`, "i"), "");
   // Prefix: "IOM – ", "IOM: ", or a capitalised short name followed by the role ("UNDP Chief", "WHO Chargé").
   t = t.replace(new RegExp(`^(?:${any})\\s*(?:[–—:|-]\\s*|\\((?:[^()]*)\\)\\s*[–—-]?\\s*)`, "i"), "");
-  const shortCaps = list.filter((n) => /^[A-Z]{2,8}$/.test(n)).map(esc);
-  if (shortCaps.length) t = t.replace(new RegExp(`^(?:${shortCaps.join("|")})\\s+(?=\\p{Lu})`, "u"), "");
+  // The name exactly as written, then a capitalised role: "UNDP Chief", "Jhpiego State Team Lead", "FHI 360 Administrative Associate".
+  const lead = list.find((n) => t.startsWith(`${n} `) && /^\p{Lu}/u.test(t.slice(n.length + 1)));
+  if (lead) t = t.slice(lead.length + 1);
   t = t.replace(/\s{2,}/g, " ").trim();
   return t.length >= 3 ? t : title;
 }

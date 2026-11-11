@@ -124,3 +124,12 @@ describe("vacancy codes and organizations in titles", () => {
     expect(cleanTitle("CON 2026 053 | PhilHealth Systems Strengthening Specialist")).toBe("PhilHealth Systems Strengthening Specialist");
   });
 });
+
+describe("organization name written before the role", () => {
+  it("drops it when it matches exactly", () => {
+    expect(stripOrgFromTitle("Jhpiego State Team Lead – Ogun State", ["Jhpiego"])).toBe("State Team Lead – Ogun State");
+    expect(stripOrgFromTitle("FHI 360 Administrative Associate", ["FHI 360"])).toBe("Administrative Associate");
+    expect(stripOrgFromTitle("UNDP Chief, HR Services", ["UNDP"])).toBe("Chief, HR Services");
+    expect(stripOrgFromTitle("Undp coordinator", ["UNDP"])).toBe("Undp coordinator");
+  });
+});
