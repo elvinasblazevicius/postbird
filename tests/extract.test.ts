@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { extractDeadline, findDate } from "@/lib/feeds/dates";
-import { detectCategory, detectGrade, detectJobType, detectLanguageRequirements as languagesOf, findCountries, knownOrgByAtsPath, knownOrgByHost, normalizeGrade, normalizeItem, type FeedContext } from "@/lib/feeds/extract";
+import { detectCategory, detectGrade, detectJobType, detectLanguageRequirements as languagesOf, findCountries, knownOrgByAtsPath, knownOrgByHost, knownOrgFromTitle, normalizeGrade, normalizeItem, type FeedContext } from "@/lib/feeds/extract";
 import { displayGrade, gradeGroupOf, gradeLabel, gradeMatches, isLocalOnlyGrade, payScaleFor } from "@/lib/grades";
 import { parseFilters } from "@/lib/jobs";
 import { parseFeed, type RawItem } from "@/lib/feeds/parse";
@@ -537,5 +537,15 @@ describe("EU and development-bank grades, contract types and languages", () => {
     expect(languagesOf("Experience with the Danish Refugee Council is required.")).toEqual({ required: null, desirable: null });
     expect(languagesOf("Experience in the Czech Republic is required.")).toEqual({ required: null, desirable: null });
     expect(languagesOf("Fluency in English is required; Polish nationals are encouraged to apply.")).toEqual({ required: null, desirable: null });
+  });
+});
+
+describe("organization named at the start of a title", () => {
+  it("matches only an exact name or short name", () => {
+    expect(knownOrgFromTitle("FHI 360 Administrative Associate")?.name).toBe("FHI 360");
+    expect(knownOrgFromTitle("Jhpiego State Team Lead – Ogun State")?.name).toBe("Jhpiego");
+    expect(knownOrgFromTitle("CERN – Junior Automation & Controls Engineer")?.name).toBe("CERN");
+    expect(knownOrgFromTitle("Care Coordinator")).toBeUndefined();
+    expect(knownOrgFromTitle("Senior Finance Associate")).toBeUndefined();
   });
 });

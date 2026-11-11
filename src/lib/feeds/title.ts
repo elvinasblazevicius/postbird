@@ -51,6 +51,8 @@ export function cleanTitle(raw: string): string {
     .replace(/\s*[–—-]?\s*\bJob\s*(?:ID|No\.?)\s*:?\s*\d+\s*$/i, "")
     .replace(/\s*\bRef(?:erence)?\.?\s*:?\s*\d{4,}\b/gi, "")
     .replace(/\s*[–—-]\s*\d{5,}\s*$/, "");
+  // "INT 2026 003 | Medical Assistant Intern", "CON 2026 053 | Specialist": a vacancy code before a bar.
+  t = t.replace(/^[A-Z]{2,5}\s?(?:19|20)\d\d\s?[-/]?\s?\d{2,4}\s*[|:–—-]\s*/, "");
   // "The European Union Delegation to Kazakhstan is looking for: Accounts Clerk": the role only.
   t = t.replace(/^.{3,140}?\bis\s+(?:looking\s+for|recruiting|hiring)\s*(?:an?\s+)?:\s*/i, "");
   // "Field Documentation Officer || موثق/ـة ميداني/ـة": keep the Latin-script part.

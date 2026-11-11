@@ -144,7 +144,7 @@ export function knownOrgByAtsPath(url: string): KnownOrg | undefined {
   }
 }
 
-function toOrgRef(name: string): OrgRef {
+export function toOrgRef(name: string): OrgRef {
   const known =
     knownOrgByName(name) ??
     name.split(/\s[-–—|]\s|\(|\)|,/).map((p) => knownOrgByName(p)).find(Boolean);
@@ -387,6 +387,27 @@ function placeOnly(segment: string): { countries: string[]; city: string | null 
 }
 
 /** Split a title into trailing segments that may hold a location, e.g. "Analyst - Nairobi, Kenya". */
+/**
+ * A known organization named in the title: "UNICEF: WASH Officer", "Officer – UNDP", "IOM – Administrative
+ * Assistant", "UNDP Chief, HR Services", "CERN Junior Engineer".
+ */
+export function knownOrgFromTitle(title: string): KnownOrg | undefined {
+  const prefix = title.match(/^([^:]{2,60}):\s/);
+  let org = prefix ? knownOrgByName(prefix[1]) : undefined;
+  if (!org) for (const seg of titleTailSegments(title)) { org = knownOrgByName(seg); if (org) break; }
+  if (!org) {
+    const dashed = title.match(/^([^–—|:]{2,60}?)\s*[–—|]\s/)?.[1];
+    if (dashed) org = knownOrgByName(dashed);
+    // A first word that is exactly an organization's name or short name, as written ("UNDP Chief",
+    // "Jhpiego State Team Lead", "FHI 360 Administrative Associate"); case must match, so "Care
+    // Coordinator" isn't CARE.
+    const word = !org ? title.match(/^([A-Z][A-Za-z]{1,7}(?:\s\d{3})?)\s+(?=\p{Lu})/u)?.[1] : undefined;
+    const cand = word ? knownOrgByName(word) : undefined;
+    if (cand && [cand.name, cand.short, ...(cand.aliases ?? [])].includes(word)) org = cand;
+  }
+  return org;
+}
+
 function titleTailSegments(title: string): string[] {
   const parts = title.split(/\s[-–—|]\s|\s\/\s|\(|\)/).map((p) => p.trim()).filter(Boolean);
   return parts.length > 1 ? parts.slice(1) : [];
@@ -454,15 +475,7 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   const hostOrg = knownOrgByHost(applyHost) ?? knownOrgByAtsPath(applyUrl);
   const authorOrg = knownOrgByName(raw.author);
   const sourceOrg = knownOrgByName(raw.sourceTitle?.replace(/\b(jobs?|careers?|vacanc(y|ies)|opportunities|rss|feed)\b/gi, ""));
-  let titleOrg: KnownOrg | undefined;
-  const prefix = title.match(/^([^:]{2,60}):\s/);
-  if (prefix) titleOrg = knownOrgByName(prefix[1]);
-  if (!titleOrg) for (const seg of titleTailSegments(title)) { titleOrg = knownOrgByName(seg); if (titleOrg) break; }
-  // "IOM – Administrative Assistant", "UNDP Chief, HR Services": the organization at the start.
-  if (!titleOrg) {
-    const lead = title.match(/^([^–—|:]{2,60}?)\s*[–—|]\s/)?.[1] ?? title.match(/^([A-Z]{2,8})\s+(?=\p{Lu})/u)?.[1];
-    if (lead) titleOrg = knownOrgByName(lead);
-  }
+  const titleOrg = knownOrgFromTitle(title);
 
   if (feed.defaultOrganization) orgName = feed.defaultOrganization;
   else if (labelledOrg) orgName = labelledOrg;

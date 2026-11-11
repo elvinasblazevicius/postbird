@@ -117,3 +117,10 @@ describe("stripOrgFromTitle", () => {
     expect(stripOrgFromTitle("Migration Officer", iom)).toBe("Migration Officer");
   });
 });
+
+describe("vacancy codes and organizations in titles", () => {
+  it("drops a vacancy code before a bar", () => {
+    expect(cleanTitle("INT 2026 003 | Medical Assistant Intern")).toBe("Medical Assistant Intern");
+    expect(cleanTitle("CON 2026 053 | PhilHealth Systems Strengthening Specialist")).toBe("PhilHealth Systems Strengthening Specialist");
+  });
+});

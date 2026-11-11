@@ -19,6 +19,8 @@
     "build:map": "node scripts/build-world-dots.mjs",
     "diagnose": "tsx --env-file-if-exists=.env.local scripts/diagnose.ts",
     "sources": "tsx --env-file-if-exists=.env.local scripts/sources.ts",
+    "tidy-jobs": "tsx --env-file-if-exists=.env.local scripts/tidy-jobs.ts",
+    "tidy-jobs-dry-run": "tsx --env-file-if-exists=.env.local scripts/tidy-jobs.ts --dry-run",
     "reclassify": "tsx --env-file-if-exists=.env.local scripts/reclassify.ts"
   },
   "dependencies": {
