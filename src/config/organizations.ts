@@ -39,7 +39,7 @@ export const KNOWN_ORGS: KnownOrg[] = [
   { name: "World Food Programme", short: "WFP", type: "UN system", aliases: ["WFP", "United Nations World Food Programme"], domains: ["wfp.org"] },
   { name: "FAO", short: "FAO", type: "UN system", aliases: ["Food and Agriculture Organization", "Food and Agriculture Organization of the United Nations"], domains: ["fao.org"] },
   { name: "International Labour Organization", short: "ILO", type: "UN system", aliases: ["ILO"], domains: ["ilo.org"] },
-  { name: "International Organization for Migration", short: "IOM", type: "UN system", aliases: ["IOM", "UN Migration", "OIM"], domains: ["iom.int"] },
+  { name: "International Organization for Migration", short: "IOM", type: "UN system", aliases: ["IOM", "UN Migration", "OIM"], domains: ["iom.int", "fa-evlj-saasfaprod1.fa.ocs.oraclecloud.com"] },
   { name: "UNFPA", short: "UNFPA", type: "UN system", aliases: ["United Nations Population Fund"], domains: ["unfpa.org"] },
   { name: "UN Women", short: "UN Women", badge: "UNW", type: "UN system", aliases: ["United Nations Entity for Gender Equality and the Empowerment of Women"], domains: ["unwomen.org"] },
   { name: "UNESCO", short: "UNESCO", type: "UN system", aliases: ["United Nations Educational, Scientific and Cultural Organization"], domains: ["unesco.org"] },

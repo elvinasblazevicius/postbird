@@ -401,6 +401,7 @@ describe("real-feed regressions (ReliefWeb and Inoreader)", () => {
 
   it("recognises the EEAS from its careers domain", () => {
     expect(knownOrgByHost("eeas.europa.eu")?.short).toBe("EEAS");
+    expect(knownOrgByHost("fa-evlj-saasfaprod1.fa.ocs.oraclecloud.com")?.short).toBe("IOM");
   });
 
   it("recognises job boards", () => {
