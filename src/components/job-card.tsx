@@ -7,53 +7,8 @@ import { titleLanguage } from "@/lib/title-language";
 import { Flag } from "./flag";
 import { SaveButton } from "./job-tools";
 import { LISTING_SETTINGS } from "@/config/import";
-import { daysUntil, formatShortDate, jobPath, locationLabel, monogram, NOT_SPECIFIED } from "@/lib/site";
+import { daysUntil, formatShortDate, jobPath, locationLabel, NOT_SPECIFIED } from "@/lib/site";
 import { ClosingPostmark } from "./postmark";
-
-/**
- * Organization badge: always a text monogram (the organization's short name, e.g. "WFP", "MSF",
- * or its initials) in the same neutral frame. No logos, so no organization looks more prominent
- * than another and nothing suggests the organization endorses the site.
- */
-export function OrgBadge({ name, short, size = "md" }: { name: string | null; short: string | null; size?: "sm" | "md" | "lg" }) {
-  const text = badgeText(name ? monogram(name, short) : "–");
-  // One height per size; the tile is at least square and widens into a rounded rectangle for
-  // five- and six-letter monograms (UNESCO, UNICEF, ACTED) instead of shrinking the letters.
-  const box = size === "lg" ? "h-14 min-w-14 px-2" : size === "sm" ? "h-10 min-w-10 px-1.5" : "h-11 min-w-11 px-1.5";
-  const frame = `${box} inline-flex shrink-0 items-center justify-center rounded-xl border border-rule bg-white`;
-  return (
-    <span aria-hidden="true" className={`${frame} ${badgeFontSize(text, size)} tracking-[-0.01em] whitespace-nowrap text-center font-semibold leading-none text-slate`}>
-      {text}
-    </span>
-  );
-}
-
-/** Width of the badge column in job rows: fits a six-letter small badge ("UNICEF", "UNESCO"), the longest monogram. */
-export const BADGE_COLUMN = "w-[3.75rem]";
-
-/**
- * Font sizes by badge length (up to 3, 4, 5 and 6 characters): one line, never split, a little
- * smaller for longer monograms but never below 0.6875rem (11px); the tile widens instead.
- */
-const BADGE_SIZES: Record<"sm" | "md" | "lg", [string, string, string, string]> = {
-  sm: ["text-[0.75rem]", "text-[0.72rem]", "text-[0.6875rem]", "text-[0.6875rem]"],
-  md: ["text-[0.85rem]", "text-[0.8rem]", "text-[0.75rem]", "text-[0.75rem]"],
-  lg: ["text-base", "text-[0.95rem]", "text-[0.9rem]", "text-[0.875rem]"],
-};
-
-export function badgeFontSize(text: string, size: "sm" | "md" | "lg"): string {
-  return BADGE_SIZES[size][Math.min(Math.max(text.length, 3), 6) - 3];
-}
-
-/**
- * The badge text on one line: the monogram (see monogram in src/lib/site.ts: a configured badge
- * label, a short name of up to 5 characters, a known acronym such as UNICEF, or initials). Anything
- * longer is cut to its first 5 characters, which monogram never produces.
- */
-export function badgeText(text: string): string {
-  const t = text.trim();
-  return t.length <= 6 ? t : t.slice(0, 5);
-}
 
 export function Tag({ children, tone = "plain" }: { children: React.ReactNode; tone?: "plain" | "lilac" | "remote" | "signal" | "demo" }) {
   const tones = {
@@ -167,8 +122,6 @@ export function JobCard({ job, headingLevel = 3, stamp = false }: { job: JobList
   ] as (Meta | null)[]).filter((m): m is Meta => m !== null);
   return (
     <article className="group relative flex items-start gap-3 bg-paper px-3 py-3 hover:bg-mist sm:px-4">
-      {/* A fixed-width column, as wide as the widest monogram (six letters, BADGE_COLUMN), so every title starts at the same place. */}
-      <span className={`hidden shrink-0 justify-center pt-0.5 sm:flex ${BADGE_COLUMN}`}><OrgBadge name={job.org_name} short={job.org_short} size="sm" /></span>
       <div className="min-w-0 flex-1">
         <H className="font-sans text-[1.02rem] font-semibold leading-snug text-ink">
           <Link href={href} lang={lang?.code} className="after:absolute after:inset-0 group-hover:text-accent focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-accent">

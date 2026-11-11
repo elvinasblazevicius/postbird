@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { JobsBrowser } from "@/components/jobs-browser";
-import { OrgBadge } from "@/components/job-card";
 import { EpsoBook, isEuInstitution } from "@/components/epso-book";
 import { PageHeader } from "@/components/page-header";
 import Link from "next/link";
@@ -52,7 +51,6 @@ export default async function OrganizationPage({ params, searchParams }: Props) 
         // One pattern for every organization, always with the full name: "World Food Programme (WFP)".
         title={org.short_name && org.short_name !== org.name ? `${org.name} (${org.short_name})` : org.name}
         subline="Open vacancies"
-        badge={<OrgBadge name={org.name} short={org.short_name} size="lg" />}
         crumbs={[{ href: "/", label: "Home" }, { href: "/organizations", label: "Organizations" }, { href: `/organizations/${slug}`, label: org.short_name ?? org.name }]}
         intro={
           <>

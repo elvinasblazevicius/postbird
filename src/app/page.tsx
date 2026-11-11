@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertSignup } from "@/components/alert-signup";
-import { JobGrid, JobList, OrgBadge } from "@/components/job-card";
+import { JobGrid, JobList } from "@/components/job-card";
 import { Flag } from "@/components/flag";
 import { HeroSearch } from "@/components/search-forms";
 import { TrackedLink } from "@/components/tracking";
@@ -293,7 +293,6 @@ export default async function HomePage() {
             {orgs.slice(0, 8).map((o) => (
               <li key={o.slug}>
                 <Link href={`/organizations/${o.slug}`} className="flex items-center gap-3 py-3 hover:bg-mist">
-                  <OrgBadge name={o.name} short={o.short_name} />
                   <span className="flex-1 text-ink">{o.name}</span>
                   <span className="pr-2 text-sm tabular-nums text-slate">{o.count} {o.count === 1 ? "job" : "jobs"}</span>
                 </Link>

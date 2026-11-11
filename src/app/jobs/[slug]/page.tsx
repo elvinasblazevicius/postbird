@@ -3,7 +3,7 @@ import { Flag } from "@/components/flag";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { EpsoBook, isEuInstitution } from "@/components/epso-book";
-import { JobList, OrgBadge, Tag } from "@/components/job-card";
+import { JobList, Tag } from "@/components/job-card";
 import { ClosingPostmark } from "@/components/postmark";
 import { SaveButton, ShareButton } from "@/components/job-tools";
 import { Breadcrumbs } from "@/components/page-header";
@@ -367,7 +367,6 @@ export default async function JobPage({ params }: Props) {
           <div className="mx-auto max-w-3xl px-4 pb-8 pt-7 sm:px-6">
             {crumbs}
             <div className="mt-5 flex gap-4">
-              <OrgBadge name={job.org_name} short={job.org_short} size="lg" />
               <div className="min-w-0">
                 <h1 lang={lang?.code} className="text-[1.75rem] font-semibold leading-tight text-ink sm:text-[2.3rem]">{job.title}</h1>
                 <p className="mt-2 text-lg text-ink">
@@ -484,7 +483,6 @@ export default async function JobPage({ params }: Props) {
         <div className="mx-auto max-w-6xl px-4 pb-8 pt-7 sm:px-6">
           {crumbs}
           <div className="mt-5 flex gap-4">
-            <OrgBadge name={job.org_name} short={job.org_short} size="lg" />
             <div className="min-w-0">
               <h1 lang={lang?.code} className="text-[1.75rem] font-semibold leading-tight text-ink sm:text-[2.3rem]">{job.title}</h1>
               <p className="mt-2 text-lg text-ink">

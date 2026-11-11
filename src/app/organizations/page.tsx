@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { OrgBadge } from "@/components/job-card";
 import { PageHeader } from "@/components/page-header";
 import { ORG_TYPES } from "@/config/regions";
 import { organizationFacets } from "@/lib/jobs";
@@ -41,7 +40,6 @@ export default async function OrganizationsPage() {
               {list.map((o) => (
                 <li key={o.slug} className="border-b border-rule">
                   <Link href={`/organizations/${o.slug}`} className="flex items-center gap-3 py-3 hover:text-accent">
-                    <OrgBadge name={o.name} short={o.short_name} />
                     <span className="flex-1 text-ink">{o.name}</span>
                     <span className="text-sm tabular-nums text-slate">{o.count}</span>
                   </Link>
