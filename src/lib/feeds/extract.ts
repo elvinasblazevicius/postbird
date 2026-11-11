@@ -417,6 +417,7 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   const sourceUrl = pickApplyUrl(raw.links);
   if (!sourceUrl) throw new ItemSkipped("Item has no link to the original vacancy");
   const sourceHost = hostOf(sourceUrl);
+  if (IMPORT_SETTINGS.excludedSourceHosts.some((h) => endsWithHost(sourceHost, [h]))) throw new ItemSkipped("Source not used on this site (Import settings: excludedSourceHosts)");
 
   const bodyHtml = raw.contentHtml || raw.summaryHtml || "";
   // Job-board items: link to the employer's own application page, never to the board.

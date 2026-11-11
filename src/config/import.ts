@@ -38,6 +38,12 @@ export const IMPORT_SETTINGS = {
   inoreaderItems: 100,
 
   /**
+   * Websites whose items are never imported, whatever folder they arrive in (subdomains too):
+   * general job boards that aren't about international organizations.
+   */
+  excludedSourceHosts: ["cvbankas.lt"],
+
+  /**
    * Items whose TITLE matches one of these are not imported: tenders,
    * requests for proposals and supplier calls are not jobs. They are logged
    * as "skipped" in Admin → Imports, so you can see what was left out.

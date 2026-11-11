@@ -404,6 +404,10 @@ describe("real-feed regressions (ReliefWeb and Inoreader)", () => {
     expect(knownOrgByHost("fa-evlj-saasfaprod1.fa.ocs.oraclecloud.com")?.short).toBe("IOM");
   });
 
+  it("never imports items from an excluded source", () => {
+    expect(() => normalizeItem(raw({ title: "Finansu kontrolierius", links: ["https://en.cvbankas.lt/123"] }), feed)).toThrow(/Source not used/);
+  });
+
   it("recognises job boards", () => {
     expect(isListingSite("reliefweb.int")).toBe(true);
     expect(isListingSite("unvacancies.org")).toBe(true);
