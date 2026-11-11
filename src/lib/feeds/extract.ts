@@ -13,7 +13,7 @@ import { IMPORT_SETTINGS } from "@/config/import";
 import { escapeRegExp, excerpt, htmlToText, normalizeForCompare, oneLine, sanitizeDescriptionMax, slugify } from "@/lib/text";
 import { extractDeadline, parseFeedDate } from "./dates";
 import type { RawItem } from "./parse";
-import { cleanTitle, titleForSlug } from "./title";
+import { cleanTitle, stripOrgFromTitle, titleForSlug } from "./title";
 import { canonicalizeUrl, hostOf, isListingSite, pickApplyUrl, sha256 } from "./url";
 import { allLinks, endsWithHost, findEmployerLink, findOrgWebsite, PROCUREMENT_HOSTS } from "./employer-link";
 
@@ -458,6 +458,11 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   const prefix = title.match(/^([^:]{2,60}):\s/);
   if (prefix) titleOrg = knownOrgByName(prefix[1]);
   if (!titleOrg) for (const seg of titleTailSegments(title)) { titleOrg = knownOrgByName(seg); if (titleOrg) break; }
+  // "IOM – Administrative Assistant", "UNDP Chief, HR Services": the organization at the start.
+  if (!titleOrg) {
+    const lead = title.match(/^([^–—|:]{2,60}?)\s*[–—|]\s/)?.[1] ?? title.match(/^([A-Z]{2,8})\s+(?=\p{Lu})/u)?.[1];
+    if (lead) titleOrg = knownOrgByName(lead);
+  }
 
   if (feed.defaultOrganization) orgName = feed.defaultOrganization;
   else if (labelledOrg) orgName = labelledOrg;
@@ -580,10 +585,13 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
     .filter((x): x is string => !!x && !titleNorm.includes(` ${normalizeForCompare(x)} `));
   // The slug leaves out a reference number at the start of the title (titleForSlug); old URLs still
   // work, since a job page is found by the id at the end of its URL and redirects to the current slug.
-  const slugBase = [titleForSlug(title, reference), ...extras].join(" ");
+  // The title shown and used in the address: without the organization's name when the source added it.
+  const known = organization ? knownOrgByName(organization.name) : undefined;
+  const shownTitle = organization ? stripOrgFromTitle(title, [orgName, organization.name, organization.short, ...(known?.aliases ?? [])]) : title;
+  const slugBase = [titleForSlug(shownTitle, reference), ...extras].join(" ");
 
   return {
-    title,
+    title: shownTitle,
     slug: slugify(slugBase, 90),
     organization,
     countryCode,

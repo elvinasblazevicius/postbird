@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
-import { cleanTitle, titleForSlug } from "@/lib/feeds/title";
+import { describe, expect, it, test } from "vitest";
+import { cleanTitle, stripOrgFromTitle, titleForSlug } from "@/lib/feeds/title";
 import { slugify } from "@/lib/text";
 import { interpretQuery } from "@/lib/search-intent";
 import { applyLinkKind } from "@/lib/apply-link";
@@ -89,5 +89,31 @@ describe("applyLinkKind", () => {
     expect(applyLinkKind("https://www.example.org/")).toBe("homepage");
     expect(applyLinkKind("https://example.org/careers")).toBe("homepage");
     expect(applyLinkKind("https://example.org/careers/12345-data-analyst")).toBe("posting");
+  });
+});
+
+describe("cleanTitle: file names, codes and capitalised runs", () => {
+  it("tidies titles seen in real feeds", () => {
+    expect(cleanTitle("[pdf] LQ011, Technical Officer.pdf")).toBe("Technical Officer");
+    expect(cleanTitle("[pdf] Security Officer (MMF), AX034.pdf")).toBe("Security Officer (MMF)");
+    expect(cleanTitle("[pdf] Officer, Partnerships (261645).pdf")).toBe("Officer, Partnerships");
+    expect(cleanTitle("​​Quantitative Analyst​ (Entity: EIF – Job ID: 111820)")).toBe("Quantitative Analyst");
+    expect(cleanTitle("The European Union Delegation to Kazakhstan is looking for: ACCOUNTS CLERK LOCAL AGENT GROUP III Ref: 160475 – Administration Section"))
+      .toBe("Accounts Clerk Local Agent Group III – Administration Section");
+    expect(cleanTitle("HRM Assistant – Contract Agent FG III – Job No. 529046")).toBe("HRM Assistant – Contract Agent FG III");
+    expect(cleanTitle("Staff Officer (Targeting Support) – NATO 2030")).toBe("Staff Officer (Targeting Support) – NATO 2030");
+    expect(cleanTitle("UNICEF WASH Officer")).toBe("UNICEF WASH Officer");
+  });
+});
+
+describe("stripOrgFromTitle", () => {
+  it("removes the organization the source added, never the whole title", () => {
+    const iom = ["International Organization for Migration", "IOM", "UN Migration"];
+    expect(stripOrgFromTitle("Administrative Assistant | IOM – International Organization for Migration", iom)).toBe("Administrative Assistant");
+    expect(stripOrgFromTitle("IOM – Administrative Assistant", iom)).toBe("Administrative Assistant");
+    expect(stripOrgFromTitle("UNDP Chief, HR Services", ["UNDP"])).toBe("Chief, HR Services");
+    expect(stripOrgFromTitle("Data Analyst at Transparency International (Secretariat)", ["Transparency International"])).toBe("Data Analyst");
+    expect(stripOrgFromTitle("IOM", iom)).toBe("IOM");
+    expect(stripOrgFromTitle("Migration Officer", iom)).toBe("Migration Officer");
   });
 });
