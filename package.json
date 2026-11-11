@@ -18,6 +18,7 @@
     "digest": "tsx --env-file-if-exists=.env.local scripts/digest.ts",
     "build:map": "node scripts/build-world-dots.mjs",
     "diagnose": "tsx --env-file-if-exists=.env.local scripts/diagnose.ts",
+    "sources": "tsx --env-file-if-exists=.env.local scripts/sources.ts",
     "reclassify": "tsx --env-file-if-exists=.env.local scripts/reclassify.ts"
   },
   "dependencies": {
