@@ -35,7 +35,7 @@ export const IMPORT_SETTINGS = {
    * only the latest 20 without it, fewer than a busy folder gets between two syncs. 100 is the
    * most its API returns at once. An "n" already in the feed address is kept.
    */
-  inoreaderItems: 100,
+  inoreaderItems: 500,
 
   /**
    * Websites whose items are never imported, whatever folder they arrive in (subdomains too):

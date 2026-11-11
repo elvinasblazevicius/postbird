@@ -393,8 +393,8 @@ describe("real-feed regressions (ReliefWeb and Inoreader)", () => {
     expect(isSuspendedInoreaderFeed([raw({ title: "Feed suspended! (a film festival job)", links: ["https://jobs.example.org/2"] })])).toBe(false);
   });
 
-  it("asks Inoreader for 100 items unless the address sets n", () => {
-    expect(withInoreaderItemCount("https://www.inoreader.com/stream/user/1/tag/Jobs")).toBe("https://www.inoreader.com/stream/user/1/tag/Jobs?n=100");
+  it("asks Inoreader for 500 items unless the address sets n", () => {
+    expect(withInoreaderItemCount("https://www.inoreader.com/stream/user/1/tag/Jobs")).toBe("https://www.inoreader.com/stream/user/1/tag/Jobs?n=500");
     expect(withInoreaderItemCount("https://www.inoreader.com/stream/user/1/tag/Jobs?n=50")).toBe("https://www.inoreader.com/stream/user/1/tag/Jobs?n=50");
     expect(withInoreaderItemCount("https://jobs.example.org/feed")).toBe("https://jobs.example.org/feed");
   });
