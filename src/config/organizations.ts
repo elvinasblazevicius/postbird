@@ -66,6 +66,7 @@ export const KNOWN_ORGS: KnownOrg[] = [
   { name: "OSCE", short: "OSCE", type: "International organization", aliases: ["Organization for Security and Co-operation in Europe"], domains: ["osce.org"] },
   { name: "Council of Europe", badge: "CoE", type: "International organization", domains: ["coe.int"] },
   { name: "European Commission", type: "EU institution", aliases: ["EC"], domains: ["commission.europa.eu"] },
+  { name: "European External Action Service", short: "EEAS", type: "EU institution", aliases: ["EEAS"], domains: ["eeas.europa.eu"] },
   { name: "EPSO (EU institutions)", short: "EPSO", type: "EU institution", aliases: ["EPSO", "European Personnel Selection Office"], domains: ["epso.europa.eu", "eu-careers.europa.eu"] },
   // Red Cross and Red Crescent: their emblem is protected (Geneva Conventions), so no logo is ever
   // fetched, stored or served for them or any national society (isLogoProtected in src/lib/feeds/logos.ts).

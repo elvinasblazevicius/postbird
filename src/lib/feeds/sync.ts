@@ -170,12 +170,24 @@ async function readCapped(res: Response, maxBytes: number): Promise<string> {
   return Buffer.concat(chunks, total).toString("utf8");
 }
 
+/** Inoreader output feeds send 20 items unless asked for more (IMPORT_SETTINGS.inoreaderItems). */
+export function withInoreaderItemCount(url: string, n: number = IMPORT_SETTINGS.inoreaderItems): string {
+  try {
+    const u = new URL(url);
+    if (!/(^|\.)inoreader\.com$/i.test(u.hostname) || u.searchParams.has("n")) return url;
+    u.searchParams.set("n", String(n));
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 export async function fetchFeedText(url: string, timeoutMs: number = IMPORT_SETTINGS.fetchTimeoutMs): Promise<string> {
   const ctrl = new AbortController();
   const limit = Math.max(1000, Math.min(timeoutMs, IMPORT_SETTINGS.fetchTimeoutMs));
   const timer = setTimeout(() => ctrl.abort(), limit);
   try {
-    const res = await fetch(url, {
+    const res = await fetch(withInoreaderItemCount(url), {
       signal: ctrl.signal,
       redirect: "follow",
       headers: {

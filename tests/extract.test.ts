@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { extractDeadline, findDate } from "@/lib/feeds/dates";
-import { detectCategory, detectGrade, detectJobType, detectLanguageRequirements as languagesOf, findCountries, normalizeGrade, normalizeItem, type FeedContext } from "@/lib/feeds/extract";
+import { detectCategory, detectGrade, detectJobType, detectLanguageRequirements as languagesOf, findCountries, knownOrgByHost, normalizeGrade, normalizeItem, type FeedContext } from "@/lib/feeds/extract";
 import { displayGrade, gradeGroupOf, gradeLabel, gradeMatches, isLocalOnlyGrade, payScaleFor } from "@/lib/grades";
 import { parseFilters } from "@/lib/jobs";
 import { parseFeed, type RawItem } from "@/lib/feeds/parse";
@@ -344,7 +344,7 @@ describe("review regressions: extraction", () => {
   });
 });
 
-import { isSuspendedInoreaderFeed } from "@/lib/feeds/sync";
+import { isSuspendedInoreaderFeed, withInoreaderItemCount } from "@/lib/feeds/sync";
 import { isListingSite } from "@/lib/feeds/url";
 import { cleanLink, domainMatchesOrg, findEmployerLink } from "@/lib/feeds/employer-link";
 
@@ -391,6 +391,16 @@ describe("real-feed regressions (ReliefWeb and Inoreader)", () => {
     const notice = raw({ guid: "https://www.inoreader.com/upgrade/feature/rss_common?post", title: "Feed suspended! Please contact the owner.", links: ["https://www.inoreader.com/blog/2019/02/x.html"] });
     expect(isSuspendedInoreaderFeed([notice])).toBe(true);
     expect(isSuspendedInoreaderFeed([raw({ title: "Feed suspended! (a film festival job)", links: ["https://jobs.example.org/2"] })])).toBe(false);
+  });
+
+  it("asks Inoreader for 100 items unless the address sets n", () => {
+    expect(withInoreaderItemCount("https://www.inoreader.com/stream/user/1/tag/Jobs")).toBe("https://www.inoreader.com/stream/user/1/tag/Jobs?n=100");
+    expect(withInoreaderItemCount("https://www.inoreader.com/stream/user/1/tag/Jobs?n=50")).toBe("https://www.inoreader.com/stream/user/1/tag/Jobs?n=50");
+    expect(withInoreaderItemCount("https://jobs.example.org/feed")).toBe("https://jobs.example.org/feed");
+  });
+
+  it("recognises the EEAS from its careers domain", () => {
+    expect(knownOrgByHost("eeas.europa.eu")?.short).toBe("EEAS");
   });
 
   it("recognises job boards", () => {

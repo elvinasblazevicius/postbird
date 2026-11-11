@@ -31,6 +31,13 @@ export const IMPORT_SETTINGS = {
   maxItemsPerFeed: 500,
 
   /**
+   * Items asked for from an Inoreader output feed per sync (its "n" parameter). Inoreader sends
+   * only the latest 20 without it, fewer than a busy folder gets between two syncs. 100 is the
+   * most its API returns at once. An "n" already in the feed address is kept.
+   */
+  inoreaderItems: 100,
+
+  /**
    * Items whose TITLE matches one of these are not imported: tenders,
    * requests for proposals and supplier calls are not jobs. They are logged
    * as "skipped" in Admin → Imports, so you can see what was left out.
