@@ -386,6 +386,8 @@ export function HeroSearch({ facets }: { facets: FacetData }) {
           <GradeChecks facets={facets} filters={{}} />
           <MoreFilterFields idPrefix="hero" filters={{}} facets={facets} part="checks" />
         </div>
+        {/* Phones and tablets: the list is long, so a search button at its end too. */}
+        <button type="submit" className="mt-5 min-h-11 w-full rounded-lg bg-brand px-5 py-2.5 text-base font-semibold text-white hover:bg-accent lg:hidden">Search jobs</button>
       </details>
       <AutoSubmit formId="hero-search" onChange={false} keepScroll={false} />
     </form>
