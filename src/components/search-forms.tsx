@@ -200,39 +200,6 @@ export function gradeGroupCounts(facets: { grades: { grade: string; count: numbe
 }
 
 /**
- * Grade: one list, arranged by grade group. Each group starts with "{Group}, any level" (the whole
- * group: its grades, e.g. P-1 to P-5, and listings whose title gives only the group, such as
- * "National Officer" or IOM's "(P)"), followed by the single grades in it that have open jobs
- * ("P-3"). Grades outside the groups are listed last.
- */
-function GradeSelect({ facets, filters, idPrefix }: { facets: FacetData; filters: JobFilters; idPrefix: string }) {
-  const selected = filters.grade?.[0];
-  const groups: Group[] = FILTER_GRADE_GROUPS.map((g) => {
-    const { count, exact } = gradeGroupCounts(facets, g.value, (grade) => grade === selected);
-    return {
-      label: g.name,
-      options: count > 0 || selected === g.value || exact.length
-        ? [{ value: g.value, label: withCount(anyLevelLabel(g.name), count) }, ...exact.map((x) => ({ value: x.grade, label: withCount(gradeText(x.grade), x.count) }))]
-        : [],
-    };
-  });
-  const other = facets.grades.filter((x) => !gradeGroupOf(x.grade) && x.grade !== "entry" && (x.count > 0 || x.grade === selected));
-  // An old link may use the "entry" group, which is not offered any more: keep it selectable while chosen.
-  const legacy = selected === "entry" ? [{ value: "entry", label: "Entry level (P-1, P-2, NO-A)" }] : [];
-  return (
-    <Select
-      idPrefix={idPrefix}
-      name="grade"
-      label="Grade"
-      all="Any grade"
-      value={selected}
-      options={legacy}
-      groups={[...groups, { label: "Other grades", options: other.map((x) => ({ value: x.grade, label: withCount(gradeText(x.grade), x.count) })) }]}
-    />
-  );
-}
-
-/**
  * Grade as checkboxes (result pages), compact: one "{Group}, any level" box per grade group with
  * open jobs, and the group's single grades ("P-3") folded under it (open while one is ticked).
  * Several can be ticked; a listing with any of them matches. Grades outside the groups come last.
@@ -405,14 +372,17 @@ export function HeroSearch({ facets }: { facets: FacetData }) {
       <details className="group/more mt-3">
         <MoreToggle />
         {/* The dropdowns in an even grid, then the two lists of tick boxes side by side below them. */}
+        {/* Organization, category, grade, contract type and type of organization take several
+            choices (a vacancy matching any of them is shown), as on the jobs page. Experience,
+            language, deadline and posted stay single. */}
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Select idPrefix="hero" name="org" label="Organization" all="Any organization" options={facets.orgs.map((o) => ({ value: o.slug, label: withCount(o.name, o.count) }))} />
-          <Select idPrefix="hero" name="category" label="Category" all="Any category" options={facets.categories.filter((c) => c.count > 0).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) }))} />
-          <GradeSelect facets={facets} filters={{}} idPrefix="hero" />
+          <div className="sm:col-span-2 lg:col-span-3"><OrgFields facets={facets} filters={{}} idPrefix="hero" /></div>
           <MoreFilterFields idPrefix="hero" filters={{}} facets={facets} part="selects" />
           <RemoteToggle id="hero-remote" />
         </div>
         <div className="mt-4 grid gap-4 border-t border-rule pt-4 sm:grid-cols-2">
+          <CheckList name="category" label="Category" visible={5} options={facets.categories.filter((c) => c.count > 0).map((c) => ({ value: c.slug, label: c.name, count: c.count }))} />
+          <GradeChecks facets={facets} filters={{}} />
           <MoreFilterFields idPrefix="hero" filters={{}} facets={facets} part="checks" />
         </div>
       </details>
