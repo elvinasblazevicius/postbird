@@ -121,7 +121,7 @@ describe.skipIf(!TEST_DB)("paid alerts: closing soon (database)", () => {
     const [m] = sent;
     expect(m.to).toBe("paid@example.org");
     // Yesterday's new listing is not new any more; it closes in 2 days, so it is reminded once now.
-    expect(m.subject).toBe("1 vacancy you follow closes soon");
+    expect(m.subject).toBe("1 matching vacancy closes soon");
     expect(m.html).toContain("Vacancies closing soon");
     expect(m.html).not.toContain("New vacancies for your saved searches");
     expect(closingPart(m.text)).toContain("Nurse new and closing\n");
@@ -177,7 +177,7 @@ describe.skipIf(!TEST_DB)("paid alerts: closing soon (database)", () => {
     await sql`update saved_searches set last_sent_at = now() where subscriber_id = ${paidId}`;
     const next = await digest.runAlerts();
     expect(next).toMatchObject({ due: 1, sent: 1 });
-    expect(sent[0].subject).toBe("5 vacancies you follow close soon");
+    expect(sent[0].subject).toBe("5 matching vacancies close soon");
     expect((closingPart(sent[0].text).match(/\/jobs\//g) ?? []).length).toBe(5);
     expect(await sentRows(capId)).toHaveLength(15);
   });

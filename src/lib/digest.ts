@@ -26,7 +26,7 @@ import { sql, transaction } from "@/lib/db";
 import { batchKey, isEmailConfigured, sendBatch, type OutgoingEmail } from "@/lib/email";
 import { recordDailyJob } from "@/lib/heartbeat";
 import { recordOpsEvent } from "@/lib/ops-events";
-import { alertEmail, CLOSING_SOON_DAYS, CLOSING_SOON_MAX, weeklyEmail, type AlertGroup } from "@/lib/email-templates";
+import { alertEmail, capGroups, CLOSING_SOON_DAYS, CLOSING_SOON_MAX, MAX_JOBS_PER_EMAIL, weeklyEmail, type AlertGroup } from "@/lib/email-templates";
 import { acquireLock, releaseLock } from "@/lib/feeds/sync";
 import { closingSoonForAlert, filtersFromQuery, jobsUrl, searchJobs, type JobListItem } from "@/lib/jobs";
 import { describeSearch } from "@/lib/saved-searches";
@@ -281,8 +281,8 @@ export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) =>
 // ── Paid email alerts ────────────────────────────────────────
 
 /**
- * Matches listed per saved search in one paid alert (the rest are behind a "See all" link).
- * The email lists at most MAX_JOBS_PER_EMAIL (50) in all, so later searches may list fewer.
+ * Matches fetched per saved search for one paid alert (the rest are behind a "See all" link).
+ * The email lists at most MAX_JOBS_PER_EMAIL (50) in all, shared evenly between the searches (capGroups).
  */
 const JOBS_PER_SEARCH = 20;
 /** A daily subscriber gets at most one email in this many hours; a weekly one in 6.5 days. Runs drift by minutes, so not 24h / 7d. */
@@ -481,13 +481,15 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
         }
       }
       // Closing soon: one query per subscriber (it depends on what they were already sent), at
-      // most ALERT_SEARCH_CONCURRENCY at a time. Listings already among the new matches are left out.
+      // most ALERT_SEARCH_CONCURRENCY at a time. Listings the email already lists as new matches are left out.
       const closing = await mapLimit(built, ALERT_SEARCH_CONCURRENCY, ({ sub, groups }) => closingSoonForAlert({
         searches: searches.filter((x) => x.subscriber_id === sub.id).map((x) => x.search),
         subscriberId: sub.id,
         days: CLOSING_SOON_DAYS,
         limit: CLOSING_SOON_MAX,
-        excludeIds: groups.flatMap((g) => g.jobs.map((j) => j.id)),
+        // Only the new matches the email will list (not every fetched one), so a vacancy that
+        // closes soon is never left out of both sections.
+        excludeIds: capGroups(groups, MAX_JOBS_PER_EMAIL - CLOSING_SOON_MAX).flatMap((g) => g.jobs.map((j) => j.id)),
       }).catch((e: unknown) => ({ error: e })));
       built.forEach(({ sub, groups }, k) => {
         const c = closing[k];

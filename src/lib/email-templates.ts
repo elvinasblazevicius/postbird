@@ -59,35 +59,49 @@ export const CLOSING_SOON_DAYS = 3;
 export const CLOSING_SOON_MAX = 10;
 
 /**
- * Keeps at most `max` listed vacancies across the groups. A vacancy that matches several searches
- * is listed once, under the first of them. The rows are then shared evenly: every search gets the
- * same number, and what a short one doesn't use goes to the others, so with many searches each
- * still shows its first matches. Each group keeps its total, so its "See all N" link still shows.
+ * Keeps at most `max` listed vacancies across the groups. The rows are shared evenly: every search
+ * gets the same number, and what a short one doesn't use goes to the others, so with many searches
+ * each still shows its first matches. A vacancy that matches several searches is listed once,
+ * under the first search that has room for it (never dropped because an earlier search merely
+ * fetched it), and never when its id is in `skipIds` (rows the email lists elsewhere). Each group
+ * keeps its total, so its "See all N" link still shows.
  */
-export function capGroups(groups: AlertGroup[], max = MAX_JOBS_PER_EMAIL): AlertGroup[] {
-  const seen = new Set<number>();
-  const unique = groups.map((g) => ({
-    ...g,
-    jobs: g.jobs.filter((j) => {
-      if (seen.has(j.id)) return false;
-      seen.add(j.id);
-      return true;
-    }),
-  }));
-  const take = unique.map(() => 0);
+export function capGroups(groups: AlertGroup[], max = MAX_JOBS_PER_EMAIL, skipIds: Iterable<number> = []): AlertGroup[] {
+  const printed = new Set<number>(skipIds);
+  const kept: JobListItem[][] = groups.map(() => []);
+  const next = groups.map(() => 0);
+  /** The group's next vacancy that isn't listed yet (moves its pointer past listed ones). */
+  const peek = (i: number): JobListItem | null => {
+    const jobs = groups[i].jobs;
+    while (next[i] < jobs.length && printed.has(jobs[next[i]].id)) next[i]++;
+    return next[i] < jobs.length ? jobs[next[i]] : null;
+  };
   let left = Math.max(0, max);
   while (left > 0) {
-    const open = unique.map((_, i) => i).filter((i) => take[i] < unique[i].jobs.length);
+    const open = groups.map((_, i) => i).filter((i) => peek(i) !== null);
     if (!open.length) break;
     const share = Math.max(1, Math.floor(left / open.length));
     for (const i of open) {
-      const n = Math.min(share, unique[i].jobs.length - take[i], left);
-      take[i] += n;
-      left -= n;
+      for (let n = 0; n < share && left > 0; n++) {
+        const job = peek(i);
+        if (!job) break;
+        printed.add(job.id);
+        kept[i].push(job);
+        left--;
+      }
       if (left <= 0) break;
     }
   }
-  return unique.map((g, i) => ({ ...g, jobs: g.jobs.slice(0, take[i]) }));
+  return groups.map((g, i) => ({ ...g, jobs: kept[i] }));
+}
+
+/**
+ * How many different new vacancies an alert has: the ones fetched are counted once each, however
+ * many searches they match; matches beyond the fetched rows are only known as a number per search.
+ */
+export function newVacancyCount(groups: AlertGroup[]): number {
+  const ids = new Set(groups.flatMap((g) => g.jobs.map((j) => j.id)));
+  return ids.size + groups.reduce((n, g) => n + Math.max(0, g.total - g.jobs.length), 0);
 }
 
 /** "UNICEF · Nairobi, Kenya · P-3 · Closes 30 Nov 2026": what is known, nothing guessed. */
@@ -292,23 +306,32 @@ export function duplicatePlanEmail() {
  */
 export function alertEmail(opts: { groups: AlertGroup[]; closing?: JobListItem[]; frequency: "daily" | "weekly"; accountUrl: string; unsubscribeUrl: string }) {
   const closing = (opts.closing ?? []).slice(0, Math.min(CLOSING_SOON_MAX, MAX_JOBS_PER_EMAIL));
-  const groups = capGroups(opts.groups, MAX_JOBS_PER_EMAIL - closing.length);
-  const total = groups.reduce((n, g) => n + g.total, 0);
+  // A vacancy in the closing-soon section is not repeated among the new matches.
+  const groups = capGroups(opts.groups, MAX_JOBS_PER_EMAIL - closing.length, closing.map((j) => j.id));
+  const total = newVacancyCount(opts.groups);
   const subject = groups.length
     ? `${total} new ${total === 1 ? "vacancy matches" : "vacancies match"} your ${groups.length === 1 ? "search" : "searches"}`
-    : `${closing.length} ${closing.length === 1 ? "vacancy you follow closes" : "vacancies you follow close"} soon`;
+    : `${closing.length} matching ${closing.length === 1 ? "vacancy closes" : "vacancies close"} soon`;
+  /** A search whose new matches are all listed under an earlier search (or in the closing-soon section). */
+  const LISTED_ELSEWHERE = "Its new matches are already listed in this email.";
   const closingHead = `Closing in the next ${CLOSING_SOON_DAYS} days`;
   const closingNote = "Open vacancies that match your saved searches. Each one is listed here once.";
   const closingHtml = closing.length
     ? `<h2 style="font-size:16px;margin:28px 0 4px;color:#0e1b2c">${esc(closingHead)}</h2><p style="font-size:13px;color:#566476;margin:0 0 4px">${esc(closingNote)}</p>${jobRowsHtml(closing, "?utm_source=alert&utm_medium=email&utm_content=closing")}`
     : "";
   const closingText = closing.length ? `${closingHead}\n${closingNote}\n\n${jobRowsText(closing)}` : "";
+  // "See all" for a search when the email doesn't list every one of its new matches somewhere.
+  const listed = new Set([...groups.flatMap((g) => g.jobs.map((j) => j.id)), ...closing.map((j) => j.id)]);
+  const hasMore = opts.groups.map((g) => g.total > g.jobs.filter((j) => listed.has(j.id)).length);
   const sections = groups
-    .map((g) => {
-      const more = g.total > g.jobs.length
+    .map((g, i) => {
+      const more = hasMore[i]
         ? `<p style="margin:10px 0 0"><a href="${esc(g.url)}" style="color:${siteConfig.colors.accent};font-weight:600">See all ${g.total} matches</a></p>`
         : "";
-      return `<h2 style="font-size:16px;margin:24px 0 4px;color:#0e1b2c">${esc(g.label)} <span style="font-weight:400;color:#566476">(${g.total} new)</span></h2>${jobRowsHtml(g.jobs, "?utm_source=alert&utm_medium=email")}${more}`;
+      const rows = g.jobs.length
+        ? jobRowsHtml(g.jobs, "?utm_source=alert&utm_medium=email")
+        : `<p style="font-size:14px;color:#566476;margin:6px 0 0">${esc(LISTED_ELSEWHERE)}</p>`;
+      return `<h2 style="font-size:16px;margin:24px 0 4px;color:#0e1b2c">${esc(g.label)} <span style="font-weight:400;color:#566476">(${g.total} new)</span></h2>${rows}${more}`;
     })
     .join("");
   const when = opts.frequency === "daily" ? "since yesterday's email" : "since last week's email";
@@ -327,9 +350,9 @@ export function alertEmail(opts: { groups: AlertGroup[]; closing?: JobListItem[]
     `${intro.h1} on ${siteConfig.name}\n` +
     (groups.length ? "\n" : `${intro.lead}\n\n`) +
     [
-      ...groups.map((g) => `${g.label} (${g.total} new)\n\n` +
-        jobRowsText(g.jobs) +
-        (g.total > g.jobs.length ? `${g.jobs.length ? "\n\n" : ""}See all ${g.total}: ${g.url}` : "")),
+      ...groups.map((g, i) => `${g.label} (${g.total} new)\n\n` +
+        (g.jobs.length ? jobRowsText(g.jobs) : LISTED_ELSEWHERE) +
+        (hasMore[i] ? `\n\nSee all ${g.total}: ${g.url}` : "")),
       ...(closingText ? [closingText] : []),
     ].join("\n\n---\n\n") +
     `\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;

@@ -62,6 +62,26 @@ describe("alert emails", () => {
     expect(email.subject).toBe("2500 new vacancies match your searches");
   });
 
+  it("never drops a vacancy because an earlier search fetched it without listing it", () => {
+    // A broad search first (20 fetched), then a narrow one whose 3 matches are the broad one's last rows.
+    const broad = group(20, 0, 100);
+    const narrow: AlertGroup = { ...group(0, 0, 3), label: "narrow", jobs: [job(19), job(18), job(17)] };
+    const other = group(20, 100);
+    const capped = capGroups([broad, narrow, other], 6);
+    const ids = (gs: AlertGroup[]) => gs.map((g) => g.jobs.map((j) => j.id - 1_000_000));
+    expect(ids(capped)).toEqual([[0, 1], [19, 18], [100, 101]]);
+    // Rows the email lists elsewhere (closing soon) are skipped, not repeated.
+    expect(ids(capGroups([group(4, 0)], 50, [1_000_001, 1_000_002]))).toEqual([[0, 3]]);
+  });
+
+  it("counts a vacancy that matches many searches once, and says where its rows are", () => {
+    const groups = Array.from({ length: 20 }, (_, k): AlertGroup => ({ ...group(0, 0, 1), label: `search ${k + 1}`, jobs: [job(7)] }));
+    const email = alertEmail({ groups, frequency: "daily", ...links });
+    expect(email.subject).toBe("1 new vacancy matches your searches");
+    expect((email.html.match(/Its new matches are already listed in this email\./g) ?? []).length).toBe(19);
+    expect(email.html).not.toContain("See all 1 matches");
+  });
+
   it("a subscriber with all 20 searches full still gets one email under 90 KB, every search listed", () => {
     const closing = Array.from({ length: CLOSING_SOON_MAX }, (_, i) => job(9000 + i, { deadline: "2026-11-10" }));
     const groups = Array.from({ length: 20 }, (_, k) => group(20, k * 100));
@@ -105,9 +125,9 @@ describe("alert emails", () => {
 
   it("an email with only closing-soon vacancies says so in the subject and heading", () => {
     const one = alertEmail({ groups: [], closing: [job(1, { title: "Data Officer" })], frequency: "daily", ...links });
-    expect(one.subject).toBe("1 vacancy you follow closes soon");
+    expect(one.subject).toBe("1 matching vacancy closes soon");
     const three = alertEmail({ groups: [], closing: [job(1), job(2), job(3)], frequency: "weekly", ...links });
-    expect(three.subject).toBe("3 vacancies you follow close soon");
+    expect(three.subject).toBe("3 matching vacancies close soon");
     expect(three.html).toContain("Vacancies closing soon");
     expect(three.text).toContain("Nothing new matches your saved searches this week");
     expect(three.html).not.toContain("New vacancies for your saved searches");
