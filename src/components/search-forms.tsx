@@ -376,12 +376,12 @@ export function HeroSearch({ facets }: { facets: FacetData }) {
         {/* Organization, category, grade, contract type and type of organization take several
             choices (a vacancy matching any of them is shown), as on the jobs page. Experience,
             language, deadline and posted stay single. */}
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="sm:col-span-2 lg:col-span-3"><OrgFields facets={facets} filters={{}} idPrefix="hero" /></div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="sm:col-span-2 lg:col-span-1"><OrgFields facets={facets} filters={{}} idPrefix="hero" /></div>
           <MoreFilterFields idPrefix="hero" filters={{}} facets={facets} part="selects" />
           <RemoteToggle id="hero-remote" />
         </div>
-        <div className="mt-4 grid gap-4 border-t border-rule pt-4 sm:grid-cols-2">
+        <div className="mt-4 grid gap-4 border-t border-rule pt-4 sm:grid-cols-2 lg:grid-cols-4">
           <CheckList name="category" label="Category" visible={5} options={facets.categories.filter((c) => c.count > 0).map((c) => ({ value: c.slug, label: c.name, count: c.count }))} />
           <GradeChecks facets={facets} filters={{}} />
           <MoreFilterFields idPrefix="hero" filters={{}} facets={facets} part="checks" />

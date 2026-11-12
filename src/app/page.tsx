@@ -120,7 +120,7 @@ export default async function HomePage() {
 
       {/* Hero: a light sky field, the search in a white card, and the flags of the places these employers post. */}
       <section className="border-b border-sky-rule bg-sky-wash">
-        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 pb-7 pt-6 sm:px-6 sm:pb-12 sm:pt-14 lg:flex-row lg:items-center lg:gap-12">
+        <div className="hero-row mx-auto flex max-w-6xl flex-col gap-6 px-4 pb-7 pt-6 sm:px-6 sm:pb-12 sm:pt-14 lg:flex-row lg:items-center lg:gap-12">
           <div className="min-w-0 lg:flex-[1.35]">
             <h1 className="max-w-[20ch] text-[1.9rem] font-bold leading-[1.06] text-ink sm:text-[3.25rem]">{copy.headline}</h1>
             <p className="mt-4 hidden max-w-2xl text-lg leading-relaxed text-tint-ink sm:block">
@@ -166,7 +166,7 @@ export default async function HomePage() {
               </span>
             </p>
           </div>
-          <HeroFlags className="lg:flex-1" />
+          <HeroFlags className="hero-flags lg:flex-1" />
         </div>
       </section>
 

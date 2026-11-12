@@ -291,6 +291,13 @@ html:is([data-navigating], [data-filtering]) { cursor: progress; }
 .filter-scroll::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 3px; }
 .filter-scroll::-webkit-scrollbar-track { background: transparent; }
 
+/* Home search: with "More filters" open, the white search box takes the hero's whole width
+   (the flags step aside), so the extra filters have room. */
+@media (min-width: 1024px) {
+  .hero-row:has(#hero-search details[open]) { align-items: flex-start; }
+  .hero-row:has(#hero-search details[open]) > .hero-flags { display: none; }
+}
+
 /* Home search: several places can be chosen. The chosen ones sit under the field (so the fields
    and the button stay in one line) and the typing hint is left to screen readers. */
 #hero-search .hero-main [data-combobox] { display: flex; flex-direction: column; }
