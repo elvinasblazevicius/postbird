@@ -24,5 +24,7 @@ create table if not exists board_links (
   target_url text,
   checked_at timestamptz not null default now()
 );
+-- Like every table: closed to Supabase's public API (the site connects directly as the owner).
+alter table board_links enable row level security;
 
 insert into schema_migrations (name) values ('023_vacancy_page_facts') on conflict do nothing;

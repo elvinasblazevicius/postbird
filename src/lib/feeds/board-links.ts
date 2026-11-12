@@ -70,7 +70,7 @@ async function lookBehind(apply: string, robots: Map<string, RobotsRules>): Prom
 export async function addEmployerLinksFromBoards(items: RawItem[], deadline: number): Promise<{ items: RawItem[]; found: number; looked: number }> {
   const wanted = items.map((it) => ({ it, b: boardListingOf(it) }));
   const listings = [...new Set(wanted.filter((w) => w.b).map((w) => w.b!.listing))];
-  if (!listings.length) return { items, found: 0, looked: 0 };
+  if (!listings.length || process.env.VITEST) return { items, found: 0, looked: 0 };
 
   const known = new Map<string, string | null>();
   for (const r of await sql<{ source_url: string; target_url: string | null; fresh: boolean }[]>`

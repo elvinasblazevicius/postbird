@@ -5,7 +5,8 @@
  * job boards and PDFs are never fetched, one request per website at a time with a pause between
  * them, a named user agent, a time budget and a per-run cap (IMPORT_SETTINGS.vacancyPages).
  * Only empty fields are filled; the page's own facts are also stored (page_*) so later
- * re-imports keep them (withPageFacts in sync.ts).
+ * re-imports keep them (withPageFacts in sync.ts). A closing date found here that has passed is
+ * closed by the import's expiry step, which runs right after.
  */
 import { IMPORT_SETTINGS } from "@/config/import";
 import { sql } from "@/lib/db";
@@ -125,14 +126,14 @@ async function save(job: DueJob, result: string, f: PageFacts | null, r: EnrichR
       grade = coalesce(grade, ${f?.grade ?? null}),
       min_experience_years = coalesce(min_experience_years, ${f?.experienceYears ?? null}),
       languages = case when coalesce(cardinality(languages), 0) = 0 then ${f?.languages ?? null} else languages end,
-      status = case when status = 'active' and coalesce(deadline, ${deadline}) < (now() at time zone 'utc')::date then 'expired' else status end,
       updated_at = case when ${f ? hasFacts(f) : false} then now() else updated_at end
     where id = ${job.id}`;
 }
 
 export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: number } = {}): Promise<EnrichResult> {
   const r: EnrichResult = { checked: 0, withFacts: 0, nothing: 0, blocked: 0, errors: 0, skipped: 0, filled: { deadline: 0, place: 0, jobType: 0, grade: 0, experience: 0, languages: 0 }, via: {} };
-  if (!S.enabled) return r;
+  // Tests never visit real websites (the readers have their own unit tests).
+  if (!S.enabled || process.env.VITEST) return r;
   const started = Date.now();
   const budget = opts.budgetMs ?? S.budgetMs;
   const due = await sql<DueJob[]>`
