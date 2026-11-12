@@ -5,6 +5,8 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # Public Paddle price ID is intentionally included in Next.js build output.
+  SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY"
 
 # Production builds apply database migrations first (scripts/build-netlify.sh).
 # Deploy previews and branch deploys keep the plain build above.
