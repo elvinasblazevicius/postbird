@@ -101,7 +101,7 @@ jobs:
           NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY: ${{ secrets.NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY }}
           NEXT_PUBLIC_PADDLE_ENV: ${{ secrets.NEXT_PUBLIC_PADDLE_ENV }}
           PADDLE_API_KEY: ${{ secrets.PADDLE_API_KEY }}
-          # Only for the "ai-fill-trial" task (reads vacancy pages with DeepSeek; writes nothing).
+          # The import's AI fill-in of missing details (src/lib/feeds/ai-extract.ts) and the "ai-fill-trial" task.
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
           if [ -z "$DATABASE_URL" ]; then echo "::error::Add the DATABASE_URL repository secret."; exit 1; fi

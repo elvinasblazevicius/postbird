@@ -13,7 +13,9 @@ import { sql } from "@/lib/db";
 import { hostOf, isListingSite } from "./url";
 import { parseRobots, robotsAllows, type RobotsRules } from "./robots";
 import { looksBuiltByScript, openRenderer } from "./rendered-page";
-import { factsFromPage, factsFromSystem, hasFacts, pageSaysClosed, plausibleDeadline, systemApiUrl, systemSaysClosed, type PageFacts } from "./vacancy-page";
+import { askDeepSeek, checkFacts } from "./ai-extract";
+import { htmlToText } from "@/lib/text";
+import { EMPTY_FACTS, factsFromPage, factsFromSystem, hasFacts, mainContentHtml, pageSaysClosed, plausibleDeadline, systemApiUrl, systemSaysClosed, type PageFacts } from "./vacancy-page";
 
 const S = IMPORT_SETTINGS.vacancyPages;
 
@@ -21,6 +23,8 @@ export type EnrichResult = {
   checked: number; withFacts: number; nothing: number; blocked: number; errors: number; skipped: number;
   /** Pages built in the browser that were read with a headless browser (of them, how many gave facts). */
   rendered: number; renderedWithFacts: number;
+  /** Pages the AI read for details the rules missed; values it filled; its token use. */
+  ai: { asked: number; filled: number; rejected: number; tokensIn: number; tokensOut: number };
   filled: { deadline: number; place: number; jobType: number; grade: number; experience: number; languages: number };
   via: Record<string, number>;
 };
@@ -28,7 +32,7 @@ export type EnrichResult = {
 type DueJob = {
   id: number; title: string; apply_url: string; apply_host: string;
   deadline: string | null; country_code: string | null; location_text: string | null; job_type: string | null;
-  grade: string | null; min_experience_years: number | null; languages: string[] | null;
+  grade: string | null; min_experience_years: number | null; languages: string[] | null; page_attempts: number;
 };
 
 class BlockedByRobots extends Error {}
@@ -86,14 +90,14 @@ export async function allowed(url: string, cache: Map<string, RobotsRules>): Pro
 }
 
 /** Reads one job's facts: a recruitment system's job data when its address shows one, else the page. */
-async function readFacts(job: DueJob, cache: Map<string, RobotsRules>): Promise<PageFacts | null> {
+async function readFacts(job: DueJob, cache: Map<string, RobotsRules>): Promise<{ facts: PageFacts | null; html: string | null }> {
   const system = systemApiUrl(job.apply_url);
   if (system) {
     if (!(await allowed(system.api, cache))) throw new BlockedByRobots();
     const res = await get(system.api, "application/json");
     if (!res.ok) throw new NotReadable(`HTTP ${res.status}`);
     const facts = factsFromSystem(system.via, JSON.parse(await readCapped(res, S.maxBytes)));
-    if (hasFacts(facts)) return facts;
+    if (hasFacts(facts)) return { facts, html: null };
     // Some systems' pages also carry a JobPosting record; fall through to the page.
   }
   if (!(await allowed(job.apply_url, cache))) throw new BlockedByRobots();
@@ -106,7 +110,39 @@ async function readFacts(job: DueJob, cache: Map<string, RobotsRules>): Promise<
   const html = await readCapped(res, S.maxBytes);
   const facts = factsFromPage(job.title, job.apply_url, html);
   if (!hasFacts(facts) && looksBuiltByScript(html)) throw new BuiltByScript();
-  return facts;
+  return { facts, html };
+}
+
+/**
+ * Details the rules left empty (closing date, country, contract type, grade), read by the AI from
+ * the page text and kept only when they pass checkFacts (the quote must be on the page). Only on a
+ * job's first reading, at most `S.aiPerRun` pages per run, and only with DEEPSEEK_API_KEY set.
+ */
+async function withAi(job: DueJob, facts: PageFacts | null, html: string | null, r: EnrichResult): Promise<PageFacts | null> {
+  if (!html || !process.env.DEEPSEEK_API_KEY || job.page_attempts > 0 || r.ai.asked >= S.aiPerRun) return facts;
+  const f: PageFacts = facts ?? { ...EMPTY_FACTS, via: "text" };
+  const needDate = !job.deadline && !f.deadline;
+  const needPlace = !job.country_code && !job.location_text && !f.countryCode && !f.locationText;
+  const needType = !job.job_type && !f.jobType;
+  const needGrade = !job.grade && !f.grade;
+  if (!needDate && !needPlace && !needType && !needGrade) return facts;
+  const text = htmlToText(mainContentHtml(html));
+  if (text.length < 300) return facts;
+  try {
+    const ai = await askDeepSeek(job.title, text);
+    if (!ai) return facts;
+    r.ai.asked++; r.ai.tokensIn += ai.usage.input; r.ai.tokensOut += ai.usage.output;
+    const c = checkFacts(ai.facts, text);
+    r.ai.rejected += c.rejected.length;
+    const out: PageFacts = { ...f };
+    if (needDate && c.deadline) { out.deadline = c.deadline; r.ai.filled++; }
+    if (needPlace && c.countryCode) { out.countryCode = c.countryCode; r.ai.filled++; }
+    if (needType && c.contractType) { out.jobType = c.contractType; r.ai.filled++; }
+    if (needGrade && c.grade) { out.grade = c.grade; r.ai.filled++; }
+    return out;
+  } catch {
+    return facts; // the AI being down never stops the import
+  }
 }
 
 async function save(job: DueJob, result: string, f: PageFacts | null, r: EnrichResult): Promise<void> {
@@ -139,13 +175,13 @@ async function save(job: DueJob, result: string, f: PageFacts | null, r: EnrichR
 }
 
 export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: number } = {}): Promise<EnrichResult> {
-  const r: EnrichResult = { checked: 0, withFacts: 0, nothing: 0, blocked: 0, errors: 0, skipped: 0, rendered: 0, renderedWithFacts: 0, filled: { deadline: 0, place: 0, jobType: 0, grade: 0, experience: 0, languages: 0 }, via: {} };
+  const r: EnrichResult = { checked: 0, withFacts: 0, nothing: 0, blocked: 0, errors: 0, skipped: 0, rendered: 0, renderedWithFacts: 0, ai: { asked: 0, filled: 0, rejected: 0, tokensIn: 0, tokensOut: 0 }, filled: { deadline: 0, place: 0, jobType: 0, grade: 0, experience: 0, languages: 0 }, via: {} };
   // Tests never visit real websites (the readers have their own unit tests).
   if (!S.enabled || process.env.VITEST) return r;
   const started = Date.now();
   const budget = opts.budgetMs ?? S.budgetMs;
   const due = await sql<DueJob[]>`
-    select id::int as id, title, apply_url, apply_host, deadline::text as deadline, country_code, location_text, job_type, grade, min_experience_years, languages
+    select id::int as id, title, apply_url, apply_host, deadline::text as deadline, country_code, location_text, job_type, grade, min_experience_years, languages, page_attempts
       from jobs
      where status = 'active' and not is_demo
        and (page_checked_at is null
@@ -177,7 +213,8 @@ export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: 
           continue;
         }
         try {
-          const facts = await readFacts(job, robots);
+          const read = await readFacts(job, robots);
+          const facts = await withAi(job, read.facts, read.html, r);
           if (facts && hasFacts(facts)) {
             r.withFacts++;
             r.via[facts.via] = (r.via[facts.via] ?? 0) + 1;
@@ -207,7 +244,7 @@ async function readBuiltByScript(jobs: DueJob[], started: number, budget: number
   try {
     for (const job of jobs) {
       const html = renderer && Date.now() - started < budget ? await renderer.render(job.apply_url) : null;
-      const facts = html ? factsFromPage(job.title, job.apply_url, html) : null;
+      const facts = html ? await withAi(job, factsFromPage(job.title, job.apply_url, html), html, r) : null;
       if (html) r.rendered++;
       if (facts && hasFacts(facts)) {
         r.withFacts++; r.renderedWithFacts++;

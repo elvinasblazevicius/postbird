@@ -64,6 +64,8 @@ export const IMPORT_SETTINGS = {
     budgetMs: 9 * 60_000,
     /** Extra time per run for pages built with JavaScript, read with a headless browser where one is installed. */
     browserBudgetMs: 4 * 60_000,
+    /** Pages per run whose missing details the AI may read (only with DEEPSEEK_API_KEY set; about $0.001 each). */
+    aiPerRun: 40,
     /** Pages read at the same time (each from a different website). */
     concurrency: 4,
     perHostDelayMs: 1_500,
