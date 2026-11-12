@@ -115,6 +115,8 @@ export function stripOrgFromTitle(title: string, names: (string | null | undefin
   let t = title;
   // Suffix: " | IOM – International Organization for Migration", " – ESIP – European …", " at Transparency International (Secretariat)".
   t = t.replace(new RegExp(`\\s*(?:[|–—-]|\\bat)\\s+(?:(?:${any})\\s*[–—-]\\s*)?(?:${any})(?:\\s*\\([^()]*\\))?\\s*$`, "i"), "");
+  // A last part that starts with the name and says which office: " – OSCE Programme Office in Bishkek, Bishkek", " – OSCE Secretariat".
+  t = t.replace(new RegExp(`\\s+[|–—]\\s+(?:${any})\\s[^|–—]{2,70}$`), (m) => (t.length - m.length >= 8 ? "" : m));
   // Prefix: "IOM – ", "IOM: ", or a capitalised short name followed by the role ("UNDP Chief", "WHO Chargé").
   t = t.replace(new RegExp(`^(?:${any})\\s*(?:[–—:|-]\\s*|\\((?:[^()]*)\\)\\s*[–—-]?\\s*)`, "i"), "");
   // The name exactly as written, then a capitalised role: "UNDP Chief", "Jhpiego State Team Lead", "FHI 360 Administrative Associate".

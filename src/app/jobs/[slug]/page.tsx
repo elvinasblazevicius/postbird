@@ -215,7 +215,7 @@ export default async function JobPage({ params }: Props) {
   const unSystem = job.org_type === "UN system";
   const orgRef = orgInText(job.org_name, job.org_short);
   // Where Apply goes, in plain words: "Opens IOM's recruitment system (Oracle)"; the address only for the organization's own site.
-  const homepage = applyLinkKind(job.apply_url) === "homepage";
+  const homepage = applyLinkKind(job.apply_url, job.title) === "homepage";
   const target = applyTarget({ url: job.apply_url, host: job.apply_host, orgName: job.org_name, orgShort: job.org_short, homepage });
   const otherAtOrg = Math.max(0, orgOpen - 1);
   // The free weekly email when it is on; otherwise the paid alerts' trial page.

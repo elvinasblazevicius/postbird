@@ -4,6 +4,9 @@ import { slugify } from "@/lib/text";
 import { interpretQuery } from "@/lib/search-intent";
 import { applyLinkKind } from "@/lib/apply-link";
 
+import { knownOrgFromTitle } from "@/lib/feeds/extract";
+import { knownOrgByAtsPath } from "@/lib/feeds/extract";
+import { withoutTrailingPlace } from "@/lib/feeds/extract";
 describe("cleanTitle: gender tags", () => {
   test("strips (F/M), (H/F), (M/F), (m/w/d), (f/m/x) and the like, with a separator they leave behind", () => {
     expect(cleanTitle("Data Analyst (F/M)")).toBe("Data Analyst");
@@ -131,5 +134,27 @@ describe("organization name written before the role", () => {
     expect(stripOrgFromTitle("FHI 360 Administrative Associate", ["FHI 360"])).toBe("Administrative Associate");
     expect(stripOrgFromTitle("UNDP Chief, HR Services", ["UNDP"])).toBe("Chief, HR Services");
     expect(stripOrgFromTitle("Undp coordinator", ["UNDP"])).toBe("Undp coordinator");
+  });
+});
+
+describe("organization names and places in titles (more forms)", () => {
+  it("recognises the organization", () => {
+    expect(knownOrgFromTitle("UNHCR - Protection Associate")?.name).toBe("UNHCR");
+    expect(knownOrgFromTitle("Project Associate at Transparency International (Secretariat)")?.name).toBe("Transparency International");
+    expect(knownOrgFromTitle("WRI Salesforce SME")?.name).toBe("World Resources Institute");
+    expect(knownOrgFromTitle("World Bank E T Consultant")?.name).toBe("World Bank Group");
+    expect(knownOrgFromTitle("Save the Children REnew GEDSI and Partnerships Coordinator")?.name).toBe("Save the Children");
+    expect(knownOrgFromTitle("Child Protection Assistant (Service Contract) – Street Child")?.name).toBe("Street Child");
+    expect(knownOrgFromTitle("Care Coordinator at Home")).toBeUndefined();
+    expect(knownOrgFromTitle("Data Analyst - Nairobi")).toBeUndefined();
+    expect(knownOrgByAtsPath("https://apply.workable.com/streetchildcareers/j/C626739DAC/")?.name).toBe("Street Child");
+    expect(knownOrgByAtsPath("https://jobs.jobvite.com/heifer/job/o3K5Afwc")?.name).toBe("Heifer International");
+  });
+
+  it("takes the office and the repeated place off the end", () => {
+    expect(stripOrgFromTitle("Intern in Politico-Military Department in KYR – OSCE Programme Office in Bishkek, Bishkek", ["OSCE"])).toBe("Intern in Politico-Military Department in KYR");
+    expect(stripOrgFromTitle("Senior Procurement Assistant (G6) – OSCE Secretariat", ["OSCE"])).toBe("Senior Procurement Assistant (G6)");
+    expect(withoutTrailingPlace("Youth Participation Intern, Mbabane, ESwatini, 6 months – Eswatini (formerly Swaziland), Eswatini")).toBe("Youth Participation Intern, Mbabane, ESwatini, 6 months");
+    expect(withoutTrailingPlace("Programme Officer – Paris Agreement")).toBe("Programme Officer – Paris Agreement");
   });
 });

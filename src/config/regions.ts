@@ -5,31 +5,47 @@
  */
 export type Region = { slug: string; name: string; codes: string[] };
 
+/** The regions people choose from: one area each (no "X and Y" pairs). */
 export const REGIONS: Region[] = [
   {
     slug: "africa",
     name: "Africa",
-    codes: "AO BF BI BJ BW CD CF CG CI CM CV DJ ER ET GA GH GM GN GQ GW KE KM LR LS MG ML MR MU MW MZ NA NE NG RE RW SC SD SH SL SN SO SS ST SZ TD TG TZ UG YT ZA ZM ZW".split(" "),
+    codes: "AO BF BI BJ BW CD CF CG CI CM CV DJ DZ EG EH ER ET GA GH GM GN GQ GW KE KM LR LS LY MA MG ML MR MU MW MZ NA NE NG RE RW SC SD SH SL SN SO SS ST SZ TD TG TN TZ UG YT ZA ZM ZW".split(" "),
   },
   {
-    slug: "middle-east-north-africa",
-    name: "Middle East and North Africa",
-    codes: "AE BH DZ EG EH IL IQ IR JO KW LB LY MA OM PS QA SA SY TN YE".split(" "),
+    slug: "middle-east",
+    name: "Middle East",
+    codes: "AE BH IL IQ IR JO KW LB OM PS QA SA SY YE".split(" "),
   },
   {
-    slug: "asia-pacific",
-    name: "Asia and the Pacific",
-    codes: "AF AS AU BD BN BT CK CN FJ FM GU HK ID IN JP KH KI KP KR LA LK MH MM MN MO MP MV MY NC NP NR NU NZ PF PG PH PK PW SB SG TH TL TO TV TW VN VU WS".split(" "),
+    slug: "asia",
+    name: "Asia",
+    codes: "AF BD BN BT CN HK ID IN JP KH KP KR LA LK MM MN MO MV MY NP PH PK SG TH TL TW VN".split(" "),
   },
   {
-    slug: "europe-central-asia",
-    name: "Europe and Central Asia",
-    codes: "AD AL AM AT AZ BA BE BG BY CH CY CZ DE DK EE ES FI FO FR GB GE GG GI GR HR HU IE IM IS IT JE KG KZ LI LT LU LV MC MD ME MK MT NL NO PL PT RO RS RU SE SI SK SM TJ TM TR UA UZ VA XK".split(" "),
+    slug: "central-asia",
+    name: "Central Asia",
+    codes: "KG KZ TJ TM UZ".split(" "),
   },
   {
-    slug: "latin-america-caribbean",
-    name: "Latin America and the Caribbean",
-    codes: "AG AI AR AW BB BO BR BS BZ CL CO CR CU CW DM DO EC FK GD GF GP GT GY HN HT JM KN KY LC MQ MS MX NI PA PE PR PY SR SV SX TC TT UY VC VE VG VI".split(" "),
+    slug: "pacific",
+    name: "Pacific",
+    codes: "AS AU CK FJ FM GU KI MH MP NC NR NU NZ PF PG PW SB TO TV VU WS".split(" "),
+  },
+  {
+    slug: "europe",
+    name: "Europe",
+    codes: "AD AL AM AT AZ BA BE BG BY CH CY CZ DE DK EE ES FI FO FR GB GE GG GI GR HR HU IE IM IS IT JE LI LT LU LV MC MD ME MK MT NL NO PL PT RO RS RU SE SI SK SM TR UA VA XK".split(" "),
+  },
+  {
+    slug: "latin-america",
+    name: "Latin America",
+    codes: "AR BO BR BZ CL CO CR EC FK GF GT GY HN MX NI PA PE PY SR SV UY VE".split(" "),
+  },
+  {
+    slug: "caribbean",
+    name: "Caribbean",
+    codes: "AG AI AW BB BS CU CW DM DO GD GP HT JM KN KY LC MQ MS PR SX TC TT VC VG VI".split(" "),
   },
   {
     slug: "north-america",
@@ -38,8 +54,23 @@ export const REGIONS: Region[] = [
   },
 ];
 
+const codesOf = (...slugs: string[]) => REGIONS.filter((r) => slugs.includes(r.slug)).flatMap((r) => r.codes);
+const NORTH_AFRICA = "DZ EG EH LY MA TN".split(" ");
+
+/**
+ * The paired regions the site used before they were split. Not offered in the lists any more, but
+ * their addresses, saved searches and alerts keep working, and a search for the pair by name
+ * ("Middle East and North Africa", "MENA", "Asia Pacific") still finds both halves.
+ */
+export const LEGACY_REGIONS: Region[] = [
+  { slug: "middle-east-north-africa", name: "Middle East and North Africa", codes: [...codesOf("middle-east"), ...NORTH_AFRICA] },
+  { slug: "asia-pacific", name: "Asia and the Pacific", codes: codesOf("asia", "pacific") },
+  { slug: "europe-central-asia", name: "Europe and Central Asia", codes: codesOf("europe", "central-asia") },
+  { slug: "latin-america-caribbean", name: "Latin America and the Caribbean", codes: codesOf("latin-america", "caribbean") },
+];
+
 export function regionBySlug(slug: string | null | undefined): Region | undefined {
-  return slug ? REGIONS.find((r) => r.slug === slug) : undefined;
+  return slug ? REGIONS.find((r) => r.slug === slug) ?? LEGACY_REGIONS.find((r) => r.slug === slug) : undefined;
 }
 
 export function regionOf(code: string | null | undefined): Region | undefined {

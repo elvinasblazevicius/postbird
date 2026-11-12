@@ -14,7 +14,7 @@ import { cleanupRateLimits } from "@/lib/rate-limit";
 import { purgeStaleSubscribers } from "@/lib/subscribers";
 import { purgeOpsEvents, recordOpsEvent } from "@/lib/ops-events";
 import { reduceOldClickIds } from "@/lib/analytics";
-import { canonicalizeUrl, isAggregatorUrl } from "./url";
+import { canonicalizeUrl, isAggregatorUrl, LISTING_HOSTS } from "./url";
 import { knownOrgByHost } from "./extract";
 
 export type SyncTrigger = "cron" | "manual" | "cli";
@@ -566,6 +566,12 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
     }
 
     if (stoppedEarly) notes.push("Stopped early to stay within the website's time limit; the remaining items will be imported by the next scheduled run.");
+
+    // The site never links to a job board: a job that got in with a board's link (for example in
+    // the minutes before a new board was recognised) is taken down, whatever brought it.
+    await sql`
+      update jobs set status = 'removed', removed_reason = 'Links to a job board, not the employer', updated_at = now()
+      where status <> 'removed' and (apply_host = any(${LISTING_HOSTS}) or apply_host like any(${LISTING_HOSTS.map((h) => `%.${h}`)}))`;
 
     // Expire / archive / clean up
     const expired = await sql`

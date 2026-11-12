@@ -8,6 +8,7 @@ import { gradeLabel } from "@/lib/grades";
 import { activeFilterCount, countJobs, derivedFilters, EXPERIENCE_BANDS, filteredFacets, getOrganizations, jobsUrl, latestJobs, searchJobs, searchSuggestion, withSearchIntent, type FilteredFacets, type FilterKey, type JobFilters } from "@/lib/jobs";
 import { interpretQuery } from "@/lib/search-intent";
 import siteConfig from "@site-config";
+import { BILLING_LIVE } from "@/lib/billing/live";
 import { JobList } from "./job-card";
 import { FilterForm } from "./search-forms";
 import { TrackedLink } from "./tracking";
@@ -324,9 +325,9 @@ export async function JobsBrowser({
                   href={`/pricing/trial?search=${encodeURIComponent(alertSearch)}`}
                   event="premium_cta_click"
                   source="search-alert"
-                  className="text-slate underline underline-offset-2 hover:text-accent"
+                  className="font-medium text-accent underline underline-offset-2 hover:text-brand"
                 >
-                  daily alerts (paid plan)
+                  {BILLING_LIVE ? `daily alerts, free for ${siteConfig.premium.trialDays} days` : "daily alerts (paid plan)"}
                 </TrackedLink>
               </span>
             ) : (

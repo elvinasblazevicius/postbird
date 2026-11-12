@@ -59,7 +59,7 @@ export function findDate(text: string): string | null {
 }
 
 const DEADLINE_LABEL =
-  /(closing\s+date|application\s+deadline|deadline\s+for\s+(?:applications?|submission)|deadline(?![-\w])|apply\s+by|applications?\s+close[sd]?(?:\s+on)?|closes\s+on|closing\s+on|vacancy\s+end\s+date|posting\s+end\s+date|date\s+limite(?:\s+de\s+candidature)?|fecha\s+l[ií]mite|fecha\s+de\s+cierre)/gi;
+  /(closing\s+date(?:\s+for\s+(?:external\s+|internal\s+)?applications?)?|closing\s+at|application\s+deadline|apply\s+before|applications?\s+(?:are\s+)?due(?:\s+by)?|deadline\s+for\s+(?:applications?|submission)|deadline(?![-\w])|apply\s+by|applications?\s+close[sd]?(?:\s+on)?|closes\s+on|closing\s+on|vacancy\s+end\s+date|posting\s+end\s+date|date\s+limite(?:\s+de\s+candidature)?|fecha\s+l[ií]mite|fecha\s+de\s+cierre)/gi;
 
 /** Extract a deadline from text where it is explicitly labelled. */
 export function extractDeadline(text: string): string | null {
@@ -76,7 +76,7 @@ export function extractDeadline(text: string): string | null {
       const d = findDate(extended[1].slice(0, 50));
       if (d) return d;
     }
-    const d = findDate(after.slice(0, 45));
+    const d = findDate(after.slice(0, 60));
     if (d) return d;
   }
   return null;

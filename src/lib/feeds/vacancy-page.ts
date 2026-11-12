@@ -8,6 +8,7 @@
  *     same rules as feed items (normalizeItem).
  * Facts only: no wording from the page is stored. The caller fetches (robots.txt, pacing).
  */
+import { extractDeadline } from "./dates";
 import { countryByCode } from "@/config/countries";
 import { htmlToText } from "@/lib/text";
 import { detectExperienceYears, detectJobType, detectLanguageRequirements, findCity, findCountries, normalizeItem } from "./extract";
@@ -139,7 +140,8 @@ export function factsFromSystem(via: "oracle" | "smartrecruiters" | "workday", d
 function* jsonLdObjects(html: string): Generator<Record<string, unknown>> {
   for (const m of html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
     let data: unknown;
-    try { data = JSON.parse(m[1].trim()); } catch { continue; }
+    // Some systems capitalise the property names ("ValidThrough", "JobLocation"): read them as schema.org writes them.
+    try { data = JSON.parse(m[1].trim(), (_k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [/^[A-Z][a-z]/.test(k) ? k[0].toLowerCase() + k.slice(1) : k, x])) : v)); } catch { continue; }
     const stack: unknown[] = [data];
     while (stack.length) {
       const x = stack.pop();
@@ -197,12 +199,13 @@ export function mainContentHtml(html: string): string {
 
 export function factsFromText(title: string, url: string, html: string): PageFacts | null {
   try {
+    const main = mainContentHtml(html);
     const j = normalizeItem(
-      { guid: null, title, links: [url], summaryHtml: null, contentHtml: mainContentHtml(html), published: null, updated: null, author: null, categories: [], sourceTitle: null, sourceUrl: null },
+      { guid: null, title, links: [url], summaryHtml: null, contentHtml: main, published: null, updated: null, author: null, categories: [], sourceTitle: null, sourceUrl: null },
       { id: 0, name: "vacancy page", defaultOrganization: null, contentPolicy: "none" },
     );
     return {
-      deadline: j.deadline, countryCode: j.countryCode, city: j.city, locationText: j.locationText,
+      deadline: j.deadline ?? labelledDeadlineAnywhere(main, html), countryCode: j.countryCode, city: j.city, locationText: j.locationText,
       jobType: j.jobType, grade: j.grade, experienceYears: j.minExperienceYears, languages: j.languages?.length ? j.languages : null,
       via: "text",
     };
@@ -211,15 +214,39 @@ export function factsFromText(title: string, url: string, html: string): PageFac
   }
 }
 
-/** JobPosting first, then labelled text for whatever the record left out. */
+/**
+ * A labelled closing date further down the page than the import looks in a feed item, or in a
+ * part of the page outside its main content (a side panel with "Application deadline", a header
+ * with "Closing at"). Still only a date that follows a closing-date label.
+ */
+function labelledDeadlineAnywhere(main: string, html: string): string | null {
+  const text = (h: string) => h.replace(/<(script|style|noscript|template|svg)\b[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#160;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ");
+  return plausibleDeadline(extractDeadline(text(main))) ?? plausibleDeadline(extractDeadline(text(html.slice(0, 600_000))));
+}
+
+/** How far ahead a JobPosting record's "valid through" date is believed: beyond this it is usually the recruitment system's own expiry, not the closing date. */
+const VALID_THROUGH_MAX_DAYS = 75;
+
+function believableValidThrough(d: string | null, today = new Date()): string | null {
+  if (!d) return null;
+  const t = new Date(`${d}T00:00:00Z`).getTime();
+  return Number.isNaN(t) || t > today.getTime() + VALID_THROUGH_MAX_DAYS * 86400_000 ? null : d;
+}
+
+/**
+ * JobPosting first, then labelled text for whatever the record left out. The closing date is the
+ * other way round: a date the page labels as its closing date wins over the record's "valid
+ * through", which many recruitment systems fill with their own expiry (90 days, a year).
+ */
 export function factsFromPage(title: string, url: string, html: string): PageFacts | null {
   const ld = factsFromJobPosting(html);
   const text = factsFromText(title, url, html);
   if (!ld) return hasFacts(text) ? text : null;
-  if (!text) return hasFacts(ld) ? ld : null;
+  const ldDeadline = believableValidThrough(ld.deadline);
+  if (!text) return hasFacts({ ...ld, deadline: ldDeadline }) ? { ...ld, deadline: ldDeadline } : null;
   const place = ld.countryCode || ld.locationText ? ld : text;
   const merged: PageFacts = {
-    deadline: ld.deadline ?? text.deadline,
+    deadline: text.deadline ?? ldDeadline,
     countryCode: place.countryCode, city: place.city, locationText: place.locationText,
     jobType: ld.jobType ?? text.jobType,
     grade: ld.grade ?? text.grade,

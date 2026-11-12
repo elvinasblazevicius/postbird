@@ -1,12 +1,12 @@
 /**
  * One-off tidy of jobs already on the site with the import's current rules: the title clean-up
- * (PDF names, post codes, capitalised runs, the organization's name in the title) and the
+ * (PDF names, post codes, capitalised runs, the organization's name or a repeated place in the title) and the
  * organization, when a job has none and its link, ATS address or title names a known one.
  * The job's address (slug) is kept, so links already shared keep working.
  * Usage: npm run tidy-jobs [-- --dry-run]   (or the "tidy-jobs" option of the GitHub workflow)
  */
 import { getSql } from "../src/lib/db";
-import { knownOrgByAtsPath, knownOrgByHost, knownOrgByName, knownOrgFromTitle, toOrgRef } from "../src/lib/feeds/extract";
+import { knownOrgByAtsPath, knownOrgByHost, knownOrgByName, knownOrgFromTitle, toOrgRef, withoutTrailingPlace } from "../src/lib/feeds/extract";
 import { upsertOrganizations } from "../src/lib/feeds/sync";
 import { cleanTitle, stripOrgFromTitle } from "../src/lib/feeds/title";
 import type { NormalizedJob } from "../src/lib/feeds/extract";
@@ -29,8 +29,9 @@ async function main() {
     const orgRef = found ? toOrgRef(found.name) : null;
     const orgName = j.org_name ?? orgRef?.name ?? null;
     const known = orgName ? knownOrgByName(orgName) : undefined;
-    const names = [orgName, j.org_short, orgRef?.short, ...(known?.aliases ?? [])];
-    const title = orgName ? stripOrgFromTitle(cleanTitle(j.title), names) : cleanTitle(j.title);
+    const bracketed = orgName?.match(/\(([A-Z][A-Za-z0-9&-]{1,9})\)\s*$/)?.[1];
+    const names = [orgName, j.org_short, orgRef?.short, known?.short, bracketed, ...(known?.aliases ?? [])];
+    const title = withoutTrailingPlace(orgName ? stripOrgFromTitle(cleanTitle(j.title), names) : cleanTitle(j.title));
     if (title !== j.title || orgRef) {
       changes.push({ id: j.id, title, orgSlug: orgRef?.slug ?? null, before: j.title, org: orgRef?.name ?? null });
       if (orgRef) newOrgs.push({ organization: orgRef });

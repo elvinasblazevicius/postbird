@@ -138,7 +138,7 @@ export function MultiCombobox({ name, label, idPrefix, groups, chosen: initial, 
   // Where each group's options start in the flat list (for the option ids and the highlight).
   const starts = shown.map((_, gi) => shown.slice(0, gi).reduce((n, g) => n + g.options.length, 0));
   return (
-    <div ref={changeRef} data-autosubmit="true" role="group" aria-labelledby={ids.label}>
+    <div ref={changeRef} data-autosubmit="true" data-combobox="" role="group" aria-labelledby={ids.label}>
       <label id={ids.label} htmlFor={ids.input} className="mb-1.5 block text-sm font-medium text-ink">{label}</label>
       {chosen.map((v) => <input key={v} type="hidden" name={name} value={v} />)}
       {chosen.length ? (
@@ -224,7 +224,7 @@ export function MultiCombobox({ name, label, idPrefix, groups, chosen: initial, 
           {hidden > 0 ? <li role="presentation" className="px-3 py-2 text-xs text-slate">{hidden} more: keep typing to narrow the list</li> : null}
         </ul>
       </div>
-      <p id={ids.hint} className="mt-1 text-xs text-slate">
+      <p id={ids.hint} data-combobox-hint="" className="mt-1 text-xs text-slate">
         {full ? `Up to ${max} ${itemsNoun}. Remove one to add another.` : `Type to search, or press the down arrow for the list. ${anyHint}.`}
       </p>
       <p className="sr-only" aria-live="polite">{announce}</p>

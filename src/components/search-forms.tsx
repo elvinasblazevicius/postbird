@@ -379,13 +379,14 @@ export function HeroSearch({ facets }: { facets: FacetData }) {
     <form id="hero-search" action="/jobs" method="get" role="search">
       {/* No card around it: the fields sit on the hero itself (white labels and focus ring: #hero-search in globals.css). */}
       {/* On phones the labels are visually hidden (still read by screen readers) and Where sits beside the button, to keep jobs near the top. */}
-      <div className="hero-main grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1.7fr_1fr_auto] sm:items-end sm:gap-3">
+      <div className="hero-main grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1.7fr_1fr_auto] sm:items-start sm:gap-3">
         <div className="col-span-2 sm:col-span-1">
           <label htmlFor="hero-q" className="mb-1.5 block text-sm font-medium text-ink">What</label>
           <input id="hero-q" name="q" type="search" placeholder="Job title, skill or keyword" className={fieldCls} autoComplete="off" />
         </div>
-        <WhereSelect facets={facets} filters={{}} idPrefix="hero" />
-        <button type="submit" className="rounded-lg bg-brand px-5 py-2.5 text-base font-semibold text-white hover:bg-accent sm:px-7">Search<span className="hidden sm:inline"> jobs</span></button>
+        <WhereFields facets={facets} filters={{}} idPrefix="hero" />
+        {/* Level with the fields: below the height of their labels (which phones hide). */}
+        <button type="submit" className="self-start rounded-lg bg-brand px-5 py-2.5 text-base font-semibold text-white hover:bg-accent sm:mt-[1.625rem] sm:px-7">Search<span className="hidden sm:inline"> jobs</span></button>
       </div>
       <details className="group/more mt-3">
         <MoreToggle />

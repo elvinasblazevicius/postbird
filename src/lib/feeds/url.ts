@@ -35,6 +35,9 @@ const LISTING_SITES: { re: RegExp; name: string }[] = [
   { re: /(^|\.)eurobrussels\.com$/i, name: "EuroBrussels" },
 ];
 
+/** The job boards' hosts as plain names ("unjobs.org"), for database checks. */
+export const LISTING_HOSTS: string[] = LISTING_SITES.map((s) => s.re.source.replace(/^\(\^\|\\\.\)/, "").replace(/\$$/, "").replace(/\\\./g, "."));
+
 export function isListingSite(host: string | null | undefined): boolean {
   return !!host && LISTING_SITES.some((s) => s.re.test(host));
 }

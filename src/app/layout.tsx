@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { NavProgress } from "@/components/nav-progress";
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { AdsManager } from "@/components/ads";
@@ -110,6 +112,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-paper focus:px-3 focus:py-2">
           Skip to content
         </a>
+        <div className="nav-progress" aria-hidden="true" />
+        <Suspense fallback={null}><NavProgress /></Suspense>
         <SiteHeader />
         <main id="main" className="flex-1">
           {children}

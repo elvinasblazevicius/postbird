@@ -8,16 +8,10 @@
  */
 import { normalizeForCompare } from "@/lib/text";
 import { hostOf, isAggregatorUrl, isListingSite } from "./url";
+import { APPLICATION_SERVICES, isGeneralCareersPage } from "@/lib/apply-link";
 
-/** Applicant-tracking and form services: the right place to apply, but not the organization's own website. */
-const APPLICATION_SERVICES = [
-  "myworkdayjobs.com", "workday.com", "icims.com", "taleo.net", "successfactors.com", "successfactors.eu", "oraclecloud.com",
-  "pageuppeople.com", "smartrecruiters.com", "greenhouse.io", "lever.co", "bamboohr.com", "teamtailor.com", "hr-manager.net",
-  "recruitee.com", "breezy.hr", "workable.com", "personio.de", "personio.com", "jobvite.com", "ashbyhq.com", "zohorecruit.com",
-  "applytojob.com", "jazzhr.com", "hirehive.com", "ultipro.com", "csod.com", "dayforcehcm.com", "paylocity.com", "adp.com",
-  "forms.gle", "kobotoolbox.org", "typeform.com", "jotform.com", "surveymonkey.com", "office.com", "microsoft.com",
-  "cognitoforms.com", "formstack.com", "tally.so", "wufoo.com", "humanitarianjobs.org",
-];
+export { isGeneralCareersPage };
+
 /** Hosts that never count as an organization's own website. */
 const NOT_ORG_SITES = ["google.com", "googleusercontent.com", "dropbox.com", "onedrive.live.com", "sharepoint.com", "wetransfer.com", "bit.ly", "t.ly", "tinyurl.com"];
 /** UN procurement portal: a link there means a tender, not a job. */
@@ -95,17 +89,19 @@ function usable(url: string): boolean {
 
 /**
  * The employer's application link from a job-board posting: the first job-like
- * link after "How to apply" (or anywhere, if the section has none). Returns
+ * link after "How to apply" (or anywhere, if the section has none), preferring the
+ * vacancy's own page over a general careers page when the posting has both. Returns
  * null when the posting only gives an email address or no usable link.
  */
-export function findEmployerLink(body: string): string | null {
+export function findEmployerLink(body: string, title?: string | null): string | null {
   if (!body) return null;
   const links = linksIn(body).filter((l) => usable(l.url));
   if (!links.length) return null;
   const how = body.search(/how to apply|application (?:process|procedure|instructions)|to apply\b|comment postuler|modalit[ée]s de candidature|c[óo]mo (?:postular|aplicar)|para postular/i);
   const jobish = (l: Found) => JOBISH.test(l.url) || endsWithHost(hostOf(l.url), APPLICATION_SERVICES);
+  const own = (l: Found) => jobish(l) && !isGeneralCareersPage(l.url, title);
   const after = how >= 0 ? links.filter((l) => l.index > how) : [];
-  const found = (after.find(jobish) ?? links.find(jobish))?.url;
+  const found = (after.find(own) ?? links.find(own) ?? after.find(jobish) ?? links.find(jobish))?.url;
   return found ? stripBoardTracking(found) : null;
 }
 

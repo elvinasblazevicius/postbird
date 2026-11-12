@@ -52,7 +52,8 @@ const FELLOWSHIP_WORDS = new Set(["fellowship", "fellowships"]);
  * Region words and the "Where" filter's region they pick (slugs of REGIONS in src/config/regions.ts).
  * Longest first, so "central asia" is read before "asia" and "north africa" before "africa".
  * Countries are read first, so "south africa" stays a country. Parts of a region pick the region
- * that holds them ("west africa" → Africa), so no stray word is left to match as text.
+ * that holds them ("west africa" → Africa), so no stray word is left to match as text. A pair named
+ * in full ("Asia and the Pacific", "MENA") picks the old paired region, which still covers both halves.
  */
 const REGION_PHRASES: [string, string][] = ([
   ["latin america and the caribbean", "latin-america-caribbean"],
@@ -60,27 +61,27 @@ const REGION_PHRASES: [string, string][] = ([
   ["europe and central asia", "europe-central-asia"],
   ["asia and the pacific", "asia-pacific"],
   ["sub-saharan africa", "africa"],
-  ["latin america", "latin-america-caribbean"],
+  ["latin america", "latin-america"],
   ["asia pacific", "asia-pacific"],
   ["asia-pacific", "asia-pacific"],
-  ["middle east", "middle-east-north-africa"],
-  ["north africa", "middle-east-north-africa"],
+  ["middle east", "middle-east"],
+  ["north africa", "africa"],
   ["west africa", "africa"],
   ["east africa", "africa"],
   ["southern africa", "africa"],
   ["central africa", "africa"],
-  ["central asia", "europe-central-asia"],
-  ["eastern europe", "europe-central-asia"],
-  ["western europe", "europe-central-asia"],
-  ["southeast asia", "asia-pacific"],
-  ["south asia", "asia-pacific"],
-  ["east asia", "asia-pacific"],
-  ["caribbean", "latin-america-caribbean"],
+  ["central asia", "central-asia"],
+  ["eastern europe", "europe"],
+  ["western europe", "europe"],
+  ["southeast asia", "asia"],
+  ["south asia", "asia"],
+  ["east asia", "asia"],
+  ["caribbean", "caribbean"],
   ["mena", "middle-east-north-africa"],
   ["africa", "africa"],
-  ["europe", "europe-central-asia"],
-  ["asia", "asia-pacific"],
-  ["pacific", "asia-pacific"],
+  ["europe", "europe"],
+  ["asia", "asia"],
+  ["pacific", "pacific"],
 ] as [string, string][]).sort((a, b) => b[0].length - a[0].length);
 
 /** The region slugs REGION_PHRASES names (a test checks each is a REGIONS slug). */

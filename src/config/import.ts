@@ -59,9 +59,9 @@ export const IMPORT_SETTINGS = {
   vacancyPages: {
     enabled: true,
     /** Jobs read per scheduled run (every 2 hours). */
-    perRun: 150,
+    perRun: 300,
     /** Time the step may take per run. */
-    budgetMs: 6 * 60_000,
+    budgetMs: 9 * 60_000,
     /** Pages read at the same time (each from a different website). */
     concurrency: 4,
     perHostDelayMs: 1_500,
@@ -69,6 +69,8 @@ export const IMPORT_SETTINGS = {
     maxBytes: 2_000_000,
     /** A page that gave nothing is read again after this many days, at most `maxAttempts` times in all. */
     retryDays: 3,
+    /** A page that could not be fetched (a busy server, a refused request) is tried again after this many hours. */
+    retryErrorHours: 6,
     maxAttempts: 3,
     /** How the import introduces itself (and the name robots.txt rules may address). */
     userAgent: "PostbirdBot/1.0 (+https://postbird.nuevanova.com/about; vacancy facts only)",

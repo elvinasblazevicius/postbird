@@ -94,17 +94,17 @@ describe("region words in a search", () => {
   it("picks the region filter for each region word, with the word taken out of the keywords", () => {
     const cases: [string, string][] = [
       ["africa", "africa"],
-      ["Europe", "europe-central-asia"],
-      ["asia", "asia-pacific"],
+      ["Europe", "europe"],
+      ["asia", "asia"],
       ["Asia and the Pacific", "asia-pacific"],
-      ["pacific", "asia-pacific"],
-      ["latin america", "latin-america-caribbean"],
+      ["pacific", "pacific"],
+      ["latin america", "latin-america"],
       ["Latin America and the Caribbean", "latin-america-caribbean"],
-      ["middle east", "middle-east-north-africa"],
+      ["middle east", "middle-east"],
       ["MENA", "middle-east-north-africa"],
-      ["north africa", "middle-east-north-africa"],
-      ["central asia", "europe-central-asia"],
-      ["Caribbean", "latin-america-caribbean"],
+      ["north africa", "africa"],
+      ["central asia", "central-asia"],
+      ["Caribbean", "caribbean"],
     ];
     for (const [q, region] of cases) {
       expect(interpretQuery(`${q} jobs`), q).toEqual({ text: null, region });
@@ -112,7 +112,7 @@ describe("region words in a search", () => {
     }
     for (const slug of SEARCH_REGION_SLUGS) expect(regionBySlug(slug), slug).toBeDefined();
     expect(interpretQuery("health officer in Africa")).toEqual({ text: "health officer", region: "africa" });
-    expect(interpretQuery("un internship latin america")).toEqual({ text: null, orgtype: "un", type: "Internship", region: "latin-america-caribbean" });
+    expect(interpretQuery("un internship latin america")).toEqual({ text: null, orgtype: "un", type: "Internship", region: "latin-america" });
   });
 
   it("leaves countries, organizations and other words alone", () => {

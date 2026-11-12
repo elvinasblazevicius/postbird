@@ -141,8 +141,10 @@ export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: 
       from jobs
      where status = 'active' and not is_demo
        and (page_checked_at is null
-            or (page_result in ('none', 'error') and page_attempts < ${S.maxAttempts}
-                and page_checked_at < now() - make_interval(days => ${S.retryDays})))
+            or (page_result = 'none' and page_attempts < ${S.maxAttempts}
+                and page_checked_at < now() - make_interval(days => ${S.retryDays}))
+            or (page_result = 'error' and page_attempts < ${S.maxAttempts}
+                and page_checked_at < now() - make_interval(hours => ${S.retryErrorHours})))
      order by page_checked_at nulls first, first_seen_at desc
      limit ${opts.limit ?? S.perRun}`;
 

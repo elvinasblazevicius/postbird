@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { parseRobots, robotsAllows } from "@/lib/feeds/robots";
-import { factsFromJobPosting, factsFromSystem, factsFromText, oracleApiUrl, plausibleDeadline, smartRecruitersApiUrl, workdayApiUrl } from "@/lib/feeds/vacancy-page";
+import { factsFromJobPosting, factsFromSystem, factsFromText, oracleApiUrl, plausibleDeadline, smartRecruitersApiUrl, workdayApiUrl, factsFromPage } from "@/lib/feeds/vacancy-page";
 import { boardListingOf } from "@/lib/feeds/board-links";
 import { withPageFacts } from "@/lib/feeds/sync";
 import type { RawItem } from "@/lib/feeds/parse";
 
 const item = (links: string[]): RawItem => ({ guid: null, title: "IRC PIR Caseworker", links, summaryHtml: null, contentHtml: null, published: null, updated: null, author: null, categories: [], sourceTitle: null, sourceUrl: null });
 
+import { findEmployerLink, isGeneralCareersPage } from "@/lib/feeds/employer-link";
+import { applyLinkKind } from "@/lib/apply-link";
 describe("robots.txt", () => {
   const unjobnet = "User-agent: *\nDisallow: /jd/\nDisallow: /go/\n\nUser-agent: Diffbot\nUser-agent: Omgili\nDisallow: /\n";
   it("follows the * group unless our name has its own", () => {
@@ -111,5 +113,52 @@ describe("still open?", () => {
     expect(systemSaysClosed("smartrecruiters", { active: true })).toBe(false);
     expect(systemSaysClosed("oracle", { items: [] })).toBe(true);
     expect(systemSaysClosed("workday", {})).toBe(false);
+  });
+});
+
+describe("closing dates on vacancy pages (labelled text before the record's own expiry)", () => {
+  const day = (n: number) => new Date(Date.now() + n * 86400_000).toISOString().slice(0, 10);
+  const long = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  const ld = (validThrough: string, extra = "") => `<script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting","title":"Officer","validThrough":"${validThrough}T09:00:00Z"${extra}}</script>`;
+
+  it("takes the page's labelled closing date over a far-off 'valid through'", () => {
+    const html = `<html><body>${ld(day(90))}<main><h1>Officer</h1><p>Internship</p><p>Closing at: ${long(day(14))} - 23:55 CAT</p><p>About the role…</p></main></body></html>`;
+    expect(factsFromPage("Officer", "https://jobs.example.org/jobs/officer-123", html)?.deadline).toBe(day(14));
+  });
+
+  it("does not believe a 'valid through' more than 75 days ahead, but keeps a near one", () => {
+    const page = (d: string) => `<html><body>${ld(d, ',"employmentType":"INTERN"')}<main><h1>Officer</h1><p>About the role.</p></main></body></html>`;
+    expect(factsFromPage("Officer", "https://jobs.example.org/jobs/officer-123", page(day(365)))?.deadline ?? null).toBeNull();
+    expect(factsFromPage("Officer", "https://jobs.example.org/jobs/officer-123", page(day(20)))?.deadline).toBe(day(20));
+  });
+
+  it("finds a labelled date outside the main text and after a line break", () => {
+    const html = `<html><body><aside><div>Application Deadline</div>\n<div>${long(day(21))}</div></aside><main><h1>Salesforce SME</h1><p>${"Text about the role. ".repeat(300)}</p></main></body></html>`;
+    expect(factsFromPage("Salesforce SME", "https://www.example.org/careers/jobs/salesforce-sme", html)?.deadline).toBe(day(21));
+  });
+
+  it("reads a record whose property names are capitalised", () => {
+    const html = `<html><body><script type="application/ld+json">{"@context":"http://schema.org","@type":"JobPosting","DatePosted":"${day(-5)}T00:00:00","ValidThrough":"${day(10)}T00:00:00","Title":"Architect"}</script><main><h1>Architect</h1></main></body></html>`;
+    expect(factsFromPage("Architect", "https://jobs.example.org/requisition/38983", html)?.deadline).toBe(day(10));
+  });
+});
+
+describe("general careers pages", () => {
+  it("tells a careers page from a vacancy's own page", () => {
+    expect(isGeneralCareersPage("https://www.iom.int/iom-job-categories", "Programme Manager (Immigration and Border Governance)")).toBe(true);
+    expect(isGeneralCareersPage("https://www.who.int/careers/diversity-equity-and-inclusion", "National Consultant – GEF Project Coordinator")).toBe(true);
+    expect(isGeneralCareersPage("https://vacancies.osce.org/", "Senior Procurement Assistant")).toBe(true);
+    expect(isGeneralCareersPage("https://www.concern.net/jobs/programme-manager-kenya", "Programme Manager, Kenya")).toBe(false);
+    expect(isGeneralCareersPage("https://jobs.jobvite.com/heifer/job/o3K5Afwc", "Asistente Administrativo Contable")).toBe(false);
+    expect(isGeneralCareersPage("https://www.ilri.org/jobs?jid=62952-procurement-officer-iii", "Procurement Officer III")).toBe(false);
+    expect(applyLinkKind("https://www.iom.int/iom-job-categories", "Programme Manager")).toBe("homepage");
+    expect(applyLinkKind("https://www.iom.int/iom-job-categories")).toBe("posting"); // no title to compare with: not guessed
+  });
+
+  it("prefers the vacancy's own link when a posting has both", () => {
+    const body = `<p>About <a href="https://www.who.int/careers/diversity-equity-and-inclusion">working at WHO</a>.</p><p>How to apply: <a href="https://careers.who.int/careersection/ex/jobdetail.ftl?job=2609876">apply here</a></p>`;
+    expect(findEmployerLink(body, "National Consultant – GEF Project Coordinator")).toBe("https://careers.who.int/careersection/ex/jobdetail.ftl?job=2609876");
+    const only = `<p>How to apply: see <a href="https://www.iom.int/iom-job-categories">IOM careers</a></p>`;
+    expect(findEmployerLink(only, "Programme Manager")).toBe("https://www.iom.int/iom-job-categories");
   });
 });

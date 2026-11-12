@@ -93,7 +93,10 @@ const securityHeaders = [
  * of these pages reads cookies, request headers or anything about the visitor
  * (page views are counted in the browser through /api/track, not here).
  *  - Netlify-CDN-Cache-Control: Netlify's CDN keeps a page for 5 minutes and
- *    may serve it up to 10 more minutes while it fetches a fresh copy. Only
+ *    may serve it up to an hour more while it fetches a fresh copy in the
+ *    background (the visitor gets the kept page at once). "durable" shares the
+ *    kept page between all of Netlify's locations, so a page rendered for a
+ *    visitor in one country is ready for the next visitor anywhere. Only
  *    Netlify reads this header. Next.js keeps a Cache-Control set here instead
  *    of its "private, no-store" (see send-payload.js), and Netlify's Next.js
  *    runtime keeps both when Netlify-CDN-Cache-Control is present.
@@ -119,7 +122,7 @@ const CDN_CACHED_PAGES = [
 ];
 const cdnCacheHeaders = [
   { key: "Cache-Control", value: "public, max-age=0, must-revalidate" },
-  { key: "Netlify-CDN-Cache-Control", value: "public, s-maxage=300, stale-while-revalidate=600" },
+  { key: "Netlify-CDN-Cache-Control", value: "public, durable, s-maxage=300, stale-while-revalidate=3600" },
   { key: "Netlify-Vary", value: "query" },
 ];
 

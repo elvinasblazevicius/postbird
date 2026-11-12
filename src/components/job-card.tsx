@@ -236,7 +236,7 @@ export function JobCard({ job, headingLevel = 3, stamp = false, posts = 1 }: { j
             jobId={job.id}
             className="group/apply relative z-10 inline-flex items-center gap-1 rounded-md border border-accent/40 px-2.5 py-1 text-[0.8rem] font-semibold text-accent hover:border-accent hover:bg-accent hover:text-white active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
-            {applyLinkKind(job.apply_url) === "homepage" ? "Careers site" : "Apply"}
+            {applyLinkKind(job.apply_url, job.title) === "homepage" ? "Careers site" : "Apply"}
             <span className="sr-only">: {job.title}{job.org_name ? `, ${job.org_name}` : ""} (opens the employer&apos;s site in a new tab)</span>
             <svg viewBox="0 0 16 16" className="h-3 w-3 transition-transform duration-150 motion-safe:group-hover/apply:-translate-y-px motion-safe:group-hover/apply:translate-x-px" aria-hidden="true"><path d="M6 3h7v7M13 3 4 12" fill="none" stroke="currentColor" strokeWidth="1.8" /></svg>
           </ApplyLink>

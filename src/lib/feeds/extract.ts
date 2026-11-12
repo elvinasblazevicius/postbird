@@ -115,6 +115,11 @@ export function findCity(text: string): string | null {
   return null;
 }
 
+/** Names and other spellings of two or more words, longest first, for titles that start with one. */
+const MULTIWORD_NAMES: [string, KnownOrg][] = KNOWN_ORGS
+  .flatMap((o) => [o.name, o.short, ...(o.aliases ?? [])].filter((n): n is string => !!n && /\s/.test(n.trim()) && n.trim().length >= 8).map((n) => [n.trim(), o] as [string, KnownOrg]))
+  .sort((a, b) => b[0].length - a[0].length);
+
 export function knownOrgByName(name: string | null | undefined): KnownOrg | undefined {
   if (!name) return undefined;
   const direct = ORG_INDEX.get(normalizeForCompare(name));
@@ -129,16 +134,31 @@ export function knownOrgByHost(host: string): KnownOrg | undefined {
   return KNOWN_ORGS.find((o) => o.domains?.some((d) => host === d || host.endsWith(`.${d}`)));
 }
 
+/** Words too common to tell an organization by on their own ("international", "world"). */
+const COMMON_FIRST_WORDS = new Set(["international", "world", "global", "united", "european", "save", "the", "action", "danish", "norwegian", "swiss", "asian", "african", "pacific", "catholic", "plan", "care"]);
+
+/** An organization from its account name on a recruitment service ("streetchildcareers" → Street Child, "heifer" → Heifer International). */
+function knownOrgByAccount(account: string): KnownOrg | undefined {
+  const direct = knownOrgByName(account);
+  if (direct) return direct;
+  const a = account.toLowerCase().replace(/[^a-z0-9]/g, "").replace(/(careers?|jobs|recruitment|hr)$/, "");
+  if (a.length < 5) return undefined;
+  return KNOWN_ORGS.find((o) => {
+    const words = normalizeForCompare(o.name).split(" ").filter(Boolean);
+    return words.join("") === a || (words.length > 1 && words[0] === a && !COMMON_FIRST_WORDS.has(a));
+  });
+}
+
 /**
- * Shared recruitment sites that put the employer's account name in the address
- * (jobs.smartrecruiters.com/OECD/…): the organization named there, if it is a known one.
+ * The employer from its account on a recruitment service, where the address names it:
+ * jobs.smartrecruiters.com/{account}/…, apply.workable.com/{account}/…, jobs.jobvite.com/{account}/….
  */
 export function knownOrgByAtsPath(url: string): KnownOrg | undefined {
   try {
     const u = new URL(url);
-    if (!/(^|\.)smartrecruiters\.com$/i.test(u.hostname)) return undefined;
+    if (!/(^|\.)(smartrecruiters\.com|workable\.com|jobvite\.com)$/i.test(u.hostname)) return undefined;
     const account = decodeURIComponent(u.pathname.split("/")[1] ?? "");
-    return account ? knownOrgByName(account) : undefined;
+    return account ? knownOrgByAccount(account) : undefined;
   } catch {
     return undefined;
   }
@@ -386,6 +406,18 @@ function placeOnly(segment: string): { countries: string[]; city: string | null 
   return { countries, city };
 }
 
+/**
+ * The title without a last part that only repeats where the post is ("Youth Participation Intern,
+ * 6 months – Eswatini (formerly Swaziland), Eswatini"): the card shows the place anyway.
+ */
+export function withoutTrailingPlace(title: string): string {
+  const m = title.match(/^(.{8,}?)\s+[–—-]\s+([^–—]{3,80})$/);
+  if (!m) return title;
+  // Without the bracketed notes, and each name once ("Eswatini (formerly Swaziland), Eswatini").
+  const tail = [...new Set(m[2].replace(/\([^()]*\)/g, " ").split(",").map((p) => p.replace(/\s+/g, " ").trim()).filter(Boolean))].join(", ");
+  return tail && placeOnly(tail) ? m[1].trim() : title;
+}
+
 /** Split a title into trailing segments that may hold a location, e.g. "Analyst - Nairobi, Kenya". */
 /**
  * A known organization named in the title: "UNICEF: WASH Officer", "Officer – UNDP", "IOM – Administrative
@@ -395,8 +427,13 @@ export function knownOrgFromTitle(title: string): KnownOrg | undefined {
   const prefix = title.match(/^([^:]{2,60}):\s/);
   let org = prefix ? knownOrgByName(prefix[1]) : undefined;
   if (!org) for (const seg of titleTailSegments(title)) { org = knownOrgByName(seg); if (org) break; }
+  // "Project Associate at Transparency International (Secretariat)"
   if (!org) {
-    const dashed = title.match(/^([^–—|:]{2,60}?)\s*[–—|]\s/)?.[1];
+    const at = title.match(/\s(?:at|@)\s+(\p{Lu}.{2,80})$/u)?.[1];
+    if (at) org = knownOrgByName(at) ?? knownOrgByName(at.replace(/\s*\([^()]*\)\s*$/, ""));
+  }
+  if (!org) {
+    const dashed = title.match(/^([^–—|:]{2,60}?)\s*[–—|]\s/)?.[1] ?? title.match(/^(\S{2,30})\s+-\s+/)?.[1];
     if (dashed) org = knownOrgByName(dashed);
     // A first word that is exactly an organization's name or short name, as written ("UNDP Chief",
     // "Jhpiego State Team Lead", "FHI 360 Administrative Associate"); case must match, so "Care
@@ -404,6 +441,11 @@ export function knownOrgFromTitle(title: string): KnownOrg | undefined {
     const word = !org ? title.match(/^([A-Z][A-Za-z]{1,7}(?:\s\d{3})?)\s+(?=\p{Lu})/u)?.[1] : undefined;
     const cand = word ? knownOrgByName(word) : undefined;
     if (cand && [cand.name, cand.short, ...(cand.aliases ?? [])].includes(word)) org = cand;
+    // A name of several words exactly as written, then the role: "World Bank E T Consultant",
+    // "Save the Children REnew Coordinator", "Heifer International Asistente Administrativo".
+    if (!org) {
+      org = MULTIWORD_NAMES.find(([n]) => title.startsWith(`${n} `) && /^\p{Lu}/u.test(title.slice(n.length + 1)))?.[1];
+    }
   }
   return org;
 }
@@ -459,7 +501,7 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   // Job-board items: link to the employer's own application page, never to the board.
   let applyUrl = sourceUrl;
   if (isListingSite(sourceHost)) {
-    const employer = findEmployerLink(bodyHtml);
+    const employer = findEmployerLink(bodyHtml, title);
     if (!employer && allLinks(bodyHtml).some((u) => endsWithHost(hostOf(u), PROCUREMENT_HOSTS))) throw new ItemSkipped("Links to a procurement notice (tender), not a job");
     if (!employer) throw new ItemSkipped("Job-board listing without a link to the employer's own vacancy (for example, apply by email)");
     applyUrl = employer;
@@ -600,7 +642,10 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   // work, since a job page is found by the id at the end of its URL and redirects to the current slug.
   // The title shown and used in the address: without the organization's name when the source added it.
   const known = organization ? knownOrgByName(organization.name) : undefined;
-  const shownTitle = organization ? stripOrgFromTitle(title, [orgName, organization.name, organization.short, ...(known?.aliases ?? [])]) : title;
+  // "International Union for Conservation of Nature (IUCN)": the short name in brackets counts too.
+  const bracketed = [orgName, organization?.name].map((n) => n?.match(/\(([A-Z][A-Za-z0-9&-]{1,9})\)\s*$/)?.[1]);
+  const orgless = organization ? stripOrgFromTitle(title, [orgName, organization.name, organization.short, ...bracketed, ...(known?.aliases ?? [])]) : title;
+  const shownTitle = withoutTrailingPlace(orgless);
   const slugBase = [titleForSlug(shownTitle, reference), ...extras].join(" ");
 
   return {
