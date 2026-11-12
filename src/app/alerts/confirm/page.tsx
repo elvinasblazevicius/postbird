@@ -21,14 +21,10 @@ export default async function ConfirmPage({ searchParams }: Props) {
   return (
     <div className="mx-auto max-w-xl px-4 py-20 sm:px-6">
       <StripUrlToken params={TOKEN_PARAMS} />
-      <h1 className="text-[2rem] font-semibold text-ink">Confirm your email</h1>
+      {/* With a valid link the form shows the heading itself: it changes once the address is confirmed. */}
+      {sub ? null : <h1 className="text-[2rem] font-semibold text-ink">Confirm your email</h1>}
       {sub ? (
-        <>
-          <p className="mt-3 mb-6 text-lg text-slate">
-            Confirm that <strong className="text-ink">{sub.email}</strong> should receive our emails.
-          </p>
-          <ConfirmForm token={token} />
-        </>
+        <ConfirmForm token={token} email={sub.email} />
       ) : !token ? (
         <p className="mt-3 text-lg text-slate">
           Open the link in the confirmation email we sent you to finish signing up. Didn&apos;t get it? Check your spam folder or{" "}

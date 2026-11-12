@@ -27,16 +27,41 @@ function Result({ state }: { state: FormState }) {
 }
 
 /** Confirmation needs a click (not just opening the link) so email scanners can't confirm on someone's behalf. */
-export function ConfirmForm({ token }: { token: string }) {
+/**
+ * The confirmation page's heading, the address being confirmed and the button. Once confirmed, the
+ * heading says so and the page offers what to do next (it used to keep asking to "Confirm your email").
+ */
+export function ConfirmForm({ token, email }: { token: string; email?: string }) {
   const [state, action, pending] = useActionState(confirmAction, initial);
-  if (state.status !== "idle") return <Result state={state} />;
+  if (state.status === "success") {
+    return (
+      <>
+        <h1 className="text-[2rem] font-semibold text-ink">You&apos;re signed up</h1>
+        <div className="mt-4"><Result state={state} /></div>
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <Link href="/jobs" className="rounded-lg bg-brand px-5 py-3 text-base font-semibold text-white hover:bg-accent">Browse open jobs</Link>
+          <Link href="/pricing" className="rounded-lg border border-rule bg-paper px-5 py-3 text-base font-semibold text-ink hover:border-accent hover:text-accent">See daily alerts</Link>
+        </div>
+      </>
+    );
+  }
   return (
-    <form action={action}>
-      <input type="hidden" name="token" value={token} />
-      <button disabled={pending} className="rounded-lg bg-brand px-6 py-3 text-base font-semibold text-white hover:bg-accent disabled:opacity-60">
-        {pending ? "Confirming…" : "Confirm my email"}
-      </button>
-    </form>
+    <>
+      <h1 className="text-[2rem] font-semibold text-ink">Confirm your email</h1>
+      {email ? (
+        <p className="mt-3 mb-6 text-lg text-slate">
+          Confirm that <strong className="text-ink">{email}</strong> should receive our emails.
+        </p>
+      ) : null}
+      {state.status !== "idle" ? <Result state={state} /> : (
+        <form action={action}>
+          <input type="hidden" name="token" value={token} />
+          <button disabled={pending} className="rounded-lg bg-brand px-6 py-3 text-base font-semibold text-white hover:bg-accent disabled:opacity-60">
+            {pending ? "Confirming…" : "Confirm my email"}
+          </button>
+        </form>
+      )}
+    </>
   );
 }
 

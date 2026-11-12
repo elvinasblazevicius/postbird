@@ -94,7 +94,8 @@ export default async function SubscribersPage({ searchParams }: Props) {
                 ? `paid alerts: ${s.billing_status === "trialing" ? "in trial" : s.billing_status}${s.plan_interval ? ` (${s.plan_interval === "quarter" ? "3 months" : "monthly"})` : ""}`
                 : [s.wants_alerts && "weekly email", s.premium_waitlist && "early access"].filter(Boolean).join(", ")}</td>
               <td className="px-4 py-2 text-slate">{s.source ?? "—"}</td>
-              <td className="max-w-xs px-4 py-2 text-xs text-slate">
+              {/* A saved search is one long string without spaces ("q=…&org=…"): it wraps inside its own column instead of running over the date. */}
+              <td className="min-w-[12rem] max-w-xs px-4 py-2 text-xs text-slate [overflow-wrap:anywhere]">
                 {Object.entries(s.preferences ?? {}).filter(([k]) => ["keywords", "organizations", "locations", "search", "remind_job"].includes(k)).map(([k, v]) => `${k}: ${v}`).join(" | ")}
                 {s.waitlist_note ? <div className="mt-1 text-ink">“{s.waitlist_note}”</div> : null}
               </td>
