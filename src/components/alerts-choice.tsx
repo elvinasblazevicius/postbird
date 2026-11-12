@@ -14,6 +14,15 @@ import { TrackedLink } from "./tracking";
  *
  * `onBand` is for the blue band on the home page; without it the cards sit on a light page.
  */
+/** The green tick used in plan lists (as on /pricing). */
+function Check() {
+  return (
+    <svg viewBox="0 0 16 16" className="mt-0.5 h-4 w-4 shrink-0 text-remote" aria-hidden="true">
+      <path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function AlertsChoice({ weeklyHref, trialHref, source, onBand = false }: { weeklyHref: string; trialHref: string; source: string; onBand?: boolean }) {
   const p = siteConfig.premium;
   // plans[0] is monthly, plans[1] the 3-month plan (site.config.ts).
@@ -22,7 +31,9 @@ export function AlertsChoice({ weeklyHref, trialHref, source, onBand = false }: 
   const weekly = (
     <div className={`on-light flex flex-col gap-2 rounded-[14px] border-[3px] p-4 ${onBand ? "border-[#cbe3fa] bg-[#cbe3fa]" : "border-sky-wash bg-sky-wash sm:p-5"}`}>
       <strong className="text-lg text-ink">Weekly email</strong>
-      <p className="text-sm leading-snug text-tint-ink">Every Monday, one search. Free, no card needed.</p>
+      <ul className="space-y-1.5 text-sm leading-snug text-tint-ink">
+        {["Every Monday", "One search", "Free, no card needed"].map((f) => <li key={f} className="flex gap-2"><Check />{f}</li>)}
+      </ul>
       <Link
         href={weeklyHref}
         className="mt-auto flex min-h-11 items-center justify-center rounded-[10px] border border-brand px-4 py-2.5 text-center text-[0.95rem] font-bold text-accent no-underline hover:bg-paper/60"
@@ -39,9 +50,11 @@ export function AlertsChoice({ weeklyHref, trialHref, source, onBand = false }: 
           {BILLING_LIVE ? `${p.trialDays} days free` : "Coming soon"}
         </span>
       </div>
-      <p className="text-sm leading-snug text-tint-ink">
-        <strong className="text-ink">Closing-date reminders:</strong> each email lists your matching vacancies that close in the next {CLOSING_SOON_DAYS} days. New matches once a day, for up to {MAX_SAVED_SEARCHES} searches.
-      </p>
+      <ul className="space-y-1.5 text-sm leading-snug text-tint-ink">
+        <li className="flex gap-2"><Check /><span><strong className="text-ink">Closing-date reminders:</strong> your matching vacancies that close in the next {CLOSING_SOON_DAYS} days</span></li>
+        <li className="flex gap-2"><Check />New matches once a day</li>
+        <li className="flex gap-2"><Check />Up to {MAX_SAVED_SEARCHES} searches</li>
+      </ul>
       <p className="text-[0.8125rem] leading-snug text-slate">
         {BILLING_LIVE
           ? `Card required. After the trial, ${quarterly.price} every 3 months (${fromPrice} a month) or ${monthly.price} monthly. Cancel any time.`
