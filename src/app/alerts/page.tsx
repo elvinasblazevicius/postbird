@@ -60,6 +60,12 @@ export default async function AlertsPage({ searchParams }: Props) {
         {fromMeta ? null : (
           <section className="mx-auto max-w-6xl px-4 pt-10 sm:px-6" aria-labelledby="choice-h">
             <h2 id="choice-h" className="sr-only">Weekly email or daily alerts</h2>
+            {searchLabel ? (
+              <p className="mb-4 rounded-xl border border-sky-rule bg-sky-wash px-4 py-3 text-[0.95rem] text-ink">
+                Your alerts will follow the search you just made: <strong>{searchLabel}</strong>. Nothing to search again.{" "}
+                <Link href="/alerts" className="font-medium text-accent underline underline-offset-2">Start from scratch</Link>
+              </p>
+            ) : null}
             <div>
               <AlertsChoice weeklyHref="#alert-signup" trialHref={trialHref} source={search ? "alerts-daily-search" : "alerts-daily"} />
             </div>

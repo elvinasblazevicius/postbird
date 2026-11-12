@@ -112,11 +112,18 @@ export function AlertsButton({ className, children }: { className: string; child
   const pathname = usePathname() ?? "";
   const router = useRouter();
   const here = isActive(pathname, "/alerts");
+  // On a page of search results the alerts follow that search (the page puts it in
+  // [data-alert-search], see src/components/jobs-browser.tsx); a Meta ad visit keeps its tag.
   const keepAdTag = (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-    if (!isMetaVisit(Object.fromEntries(new URLSearchParams(window.location.search)))) return;
+    const search = document.querySelector<HTMLElement>("[data-alert-search]")?.dataset.alertSearch ?? "";
+    const meta = isMetaVisit(Object.fromEntries(new URLSearchParams(window.location.search)));
+    if (!search && !meta) return;
     e.preventDefault();
-    router.push(`/alerts?${META_VISIT_QUERY}`);
+    const q = new URLSearchParams();
+    if (search) q.set("search", search);
+    const qs = [q.toString(), meta ? META_VISIT_QUERY : ""].filter(Boolean).join("&");
+    router.push(`/alerts?${qs}`);
   };
   return (
     // Marked like the other header links: the brand underline at the header's bottom edge (inside it), not a ring.

@@ -253,6 +253,8 @@ export async function JobsBrowser({
         </div>
       </aside>
 
+      {/* The search on this page, for the header's "Get job alerts" button (src/components/site-nav.tsx). */}
+      <div hidden data-alert-search={generalAlert ? "" : alertSearch} />
       <section aria-labelledby="results-heading">
         {chips.length ? (
           <div className="mb-4">
