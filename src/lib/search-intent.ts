@@ -31,7 +31,7 @@ export type SearchIntent = {
  * `exact`: phrases typed in double quotes ("finance officer"), folded: the title or text must hold
  * them in that order.
  */
-export type QueryWords = { from: { country?: string; region?: string; grade?: string; type?: string }; exact: string[] };
+export type QueryWords = { from: { country?: string; region?: string; grade?: string; type?: string; lang?: string }; exact: string[] };
 
 const STOP_WORDS = new Set([
   "job", "jobs", "vacancy", "vacancies", "position", "positions", "post", "posts", "career", "careers", "opening", "openings",

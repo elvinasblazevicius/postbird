@@ -180,4 +180,14 @@ describe.skipIf(!TEST_DB)("search audit cases (database)", () => {
     expect((await search({ q: "🚀" })).total).toBe(30);
     expect(await q("🚀 engineer")).toHaveLength(2);
   });
+
+  it("finds a rare word in the vacancy's full text, and never shows a vacancy without the word", async () => {
+    await sql`update jobs set page_text = 'Fluency in English and Russian is required. Knowledge of Stata is an asset.' where title = 'Civil Engineer'`;
+    expect(await q("russian")).toEqual(["Civil Engineer"]);
+    expect(await q("stata")).toEqual(["Civil Engineer"]);
+    expect(await q("russian engineer")).toEqual(["Civil Engineer"]);
+    expect(await q("ukrainian")).toEqual([]);
+    await sql`update jobs set page_text = null where title = 'Civil Engineer'`;
+    expect(await q("russian")).toEqual([]);
+  });
 });

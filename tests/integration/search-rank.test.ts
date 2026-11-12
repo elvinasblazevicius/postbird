@@ -61,11 +61,11 @@ describe.skipIf(!TEST_DB)("loose search order and similar vacancies (database)",
     const r = await jobs.searchJobs({ q: "finance officer" }, 50, { looseFallback: true });
     expect(r.matchMode).toBe("any");
     const titles = r.items.map((j) => j.title);
-    // "finance" (also the start of "Financing") is in fewer titles than "officer": the jobs with it in the title come first,
-    // then the officers, then the other finance-category jobs (the word only matches their category).
-    expect(titles.slice(0, 2).sort()).toEqual(["Finance Assistant", "Financing Specialist"]);
-    expect(titles.slice(2, 7).every((t) => t.endsWith("Officer"))).toBe(true);
-    expect(titles.slice(7).sort()).toEqual(["Audit Specialist", "Budget Analyst", "Budget Assistant", "Treasury Analyst"]);
+    // "finance" is in fewer titles than "officer": the job with it in the title comes first, then the officers.
+    // Every result holds one of the words: "Financing" and the finance-category jobs without the word are not shown.
+    expect(titles[0]).toBe("Finance Assistant");
+    expect(titles.slice(1).length).toBeGreaterThan(0);
+    expect(titles.slice(1).every((t) => t.endsWith("Officer"))).toBe(true);
   });
 
   it("matches the start of longer words in the fallback only", async () => {

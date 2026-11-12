@@ -126,8 +126,8 @@ async function withAi(job: DueJob, facts: PageFacts | null, html: string | null,
   const needType = !job.job_type && !f.jobType;
   const needGrade = !job.grade && !f.grade;
   if (!needDate && !needPlace && !needType && !needGrade) return facts;
-  const text = htmlToText(mainContentHtml(html));
-  if (text.length < 300) return facts;
+  const text = pageTextOf(html);
+  if (!text || text.length < 300) return facts;
   try {
     const ai = await askDeepSeek(job.title, text);
     if (!ai) return facts;
@@ -145,7 +145,14 @@ async function withAi(job: DueJob, facts: PageFacts | null, html: string | null,
   }
 }
 
-async function save(job: DueJob, result: string, f: PageFacts | null, r: EnrichResult): Promise<void> {
+/** The page's main text as kept for search and the AI (migration 028): plain text, at most 20,000 characters. */
+function pageTextOf(html: string | null): string | null {
+  if (!html) return null;
+  const t = htmlToText(mainContentHtml(html)).slice(0, 20_000).trim();
+  return t.length >= 200 ? t : null;
+}
+
+async function save(job: DueJob, result: string, f: PageFacts | null, r: EnrichResult, text: string | null = null): Promise<void> {
   const deadline = plausibleDeadline(f?.deadline ?? null);
   const placeEmpty = !job.country_code && !job.location_text;
   if (f) {
@@ -159,6 +166,7 @@ async function save(job: DueJob, result: string, f: PageFacts | null, r: EnrichR
   await sql`
     update jobs set
       page_checked_at = now(), page_attempts = page_attempts + 1, page_result = ${result},
+      page_text = coalesce(${text}, page_text),
       page_deadline = ${deadline}, page_country_code = ${f?.countryCode ?? null}, page_city = ${f?.city ?? null},
       page_location_text = ${f?.locationText?.slice(0, 200) ?? null}, page_job_type = ${f?.jobType ?? null},
       page_grade = ${f?.grade ?? null}, page_experience_years = ${f?.experienceYears ?? null}, page_languages = ${f?.languages ?? null},
@@ -218,10 +226,10 @@ export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: 
           if (facts && hasFacts(facts)) {
             r.withFacts++;
             r.via[facts.via] = (r.via[facts.via] ?? 0) + 1;
-            await save(job, "ok", facts, r);
+            await save(job, "ok", facts, r, pageTextOf(read.html));
           } else {
             r.nothing++;
-            await save(job, "none", null, r);
+            await save(job, "none", null, r, pageTextOf(read.html));
           }
         } catch (e) {
           if (e instanceof BuiltByScript) builtByScript.push(job); // read with a browser below
@@ -249,10 +257,10 @@ async function readBuiltByScript(jobs: DueJob[], started: number, budget: number
       if (facts && hasFacts(facts)) {
         r.withFacts++; r.renderedWithFacts++;
         r.via[facts.via] = (r.via[facts.via] ?? 0) + 1;
-        await save(job, "ok", facts, r);
+        await save(job, "ok", facts, r, pageTextOf(html));
       } else {
         r.nothing++;
-        await save(job, "none", null, r);
+        await save(job, "none", null, r, pageTextOf(html));
       }
       if (renderer) await new Promise((res) => setTimeout(res, S.perHostDelayMs));
     }

@@ -73,13 +73,10 @@ describe.skipIf(!TEST_DB)("several values per filter, and typos (database)", () 
     expect(f.countries.find((c) => c.slug === "uganda")?.count).toBe(1);
   });
 
-  it("finds titles with a misspelt word when nothing matches exactly", async () => {
-    if (!trgm) return; // the database has no pg_trgm: no typo tolerance (migration 011)
+  it("shows nothing for a misspelt word (a result always holds the search word); the suggestion offers the right spelling", async () => {
     const res = await jobs.searchJobs({ q: "finanse" }, 20, { looseFallback: true });
-    expect(res.matchMode).toBe("any");
-    expect(res.items.map((j) => j.title)).toEqual(["Finance Officer"]);
-    expect((await jobs.searchJobs({ q: "finanse" })).total).toBe(0);
-    expect(await titles({ q: "procurment" })).toEqual(["Procurement Specialist"]);
+    expect(res.total).toBe(0);
+    expect(await titles({ q: "procurment" })).toEqual([]);
   });
 
   it("suggests the closest word for a misspelt search (with or without pg_trgm: computed in the app)", async () => {

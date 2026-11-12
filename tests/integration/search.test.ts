@@ -68,7 +68,8 @@ describe.skipIf(!TEST_DB)("job search (database)", () => {
 
   it("matches organization short names and category names", async () => {
     expect(await titles({ q: "unicef health" })).toEqual(["National Health Officer"]);
-    expect(await titles({ q: "procurement" })).toEqual(["Logistics Officer"]);
+    // The field of work alone isn't enough: a result must hold the word ("procurement" isn't in this logistics post).
+    expect(await titles({ q: "procurement" })).toEqual([]);
   });
 
   it("falls back to any word when no listing has them all, and says so", async () => {

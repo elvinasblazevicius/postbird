@@ -584,6 +584,8 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
         and last_seen_at < now() - make_interval(days => ${IMPORT_SETTINGS.hideUndatedAfterDays})
       returning id`;
     result.expired = expired.length + archived.length;
+    // The employer's page text is kept only while the vacancy is open (migration 028).
+    await sql`update jobs set page_text = null where status <> 'active' and page_text is not null`;
     // Retention clean-up only in the scheduled import (every 2 hours), never
     // inside the website's 10-second limit.
     if (isCli) await retentionCleanup();

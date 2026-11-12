@@ -264,10 +264,10 @@ describe("countries named in a location", () => {
 });
 
 describe("any-word fallback", () => {
-  it("is tried for a search that found nothing: several words, or one word long enough to be a typo", () => {
+  it("is tried for a search of several words that found nothing (one word that found nothing finds nothing)", () => {
     expect(wantsLooseMatch("data zzzz", 0)).toBe(true);
     expect(wantsLooseMatch("data zzzz", 3)).toBe(false);
-    expect(wantsLooseMatch("finanse", 0)).toBe(true);
+    expect(wantsLooseMatch("finanse", 0)).toBe(false);
     expect(wantsLooseMatch("zzzz", 0)).toBe(false);
     expect(wantsLooseMatch(undefined, 0)).toBe(false);
   });

@@ -252,6 +252,7 @@ export function withSearchIntent(f: JobFilters): JobFilters {
     type: !f.type?.length && i.type ? words.from.type : undefined,
     country: !f.country?.length && !f.region?.length && i.country ? words.from.country : undefined,
     region: !f.country?.length && !f.region?.length && !i.country && i.region ? words.from.region : undefined,
+    lang: !f.lang?.length && i.lang ? i.lang : undefined,
   };
   return {
     ...f,
@@ -343,7 +344,8 @@ const TYPO_SUGGEST_SIMILARITY = 0.4;
 export function wantsLooseMatch(q: string | undefined, total: number): boolean {
   if (total !== 0 || !q) return false;
   const words = searchWords(q);
-  return words.length > 1 || (words.length === 1 && foldText(words[0]).length >= TYPO_MIN_LENGTH);
+  // One word that found nothing finds nothing: a vacancy without the word isn't shown.
+  return words.length > 1;
 }
 
 /**
@@ -364,7 +366,8 @@ function wordCondition(t: string): Frag {
   const orgNames = orgNamesForTerm(t);
   if (orgNames.length) c = sql`${c} or pb_fold(o.name) = any(${orgNames}) or pb_fold(o.short_name) = any(${orgNames})`;
   const cats = categoriesForWord(t);
-  if (cats.length) c = sql`${c} or j.category = any(${cats})`;
+  // A field of work named by the word counts only when the vacancy's text also has the word: a result always holds it.
+  if (cats.length) c = sql`${c} or (j.category = any(${cats}) and j.search_full @@ plainto_tsquery('simple', ${folded}))`;
   const plain = /^[a-z0-9]+$/.test(folded);
   if (orgNames.length && folded.includes(" ")) {
     // An organization's name of several words ("save the children"): the organization or the title,
@@ -378,10 +381,22 @@ function wordCondition(t: string): Frag {
     const one = singular(folded);
     if (plain && one !== folded) c = sql`${c} or j.search_folded @@ to_tsquery('simple', ${`${one} | ${folded}`})`;
   }
+  // The vacancy's full text (the employer's page, or the feed's description: migration 028), for
+  // words that are rare in vacancy texts: skills, tools, languages ("russian", "stata", "gis").
+  // A word found in more than FULL_TEXT_MAX_SHARE of open vacancies ("health", "who") is too common
+  // there to mean the vacancy is about it.
+  if (plain && folded.length >= 3) {
+    c = sql`${c} or (j.search_full @@ plainto_tsquery('simple', ${folded})
+      and (select count(*) from jobs x where x.status = 'active' and x.search_full @@ plainto_tsquery('simple', ${folded}))
+          <= ${FULL_TEXT_MAX_SHARE}::float8 * (select count(*) from jobs x where x.status = 'active'))`;
+  }
   const places = placeTsQuery([t]);
   if (places) c = sql`${c} or j.search_folded @@ to_tsquery('simple', ${places})`;
   return sql`${c})`;
 }
+
+/** See wordCondition: the share of open vacancies above which a word is too common to be looked for in their full text. */
+const FULL_TEXT_MAX_SHARE = 0.2;
 
 /** Words up to this long match the title, place, grade and contract type only, never the running text. */
 const SHORT_WORD_MAX = 4;
@@ -487,7 +502,8 @@ function looseRank(terms: string[], weights: number[]): Frag {
 
 function textCondition(q: string, mode: MatchMode): Frag {
   if (mode === "any") {
-    const loose = searchWords(q).map(looseWordCondition);
+    // Any of the words, each where it really appears: no similar spellings, so every result holds a search word.
+    const loose = searchWords(q).map(wordCondition);
     return loose.length ? sql`(${loose.reduce((a, b) => sql`${a} or ${b}`)})` : sql`true`;
   }
   const parts = searchWords(q).map(wordCondition);
@@ -560,7 +576,9 @@ function filterConditions(f: JobFilters, mode: MatchMode = "all"): Partial<Recor
   const orUnstated = (k: DerivedFilter, cond: Frag) => (f.unstated ? sql`(${cond} or ${UNSTATED[k]()})` : cond);
   if (f.grade?.length) c.grade = orUnstated("grade", orTitle(sql`(${f.grade.map(gradeCondition).reduce((a, b) => sql`${a} or ${b}`)})`, titleHas(f.fromWords?.grade ? gradeTitlePattern(f.fromWords.grade) : null)));
   if (f.orgtype?.length) c.orgtype = sql`o.org_type = any(${f.orgtype.map((v) => ORG_TYPES.find((o) => o.value === v)?.type ?? "--")})`;
-  if (f.lang?.length) c.lang = orUnstated("lang", sql`j.languages && ${f.lang}::text[]`);
+  // A language read from the words ("russian") also matches a vacancy whose full text names it.
+  const langInText = f.fromWords?.lang ? sql`j.search_full @@ plainto_tsquery('simple', ${foldText(f.fromWords.lang)})` : null;
+  if (f.lang?.length) c.lang = orUnstated("lang", orTitle(sql`j.languages && ${f.lang}::text[]`, langInText));
   if (f.exp?.length) {
     const bands = f.exp.flatMap((v) => EXPERIENCE_BANDS.find((b) => b.value === v) ?? []);
     const any = bands.map((b): Frag => sql`j.min_experience_years between ${b.min} and ${b.max}`).reduce((a, b) => sql`${a} or ${b}`, sql`false`);
