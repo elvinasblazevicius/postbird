@@ -107,7 +107,7 @@ export function SaveButton({ job, compact = false }: { job: Omit<SavedJob, "save
         aria-label={saved ? `Remove ${job.title} from saved jobs` : `Save ${job.title}`}
         title={blocked ? "This browser doesn't allow saving" : saved ? "Saved" : "Save"}
         // A 44×44px tap target (the ::before layer, centred on the button) without changing the icon or the row's layout.
-        className={`relative z-10 rounded-md p-1.5 before:absolute before:left-1/2 before:top-1/2 before:h-11 before:w-11 before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] hover:bg-tint ${saved ? "text-accent" : "text-slate hover:text-accent"}`}
+        className={`relative z-10 rounded-md p-1.5 transition-[color,background-color,transform] duration-150 before:absolute before:left-1/2 before:top-1/2 before:h-11 before:w-11 before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] hover:bg-tint active:scale-90 ${saved ? "text-accent motion-safe:animate-[save-pop_220ms_ease-out]" : "text-slate hover:text-accent"}`}
       >
         <Bookmark filled={saved} />
       </button>
@@ -119,7 +119,7 @@ export function SaveButton({ job, compact = false }: { job: Omit<SavedJob, "save
         type="button"
         onClick={toggle}
         aria-pressed={saved}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm font-medium text-accent hover:bg-tint"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm font-medium text-accent transition-[background-color,transform] duration-150 hover:bg-tint active:scale-[0.97]"
       >
         <Bookmark filled={saved} />
         {saved ? "Saved" : "Save"}

@@ -79,3 +79,12 @@ describe("re-imports keep page facts", () => {
     expect(merged).toMatchObject({ deadline: "2026-11-16", countryCode: "CD", city: "Bunia", jobType: "Consultancy", minExperienceYears: 2, languages: ["French"] });
   });
 });
+
+describe("one card per vacancy", () => {
+  it("folds identical posts and counts them", async () => {
+    const { foldSameVacancies } = await import("@/components/job-card");
+    const base = { title: "Senior Finance Associate", org_name: "International Organization for Migration", country_code: "CD", city: "Bunia", location_text: null, deadline: "2026-11-16" };
+    const folded = foldSameVacancies([{ ...base, id: 1 }, { ...base, id: 2 }, { ...base, id: 3, deadline: "2026-11-20" }]);
+    expect(folded.map((f) => [f.job.id, f.posts])).toEqual([[1, 2], [3, 1]]);
+  });
+});

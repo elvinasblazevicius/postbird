@@ -127,8 +127,33 @@ a {
 .prose-job table { border-collapse: collapse; margin: 1em 0; font-size: 0.95rem; }
 .prose-job td, .prose-job th { border: 1px solid var(--rule); padding: 0.4em 0.6em; text-align: left; vertical-align: top; }
 
+/*
+ * Motion: quiet and quick, only where it answers what the visitor did.
+ *  - links and buttons ease their colours instead of snapping;
+ *  - buttons dip slightly while pressed (feels clickable on touch screens too);
+ *  - saving a job "pops" the bookmark once;
+ *  - a job row lifts its title colour and nudges the Apply arrow on hover.
+ * Everything below is switched off for visitors who ask for reduced motion.
+ */
+:where(a, button, summary, [role="button"], input[type="submit"]) {
+  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, transform 120ms ease;
+}
+:where(button, [role="button"], input[type="submit"], a.btn):active:not(:disabled) {
+  transform: scale(0.97);
+}
+@keyframes save-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.28); }
+  100% { transform: scale(1); }
+}
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
+  :where(button, [role="button"], input[type="submit"], a.btn):active:not(:disabled) { transform: none; }
 }
 
 /* Brand surfaces: one deep-to-bright blue direction, no decorative blobs */
