@@ -23,13 +23,16 @@ export function isEuInstitution(orgType: string | null | undefined) {
 export function EpsoBook({ className = "", source }: { className?: string; source: string }) {
   return (
     <aside aria-label="EPSO test preparation" className={`flex flex-wrap items-center gap-x-5 gap-y-4 rounded-xl border border-rule bg-paper p-4 sm:p-5 ${className}`}>
-      <div className="flex min-w-0 flex-[999_1_20rem] gap-4">
+      {/* Phones: cover beside the title, the description under both. Wider screens: cover on the left of everything. */}
+      <div className="grid min-w-0 flex-[999_1_22rem] grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-3 sm:grid-rows-[auto_1fr] sm:gap-x-5 sm:gap-y-1">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={EPSO_BOOK.cover} alt="" width={80} height={128} className="h-32 w-20 shrink-0 rounded shadow-sm" loading="lazy" />
-        <div className="min-w-0">
+        <img src={EPSO_BOOK.cover} alt="" width={120} height={192} className="h-[154px] w-24 shrink-0 rounded-md shadow-[0_2px_10px_rgba(11,31,58,0.18)] sm:row-span-2 sm:h-48 sm:w-[120px]" loading="lazy" />
+        <div className="min-w-0 self-center sm:self-start">
           <p className="text-sm font-semibold text-tint-ink">Preparing for EPSO tests?</p>
-          <p className="mt-0.5 text-[1.05rem] font-bold leading-snug text-ink">{EPSO_BOOK.title}</p>
-          <p className="mt-1 text-sm leading-relaxed text-tint-ink">{EPSO_BOOK.blurb}</p>
+          <p className="mt-0.5 text-[1.1rem] font-bold leading-snug text-ink">{EPSO_BOOK.title}</p>
+        </div>
+        <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2">
+          <p className="text-sm leading-relaxed text-tint-ink">{EPSO_BOOK.blurb}</p>
           <p className="mt-2 text-[0.8125rem] leading-snug text-slate">
             Our own book, by {EPSO_BOOK.author}, published by {siteConfig.operator.name}, which runs {siteConfig.name}. We earn from each sale. Not affiliated with or endorsed by EPSO or the EU institutions.
           </p>
