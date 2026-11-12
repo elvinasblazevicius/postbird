@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { EpsoBook } from "@/components/epso-book";
 import { JobsBrowser } from "@/components/jobs-browser";
 import { PageHeader } from "@/components/page-header";
 import { employerTypePage, type EmployerTypePage } from "@/lib/employer-types";
@@ -53,6 +54,8 @@ export async function EmployerTypeListing({ orgtype, searchParams }: { orgtype: 
           emptyTitle={empty ? `We don't list any vacancies from ${page.emptyName} right now.` : undefined}
           generalAlert={empty}
         />
+        {/* Our own EPSO workbook, only on the EU institutions page (as on EU job and organization pages). */}
+        {orgtype === "eu" ? <EpsoBook className="mt-10 max-w-2xl" source="eu-jobs" /> : null}
       </div>
     </>
   );

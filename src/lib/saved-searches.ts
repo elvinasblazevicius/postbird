@@ -11,7 +11,7 @@ import { orList, placeNames, STATED_DETAIL } from "@/lib/filter-labels";
 import { gradeLabel } from "@/lib/grades";
 import { derivedFilters, EXPERIENCE_BANDS, filtersFromQuery, getOrganizations, jobsUrl } from "@/lib/jobs";
 
-export const MAX_SAVED_SEARCHES = 5;
+export const MAX_SAVED_SEARCHES = 20;
 /** Saved searches without a plan: the one the free weekly email uses. */
 export const FREE_SAVED_SEARCHES = 1;
 

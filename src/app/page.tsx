@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertSignup } from "@/components/alert-signup";
-import { JobGrid, JobList } from "@/components/job-card";
+import { AlertsChoice } from "@/components/alerts-choice";
+import { JobList } from "@/components/job-card";
 import { Flag } from "@/components/flag";
+import { HeroFlags } from "@/components/hero-flags";
 import { HeroSearch } from "@/components/search-forms";
-import { TrackedLink } from "@/components/tracking";
-import { Postmark } from "@/components/postmark";
 import { WEEK_IN_REVIEW_MIN, WeekInReviewStrip } from "@/components/week-in-review";
-import { BILLING_LIVE } from "@/lib/billing/live";
 import { jobsUrl, type WeekInReview } from "@/lib/jobs";
 import { closingSoonJobs, categoryFacets, countryFacets, experienceFacets, gradeFacets, jobTypeFacets, languageFacets, latestJobs, organizationFacets, orgTypeFacets, regionFacets, siteStats, weekInReview } from "@/lib/jobs";
 import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
@@ -30,25 +29,6 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * The hero's background: a postmark's cancellation (a double ring with wavy lines running out of
- * it, like the closing-date stamps), drawn in white and shown at a few per cent (.hero-cancel).
- */
-function HeroCancellation() {
-  const waves = [0, 1, 2, 3, 4, 5].map((i) => 96 + i * 26);
-  return (
-    <svg viewBox="0 0 640 360" className="hero-cancel" aria-hidden="true" focusable="false">
-      <g fill="none" stroke="currentColor" strokeLinecap="round">
-        {waves.map((y) => (
-          <path key={y} strokeWidth="5" d={`M0 ${y}${"c13 -10 27 -10 40 0s27 10 40 0".repeat(9)}`} />
-        ))}
-        <circle cx="520" cy="166" r="104" strokeWidth="7" fill="#10264f" />
-        <circle cx="520" cy="166" r="90" strokeWidth="3" />
-      </g>
-    </svg>
-  );
-}
-
-/**
  * Phones only: the week's count and the busiest duty stations in one compact module (on wider
  * screens they are the full "This week in international jobs" strip and the duty-station row).
  * The count shows only from WEEK_IN_REVIEW_MIN new vacancies, like the strip.
@@ -68,7 +48,7 @@ function PhoneWeekAndPlaces({ week, countries }: { week: WeekInReview; countries
             </Link>
           ) : null}
         </div>
-        {showWeek ? <Postmark top="Week to" main={formatShortDate(new Date())} /> : null}
+        {showWeek ? <span className="shrink-0 rounded-full bg-tint px-2.5 py-1 text-[0.8125rem] font-semibold text-tint-ink">Week to {formatShortDate(new Date())}</span> : null}
       </div>
       {countries.length ? (
         <div className={showWeek ? "mt-4 border-t border-rule pt-3" : "mt-3"}>
@@ -138,50 +118,56 @@ export default async function HomePage() {
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(websiteLd) }} />
 
-      {/* Hero */}
-      <section className="bg-candy-hero relative overflow-hidden">
-        <HeroCancellation />
-        <div className="relative mx-auto max-w-6xl px-4 pb-5 pt-5 sm:px-6 sm:pb-12 sm:pt-16">
-          <div className="max-w-3xl">
-            <h1 className="max-w-[20ch] text-[1.7rem] font-semibold leading-[1.1] text-white sm:text-[3.5rem]">{copy.headline}</h1>
-            <p className="mt-5 hidden max-w-2xl text-lg leading-relaxed text-white/85 sm:block">
+      {/* Hero: a light sky field, the search in a white card, and the flags of the places these employers post. */}
+      <section className="border-b border-sky-rule bg-sky-wash">
+        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 pb-7 pt-6 sm:px-6 sm:pb-12 sm:pt-14 lg:flex-row lg:items-center lg:gap-12">
+          <div className="min-w-0 lg:flex-[1.35]">
+            <h1 className="max-w-[20ch] text-[1.9rem] font-bold leading-[1.06] text-ink sm:text-[3.25rem]">{copy.headline}</h1>
+            <p className="mt-4 hidden max-w-2xl text-lg leading-relaxed text-tint-ink sm:block">
               {copy.subheadline}
             </p>
+            <div className="mt-5 rounded-2xl bg-paper p-3 shadow-[0_10px_30px_rgba(11,99,206,0.14)] sm:mt-7 sm:p-4">
+              <HeroSearch facets={{ orgs, countries, regions, categories, types, grades, langs, exps, orgTypes }} />
+            </div>
+            {/* Said once, where a first-time visitor decides whether to trust the site. */}
+            <p className="mt-4 flex items-start gap-2 text-sm leading-relaxed text-tint-ink">
+              <svg viewBox="0 0 20 20" className="mt-0.5 h-[1.125rem] w-[1.125rem] shrink-0 text-brand" aria-hidden="true">
+                <path d="M10 2.5 4 5v4.5c0 3.6 2.4 6.6 6 8 3.6-1.4 6-4.4 6-8V5l-6-2.5Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                <path d="m7.4 10 1.9 1.9 3.4-3.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>Independent site, not affiliated with the UN or any employer. Every Apply button goes to the employer&apos;s own website.</span>
+            </p>
+            {employerTypes.length ? <nav aria-label="Employer types" className="mt-4">
+              <ul className="flex flex-wrap gap-2">
+                {employerTypes.map((t) => (
+                  <li key={t.path}>
+                    <Link
+                      href={t.path}
+                      className="inline-flex items-baseline gap-1.5 rounded-full border border-sky-rule bg-paper px-3.5 py-1.5 text-sm font-semibold text-ink hover:border-brand hover:text-accent"
+                    >
+                      {t.label}
+                      <span className="text-[0.8125rem] font-medium tabular-nums text-slate">{t.count.toLocaleString("en-US")}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav> : null}
+            <p className="mt-4 hidden flex-wrap gap-x-5 gap-y-2 text-[0.95rem] text-tint-ink sm:flex">
+              <span>
+                {showTotal ? (
+                  <>
+                    <strong className="font-semibold text-ink">{stats.active.toLocaleString("en-US")}</strong> open vacancies
+                    {stats.orgs ? <> from <strong className="font-semibold text-ink">{stats.orgs}</strong> organizations</> : null}
+                  </>
+                ) : stats.orgs ? (
+                  // "Updated every 2 hours" is said once on this page, in the facts strip below.
+                  <>Vacancies from <strong className="font-semibold text-ink">{stats.orgs}</strong> organizations</>
+                ) : null}
+              </span>
+            </p>
           </div>
-          <div className="mt-4 max-w-4xl sm:mt-9">
-            <HeroSearch facets={{ orgs, countries, regions, categories, types, grades, langs, exps, orgTypes }} />
-          </div>
-          {employerTypes.length ? <nav aria-label="Employer types" className="mt-4 max-w-4xl">
-            <ul className="flex flex-wrap gap-2">
-              {employerTypes.map((t) => (
-                <li key={t.path}>
-                  <Link
-                    href={t.path}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-white/30 px-3 py-1 text-sm font-medium text-white hover:border-white hover:bg-white/10"
-                  >
-                    {t.label}
-                    <span className="font-normal text-white/75">{t.count.toLocaleString("en-US")}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </nav> : null}
-          <p className="mt-5 hidden flex-wrap gap-x-5 gap-y-2 text-[0.95rem] text-white/85 sm:flex">
-            <span className="text-white">
-              {showTotal ? (
-                <>
-                  <strong className="font-semibold">{stats.active.toLocaleString("en-US")}</strong> open vacancies
-                  {stats.orgs ? <> from <strong className="font-semibold">{stats.orgs}</strong> organizations</> : null}
-                </>
-              ) : stats.orgs ? (
-                // "Updated every 2 hours" is said once on this page, in the facts strip below.
-                <>Vacancies from <strong className="font-semibold">{stats.orgs}</strong> organizations</>
-              ) : null}
-            </span>
-            <Link href="/alerts" className="font-semibold text-highlight underline decoration-highlight/50 underline-offset-4 hover:decoration-highlight">Get new ones by email</Link>
-          </p>
+          <HeroFlags className="lg:flex-1" />
         </div>
-        <div aria-hidden="true" className="airmail-edge" />
       </section>
 
       {/* Latest */}
@@ -216,7 +202,7 @@ export default async function HomePage() {
             </div>
             <Link href="/jobs?sort=deadline" className="shrink-0 text-[0.95rem] font-medium text-accent hover:underline">All by closing date</Link>
           </div>
-          <div className="mt-5"><JobGrid jobs={closingSoon} stamp /></div>
+          <div className="mt-5"><JobList jobs={closingSoon} /></div>
         </section>
       ) : null}
       {/* The week's numbers after the vacancies themselves. Phones get one compact module with the duty stations instead. */}
@@ -319,29 +305,17 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Alerts */}
+      {/* Alerts: one choice, weekly (free) or daily (trial) */}
       <section className="mx-auto mt-20 max-w-6xl px-4 sm:px-6" aria-labelledby="alerts-heading">
-        <div className="bg-candy-band relative grid items-center gap-8 overflow-hidden rounded-2xl px-6 py-10 text-white sm:px-10 lg:grid-cols-[1.1fr_1fr]">
+        <div className="bg-candy-band grid items-center gap-6 rounded-2xl px-5 py-8 text-white sm:px-8 lg:grid-cols-[1fr_1.25fr] lg:gap-8">
           <div>
-            <h2 id="alerts-heading" className="text-[1.9rem] font-semibold leading-tight">Let {siteConfig.name} bring new vacancies to you</h2>
-            <p className="mt-3 max-w-lg leading-relaxed text-white/80">
-              {siteConfig.freeWeeklyEmail
-                ? "A free Monday email with the past week's new vacancies for the search you choose. No card, no account, unsubscribe with one click."
-                : "New vacancies for the roles, organizations and places you choose, by email, with the closing date whenever the employer publishes one."}
+            <h2 id="alerts-heading" className="text-[1.65rem] font-bold leading-tight text-white">Get new jobs by email</h2>
+            <p className="mt-2 max-w-md leading-relaxed text-[#e3f1ff]">
+              Pick a search once. We send you the new vacancies that match it, so you stop checking twenty careers sites.
             </p>
           </div>
           {siteConfig.freeWeeklyEmail ? (
-            <div>
-              <Link href="/alerts" className="block rounded-lg bg-highlight px-5 py-3 text-center text-base font-semibold text-ink hover:brightness-95 sm:inline-block">
-                Get the free weekly email
-              </Link>
-              <p className="mt-4 text-sm leading-relaxed text-white/80">
-                Want new matches every day, with up to 5 searches?{" "}
-                <TrackedLink href="/pricing/trial" event="premium_cta_click" source="home-daily" className="font-semibold text-white underline underline-offset-4">
-                  {BILLING_LIVE ? `Daily alerts: ${siteConfig.premium.trialDays}-day free trial` : "Daily alerts are coming: get early access"}
-                </TrackedLink>
-              </p>
-            </div>
+            <AlertsChoice weeklyHref="/alerts#alert-signup" trialHref="/pricing/trial" source="home-daily" onBand />
           ) : (
             <AlertSignup source="home" tone="dark" />
           )}

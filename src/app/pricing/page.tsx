@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 const TITLE = "Pricing — email alerts for international jobs";
 const DESCRIPTION = siteConfig.freeWeeklyEmail
-  ? `Browsing every vacancy is free, and so is a weekly email with new matches for one search. ${siteConfig.premium.name} with up to 5 searches: ${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}.`
+  ? `Browsing every vacancy is free, and so is a weekly email with new matches for one search. ${siteConfig.premium.name} with up to 20 searches: ${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}.`
   : `Browsing every vacancy is free. ${siteConfig.premium.name}: new vacancies by email, filtered by keyword, organization and location. ${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}.`;
 
 export const metadata: Metadata = {
@@ -74,7 +74,7 @@ export default async function PricingPage() {
         ],
         [
           "What do paid alerts add?",
-          <>New matches every day instead of once a week, so you see a vacancy up to 6 days sooner, and up to 5 searches instead of one, each with the same full filters. Each alert also lists matching vacancies that close in the next 3 days, once each, so a deadline doesn&apos;t slip past you. While you have a paid plan you get your alerts instead of the weekly email, not both.</>,
+          <>New matches every day instead of once a week, so you see a vacancy up to 6 days sooner, and up to 20 searches instead of one, each with the same full filters. Each alert also lists matching vacancies that close in the next 3 days, once each, so a deadline doesn&apos;t slip past you. While you have a paid plan you get your alerts instead of the weekly email, not both.</>,
         ],
       ]
     : [];
@@ -101,7 +101,7 @@ export default async function PricingPage() {
         crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Pricing" }]}
         intro={
           siteConfig.freeWeeklyEmail
-            ? `Every vacancy, search and filter is free, and so is a weekly email for one search. Paid daily alerts${BILLING_LIVE ? "" : ", launching soon,"} add a reminder before matching vacancies close, up to 5 searches, and new matches every day.`
+            ? `Every vacancy, search and filter is free, and so is a weekly email for one search. Paid daily alerts${BILLING_LIVE ? "" : ", launching soon,"} add a reminder before matching vacancies close, up to 20 searches, and new matches every day.`
             : `Every vacancy, search and filter is free. Paid email alerts${BILLING_LIVE ? "" : ", launching soon,"} bring new matches to your inbox so you don't have to keep checking.`
         }
       />

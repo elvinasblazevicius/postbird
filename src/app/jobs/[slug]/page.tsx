@@ -3,8 +3,7 @@ import { Flag } from "@/components/flag";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { EpsoBook, isEuInstitution } from "@/components/epso-book";
-import { JobList, Tag } from "@/components/job-card";
-import { ClosingPostmark } from "@/components/postmark";
+import { deadlineTone, JobList, Tag } from "@/components/job-card";
 import { SaveButton, ShareButton } from "@/components/job-tools";
 import { Breadcrumbs } from "@/components/page-header";
 import { ApplyLink, TrackedLink, TrackOnMount } from "@/components/tracking";
@@ -27,6 +26,8 @@ import { isJobOpen as isOpen, loadJob } from "./job-data";
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ slug: string }> };
+
+const WEEKDAY_LONG = new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: "UTC" });
 
 function hasDescription(job: JobDetail) {
   return Boolean(job.description_html || job.summary);
@@ -233,24 +234,24 @@ export default async function JobPage({ params }: Props) {
     </ApplyLink>
   );
 
-  /** The closing date as a postmark, how long is left, and the time-zone caveat (desktop card and phone box). */
-  const deadlineBlock = job.deadline ? (
+  /** The closing date in the card colours (red, amber, blue by how soon), the calendar link and the time-zone caveat. */
+  const deadlineBlock = job.deadline && left !== null && left >= 0 ? (
     <div>
-      <div className="flex items-center gap-4">
-        <ClosingPostmark deadline={job.deadline} size="lg" waves />
-        {/* The stamp already shows the date: beside it, only how long is left and the calendar link. */}
-        <p className="min-w-0 text-sm leading-snug">
-          {closesIn ? <span className={`font-medium ${dl?.urgent ? "text-signal" : "text-ink"}`}>{closesIn}</span> : null}
-          {closesIn ? <span aria-hidden="true" className="text-slate">{" · "}</span> : null}
-          <a href={`/api/calendar/${job.id}`} className="inline-block font-medium text-accent underline underline-offset-2" rel="nofollow">Add to calendar</a>
-        </p>
+      <div className={`rounded-[10px] px-4 py-3 ${deadlineTone(left)}`}>
+        <p className="text-lg font-bold leading-snug">{closesIn}</p>
+        <p className="mt-0.5 text-[0.95rem] leading-snug">{WEEKDAY_LONG.format(new Date(`${job.deadline}T00:00:00Z`))} {formatDate(job.deadline)}</p>
       </div>
-      <p className="mt-3 text-xs leading-relaxed text-slate">
+      <p className="mt-2.5 text-sm">
+        <a href={`/api/calendar/${job.id}`} className="font-medium text-accent underline underline-offset-2" rel="nofollow">Add the closing date to your calendar</a>
+      </p>
+      <p className="mt-2 text-xs leading-relaxed text-slate">
         Check the time zone in the posting: deadlines are often set in the duty station&apos;s or headquarters&apos; local time.
       </p>
     </div>
+  ) : job.deadline ? (
+    <p className="rounded-[10px] bg-due-none-bg px-4 py-3 font-semibold text-slate">Closed {formatDate(job.deadline)}</p>
   ) : (
-    <p className="text-sm text-slate">No closing date in our source. Check the employer&apos;s page.</p>
+    <p className="rounded-[10px] bg-due-none-bg px-4 py-3 text-sm text-slate">No closing date in our source. Check the employer&apos;s page.</p>
   );
 
   /** Where Apply goes, that applying is free, and (UN-system vacancies) the guide to reading one. */

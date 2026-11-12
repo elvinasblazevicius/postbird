@@ -3,11 +3,11 @@ import { sharedTitle, shareMetadata } from "@/lib/share-metadata";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AlertExample } from "@/components/alert-example";
+import { AlertsChoice } from "@/components/alerts-choice";
 import { WatchFields } from "@/components/alert-watch-step";
 import { PageHeader } from "@/components/page-header";
 import { FreeWeeklyForm, PremiumInterestForm } from "@/components/token-forms";
-import { TrackedLink } from "@/components/tracking";
-import { EARLY_ACCESS_BUTTON, earlyAccessLine } from "@/lib/early-access-copy";
+import { earlyAccessLine } from "@/lib/early-access-copy";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { describeSearch, searchFromAlertStep } from "@/lib/saved-searches";
 import { INDEPENDENCE_NOTE, siteConfig } from "@/lib/site";
@@ -30,14 +30,6 @@ export const metadata: Metadata = {
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
-function Check() {
-  return (
-    <svg viewBox="0 0 16 16" className="mt-1 h-4 w-4 shrink-0 text-remote" aria-hidden="true">
-      <path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
 export default async function AlertsPage({ searchParams }: Props) {
   const p = siteConfig.premium;
   const sp = await searchParams;
@@ -57,14 +49,24 @@ export default async function AlertsPage({ searchParams }: Props) {
     return (
       <>
         <PageHeader
-          title="Free weekly job email"
-          crumbs={[{ href: "/", label: "Home" }, { href: "/alerts", label: "Weekly email" }]}
-          intro="Every Monday, the past week's new vacancies at UN agencies, NGOs and other international organizations that match your search. Free, with no card and no account. If nothing new matches, we don't send anything that week."
+          title={fromMeta ? "Free weekly job email" : "Get job alerts"}
+          crumbs={[{ href: "/", label: "Home" }, { href: "/alerts", label: fromMeta ? "Weekly email" : "Job alerts" }]}
+          intro={fromMeta
+            ? "Every Monday, the past week's new vacancies at UN agencies, NGOs and other international organizations that match your search. Free, with no card and no account. If nothing new matches, we don't send anything that week."
+            : "Pick a search once. We send you the new vacancies at UN agencies, NGOs and other international organizations that match it: every Monday for free, or every morning with daily alerts. If nothing new matches, we don't send anything."}
           note={INDEPENDENCE_NOTE}
         />
-        <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1.2fr_1fr] lg:gap-12">
+        {fromMeta ? null : (
+          <section className="mx-auto max-w-6xl px-4 pt-10 sm:px-6" aria-labelledby="choice-h">
+            <h2 id="choice-h" className="sr-only">Weekly email or daily alerts</h2>
+            <div className="max-w-3xl">
+              <AlertsChoice weeklyHref="#alert-signup" trialHref={trialHref} source={search ? "alerts-daily-search" : "alerts-daily"} />
+            </div>
+          </section>
+        )}
+        <div className="mx-auto grid max-w-6xl gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[1.2fr_1fr] lg:gap-12">
           <section className="max-w-xl" aria-labelledby="free-h">
-            <h2 id="free-h" className="sr-only">Sign up for the free weekly email</h2>
+            <h2 id="free-h" className={fromMeta ? "sr-only" : "mb-4 text-xl font-semibold text-ink"}>{fromMeta ? "Sign up for the free weekly email" : "Weekly email: free, every Monday"}</h2>
             <div id="alert-signup" className="scroll-mt-24">
               <FreeWeeklyForm
                 source={search ? "search-weekly" : "alerts-page"}
@@ -74,36 +76,15 @@ export default async function AlertsPage({ searchParams }: Props) {
               />
             </div>
           </section>
-          <div className="space-y-10">
+          <div className="space-y-6">
             <AlertExample heading="What the weekly email looks like" kind="weekly" />
             {fromMeta ? null : (
-            <section className="rounded-2xl border border-rule bg-candy-soft p-6" aria-labelledby="daily-h">
-              <h2 id="daily-h" className="text-xl font-semibold text-ink">Optional: paid daily alerts</h2>
-              <p className="mt-2 text-slate">
-                Searching and the weekly email are free. Applying for any job is always free and happens on the employer&apos;s own website.
-              </p>
-              <p className="mt-2 text-slate">
-                Daily alerts are the paid plan: {p.priceSummary}{BILLING_LIVE ? `, with a ${p.trialDays}-day free trial` : ", launching soon"}.
-              </p>
-              <ul className="mt-4 space-y-2.5 text-ink">
-                {p.features.map((f) => (
-                  <li key={f} className="flex gap-2.5"><Check />{f}</li>
-                ))}
-              </ul>
-              <TrackedLink
-                href={trialHref}
-                event="premium_cta_click"
-                source={search ? "alerts-daily-search" : "alerts-daily"}
-                className="mt-6 block rounded-lg border-2 border-brand bg-paper px-5 py-3 text-center font-semibold text-brand hover:bg-mist"
-              >
-                {BILLING_LIVE ? `Start ${p.trialDays}-day free trial` : EARLY_ACCESS_BUTTON}
-              </TrackedLink>
-              <p className="mt-3 text-sm text-slate">
-                The weekly email stays free. Paid daily alerts are optional.{" "}
-                {BILLING_LIVE ? "Card required to start the trial. Cancel before it ends and you pay nothing. " : `${earlyAccessLine()} `}
+              <p className="text-sm leading-relaxed text-slate">
+                Searching and the weekly email are free. Applying for any job is always free and happens on the employer&apos;s own website.{" "}
+                Daily alerts are the paid plan: {p.priceSummary}{BILLING_LIVE ? `, with a ${p.trialDays}-day free trial (card required; cancel before it ends and you pay nothing)` : ", launching soon"}.{" "}
+                {BILLING_LIVE ? null : `${earlyAccessLine()} `}
                 <Link href="/pricing" className="font-medium text-accent hover:underline">Compare free and paid</Link>
               </p>
-            </section>
             )}
           </div>
         </div>

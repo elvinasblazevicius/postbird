@@ -78,7 +78,7 @@ const siteConfig = {
    */
   /**
    * Email alerts. true = a free weekly email (Mondays) with the new matches for
-   * one saved search, with paid daily alerts (up to 5 searches) as the upgrade.
+   * one saved search, with paid daily alerts (up to 20 searches) as the upgrade.
    * false = alerts are only part of the paid plan (every sign-up box offers the
    * free trial).
    */
@@ -117,7 +117,7 @@ const siteConfig = {
      */
     features: [
       "A reminder of matching vacancies that close in the next 3 days (when the employer publishes a closing date)",
-      "Up to 5 searches instead of one, with the same filters",
+      "Up to 20 searches instead of one, with the same filters",
       "New matches every day, up to 6 days before the weekly email",
     ],
   },
@@ -129,14 +129,14 @@ const siteConfig = {
    * yellow of the main call-to-action buttons, `ink` the text colour.
    */
   colors: {
-    brand: "#1F4FD1",
-    accent: "#173FAE",
+    brand: "#0B63CE",
+    accent: "#0A4FA8",
     sky: "#38C6FF",
     /** Deadline red: closing-soon labels only. */
     candy: "#B42318",
     /** Sunshine yellow for the main "Get email alerts" buttons. */
     highlight: "#FFD23F",
-    ink: "#0E1F3D",
+    ink: "#0B1F3A",
   },
 
   /**

@@ -44,18 +44,32 @@ const group = (n: number, from: number, total = 500): AlertGroup => ({
 const links = { accountUrl: `https://postbird.nuevanova.com/account?t=${"a".repeat(64)}`, unsubscribeUrl: `https://postbird.nuevanova.com/alerts/unsubscribe?token=${"b".repeat(32)}` };
 
 describe("alert emails", () => {
-  it("caps listed vacancies at 50 across searches; later searches list fewer but keep See all", () => {
+  it("caps listed vacancies at 50 across searches, shared evenly; every search keeps See all", () => {
     const capped = capGroups([group(20, 0), group(20, 100), group(20, 200), group(20, 300), group(20, 400)]);
-    expect(capped.map((g) => g.jobs.length)).toEqual([20, 20, 10, 0, 0]);
+    expect(capped.map((g) => g.jobs.length)).toEqual([10, 10, 10, 10, 10]);
+    // What a short search doesn't use goes to the others.
+    expect(capGroups([group(3, 0), group(20, 100), group(20, 200)], 23).map((g) => g.jobs.length)).toEqual([3, 10, 10]);
+    // A vacancy matching several searches is listed once, under the first.
+    expect(capGroups([group(4, 0), group(4, 2)]).map((g) => g.jobs.length)).toEqual([4, 2]);
     expect(capped.reduce((n, g) => n + g.jobs.length, 0)).toBe(MAX_JOBS_PER_EMAIL);
     expect(capped.every((g) => g.total === 500)).toBe(true);
 
     const email = alertEmail({ groups: [group(20, 0), group(20, 100), group(20, 200), group(20, 300), group(20, 400)], frequency: "daily", ...links });
     expect((email.html.match(/utm_source=alert&amp;utm_medium=email/g) ?? []).length).toBeGreaterThanOrEqual(MAX_JOBS_PER_EMAIL);
-    // Each of the 5 searches keeps its "See all" link, including the ones that list nothing.
+    // Each of the 5 searches keeps its "See all" link.
     expect((email.html.match(/See all 500 matches/g) ?? []).length).toBe(5);
     expect((email.text.match(/See all 500:/g) ?? []).length).toBe(5);
     expect(email.subject).toBe("2500 new vacancies match your searches");
+  });
+
+  it("a subscriber with all 20 searches full still gets one email under 90 KB, every search listed", () => {
+    const closing = Array.from({ length: CLOSING_SOON_MAX }, (_, i) => job(9000 + i, { deadline: "2026-11-10" }));
+    const groups = Array.from({ length: 20 }, (_, k) => group(20, k * 100));
+    const email = alertEmail({ groups, closing, frequency: "daily", ...links });
+    expect(Buffer.byteLength(email.html, "utf8")).toBeLessThan(90 * 1024);
+    // 40 rows for 20 searches: two each, and all 20 "See all" links.
+    expect(capGroups(groups, MAX_JOBS_PER_EMAIL - CLOSING_SOON_MAX).map((g) => g.jobs.length)).toEqual(Array(20).fill(2));
+    expect((email.html.match(/See all 500 matches/g) ?? []).length).toBe(20);
   });
 
   it("a maximal paid alert (5 searches × 20 long rows and a full closing-soon section) stays under 90 KB of HTML, with the unsubscribe link", () => {
@@ -74,10 +88,12 @@ describe("alert emails", () => {
     const closing = Array.from({ length: 12 }, (_, i) => job(700 + i, { title: `Closing role ${i}`, deadline: "2026-11-11" }));
     const email = alertEmail({ groups: [group(20, 0, 20), group(20, 100, 20), group(20, 200, 20)], closing, frequency: "daily", ...links });
     expect(email.subject).toBe("60 new vacancies match your searches");
-    // 10 closing soon leave 40 for new matches: the first two searches list 20 each, the third none (it keeps See all).
-    expect(email.text).toContain("#119\n");
-    expect(email.text).not.toContain("#200\n");
-    expect(email.text.indexOf("Closing in the next 3 days")).toBeGreaterThan(email.text.indexOf("#119\n"));
+    // 10 closing soon leave 40 for new matches, shared between the three searches: 14, 13 and 13.
+    expect(email.text).toContain("#13\n");
+    expect(email.text).not.toContain("#14\n");
+    expect(email.text).toContain("#212\n");
+    expect(email.text).not.toContain("#213\n");
+    expect(email.text.indexOf("Closing in the next 3 days")).toBeGreaterThan(email.text.indexOf("#212\n"));
     expect(email.text).toContain("Closing role 0\nUnited Nations Office for the Coordination of Humanitarian Affairs & Partners · Ouagadougou, Burkina Faso · P-4 · Closes 11 Nov 2026");
     expect(email.text).toContain("Closing role 9\n");
     expect(email.text).not.toContain("Closing role 10");
@@ -122,7 +138,7 @@ describe("alert emails", () => {
     expect(email.subject).toBe("37 new vacancies match your search this week");
     expect((email.text.match(/\/jobs\/senior-programme/g) ?? []).length).toBe(10);
     expect(email.text).toContain("See all 37:");
-    expect((email.html.match(/with up to 5 searches/g) ?? []).length).toBe(1);
+    expect((email.html.match(/with up to 20 searches/g) ?? []).length).toBe(1);
     expect(email.html).toContain("/pricing/trial?search=q%3Ddata");
     expect(email.html).toContain(links.unsubscribeUrl);
     expect(email.html).toContain(links.accountUrl);

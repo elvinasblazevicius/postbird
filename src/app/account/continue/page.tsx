@@ -43,7 +43,7 @@ export default async function ContinuePage({ searchParams }: Props) {
       ) : (
         <>
           <p className="mt-3 text-lg text-slate">
-            For <strong className="text-ink">{link.email}</strong>: new vacancies matching your searches, by email, daily or weekly, with up to 5 searches.
+            For <strong className="text-ink">{link.email}</strong>: new vacancies matching your searches, by email, daily or weekly, with up to 20 searches.
             {link.state === "returning" ? ` ${ONE_TRIAL_RULE}` : ` ${p.trialDays} days free, then ${p.priceSummary}.`}
           </p>
           <div className="mt-8">

@@ -474,7 +474,7 @@ export function WatchFieldset({ facets, filters, hint, hideLegend = false }: { f
       <legend className={hideLegend ? "sr-only" : "text-lg font-semibold text-ink"}>
         What should we watch for? <span className="text-sm font-normal text-slate">(optional)</span>
       </legend>
-      <p className={`${hideLegend ? "" : "-mt-2 "}text-sm text-slate`}>{hint ??`Leave these empty to get every new vacancy.${BILLING_LIVE ? " You can add up to 5 searches later." : ""}`}</p>
+      <p className={`${hideLegend ? "" : "-mt-2 "}text-sm text-slate`}>{hint ??`Leave these empty to get every new vacancy.${BILLING_LIVE ? " You can add up to 20 searches later." : ""}`}</p>
       <div>
         <label htmlFor="watch-q" className="mb-1.5 block text-sm font-medium text-ink">Keywords</label>
         <input id="watch-q" name="watch_q" type="text" defaultValue={filters.q ?? ""} maxLength={120} placeholder="e.g. data analyst, WASH, monitoring" className={fieldCls} autoComplete="off" />

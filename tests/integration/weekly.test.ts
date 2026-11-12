@@ -146,7 +146,7 @@ describe.skipIf(!TEST_DB)("free weekly email (database)", () => {
       expect(await sql`select 1 from saved_searches where subscriber_id = ${id}`).toHaveLength(0);
     });
 
-    it("free subscribers are limited to one saved search; a plan allows five", async () => {
+    it("free subscribers are limited to one saved search; a plan allows twenty", async () => {
       const id = await freeSub("limit@example.org", "q=nurse");
       const second = await saved.addSavedSearch(id, "q=pilot");
       expect(second.ok).toBe(false);
@@ -158,9 +158,11 @@ describe.skipIf(!TEST_DB)("free weekly email (database)", () => {
       expect(saved.searchLimit("canceled")).toBe(1);
 
       await sql`update subscribers set billing_status = 'trialing' where id = ${id}`;
-      for (const q of ["q=pilot", "q=driver", "q=cook", "q=guard"]) expect((await saved.addSavedSearch(id, q)).ok).toBe(true);
-      const sixth = await saved.addSavedSearch(id, "q=clerk");
-      expect(!sixth.ok && sixth.error).toMatch(/up to 5 searches/);
+      // One search is there already; a plan allows 20 in all.
+      for (let i = 2; i <= 20; i++) expect((await saved.addSavedSearch(id, `q=role${i}`)).ok).toBe(true);
+      const oneTooMany = await saved.addSavedSearch(id, "q=clerk");
+      expect(!oneTooMany.ok && oneTooMany.error).toMatch(/up to 20 searches/);
+      await expect(sql`insert into saved_searches (subscriber_id, search) values (${id}, 'q=clerk')`).rejects.toMatchObject({ code: "P0001" });
     });
   });
 
@@ -184,7 +186,7 @@ describe.skipIf(!TEST_DB)("free weekly email (database)", () => {
       expect(m.text).toContain("Senior nurse");
       expect(m.text).not.toMatch(/demo|Nurse closed|Accountant|Nurse old/);
       // One calm line about daily alerts, with the search filled in, and the usual links.
-      expect(m.text).toContain("Want new matches every day, with up to 5 searches? Start a 14-day free trial: http://localhost:3000/pricing/trial?search=q%3Dnurse&");
+      expect(m.text).toContain("Want new matches every day, with up to 20 searches? Start a 14-day free trial: http://localhost:3000/pricing/trial?search=q%3Dnurse&");
       expect(m.text).toContain("/account?t=");
       expect(m.headers?.["List-Unsubscribe"]).toContain("/api/unsubscribe?token=");
       // The idempotency key is built from the recipient's id for this week.

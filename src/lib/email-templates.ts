@@ -59,16 +59,35 @@ export const CLOSING_SOON_DAYS = 3;
 export const CLOSING_SOON_MAX = 10;
 
 /**
- * Keeps at most `max` listed vacancies across the groups, in order: later searches get fewer
- * (possibly none). Each group keeps its total, so its "See all N" link still shows.
+ * Keeps at most `max` listed vacancies across the groups. A vacancy that matches several searches
+ * is listed once, under the first of them. The rows are then shared evenly: every search gets the
+ * same number, and what a short one doesn't use goes to the others, so with many searches each
+ * still shows its first matches. Each group keeps its total, so its "See all N" link still shows.
  */
 export function capGroups(groups: AlertGroup[], max = MAX_JOBS_PER_EMAIL): AlertGroup[] {
-  let left = max;
-  return groups.map((g) => {
-    const jobs = g.jobs.slice(0, Math.max(0, left));
-    left -= jobs.length;
-    return { ...g, jobs };
-  });
+  const seen = new Set<number>();
+  const unique = groups.map((g) => ({
+    ...g,
+    jobs: g.jobs.filter((j) => {
+      if (seen.has(j.id)) return false;
+      seen.add(j.id);
+      return true;
+    }),
+  }));
+  const take = unique.map(() => 0);
+  let left = Math.max(0, max);
+  while (left > 0) {
+    const open = unique.map((_, i) => i).filter((i) => take[i] < unique[i].jobs.length);
+    if (!open.length) break;
+    const share = Math.max(1, Math.floor(left / open.length));
+    for (const i of open) {
+      const n = Math.min(share, unique[i].jobs.length - take[i], left);
+      take[i] += n;
+      left -= n;
+      if (left <= 0) break;
+    }
+  }
+  return unique.map((g, i) => ({ ...g, jobs: g.jobs.slice(0, take[i]) }));
 }
 
 /** "UNICEF · Nairobi, Kenya · P-3 · Closes 30 Nov 2026": what is known, nothing guessed. */
@@ -113,8 +132,8 @@ export function weeklyEmail(opts: { group: AlertGroup; search: string; trialUrl:
     : "";
   const p = siteConfig.premium;
   const upsell = BILLING_LIVE
-    ? { lead: "Want new matches every day, with up to 5 searches?", link: opts.hadTrial ? "Get daily alerts" : `Start a ${p.trialDays}-day free trial` }
-    : { lead: "Daily alerts with up to 5 searches are coming.", link: "Join early access" };
+    ? { lead: "Want new matches every day, with up to 20 searches?", link: opts.hadTrial ? "Get daily alerts" : `Start a ${p.trialDays}-day free trial` }
+    : { lead: "Daily alerts with up to 20 searches are coming.", link: "Join early access" };
   const intro = all ? "The newest vacancies of the past week." : `New this week for your search: ${g.label}.`;
   const html = layout(
     subject,
@@ -176,7 +195,7 @@ export function welcomeEmail(opts: { accountUrl: string; unsubscribeUrl: string;
      <p style="font-size:16px;line-height:1.6;margin:0 0 12px">We'll email you once a day with new vacancies that match your saved searches, and remind you of matching vacancies that close in the next ${CLOSING_SOON_DAYS} days. Your first alert comes with the next daily send, if there is something new for you. You can switch to one email a week on your account page.</p>
      <p style="font-size:15px;line-height:1.6;margin:0 0 20px;color:#566476">${esc(billing)} ${refundHtml}</p>
      <p style="margin:0 0 20px">${button(opts.accountUrl, "Open my account")}</p>
-     <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">On your account page you can add up to 5 saved searches, choose daily or weekly emails, and manage billing. Keep this email: the button is your private link.</p>`,
+     <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">On your account page you can add up to 20 saved searches, choose daily or weekly emails, and manage billing. Keep this email: the button is your private link.</p>`,
     accountFooter(opts.accountUrl, opts.unsubscribeUrl),
   );
   const text = `Welcome to ${siteConfig.premium.name.toLowerCase()} on ${siteConfig.name}.\n\nWe'll email you once a day with new vacancies that match your saved searches, and remind you of matching vacancies that close in the next ${CLOSING_SOON_DAYS} days. Your first alert comes with the next daily send, if there is something new for you. You can switch to one email a week on your account page.\n\n${billing} Refund policy: ${refundsUrl}\n\nYour account (keep this link private): ${opts.accountUrl}\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;

@@ -5,26 +5,36 @@
  * as --brand / --accent / --ink); everything else is defined here.
  */
 :root {
-  --brand: #1f4fd1;
-  --accent: #173fae;
+  --brand: #0b63ce;
+  --accent: #0a4fa8;
   --sky: #38c6ff;
   --candy: #b42318;
   --highlight: #ffd23f;
-  --ink: #0e1f3d;
+  --ink: #0b1f3a;
   --paper: #ffffff;
-  /* Neutral, cool greys: hairlines and quiet surfaces, not blue tints. */
-  --mist: #f4f6f9;
-  --rule: #e1e5ec;
-  --slate: #536079;
+  /* Light sky tints: the page's quiet surfaces and hairlines. */
+  --mist: #f3f9ff;
+  --rule: #d6e6f5;
+  --slate: #40536e;
+  /* The home page's hero and other bright surfaces. */
+  --sky-wash: #ddf1ff;
+  --sky-rule: #bfe0fa;
   --signal: var(--candy);
   --signal-bg: #fdecea;
   --remote: #0a7a55;
   --remote-bg: #e3f4ec;
   /* Tags share one quiet style; colour is reserved for status (remote, closing soon). */
-  --tint: #f1f3f7;
-  --tint-ink: #33405a;
-  --lilac: #f1f3f7;
-  --lilac-ink: #33405a;
+  --tint: #eaf4fd;
+  --tint-ink: #24405f;
+  --lilac: #eaf4fd;
+  --lilac-ink: #24405f;
+  /* Closing dates on cards: a week or less, two weeks or less, later, none given. */
+  --due-soon-bg: #fdece8;
+  --due-soon-ink: #a8321a;
+  --due-mid-bg: #fff1cc;
+  --due-mid-ink: #6b4200;
+  --due-later-bg: #eaf4fd;
+  --due-none-bg: #f1f4f8;
   /* Postmark ink (the closing-date stamps): a deep franking blue, about 10:1 on white. */
   --postmark: #2b4170;
 }
@@ -44,13 +54,22 @@
   --color-sky: var(--sky);
   --color-candy: var(--candy);
   --color-highlight: var(--highlight);
+  --color-sky-wash: var(--sky-wash);
+  --color-sky-rule: var(--sky-rule);
+  --color-due-soon-bg: var(--due-soon-bg);
+  --color-due-soon-ink: var(--due-soon-ink);
+  --color-due-mid-bg: var(--due-mid-bg);
+  --color-due-mid-ink: var(--due-mid-ink);
+  --color-due-later-bg: var(--due-later-bg);
+  --color-due-none-bg: var(--due-none-bg);
   --color-tint: var(--tint);
   --color-tint-ink: var(--tint-ink);
   --color-lilac: var(--lilac);
   --color-lilac-ink: var(--lilac-ink);
   /* The latin-ext families come first; their unicode-range keeps them to letters the latin files lack (see layout.tsx). */
   --font-sans: var(--font-public-sans-ext), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-serif: var(--font-newsreader-ext), var(--font-newsreader), ui-serif, Georgia, serif;
+  /* The heading face (the token keeps its old name: it is used across the site). */
+  --font-serif: var(--font-heading-ext), var(--font-heading), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
 html {
@@ -69,7 +88,7 @@ body {
   h1, h2, h3 {
     font-family: var(--font-serif);
     font-optical-sizing: auto;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.015em;
   }
 }
 
@@ -159,7 +178,7 @@ a {
 /* Brand surfaces: one deep-to-bright blue direction, no decorative blobs */
 .bg-candy-hero,
 .bg-candy-band {
-  background-color: #10264f;
+  background-color: var(--brand);
 }
 .bg-candy-soft {
   background: var(--mist);
@@ -389,30 +408,10 @@ a {
   }
 }
 
-/*
- * Home search on the dark hero, without a white card around it: white fields, white labels, and
- * a white focus ring that shows on the deep blue (the fields' own blue ring would not).
- */
-#hero-search label,
-#hero-search legend {
-  color: #ffffff;
-}
-#hero-search summary {
-  color: #ffffff;
-}
+/* Home search: the fields sit in a white card on the light hero, so they need no special colours. */
 #hero-search summary:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-#hero-search :is(input, select, button, summary):focus-visible {
-  outline: 2px solid #ffffff;
-  outline-offset: 2px;
-}
-#hero-search label:has(> input[type="checkbox"]) {
-  color: var(--ink);
-}
-#hero-search label:has(> input[type="checkbox"]) input:focus-visible {
-  outline-color: var(--accent);
 }
 
 /* Filters applied in the background (src/components/auto-submit.tsx): the results dim while the new ones load. */

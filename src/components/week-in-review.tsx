@@ -4,7 +4,6 @@ import { listName } from "@/lib/coverage";
 import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
 import { jobsUrl, type WeekInReview } from "@/lib/jobs";
 import { formatShortDate } from "@/lib/site";
-import { Postmark } from "./postmark";
 
 /** Below this many new open listings in the past 7 days the strip isn't shown. */
 export const WEEK_IN_REVIEW_MIN = 10;
@@ -69,8 +68,8 @@ export function WeekInReviewStrip({ week, headingId = "week-heading", className 
             <h2 id={headingId} className="text-[1.3rem] font-semibold leading-tight text-ink">This week in international jobs</h2>
             {lead ? <p className="mt-1.5 max-w-[62ch] text-[0.95rem] leading-snug text-ink">{lead}</p> : null}
           </div>
-          {/* The digest's postmark: the day the 7 days run to (today, UTC). */}
-          <Postmark top="Week to" main={formatShortDate(new Date())} className="-mt-1" />
+          {/* The day the 7 days run to (today, UTC). */}
+          <span className="shrink-0 rounded-full bg-tint px-3 py-1 text-[0.8125rem] font-semibold text-tint-ink">Week to {formatShortDate(new Date())}</span>
         </div>
         <div className="mt-3 grid gap-4 md:grid-cols-[minmax(0,14rem)_1fr_1fr] md:gap-8">
           <p className="text-[0.95rem] leading-snug text-slate">

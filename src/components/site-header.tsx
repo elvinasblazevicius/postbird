@@ -3,21 +3,19 @@ import { ORG_TYPES } from "@/config/regions";
 import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
 import { employerTypeCounts } from "@/lib/jobs";
 import { siteConfig } from "@/lib/site";
-import { BILLING_LIVE } from "@/lib/billing/live";
 import { BrandMark } from "./brand-mark";
 import { SavedCount } from "./job-tools";
 import { NavLink } from "./nav-link";
 import { AlertsButton, FindJobsMenu, MobileMenu, type NavItem } from "./site-nav";
 
-/** The header's email button: the free weekly email when it is on (/alerts), otherwise the job emails in general. */
-const ALERTS_LABEL = siteConfig.freeWeeklyEmail ? "Get jobs by email (free)" : "Job emails";
+/** The header's one yellow button. It opens /alerts, where the visitor picks the free weekly email or daily alerts. */
+const ALERTS_LABEL = "Get job alerts";
 
 /** Header links after "Find jobs" (which has its own menu of employer types). */
 const NAV = [
   { href: "/remote-jobs", label: "Remote jobs" },
   { href: "/organizations", label: "Organizations" },
-  // What is sold, said in the link itself (with the free trial once billing is on).
-  { href: "/pricing", label: BILLING_LIVE ? "Daily alerts: free trial" : "Daily alerts" },
+  { href: "/pricing", label: "Pricing" },
 ];
 
 /**
@@ -53,20 +51,17 @@ export async function SiteHeader() {
         <nav aria-label="Main" className="hidden items-center gap-4 whitespace-nowrap md:flex lg:gap-6">
           <FindJobsMenu employers={employers} />
           {NAV.map((n) => (
-            // Tablet widths: the short form of "Daily alerts", and "Remote jobs" gives way (it is in the
-            // footer and the filters), so the header stays on one line and never scrolls sideways.
+            // Tablet widths: "Remote jobs" gives way (it is in the footer and the filters), so the
+            // header stays on one line and never scrolls sideways.
             <span key={n.href} className={n.href === "/remote-jobs" ? "max-lg:hidden" : undefined}>
-              <NavLink href={n.href}>
-                {n.href === "/pricing" ? <>Daily alerts<span className="max-lg:hidden">{n.label.slice("Daily alerts".length)}</span></> : n.label}
-              </NavLink>
+              <NavLink href={n.href}>{n.label}</NavLink>
             </span>
           ))}
           <SavedCount className="-mx-2 px-2" />
           <span className="h-6 w-px bg-rule max-lg:hidden" aria-hidden="true" />
-          {/* The one yellow button in the header: the free email is what a first-time visitor is asked for. */}
-          <AlertsButton className="rounded-lg bg-highlight px-3 py-2 text-[0.95rem] lg:px-4 font-semibold text-ink shadow-[inset_0_-2px_0_rgb(0_0_0/0.12)] hover:brightness-95">
-            <span className="whitespace-nowrap lg:hidden">{siteConfig.freeWeeklyEmail ? "Free job emails" : ALERTS_LABEL}</span>
-            <span className="whitespace-nowrap max-lg:hidden">{ALERTS_LABEL}</span>
+          {/* The one yellow button in the header: alerts are what a first-time visitor is asked for. */}
+          <AlertsButton className="whitespace-nowrap rounded-lg bg-highlight px-3 py-2 text-[0.95rem] font-semibold text-ink shadow-[inset_0_-2px_0_rgb(0_0_0/0.12)] hover:brightness-95 lg:px-4">
+            {ALERTS_LABEL}
           </AlertsButton>
         </nav>
 
@@ -77,7 +72,7 @@ export async function SiteHeader() {
             <svg viewBox="0 0 20 20" className="h-5 w-5 min-[360px]:hidden" aria-hidden="true">
               <path d="M3 5.5h14v9H3z M3.5 6l6.5 5 6.5-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
             </svg>
-            <span className="max-[359.98px]:sr-only">{siteConfig.freeWeeklyEmail ? "Free job emails" : ALERTS_LABEL}</span>
+            <span className="max-[359.98px]:sr-only">{ALERTS_LABEL}</span>
           </AlertsButton>
           <MobileMenu
             main={[{ href: "/jobs", label: "Find jobs" }, ...NAV]}

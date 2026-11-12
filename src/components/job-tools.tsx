@@ -106,8 +106,8 @@ export function SaveButton({ job, compact = false }: { job: Omit<SavedJob, "save
         aria-pressed={saved}
         aria-label={saved ? `Remove ${job.title} from saved jobs` : `Save ${job.title}`}
         title={blocked ? "This browser doesn't allow saving" : saved ? "Saved" : "Save"}
-        // A 44×44px tap target (the ::before layer, centred on the button) without changing the icon or the row's layout.
-        className={`relative z-10 rounded-md p-1.5 transition-[color,background-color,transform] duration-150 before:absolute before:left-1/2 before:top-1/2 before:h-11 before:w-11 before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] hover:bg-tint active:scale-90 ${saved ? "text-accent motion-safe:animate-[save-pop_220ms_ease-out]" : "text-slate hover:text-accent"}`}
+        // A 44×44px bordered square: easy to tap, and it lines up with the closing date beside it.
+        className={`relative z-10 flex h-11 w-11 items-center justify-center rounded-[10px] border border-rule bg-paper transition-[color,background-color,border-color,transform] duration-150 hover:border-sky-rule hover:bg-tint active:scale-90 ${saved ? "text-accent motion-safe:animate-[save-pop_220ms_ease-out]" : "text-tint-ink hover:text-accent"}`}
       >
         <Bookmark filled={saved} />
       </button>
