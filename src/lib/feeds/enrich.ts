@@ -189,13 +189,17 @@ export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: 
   return r;
 }
 
-// ── Weekly "still open?" check for undated jobs ─────────────
+// ── Weekly "still open?" check ─────────────
 
 export type RecheckResult = { checked: number; closed: number; open: number; unknown: number };
 
-type UndatedJob = { id: number; apply_url: string; apply_host: string };
+type UndatedJob = { id: number; apply_url: string; apply_host: string; dated: boolean };
 
-/** "closed", "open", or "unknown" (blocked, unreachable, server error: the listing is left alone). */
+/**
+ * "closed", "open", or "unknown" (blocked, unreachable, server error: the listing is left alone).
+ * For a job with a closing date only hard signals count (the page is gone, or the recruitment
+ * system marks it inactive): wording on the page that sounds closed is not enough to hide it early.
+ */
 async function liveness(job: UndatedJob, cache: Map<string, RobotsRules>): Promise<"open" | "closed" | "unknown"> {
   const system = systemApiUrl(job.apply_url);
   if (system) {
@@ -213,13 +217,15 @@ async function liveness(job: UndatedJob, cache: Map<string, RobotsRules>): Promi
   const res = await get(job.apply_url, "text/html,application/xhtml+xml");
   if (res.status === 404 || res.status === 410) { await res.body?.cancel().catch(() => {}); return "closed"; }
   if (!res.ok || !/html|xml/i.test(res.headers.get("content-type") ?? "")) { await res.body?.cancel().catch(() => {}); return "unknown"; }
-  return pageSaysClosed(await readCapped(res, S.maxBytes)) ? "closed" : "open";
+  const html = await readCapped(res, S.maxBytes);
+  return !job.dated && pageSaysClosed(html) ? "closed" : "open";
 }
 
 /**
- * Open jobs with no closing date, not checked in the last `recheckDays`: is the employer's page
- * still there? Closed ones are hidden at once (status 'archived', as for undated jobs the feed
- * stopped carrying); anything uncertain is left as it is.
+ * Open jobs not checked in the last `recheckDays`: is the employer's page still there? Jobs
+ * without a closing date, and jobs whose closing date is more than a few days off (an employer
+ * can take a vacancy down early). Closed ones are hidden at once (status 'archived', as for
+ * undated jobs the feed stopped carrying); anything uncertain is left as it is.
  */
 export async function recheckUndatedJobs(opts: { limit?: number; budgetMs?: number } = {}): Promise<RecheckResult> {
   const r: RecheckResult = { checked: 0, closed: 0, open: 0, unknown: 0 };
@@ -227,8 +233,9 @@ export async function recheckUndatedJobs(opts: { limit?: number; budgetMs?: numb
   const started = Date.now();
   const budget = opts.budgetMs ?? 4 * 60_000;
   const due = await sql<UndatedJob[]>`
-    select id::int as id, apply_url, apply_host from jobs
-     where status = 'active' and not is_demo and deadline is null
+    select id::int as id, apply_url, apply_host, deadline is not null as dated from jobs
+     where status = 'active' and not is_demo
+       and (deadline is null or deadline > now() + interval '3 days')
        and first_seen_at < now() - interval '2 days'
        and (live_checked_at is null or live_checked_at < now() - make_interval(days => ${S.recheckDays}))
      order by live_checked_at nulls first, first_seen_at

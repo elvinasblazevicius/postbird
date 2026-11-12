@@ -76,12 +76,12 @@ export const IMPORT_SETTINGS = {
     userAgent: "PostbirdBot/1.0 (+https://postbird.nuevanova.com/about; vacancy facts only)",
     robotsName: "PostbirdBot",
     /**
-     * Open jobs without a closing date: their employer page is checked again every `recheckDays`
-     * (at most `recheckPerRun` per run). A page that is gone (404/410), a job the recruitment
-     * system marks inactive, or a page saying applications are closed closes the listing at once.
+     * Open jobs: their employer page is checked again every `recheckDays` (at most `recheckPerRun`
+     * per run). A page that is gone (404/410) or a job the recruitment system marks inactive closes
+     * the listing at once; for jobs without a closing date, so does a page saying applications are closed.
      */
     recheckDays: 7,
-    recheckPerRun: 80,
+    recheckPerRun: 120,
   },
 
   /**
