@@ -1,27 +1,14 @@
 import type { Metadata } from "next";
 import { LISTING_SETTINGS } from "@/config/import";
 import { sql } from "@/lib/db";
-import { countryBySlug } from "@/config/countries";
-import { ORG_TYPES, regionBySlug } from "@/config/regions";
-import { jobsUrl, placeCondition, type JobFilters } from "@/lib/jobs";
+import { countJobs, jobsUrl, type JobFilters } from "@/lib/jobs";
 
-/** Number of open jobs for a landing page's fixed filter. */
+/**
+ * Number of open jobs for a landing page's fixed filter: the same count as the list under it
+ * (countJobs in src/lib/jobs.ts), so "11 open vacancies" and the cards always agree.
+ */
 export async function countFor(fixed: Partial<JobFilters>, includeDemo = true): Promise<number> {
-  let w = sql`j.status = 'active' and (j.deadline is null or j.deadline >= (now() at time zone 'utc')::date) and (${includeDemo} or not j.is_demo)`;
-  if (fixed.org?.length) w = sql`${w} and o.slug = any(${fixed.org})`;
-  if (fixed.category?.length) w = sql`${w} and j.category = any(${fixed.category})`;
-  if (fixed.country?.length || fixed.region?.length) {
-    // Any of the countries and regions, like the "where" filter (filterConditions in src/lib/jobs.ts).
-    const codes = [
-      ...(fixed.country ?? []).flatMap((s) => countryBySlug(s)?.code ?? []),
-      ...(fixed.region ?? []).flatMap((s) => regionBySlug(s)?.codes ?? []),
-    ];
-    w = codes.length ? sql`${w} and ${placeCondition([...new Set(codes)])}` : sql`${w} and false`;
-  }
-  if (fixed.remote) w = sql`${w} and j.is_remote is true`;
-  if (fixed.orgtype?.length) w = sql`${w} and o.org_type = any(${fixed.orgtype.map((v) => ORG_TYPES.find((t) => t.value === v)?.type ?? "--")})`;
-  const [r] = await sql<{ n: number }[]>`select count(*)::int as n from jobs j left join organizations o on o.id = j.organization_id where ${w}`;
-  return r.n;
+  return countJobs({ ...fixed, excludeDemo: !includeDemo || undefined });
 }
 
 /** The contract types among the open jobs for a landing page's fixed organization (for its description). */

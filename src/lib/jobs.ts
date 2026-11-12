@@ -7,7 +7,7 @@ import { countriesInLocation, DROP_CHARS, FOLD_FROM, FOLD_TO, locationPatterns }
 import { sql, transaction } from "@/lib/db";
 import { logoProtectedSql } from "@/lib/feeds/logos";
 import { GENERAL_SERVICE_TITLE_SQL, gradeGroupOf, LOCAL_ONLY_GRADE_SQL, LOCAL_ONLY_TITLE_SQL, NATIONAL_OFFICER_TITLE_SQL, PROFESSIONAL_TITLE_SQL, titleGradeGroup } from "@/lib/grades";
-import { categoriesForWord, foldText, interpretQuery, orgNamesForTerm, placeVariants, searchTerms, wordPattern } from "@/lib/search-intent";
+import { ABBREVIATIONS, categoriesForWord, foldText, gradeTitlePattern, interpretQuery, orgNamesForTerm, placeVariants, queryWords, searchTerms, singular, wordPattern, type QueryWords } from "@/lib/search-intent";
 
 export type JobListItem = {
   id: number;
@@ -95,6 +95,12 @@ export type JobFilters = {
   unstated?: boolean;
   sort?: "newest" | "deadline" | "relevance";
   page?: number;
+  /**
+   * Set by withSearchIntent, never read from the URL: the search words a filter was read from
+   * (their TITLE match counts too, see QueryWords), and phrases typed in double quotes.
+   */
+  fromWords?: QueryWords["from"];
+  exact?: string[];
   /** Email alerts only (never read from the URL): first seen after / up to these times, and no demo listings. */
   firstSeenAfter?: Date;
   firstSeenUntil?: Date;
@@ -112,9 +118,12 @@ const first = (v: string | string[] | undefined) => {
   return typeof x === "string" ? x.replace(CONTROL_CHARS, " ").trim() || undefined : undefined;
 };
 
-/** Every value of a parameter that may be repeated, tidied like first() (at most 10). */
+/** Every value of a parameter that may be repeated, tidied like first() (at most 40: no filter offers more choices). */
 const every = (v: string | string[] | undefined): string[] =>
-  (Array.isArray(v) ? v : v === undefined ? [] : [v]).slice(0, 10).map((x) => first(x)).filter((x): x is string => Boolean(x));
+  (Array.isArray(v) ? v : v === undefined ? [] : [v]).slice(0, 40).map((x) => first(x)).filter((x): x is string => Boolean(x));
+
+/** Slugs are lower case: "IOM" or "Kenya" typed into an address still pick the organization or place. */
+const slugs = (v: string | string[] | undefined): string[] => every(v).map((x) => x.toLowerCase());
 
 /** The values without repeats, in a fixed (sorted) order, so the same choice always gives the same URL and saved search. */
 const tidyList = (xs: string[]): string[] => [...new Set(xs)].sort();
@@ -137,32 +146,33 @@ export function parseFilters(sp: SP): JobFilters {
   const f: JobFilters = {};
   const q = first(sp.q);
   if (q) f.q = q.slice(0, 120);
-  const orgs = every(sp.org).filter((org) => /^[a-z0-9-]{1,80}$/.test(org));
+  const orgs = slugs(sp.org).filter((org) => /^[a-z0-9-]{1,80}$/.test(org));
   if (orgs.length) f.org = tidyList(orgs);
   // "where" is the combined region/country field used by the search forms; it, "country", "region"
   // and "grade" may be repeated (where=kenya&where=uganda): a listing then matches any of them.
   const countries: string[] = [];
   const regions: string[] = [];
-  for (const where of every(sp.where)) {
+  for (const where of slugs(sp.where)) {
     if (where.startsWith("region-") && regionBySlug(where.slice(7))) regions.push(where.slice(7));
     else if (countryBySlug(where)) countries.push(where);
   }
-  for (const country of every(sp.country)) if (countryBySlug(country)) countries.push(country);
-  for (const region of every(sp.region)) if (regionBySlug(region)) regions.push(region);
+  for (const country of slugs(sp.country)) if (countryBySlug(country)) countries.push(country);
+  for (const region of slugs(sp.region)) if (regionBySlug(region)) regions.push(region);
   if (countries.length) f.country = tidyList(countries);
   if (regions.length) f.region = tidyList(regions);
-  const grades = every(sp.grade).filter((grade) => GRADE_GROUPS.some((g) => g.value === grade || g.grades.includes(grade)) || /^(P|D|NO|G|GS|FS)-[0-9A-E]$|^(ASG|USG)$|^(SB|SC|LICA|NPSA|IPSA|ICS)-\d{1,2}$/.test(grade));
+  const grades = every(sp.grade).map((g) => g.toUpperCase()).map((g) => GRADE_GROUPS.find((x) => x.value.toUpperCase() === g)?.value ?? g).filter((grade) => GRADE_GROUPS.some((g) => g.value === grade || g.grades.includes(grade)) || /^(P|D|NO|G|GS|FS)-[0-9A-E]$|^(ASG|USG)$|^(SB|SC|LICA|NPSA|IPSA|ICS)-\d{1,2}$/.test(grade));
   if (grades.length) f.grade = tidyList(grades);
-  const orgtypes = every(sp.orgtype).filter((o) => ORG_TYPES.some((t) => t.value === o));
+  const orgtypes = slugs(sp.orgtype).filter((o) => ORG_TYPES.some((t) => t.value === o));
   if (orgtypes.length) f.orgtype = tidyList(orgtypes);
   const lang = first(sp.lang);
-  if (lang && (LANGUAGES as readonly string[]).includes(lang)) f.lang = lang;
+  const knownLang = lang ? (LANGUAGES as readonly string[]).find((l) => l.toLowerCase() === lang.toLowerCase()) : undefined;
+  if (knownLang) f.lang = knownLang;
   const exp = first(sp.exp);
   if (exp && EXPERIENCE_BANDS.some((b) => b.value === exp)) f.exp = exp;
-  const categories = every(sp.category).filter((c) => categoryBySlug(c));
+  const categories = slugs(sp.category).filter((c) => categoryBySlug(c));
   if (categories.length) f.category = tidyList(categories);
-  if (first(sp.remote) === "1" || first(sp.remote) === "true") f.remote = true;
-  const types = every(sp.type).filter((t) => (JOB_TYPES as readonly string[]).includes(t));
+  if (["1", "true", "yes"].includes((first(sp.remote) ?? "").toLowerCase())) f.remote = true;
+  const types = every(sp.type).flatMap((t) => (JOB_TYPES as readonly string[]).find((k) => k.toLowerCase() === t.toLowerCase()) ?? []);
   if (types.length) f.type = tidyList(types);
   const posted = first(sp.posted);
   if (posted === "1" || posted === "7" || posted === "30") f.posted = posted;
@@ -213,12 +223,39 @@ const isOpen = () => sql`j.status = 'active' and (j.deadline is null or j.deadli
 
 type Frag = ReturnType<typeof isOpen>;
 
+/**
+ * Open, and not an older copy of a vacancy that is listed again: employers often post the same
+ * vacancy twice (same title, organization, place and closing date; sameVacancyKey in
+ * src/components/job-card.tsx). Only the newest copy is listed and counted, so "1–20 of 661" and
+ * the cards on the pages always agree. An older copy keeps its own page (links and saved jobs work).
+ */
+const isListed = () => sql`${isOpen()} and not exists (
+  select 1 from jobs d
+  where d.id <> j.id and d.status = 'active' and (d.deadline is null or d.deadline >= (now() at time zone 'utc')::date)
+    and lower(btrim(d.title)) = lower(btrim(j.title))
+    and d.organization_id is not distinct from j.organization_id
+    and d.country_code is not distinct from j.country_code
+    and lower(coalesce(d.city, d.location_text, '')) = lower(coalesce(j.city, j.location_text, ''))
+    and d.deadline is not distinct from j.deadline
+    and d.is_demo = j.is_demo
+    and (coalesce(d.published_at, d.first_seen_at), d.id) > (coalesce(j.published_at, j.first_seen_at), j.id))`;
+
 /** Apply what the search words mean ("un", "remote", "internship", a country) as filters. */
 export function withSearchIntent(f: JobFilters): JobFilters {
   if (!f.q) return f;
   const i = interpretQuery(f.q);
+  const words = queryWords(f.q);
+  // Only for the filters these words set (a filter chosen in the form is exact).
+  const fromWords: QueryWords["from"] = {
+    grade: !f.grade?.length && i.grade ? words.from.grade : undefined,
+    type: !f.type?.length && i.type ? words.from.type : undefined,
+    country: !f.country?.length && !f.region?.length && i.country ? words.from.country : undefined,
+    region: !f.country?.length && !f.region?.length && !i.country && i.region ? words.from.region : undefined,
+  };
   return {
     ...f,
+    fromWords: f.fromWords ?? fromWords,
+    exact: f.exact ?? (words.exact.length ? words.exact : undefined),
     q: i.text ?? undefined,
     orgtype: f.orgtype?.length ? f.orgtype : i.orgtype ? [i.orgtype] : undefined,
     remote: f.remote || i.remote || undefined,
@@ -306,16 +343,56 @@ export function wantsLooseMatch(q: string | undefined, total: number): boolean {
  * both are folded (pb_fold in db/migrations/007, foldText in src/lib/search-intent.ts).
  */
 function wordCondition(t: string): Frag {
-  const p = wordPattern(foldText(t));
+  const folded = foldText(t);
+  // An abbreviation for a field of work ("M&E", "HR", "IT"): its category, or the abbreviation in the
+  // title or the organization's name. Never the running text, where "it" and "hr" are ordinary words.
+  const abbr = ABBREVIATIONS[folded];
+  if (abbr) return sql`(j.category = any(${abbr.categories}) or pb_fold(j.title) ~ ${abbr.title} or pb_fold(o.short_name) ~ ${abbr.title})`;
+  const p = wordPattern(folded);
   let c = sql`(pb_fold(j.title) ~ ${p} or pb_fold(o.name) ~ ${p} or pb_fold(o.short_name) ~ ${p}`;
   const orgNames = orgNamesForTerm(t);
   if (orgNames.length) c = sql`${c} or pb_fold(o.name) = any(${orgNames}) or pb_fold(o.short_name) = any(${orgNames})`;
   const cats = categoriesForWord(t);
   if (cats.length) c = sql`${c} or j.category = any(${cats})`;
-  if (/[\p{L}\p{N}]/u.test(t)) c = sql`${c} or j.search_folded @@ plainto_tsquery('simple', ${foldText(t)})`;
+  const plain = /^[a-z0-9]+$/.test(folded);
+  if (orgNames.length && folded.includes(" ")) {
+    // An organization's name of several words ("save the children"): the organization or the title,
+    // not every text that happens to hold those words.
+  } else if (plain && folded.length <= SHORT_WORD_MAX) {
+    // Short words ("who", "it", "us") are ordinary words in running text: only the title, place, grade and contract type count.
+    c = sql`${c} or j.search_folded @@ to_tsquery('simple', ${`${folded}:AB`})`;
+  } else if (/[\p{L}\p{N}]/u.test(t)) {
+    c = sql`${c} or j.search_folded @@ plainto_tsquery('simple', ${folded})`;
+    // A plural also finds the singular in the text ("engineers" → "engineer…").
+    const one = singular(folded);
+    if (plain && one !== folded) c = sql`${c} or j.search_folded @@ to_tsquery('simple', ${`${one}:*`})`;
+  }
   const places = placeTsQuery([t]);
   if (places) c = sql`${c} or j.search_folded @@ to_tsquery('simple', ${places})`;
   return sql`${c})`;
+}
+
+/** Words up to this long match the title, place, grade and contract type only, never the running text. */
+const SHORT_WORD_MAX = 4;
+
+/** A phrase as a Postgres regex for folded text: its words in that order, as whole words ("finance officer" → "\mfinance[^a-z0-9]+officer\M"). */
+function phrasePattern(phrase: string): string {
+  const words = foldText(phrase).split(/[^a-z0-9&]+/).filter(Boolean).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return `\\m${words.join("[^a-z0-9]+")}\\M`;
+}
+
+/**
+ * How well the TITLE answers the search, for the "Best match" order: 3 when the search names the
+ * organization, 2 when the title is exactly the search, 1 when the title holds the search's words
+ * as a phrase (or its one word), 0 otherwise. Without this a vacancy titled exactly "Finance
+ * Officer" could rank below ones that only mention the words.
+ */
+function titleBoost(q: string): Frag {
+  const folded = foldText(q).trim();
+  const orgNames = orgNamesForTerm(q);
+  const org = orgNames.length ? sql`when pb_fold(o.name) = any(${orgNames}) or pb_fold(o.short_name) = any(${orgNames}) then 3` : sql``;
+  if (!/[a-z0-9]/.test(folded)) return sql`0`;
+  return sql`(case ${org} when pb_fold(j.title) = ${folded} then 2 when pb_fold(j.title) ~ ${phrasePattern(folded)} then 1 else 0 end)`;
 }
 
 /**
@@ -403,7 +480,9 @@ function textCondition(q: string, mode: MatchMode): Frag {
   }
   const parts = searchWords(q).map(wordCondition);
   if (!parts.length) return sql`true`;
-  return sql`(j.search_folded @@ websearch_to_tsquery('simple', ${foldText(q)}) or (${parts.reduce((a, b) => sql`${a} and ${b}`)}))`;
+  // Every term must match (wordCondition); each one decides for itself where it may match, so a
+  // short word or an abbreviation is never found in running text through the back door.
+  return sql`(${parts.reduce((a, b) => sql`${a} and ${b}`)})`;
 }
 
 /**
@@ -437,10 +516,22 @@ const UNSTATED: Record<DerivedFilter, () => Frag> = {
   type: () => sql`j.job_type is null`,
 };
 
+/** A location that says the post is remote or home-based (Postgres regex for the lower-cased location and city). */
+const REMOTE_PLACE_SQL = "\\m(remote|home[- ]?based|work(ing)? from home|telework(ing)?|telecommut(e|ing)|teletravail|télétravail|teletrabajo)\\M";
+
 /** The SQL condition for each filter that is set, keyed by filter. */
 function filterConditions(f: JobFilters, mode: MatchMode = "all"): Partial<Record<FilterKey, Frag>> {
   const c: Partial<Record<FilterKey, Frag>> = {};
   if (f.q) c.q = textCondition(f.q, mode);
+  // Phrases in double quotes: the title holds the phrase, or the indexed text has its words in that order.
+  if (c.q && f.exact?.length && mode === "all") {
+    const phrases = f.exact.map((ph): Frag => sql`(pb_fold(j.title) ~ ${phrasePattern(ph)} or j.search_folded @@ phraseto_tsquery('simple', ${ph}))`).reduce((a, b) => sql`${a} and ${b}`);
+    c.q = sql`(${c.q} and ${phrases})`;
+  }
+  // A filter read from the search words also matches a vacancy whose TITLE carries the word
+  // ("kosovo" → "EULEX Kosovo…", "p3" → "Logistics Officer P3", "volunteer" → UN Volunteers posts).
+  const titleHas = (pattern: string | null | undefined): Frag | null => (pattern ? sql`pb_fold(j.title) ~ ${pattern}` : null);
+  const orTitle = (cond: Frag, extra: Frag | null) => (extra ? sql`(${cond} or ${extra})` : cond);
   if (f.org?.length) c.org = sql`o.slug = any(${f.org})`;
   if (f.country?.length || f.region?.length) {
     // Any of the chosen countries and regions (one "where" filter).
@@ -448,11 +539,12 @@ function filterConditions(f: JobFilters, mode: MatchMode = "all"): Partial<Recor
       ...(f.country ?? []).flatMap((s) => countryBySlug(s)?.code ?? []),
       ...(f.region ?? []).flatMap((s) => regionBySlug(s)?.codes ?? []),
     ];
-    c.where = codes.length ? placeCondition([...new Set(codes)]) : sql`false`;
+    const placeWord = f.fromWords?.country ?? f.fromWords?.region;
+    c.where = orTitle(codes.length ? placeCondition([...new Set(codes)]) : sql`false`, titleHas(placeWord ? phrasePattern(placeWord) : null));
   }
   // With `unstated`, each derived filter also matches listings that don't state the detail (UNSTATED).
   const orUnstated = (k: DerivedFilter, cond: Frag) => (f.unstated ? sql`(${cond} or ${UNSTATED[k]()})` : cond);
-  if (f.grade?.length) c.grade = orUnstated("grade", sql`(${f.grade.map(gradeCondition).reduce((a, b) => sql`${a} or ${b}`)})`);
+  if (f.grade?.length) c.grade = orUnstated("grade", orTitle(sql`(${f.grade.map(gradeCondition).reduce((a, b) => sql`${a} or ${b}`)})`, titleHas(f.fromWords?.grade ? gradeTitlePattern(f.fromWords.grade) : null)));
   if (f.orgtype?.length) c.orgtype = sql`o.org_type = any(${f.orgtype.map((v) => ORG_TYPES.find((o) => o.value === v)?.type ?? "--")})`;
   if (f.lang) c.lang = orUnstated("lang", sql`${f.lang} = any(j.languages)`);
   if (f.exp) {
@@ -460,8 +552,12 @@ function filterConditions(f: JobFilters, mode: MatchMode = "all"): Partial<Recor
     c.exp = orUnstated("exp", sql`j.min_experience_years between ${band.min} and ${band.max}`);
   }
   if (f.category?.length) c.category = sql`j.category = any(${f.category})`;
-  if (f.remote) c.remote = sql`j.is_remote is true`;
-  if (f.type?.length) c.type = orUnstated("type", sql`j.job_type = any(${f.type})`);
+  // The flag set at import, or a location that says so ("Home Based", "Remote", "Telework").
+  if (f.remote) c.remote = sql`(j.is_remote is true or lower(coalesce(j.location_text, '') || ' ' || coalesce(j.city, '')) ~ ${REMOTE_PLACE_SQL})`;
+  if (f.type?.length) {
+    const typeWord = f.fromWords?.type ? wordPattern(foldText(f.fromWords.type)) : null;
+    c.type = orUnstated("type", orTitle(sql`j.job_type = any(${f.type})`, typeWord ? sql`(pb_fold(j.title) ~ ${typeWord} or pb_fold(o.name) ~ ${typeWord})` : null));
+  }
   if (f.posted) c.posted = sql`coalesce(j.published_at, j.first_seen_at) >= now() - make_interval(days => ${Number(f.posted)})`;
   if (f.closing) c.closing = sql`j.deadline is not null and j.deadline <= (now() at time zone 'utc')::date + ${Number(f.closing)}::int`;
   // Same rule as isLocalOnly() in src/lib/grades.ts: the parsed grade, or words in the title.
@@ -471,7 +567,7 @@ function filterConditions(f: JobFilters, mode: MatchMode = "all"): Partial<Recor
 
 /** Open listings plus the alert-only limits (never set from the URL). */
 function baseCondition(f: JobFilters): Frag {
-  let w = isOpen();
+  let w = isListed();
   if (f.firstSeenAfter) w = sql`${w} and j.first_seen_at > ${f.firstSeenAfter}`;
   if (f.firstSeenUntil) w = sql`${w} and j.first_seen_at <= ${f.firstSeenUntil}`;
   if (f.excludeDemo) w = sql`${w} and not j.is_demo`;
@@ -500,7 +596,7 @@ export async function searchJobs(input: JobFilters, pageSize: number = LISTING_S
       sort === "deadline" ? sql`j.deadline asc nulls last, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
       looseOrder && f.q
         ? sql`(${looseRank(terms, weights)}) desc, ts_rank(j.search_folded, ${rankQuery(f.q)}) desc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
-      sort === "relevance" && f.q ? sql`ts_rank(j.search_folded, ${rankQuery(f.q)}) desc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
+      sort === "relevance" && f.q ? sql`${titleBoost(f.q)} desc, ts_rank(j.search_folded, ${rankQuery(f.q)}) desc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
       sql`coalesce(j.published_at, j.first_seen_at) desc, j.id desc`;
     // Each in its own short transaction, which carries the statement time limit (see
     // transaction() in src/lib/db.ts); two of them, so the queries still run side by side.
@@ -556,7 +652,7 @@ export async function closingSoonForAlert(opts: { searches: string[]; subscriber
   return transaction(async (tx) => await tx<JobListItem[]>`
     select ${listColumns()}
     from jobs j left join organizations o on o.id = j.organization_id
-    where ${isOpen()} and not j.is_demo
+    where ${isListed()} and not j.is_demo
       and j.deadline is not null and j.deadline <= (now() at time zone 'utc')::date + ${opts.days}::int
       and (${anyMatch})
       and not exists (select 1 from alert_closing_sent acs where acs.subscriber_id = ${opts.subscriberId} and acs.job_id = j.id)
@@ -673,7 +769,7 @@ export async function searchSuggestion(q: string | undefined): Promise<{ q: stri
 export async function latestJobs(limit = 8) {
   return sql<JobListItem[]>`
     select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
-    where ${isOpen()}
+    where ${isListed()}
     order by coalesce(j.published_at, j.first_seen_at) desc, j.id desc
     limit ${limit}`;
 }
@@ -703,7 +799,7 @@ export async function weekInReview(): Promise<WeekInReview> {
     with recent as materialized (
       select o.org_type, o.slug, o.name, o.short_name
       from jobs j left join organizations o on o.id = j.organization_id
-      where ${isOpen()} and not j.is_demo and coalesce(j.published_at, j.first_seen_at) >= now() - make_interval(days => 7)
+      where ${isListed()} and not j.is_demo and coalesce(j.published_at, j.first_seen_at) >= now() - make_interval(days => 7)
     )
     select
       (select count(*)::int from recent) as total,
@@ -723,7 +819,7 @@ export async function weekInReview(): Promise<WeekInReview> {
 export async function closingSoonJobs(limit = 6) {
   return sql<JobListItem[]>`
     select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
-    where ${isOpen()} and j.deadline is not null and j.deadline <= (now() at time zone 'utc')::date + 14
+    where ${isListed()} and j.deadline is not null and j.deadline <= (now() at time zone 'utc')::date + 14
     order by j.deadline asc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc limit ${limit}`;
 }
 
@@ -755,7 +851,7 @@ export async function openJobsByIds(ids: number[]): Promise<JobListItem[]> {
 export async function similarJobs(job: JobDetail, limit = 4) {
   return sql<JobListItem[]>`
     select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
-    where ${isOpen()} and j.id <> ${job.id} and (j.category = ${job.category} or o.slug = ${job.org_slug ?? "--"})
+    where ${isListed()} and j.id <> ${job.id} and (j.category = ${job.category} or o.slug = ${job.org_slug ?? "--"})
     order by (o.slug = ${job.org_slug ?? "--"}) desc nulls last, coalesce(j.published_at, j.first_seen_at) desc, j.id desc limit ${limit}`;
 }
 
@@ -773,7 +869,7 @@ export async function moreInCategory(job: Pick<JobDetail, "id" | "category" | "o
   const region = regionOf(job.country_code)?.codes ?? [];
   return sql<JobListItem[]>`
     select ${listColumns()} from jobs j left join organizations o on o.id = j.organization_id
-    where ${isOpen()} and j.id <> ${job.id} and j.category = ${job.category} and o.slug is distinct from ${job.org_slug ?? null}
+    where ${isListed()} and j.id <> ${job.id} and j.category = ${job.category} and o.slug is distinct from ${job.org_slug ?? null}
     order by (${sameGroup}) desc, (j.country_code = any(${region})) desc nulls last, coalesce(j.published_at, j.first_seen_at) desc, j.id desc
     limit ${limit}`;
 }
@@ -784,7 +880,7 @@ export async function organizationFacets(limit = 500, includeDemo = true) {
   return sql<{ slug: string; name: string; short_name: string | null; org_type: string | null; logo: string | null; count: number }[]>`
     select o.slug, o.name, o.short_name, o.org_type, case when o.logo is not null and not ${logoProtectedSql("o")} then o.slug end as logo, count(*)::int as count
     from jobs j join organizations o on o.id = j.organization_id
-    where ${isOpen()} and (${includeDemo} or not j.is_demo) group by o.id order by count(*) desc, o.name limit ${limit}`;
+    where ${isListed()} and (${includeDemo} or not j.is_demo) group by o.id order by count(*) desc, o.name limit ${limit}`;
 }
 
 type Count<K> = { k: K; n: number };
@@ -826,7 +922,7 @@ async function queryFacetSnapshot(includeDemo: boolean): Promise<FacetSnapshot> 
       select j.country_code, j.location_text, j.category, ${gradeKey()} as grade, j.languages, j.min_experience_years, j.job_type, j.is_remote,
              j.organization_id, coalesce(j.published_at, j.first_seen_at) as posted, o.org_type
       from jobs j left join organizations o on o.id = j.organization_id
-      where ${isOpen()} and (${includeDemo} or not j.is_demo)
+      where ${isListed()} and (${includeDemo} or not j.is_demo)
     )
     select
       (select coalesce(json_agg(json_build_object('c', c, 'l', l, 'n', n)), '[]'::json)
@@ -922,7 +1018,7 @@ export async function jobTypeFacets() {
 export const employerTypeCounts = cache(async (): Promise<Map<string, number>> => {
   const rows = await sql<{ k: string; n: number }[]>`
     select o.org_type as k, count(*)::int as n from jobs j join organizations o on o.id = j.organization_id
-    where ${isOpen()} and o.org_type is not null group by 1`;
+    where ${isListed()} and o.org_type is not null group by 1`;
   return new Map(rows.map((r) => [r.k, r.n]));
 });
 

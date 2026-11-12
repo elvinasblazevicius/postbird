@@ -34,6 +34,9 @@ export const CATEGORIES: Category[] = [
       "ict", "information technology", "software", "developer", "programmer", "devops", "cyber",
       "cybersecurity", "information security", "network", "systems administrator", "cloud",
       "it officer", "it specialist", "it assistant", "it support", "it manager", "erp", "web developer",
+      "it operations", "it project", "it service", "it services", "it security", "it digital", "it intern", "it analyst", "it consultant",
+      "it coordinator", "it associate", "it technician", "it administrator", "it engineer", "it infrastructure", "it systems",
+      "traineeship in it", "service desk", "help desk", "helpdesk",
       "solution architect", "database administrator", "digital transformation", "telecommunication*",
     ],
   },
@@ -130,7 +133,7 @@ export const CATEGORIES: Category[] = [
     slug: "gender",
     name: "Gender",
     blurb: "Gender equality and women's empowerment roles.",
-    keywords: ["gender", "women", "womens", "gender equality", "genero"],
+    keywords: ["gender", "women", "womens", "gender equality", "genero", "gbv", "sgbv", "vbg", "gender-based violence", "violence basee sur le genre", "violences basees sur le genre"],
   },
   {
     slug: "environment-climate-energy",

@@ -23,6 +23,16 @@ export type SearchIntent = {
   region?: string;
 };
 
+/**
+ * What else a search's words say, beside the filters of SearchIntent:
+ * `from`: the words each filter was read from ("kosovo", "p3", "volunteer"). A vacancy whose TITLE
+ * carries the word matches too, even when its parsed field is empty or different: "EULEX Kosovo"
+ * has no country field, "Logistics Officer P3" no parsed grade.
+ * `exact`: phrases typed in double quotes ("finance officer"), folded: the title or text must hold
+ * them in that order.
+ */
+export type QueryWords = { from: { country?: string; region?: string; grade?: string; type?: string }; exact: string[] };
+
 const STOP_WORDS = new Set([
   "job", "jobs", "vacancy", "vacancies", "position", "positions", "post", "posts", "career", "careers", "opening", "openings",
   "opportunity", "opportunities", "role", "roles", "work", "employment", "hiring", "in", "at", "for", "with", "the", "a", "an", "of", "and",
@@ -108,7 +118,38 @@ export function foldText(s: string): string {
 }
 
 /** How a search box value is tidied before reading it (lower case, no quotes or punctuation). */
-const tidyQuery = (s: string) => s.toLowerCase().replace(/[“”"'’,;:!?()]/g, " ").replace(/\s+/g, " ").trim();
+const tidyQuery = (s: string) =>
+  s.toLowerCase()
+    .replace(/[“”"'’,;:!?()<>[\]{}=*\\]/g, " ")
+    // "M & E", "m and e" → "m&e" (one word, see ABBREVIATIONS)
+    .replace(/(^|\s)m\s*(?:&|and)\s*e(?=\s|$)/g, "$1m&e")
+    .split(/\s+/)
+    // Emoji, lone punctuation and the like match nothing useful.
+    .filter((w) => /[\p{L}\p{N}]/u.test(w))
+    .join(" ");
+
+/** Phrases typed in double quotes, tidied and folded (at most 3, each of two words or more). */
+export function quotedPhrases(q: string | undefined | null): string[] {
+  if (!q) return [];
+  return [...q.matchAll(/["“]([^"“”]{3,80})["”]/g)]
+    .map((m) => foldText(tidyQuery(m[1])))
+    .filter((p) => p.includes(" "))
+    .slice(0, 3);
+}
+
+/**
+ * Abbreviations people type for a field of work: the categories they mean, and how the
+ * abbreviation is written in titles (a Postgres regex on the folded title). "M&E" finds the
+ * Monitoring and evaluation category and titles such as "M&E Officer" or "M & E Specialist".
+ */
+export const ABBREVIATIONS: Record<string, { categories: string[]; title: string }> = {
+  "m&e": { categories: ["monitoring-evaluation"], title: "\\mm ?& ?e\\M|\\mmeal\\M" },
+  meal: { categories: ["monitoring-evaluation"], title: "\\mmeal\\M" },
+  hr: { categories: ["human-resources"], title: "\\mhr\\M" },
+  it: { categories: ["it"], title: "\\mit\\M" },
+  ict: { categories: ["it"], title: "\\mict\\M" },
+  gbv: { categories: ["gender"], title: "\\m(gbv|vbg)\\M" },
+};
 
 /** Words that pick an organization type (see ORG_TYPE_PHRASES); never treated as one organization's alias. */
 const ORG_TYPE_WORDS = new Set(["un", "eu", "united nations", "european union", "ngo", "ngos", "un system", "eu institutions"]);
@@ -220,28 +261,49 @@ export function languageFromWord(word: string): string | null {
 }
 
 /** Takes the first grade out of a tidied query (" p3 data " → "P-3" and " data "). */
-function takeGrade(s: string): { grade?: string; rest: string } {
+function takeGrade(s: string): { grade?: string; word?: string; rest: string } {
   const words = s.split(" ");
   // "G5 Sahel" is an organization, not grade G-5.
   const i = words.findIndex((w, n) => gradeFromWord(w) && !(w === "g5" && words[n + 1] === "sahel"));
   if (i < 0) return { rest: s };
   const grade = gradeFromWord(words[i])!;
-  words.splice(i, 1);
-  return { grade, rest: words.join(" ") };
+  const [word] = words.splice(i, 1);
+  return { grade, word, rest: words.join(" ") };
+}
+
+/**
+ * How a grade is written in titles, as a Postgres regex for the folded title: "P-3" also as "P3"
+ * and "P 3", "NO-B" as "NOB", "G-6" as "G6" or "[G6]".
+ */
+export function gradeTitlePattern(grade: string): string | null {
+  const m = grade.toLowerCase().match(/^([a-z]{1,2})-([0-9a-e])$/);
+  return m ? `\\m${m[1]}[- ]?${m[2]}\\M` : null;
 }
 
 const wordRe = (phrase: string) => new RegExp(`(^|\\s)${phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=\\s|$)`);
 
 export function interpretQuery(q: string | undefined | null): SearchIntent {
-  if (!q) return { text: null };
+  return readQuery(q).intent;
+}
+
+/** The words the search's filters were read from, and its quoted phrases (see QueryWords). */
+export function queryWords(q: string | undefined | null): QueryWords {
+  const { from } = readQuery(q);
+  return { from, exact: quotedPhrases(q) };
+}
+
+function readQuery(q: string | undefined | null): { intent: SearchIntent; from: QueryWords["from"] } {
+  if (!q) return { intent: { text: null }, from: {} };
   // Organization names of several words are kept whole ("doctors of the world" keeps "of the").
   const { phrases, rest } = takeOrgPhrases(tidyQuery(q));
   let s = ` ${rest} `;
   const intent: SearchIntent = { text: null };
 
+  const from: QueryWords["from"] = {};
   const g = takeGrade(s);
   if (g.grade) {
     intent.grade = g.grade;
+    from.grade = g.grade;
     s = ` ${g.rest} `;
   }
 
@@ -263,6 +325,7 @@ export function interpretQuery(q: string | undefined | null): SearchIntent {
     const re = wordRe(name);
     if (re.test(s)) {
       intent.country ??= slug;
+      from.country ??= name;
       s = s.replace(re, " ");
       break;
     }
@@ -272,6 +335,7 @@ export function interpretQuery(q: string | undefined | null): SearchIntent {
   for (const [phrase, slug] of REGION_PHRASES) {
     const re = wordRe(phrase);
     if (re.test(s)) {
+      if (!intent.country && !intent.region) from.region = phrase;
       if (!intent.country) intent.region ??= slug;
       s = s.replace(re, " ");
     }
@@ -281,22 +345,39 @@ export function interpretQuery(q: string | undefined | null): SearchIntent {
   const kept: string[] = [...phrases];
   for (const w of words) {
     if (REMOTE_WORDS.has(w)) intent.remote = true;
-    else if (INTERNSHIP_WORDS.has(w)) intent.type = "Internship";
-    else if (CONSULTANCY_WORDS.has(w)) intent.type ??= "Consultancy";
-    else if (VOLUNTEER_WORDS.has(w)) intent.type ??= "Volunteer";
-    else if (FELLOWSHIP_WORDS.has(w)) intent.type ??= "Fellowship";
+    else if (INTERNSHIP_WORDS.has(w)) { intent.type = "Internship"; from.type = w; }
+    else if (CONSULTANCY_WORDS.has(w)) { from.type = intent.type ? from.type : w; intent.type ??= "Consultancy"; }
+    else if (VOLUNTEER_WORDS.has(w)) { from.type = intent.type ? from.type : w; intent.type ??= "Volunteer"; }
+    else if (FELLOWSHIP_WORDS.has(w)) { from.type = intent.type ? from.type : w; intent.type ??= "Fellowship"; }
     // One language: a second one ("french arabic") stays a search word.
     else if (languageFromWord(w) && (intent.lang ?? languageFromWord(w)) === languageFromWord(w)) intent.lang = languageFromWord(w)!;
     else if (!STOP_WORDS.has(w)) kept.push(w);
   }
   intent.text = kept.length ? kept.join(" ") : null;
-  return intent;
+  return { intent, from };
 }
 
-/** Postgres regex for a word (or the start of one, for longer words) as a whole token. */
+/**
+ * The singular of a search word, for matching: "engineers" → "engineer", "nurses" → "nurse",
+ * "branches" → "branch". Words under 5 letters and ones ending in -ss, -us or -is are left alone
+ * ("class", "status", "analysis"); "-ies" is handled by wordPattern.
+ */
+export function singular(term: string): string {
+  if (term.length < 5 || !/^[a-z0-9]+$/.test(term)) return term;
+  if (/(ss|us|is|ies)$/.test(term)) return term;
+  if (/(ches|shes|sses|xes|zes)$/.test(term)) return term.slice(0, -2);
+  return term.endsWith("s") ? term.slice(0, -1) : term;
+}
+
+/**
+ * Postgres regex for a word (or the start of one, for longer words) as a whole token. A plural
+ * finds the singular too: "engineers" matches "Engineer", "agencies" matches "Agency".
+ */
 export function wordPattern(term: string): string {
-  const esc = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return term.length <= 4 ? `\\m${esc}\\M` : `\\m${esc}`;
+  const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (term.length <= 4) return `\\m${esc(term)}\\M`;
+  if (/^[a-z0-9]+ies$/.test(term) && term.length >= 7) return `\\m${esc(term.slice(0, -3))}(y|ies)`;
+  return `\\m${esc(singular(term))}`;
 }
 
 /**
@@ -305,7 +386,9 @@ export function wordPattern(term: string): string {
  * "procure" → Procurement and logistics). Never "Other".
  */
 export function categoriesForWord(word: string): string[] {
-  const w = word.toLowerCase();
+  const abbr = ABBREVIATIONS[word.toLowerCase()];
+  if (abbr) return abbr.categories;
+  const w = singular(word.toLowerCase());
   if (!/^[a-z0-9]+$/.test(w)) return [];
   return CATEGORIES.filter((c) =>
     c.name.toLowerCase().split(/[^a-z0-9]+/).some((x) => x && x !== "and" && (x === w || (w.length > 4 && x.startsWith(w)))),

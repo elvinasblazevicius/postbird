@@ -36,7 +36,22 @@ const NOT_COUNTRIES = ["new jersey", "new south wales", "new mexico"];
 type Name = { key: string; code: string };
 
 /** Every country name and alias, normalized, longest first. */
-const NAMES: Name[] = COUNTRIES.flatMap((c) => [c.name, ...c.aliases].map((n) => ({ key: normalizePlace(n).trim(), code: c.code })))
+/**
+ * Names some sources write the other way round. Without them "Sudan, Republic of South" would be
+ * read as Sudan and "Congo, The Dem. Rep. Of" as the Republic of the Congo.
+ */
+const INVERTED_NAMES: [string, string][] = [
+  ["Sudan, Republic of South", "SS"], ["Sudan, South", "SS"],
+  ["Congo, The Dem. Rep. Of", "CD"], ["Congo, Dem. Rep. Of", "CD"], ["Congo, Dem. Rep.", "CD"], ["Congo, The Democratic Republic of the", "CD"], ["Congo, Democratic Republic", "CD"],
+  ["Korea, Dem. People's Rep. Of", "KP"], ["Korea, Democratic People's Republic of", "KP"], ["Korea, North", "KP"],
+  ["Korea, South", "KR"],
+  ["Guinea, Equatorial", "GQ"], ["Macedonia, North", "MK"],
+];
+
+const NAMES: Name[] = [
+  ...COUNTRIES.flatMap((c) => [c.name, ...c.aliases].map((n) => ({ key: normalizePlace(n).trim(), code: c.code }))),
+  ...INVERTED_NAMES.map(([n, code]) => ({ key: normalizePlace(n).trim(), code })),
+]
   .filter((n) => n.key.length >= 2)
   .filter((n, i, all) => all.findIndex((m) => m.key === n.key && m.code === n.code) === i)
   .sort((a, b) => b.key.length - a.key.length);

@@ -26,21 +26,34 @@ export function isLocalOnlyGrade(grade: string | null | undefined): boolean {
  * One list for both rules below, so JavaScript and SQL agree.
  */
 const LOCAL_TITLE_WORDS = [
-  "national (professional )?officers?",
+  "national (professional |project |programme |program )?officers?",
   "npos?",
   "national (individual )?consultants?",
+  "consultante? nationale?",
+  "consultora? nacional",
   "national (un )?volunteers?",
+  "national posts?",
   "locally[- ]recruited",
+  "nationals of [a-z' -]{3,40} only",
+  "(open|opened) (to|for) (the )?nationals",
   "gs-?[1-7]",
   "g-[1-7]",
-  "no-[a-e]",
+  // "G6" without a hyphen; never "G7" (the group of seven) nor "G5 Sahel" (an organization).
+  "g[2-6](?! sahel)",
+  // National Officer levels: NO-A to NO-E, UNICEF's NO-1 to NO-5, and "NOB" written together.
+  "no-?[a-e1-5]",
+  // Service contracts and local service agreements: SC5, SC-5, SB-3, NPSA 8, LICA-6.
+  "s[bc]-?[1-9][0-9]?",
+  "npsa[- ]?[0-9]{1,2}",
+  "lica[- ]?[0-9]{1,2}",
 ];
 /**
  * IOM marks General Service vacancies with "(G)" at the end of the title and Professional ones with
  * "(P)" (sometimes followed by " - Place"). Postgres and JavaScript regexes for the lower-cased title.
  */
 const IOM_SUFFIX = (letter: "g" | "p") => `\\(${letter}\\)(\\s*$|\\s+[-–—|,])`;
-const LOCAL_TITLE_SUFFIX = IOM_SUFFIX("g");
+/** "(National)" in brackets, or IOM's "(G)" suffix: not whole words, so beside the word list. */
+const LOCAL_TITLE_SUFFIX = `${IOM_SUFFIX("g")}|\\(national\\)`;
 export const GENERAL_SERVICE_TITLE_SQL = IOM_SUFFIX("g");
 export const PROFESSIONAL_TITLE_SQL = IOM_SUFFIX("p");
 const GENERAL_SERVICE_TITLE_RE = new RegExp(GENERAL_SERVICE_TITLE_SQL);
@@ -51,7 +64,7 @@ export const LOCAL_ONLY_TITLE_SQL = `\\m(${LOCAL_TITLE_WORDS.join("|")})\\M|${LO
 const LOCAL_ONLY_TITLE_RE = new RegExp(`(?<![a-z0-9])(${LOCAL_TITLE_WORDS.join("|")})(?![a-z0-9])|${LOCAL_TITLE_SUFFIX}`);
 
 /** Titles that name the National Officer category, from which the grade group NO is inferred. */
-const NATIONAL_OFFICER_WORDS = "national (professional )?officers?|npos?";
+const NATIONAL_OFFICER_WORDS = "national (professional |project |programme |program )?officers?|npos?|no-?[a-e1-5]";
 export const NATIONAL_OFFICER_TITLE_SQL = `\\m(${NATIONAL_OFFICER_WORDS})\\M`;
 const NATIONAL_OFFICER_TITLE_RE = new RegExp(`(?<![a-z0-9])(${NATIONAL_OFFICER_WORDS})(?![a-z0-9])`);
 
