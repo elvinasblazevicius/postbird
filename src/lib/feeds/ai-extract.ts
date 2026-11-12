@@ -98,7 +98,8 @@ export function checkFacts(f: AiFacts, pageText: string, today = new Date()): Ch
   }
   const g = quoted("grade", f.grade);
   if (g) {
-    if (/^[A-Z]{1,4}-?\d{1,2}$|^NO-?[A-E]$|^[DP]-?\d$/i.test(g)) out.grade = g.toUpperCase(); else out.rejected.push(`grade: "${g}" not a grade`);
+    // UN grades (P-3, NO-B, G-5, FS-4) and EU or ESA ranges (AD9-AD11, AST 3, A2 - A4).
+    if (/^([A-Z]{1,4} ?-?\d{1,2}|NO-?[A-E])( ?[-–] ?([A-Z]{1,4} ?-?)?\d{1,2})?$/i.test(g)) out.grade = g.toUpperCase().replace(/\s+/g, " "); else out.rejected.push(`grade: "${g}" not a grade`);
   }
   return out;
 }

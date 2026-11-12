@@ -51,8 +51,8 @@ export function AlertsChoice({ weeklyHref, trialHref, source, onBand = false }: 
         </span>
       </div>
       <ul className="space-y-1.5 text-sm leading-snug text-tint-ink">
+        <li className="flex gap-2"><Check />New matches every day</li>
         <li className="flex gap-2"><Check /><span><strong className="text-ink">Closing-date reminders:</strong> your matching vacancies that close in the next {CLOSING_SOON_DAYS} days</span></li>
-        <li className="flex gap-2"><Check />New matches once a day</li>
         <li className="flex gap-2"><Check />Up to {MAX_SAVED_SEARCHES} searches</li>
       </ul>
       <p className="text-[0.8125rem] leading-snug text-slate">
