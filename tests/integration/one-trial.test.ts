@@ -545,7 +545,7 @@ describe.skipIf(!TEST_DB)("one free trial per email address (database)", () => {
     const sub = "sub_01hv8x29kz0t586xy6zn1a75ab";
     const out = await billing.handlePaddleEvent(subEvent("subscription.created", {
       id: sub, status: "trialing", customer_id: null, custom_data: { ref: "ref-variant-0123456789abcd" },
-      billing_cycle: { interval: "month", frequency: 1 }, items: [{ price: { id: PRICE_MONTHLY }, trial_dates: { starts_at: "2026-11-09T10:00:00Z", ends_at: "2026-11-23T10:00:00Z" } }],
+      billing_cycle: { interval: "month", frequency: 1 }, items: [{ price: { id: PRICE_MONTHLY }, trial_dates: { starts_at: new Date(Date.now() - 86_400_000).toISOString(), ends_at: new Date(Date.now() + 13 * 86_400_000).toISOString() } }],
     }));
     expect(out).toEqual({ outcome: "flagged", cancel: { subscriptionId: sub, kind: "trial_blocked" } });
     expect((await sql`select kind from billing_flags where subscription_id = ${sub}`)[0].kind).toBe("trial_blocked");

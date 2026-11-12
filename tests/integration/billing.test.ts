@@ -60,6 +60,15 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
   let paddleDown = false;
   let eventSeq = 0;
 
+  // The trial in these events started yesterday (so no day-3 or day-10 reminder is due while the
+  // tests run, whatever the date) and lasts 14 days; the first paid period follows it.
+  const noMs = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, "Z");
+  const TRIAL_START = new Date(Math.floor((Date.now() - 86_400_000) / 1000) * 1000);
+  const TRIAL_END = new Date(TRIAL_START.getTime() + 14 * 86_400_000);
+  const PERIOD_END = new Date(TRIAL_END.getTime() + 92 * 86_400_000);
+  /** "23 Nov 2026", as the emails write dates. */
+  const emailDate = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+
   /** A Paddle subscription event as the webhook delivers it. */
   function subEvent(type: string, over: Record<string, unknown> = {}, occurredAt = new Date().toISOString()) {
     return {
@@ -73,11 +82,11 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
         customer_id: CUSTOMER,
         custom_data: null,
         billing_cycle: { interval: "month", frequency: 3 },
-        current_billing_period: { starts_at: "2026-11-09T10:00:00Z", ends_at: "2026-11-23T10:00:00Z" },
-        next_billed_at: "2026-11-23T10:00:00Z",
+        current_billing_period: { starts_at: noMs(TRIAL_START), ends_at: noMs(TRIAL_END) },
+        next_billed_at: noMs(TRIAL_END),
         canceled_at: null,
         scheduled_change: null,
-        items: [{ price: { id: "pri_test" }, trial_dates: { starts_at: "2026-11-09T10:00:00Z", ends_at: "2026-11-23T10:00:00Z" } }],
+        items: [{ price: { id: "pri_test" }, trial_dates: { starts_at: noMs(TRIAL_START), ends_at: noMs(TRIAL_END) } }],
         ...over,
       },
     };
@@ -183,7 +192,7 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       // The customer was checked against the address (Paddle's email, compared case-insensitively) before it was linked.
       expect(s.paddle_customer_verified_at).not.toBeNull();
       expect(paddleCalls).toEqual([`GET /customers/${CUSTOMER}`]);
-      expect(new Date(s.trial_ends_at).toISOString()).toBe("2026-11-23T10:00:00.000Z");
+      expect(new Date(s.trial_ends_at).toISOString()).toBe(TRIAL_END.toISOString());
       // The confirmation email went out (and its claim was closed), not the welcome.
       expect(s.confirm_token).toBeTruthy();
       expect(s.confirm_sent_at).not.toBeNull();
@@ -194,8 +203,8 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       // Written for whoever started the trial: its end, the price, the deadline to confirm, and
       // the account link (it works before confirming) to cancel straight away.
       expect(sent[0].text).toContain("You started a 14-day free trial of Postbird daily alerts. Confirm this address to start your alerts.");
-      expect(sent[0].text).toContain("Your trial ends on 23 Nov 2026; then $19.99 every 3 months, renewing automatically until you cancel.");
-      expect(sent[0].text).toContain("If you don't confirm by 21 Nov 2026, we cancel the trial and nothing is charged.");
+      expect(sent[0].text).toContain(`Your trial ends on ${emailDate(TRIAL_END)}; then $19.99 every 3 months, renewing automatically until you cancel.`);
+      expect(sent[0].text).toContain(`If you don't confirm by ${emailDate(new Date(TRIAL_END.getTime() - 2 * 86_400_000))}, we cancel the trial and nothing is charged.`);
       expect(sent[0].text).toContain("Didn't start this? Ignore this email and nothing will be charged.");
       expect(sent[0].text).toMatch(/Your account: http:\/\/localhost:3000\/account\?t=[0-9a-f]{64}/);
       const [ev] = await sql`select type, visitor, props from events where type = 'trial_started'`;
@@ -232,12 +241,12 @@ describe.skipIf(!TEST_DB)("paid alerts (database)", () => {
       const earlier = new Date(Date.now() - 60_000).toISOString();
       await billing.handlePaddleEvent(subEvent("subscription.activated", {
         status: "active", custom_data: { ref }, items: [{ price: { id: "pri_test" } }],
-        current_billing_period: { starts_at: "2026-11-23T10:00:00Z", ends_at: "2027-02-23T10:00:00Z" },
+        current_billing_period: { starts_at: noMs(TRIAL_END), ends_at: noMs(PERIOD_END) },
       }, later));
       expect((await billing.handlePaddleEvent(subEvent("subscription.updated", { custom_data: { ref } }, earlier))).outcome).toBe("stale");
       const [s] = await sql`select billing_status, current_period_end from subscribers where paddle_subscription_id = ${SUB_ID}`;
       expect(s.billing_status).toBe("active");
-      expect(new Date(s.current_period_end).toISOString()).toBe("2027-02-23T10:00:00.000Z");
+      expect(new Date(s.current_period_end).toISOString()).toBe(PERIOD_END.toISOString());
     });
 
     it("finds the subscriber by subscription id when customData is missing, and records a cancellation once", async () => {
