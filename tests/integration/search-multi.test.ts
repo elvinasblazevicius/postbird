@@ -67,7 +67,9 @@ describe.skipIf(!TEST_DB)("several values per filter, and typos (database)", () 
     const f = await jobs.filteredFacets({ grade: ["P-3", "P-4"], country: ["kenya", "ethiopia"] });
     // Kenya or Ethiopia, P-3 or P-4 → Finance Officer. Without the place: 2; without the grade: 2.
     expect(f.without).toEqual({ where: 2, grade: 2 });
-    expect(f.grades.map((g) => g.grade).sort()).toEqual(["G-5", "P-3"]);
+    expect(f.grades.filter((g) => g.count > 0).map((g) => g.grade).sort()).toEqual(["G-5", "P-3"]);
+    // Grades seen before but without vacancies for this search stay offered, with 0.
+    expect(f.grades.filter((g) => g.count === 0).length).toBeGreaterThan(0);
     expect(f.countries.find((c) => c.slug === "uganda")?.count).toBe(1);
   });
 

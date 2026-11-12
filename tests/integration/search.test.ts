@@ -93,8 +93,9 @@ describe.skipIf(!TEST_DB)("job search (database)", () => {
   it("gives option counts for the other filters and the count without each filter", async () => {
     const f = await jobs.filteredFacets({ country: ["kenya"], grade: ["D-1"] });
     expect(f.without).toEqual({ where: 1, grade: 2 });
-    expect(f.grades.map((g) => g.grade).sort()).toEqual(["NO-B", "P-4"]);
+    expect(f.grades.filter((g) => g.count > 0).map((g) => g.grade).sort()).toEqual(["NO-B", "P-4"]);
     expect(f.countries.find((c) => c.slug === "sudan")?.count).toBe(1);
-    expect(f.countries.find((c) => c.slug === "kenya")).toBeUndefined();
+    // Kenya has no vacancies for this search but had some before: still offered, with 0.
+    expect(f.countries.find((c) => c.slug === "kenya")?.count ?? 0).toBe(0);
   });
 });

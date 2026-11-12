@@ -8,7 +8,6 @@ import { gradeLabel } from "@/lib/grades";
 import { activeFilterCount, countJobs, derivedFilters, EXPERIENCE_BANDS, filteredFacets, getOrganizations, jobsUrl, latestJobs, searchJobs, searchSuggestion, withSearchIntent, type FilteredFacets, type FilterKey, type JobFilters } from "@/lib/jobs";
 import { interpretQuery } from "@/lib/search-intent";
 import siteConfig from "@site-config";
-import { BILLING_LIVE } from "@/lib/billing/live";
 import { JobList } from "./job-card";
 import { FilterForm } from "./search-forms";
 import { TrackedLink } from "./tracking";
@@ -263,13 +262,15 @@ export async function JobsBrowser({
                 <li key={c.label}><ChipLink chip={c} /></li>
               ))}
             </ul>
-            {chips.some((c) => c.fromSearch) ? <p className="mt-2 text-xs text-slate">Some of these filters were read from your search words.</p> : null}
           </div>
         ) : null}
 
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="results-heading" className="font-sans text-base font-medium text-slate">
-            {resultsHeading({ total: result.total, from, to, pages: result.pages, sort: result.sort, showTotal })}
+          <h2 id="results-heading" className="font-sans text-[1.05rem] font-semibold text-ink">
+            {/* A fallback (some of the words, or similar words) never reads as a match. */}
+            {result.matchMode === "any"
+              ? `No exact matches · ${result.total.toLocaleString("en-US")} similar ${result.total === 1 ? "vacancy" : "vacancies"}`
+              : resultsHeading({ total: result.total, from, to, pages: result.pages, sort: result.sort, showTotal })}
           </h2>
           {result.total > 0 ? (
             <div className="flex items-center gap-1 text-sm" aria-label="Sort">
@@ -297,10 +298,10 @@ export async function JobsBrowser({
         </div>
 
         {unstatedHref ? (
-          <p className="mb-4 text-[0.95rem] text-slate">
-            Only vacancies that state {andList(derived.map((k) => STATED_DETAIL[k]))} are shown.{" "}
-            {unstatedMore.toLocaleString("en-US")} more {derived.length > 1 ? "don't state all of these" : `don't state ${derived[0] === "lang" ? "them" : derived[0] === "exp" ? "it" : "one"}`}.{" "}
-            <Link href={unstatedHref} className="whitespace-nowrap font-medium text-accent underline underline-offset-2">Show them too</Link>
+          <p className="mb-3 text-sm text-slate" title={`Only vacancies that state ${andList(derived.map((k) => STATED_DETAIL[k]))} are shown.`}>
+            <Link href={unstatedHref} className="font-medium text-accent underline underline-offset-2">
+              + {unstatedMore.toLocaleString("en-US")} that don&apos;t state {andList(derived.map((k) => STATED_DETAIL[k]))}
+            </Link>
           </p>
         ) : null}
 
@@ -315,23 +316,13 @@ export async function JobsBrowser({
 
         {/* Not for an any-word fallback: alerts match every word, so they would not send these jobs. */}
         {result.total > 0 && result.matchMode === "all" ? (
-          <p className="mb-4 flex items-start gap-2 text-[0.95rem] text-ink">
-            <svg viewBox="0 0 16 16" className="mt-1 h-4 w-4 shrink-0 text-accent" aria-hidden="true"><path d="M8 2a4 4 0 0 0-4 4v2.5L2.5 11h11L12 8.5V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
+          <p className="mb-4 flex items-start gap-2 text-sm text-ink">
+            <svg viewBox="0 0 16 16" className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true"><path d="M8 2a4 4 0 0 0-4 4v2.5L2.5 11h11L12 8.5V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
             {siteConfig.freeWeeklyEmail ? (
-              <span>
-                <Link href={`/alerts?search=${encodeURIComponent(alertSearch)}#alert-signup`} className="font-medium text-accent underline underline-offset-2 hover:text-brand">
-                  Get new matches for this search in a free weekly email
-                </Link>
-                <span className="text-slate"> · or </span>
-                <TrackedLink
-                  href={`/pricing/trial?search=${encodeURIComponent(alertSearch)}`}
-                  event="premium_cta_click"
-                  source="search-alert"
-                  className="font-medium text-accent underline underline-offset-2 hover:text-brand"
-                >
-                  {BILLING_LIVE ? `daily alerts (paid plan, ${siteConfig.premium.trialDays}-day free trial)` : "daily alerts (paid plan)"}
-                </TrackedLink>
-              </span>
+              // One short link: the alerts page offers the free weekly email and daily alerts for this search.
+              <Link href={`/alerts?search=${encodeURIComponent(alertSearch)}`} className="font-medium text-accent underline underline-offset-2 hover:text-brand">
+                Get email alerts for this search
+              </Link>
             ) : (
               <TrackedLink
                 href={`/pricing/trial?search=${encodeURIComponent(alertSearch)}`}

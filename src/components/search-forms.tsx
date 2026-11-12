@@ -61,22 +61,22 @@ const withCount = (name: string, count: number) => `${name} (${count})`;
 /** The chosen places as "where" values: "region-africa", "kenya". */
 const chosenPlaces = (f: JobFilters) => [...(f.region ?? []).map((r) => `region-${r}`), ...(f.country ?? [])];
 
-/** Regions first, then countries, with their counts (the type-ahead picker). Options without jobs are left out, except the ones chosen. */
-function placeChoices(facets: FacetData, filters: JobFilters): ComboGroup[] {
+/** Regions first, then countries, with their counts (the type-ahead picker). Places with no vacancies for this search stay offered (count 0). */
+function placeChoices(facets: FacetData): ComboGroup[] {
   return [
-    { label: "Regions", options: facets.regions.filter((r) => r.count > 0 || filters.region?.includes(r.slug)).map((r) => ({ value: `region-${r.slug}`, name: r.name, count: r.count })) },
-    { label: "Countries", options: facets.countries.filter((c) => c.count > 0 || filters.country?.includes(c.slug)).map((c) => ({ value: c.slug, name: c.name, count: c.count, keys: countryBySlug(c.slug)?.aliases })) },
+    { label: "Regions", options: facets.regions.map((r) => ({ value: `region-${r.slug}`, name: r.name, count: r.count })) },
+    { label: "Countries", options: facets.countries.map((c) => ({ value: c.slug, name: c.name, count: c.count, keys: countryBySlug(c.slug)?.aliases })) },
   ];
 }
 
 /** The same as native select groups: "Kenya (12)". */
-function placeGroups(facets: FacetData, filters: JobFilters): Group[] {
-  return placeChoices(facets, filters).map((g) => ({ label: g.label, options: g.options.map((o) => ({ value: o.value, label: withCount(o.name, o.count ?? 0) })) }));
+function placeGroups(facets: FacetData): Group[] {
+  return placeChoices(facets).map((g) => ({ label: g.label, options: g.options.map((o) => ({ value: o.value, label: withCount(o.name, o.count ?? 0) })) }));
 }
 
 /** One "Where" field (the homepage search): world regions first, then countries. */
 export function WhereSelect({ facets, filters, idPrefix, label = "Where", name = "where" }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string; name?: string }) {
-  return <Select idPrefix={idPrefix} name={name} label={label} all="Anywhere" value={chosenPlaces(filters)[0]} groups={placeGroups(facets, filters)} />;
+  return <Select idPrefix={idPrefix} name={name} label={label} all="Anywhere" value={chosenPlaces(filters)[0]} groups={placeGroups(facets)} />;
 }
 
 /** The other names an organization is found by in the picker: its short name and aliases ("IOM", "MSF", "Doctors Without Borders"). */
@@ -158,9 +158,9 @@ function RepeatSelect({ name, label, idPrefix, chosen, groups, anyLabel, chooseL
 export function WhereFields({ facets, filters, idPrefix, label = "Where", name = "where", placeholder = "Anywhere: type a place" }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string; name?: string; placeholder?: string }) {
   const chosen = chosenPlaces(filters);
   return (
-    <MultiCombobox name={name} label={label} idPrefix={idPrefix} groups={placeChoices(facets, filters)} chosen={chosen} max={MAX_PLACES}
+    <MultiCombobox name={name} label={label} idPrefix={idPrefix} groups={placeChoices(facets)} chosen={chosen} max={MAX_PLACES}
       placeholder={placeholder} itemNoun="place" itemsNoun="places" anyHint="Jobs in any of the places you choose">
-      <RepeatSelect name={name} label={label} idPrefix={idPrefix} chosen={chosen} groups={placeGroups(facets, filters)} max={MAX_PLACES}
+      <RepeatSelect name={name} label={label} idPrefix={idPrefix} chosen={chosen} groups={placeGroups(facets)} max={MAX_PLACES}
         anyLabel="Anywhere" chooseLabel="Choose a place" addLabel="Add another place" addHint="Jobs in any of the places you choose" removeLabel="Remove this place" itemNoun="place" />
     </MultiCombobox>
   );
@@ -172,7 +172,8 @@ export function WhereFields({ facets, filters, idPrefix, label = "Where", name =
  */
 export function OrgFields({ facets, filters, idPrefix, name = "org", counts = true }: { facets: FacetData; filters: JobFilters; idPrefix: string; name?: string; counts?: boolean }) {
   const chosen = filters.org ?? [];
-  const orgs = facets.orgs.filter((o) => o.count > 0 || chosen.includes(o.slug));
+  // Organizations without vacancies for this search stay offered, after the others (count 0).
+  const orgs = [...facets.orgs.filter((o) => o.count > 0 || chosen.includes(o.slug)), ...facets.orgs.filter((o) => o.count === 0 && !chosen.includes(o.slug))];
   const options = orgs.map((o) => ({ value: o.slug, label: counts ? withCount(o.name, o.count) : o.name }));
   return (
     <MultiCombobox name={name} label="Organization" idPrefix={idPrefix} groups={[{ label: "", options: orgs.map((o) => ({ value: o.slug, name: o.name, count: counts ? o.count : undefined, keys: orgKeys(o.name) })) }]}
@@ -253,13 +254,14 @@ function GradeChecks({ facets, filters }: { facets: FacetData; filters: JobFilte
  */
 function CheckList({ name, label, options, selected, visible = 6 }: { name: string; label: string; options: { value: string; label: string; count?: number }[]; selected?: string[]; visible?: number }) {
   const chosen = new Set(selected ?? []);
-  const shown = options.filter((o) => (o.count ?? 1) > 0 || chosen.has(o.value));
+  // Every choice stays in the list; ones with no vacancies for this search come last, in grey.
+  const shown = [...options.filter((o) => (o.count ?? 1) > 0 || chosen.has(o.value)), ...options.filter((o) => o.count === 0 && !chosen.has(o.value))];
   if (!shown.length) return null;
   const box = (o: (typeof shown)[number]) => (
     <li key={o.value}>
       <label className="flex cursor-pointer items-center gap-2 py-1 text-[0.95rem] text-ink">
         <input type="checkbox" name={name} value={o.value} defaultChecked={chosen.has(o.value)} className="h-4 w-4 shrink-0 accent-[var(--accent)]" />
-        <span>{o.label}{o.count !== undefined ? <> <span className="text-slate">({o.count})</span></> : null}</span>
+        <span className={o.count === 0 && !chosen.has(o.value) ? "text-slate" : undefined}>{o.label}{o.count !== undefined ? <> <span className="text-slate">({o.count})</span></> : null}</span>
       </label>
     </li>
   );
@@ -304,13 +306,13 @@ function MoreFilterFields({ idPrefix, filters, facets, hideOrgType = false, part
         <CheckList name="type" label="Contract type" selected={filters.type}
           options={JOB_TYPES.map((t) => ({ value: t, label: t, count: facets.types!.find((x) => x.job_type === t)?.count ?? 0 }))} />
       ) : null}
-      {checks && facets.exps && (facets.exps.some((e) => e.count) || filters.exp?.length) ? (
+      {checks && facets.exps ? (
         <CheckList name="exp" label="Experience required" selected={filters.exp}
-          options={facets.exps.filter((e) => e.count || filters.exp?.includes(e.value)).map((e) => ({ value: e.value, label: e.name, count: e.count }))} />
+          options={facets.exps.map((e) => ({ value: e.value, label: e.name, count: e.count }))} />
       ) : null}
       {checks && facets.langs && (facets.langs.some((l) => l.count) || filters.lang?.length) ? (
         <CheckList name="lang" label="Language" selected={filters.lang} visible={6}
-          options={[...facets.langs.filter((l) => l.count || filters.lang?.includes(l.lang)), ...(filters.lang ?? []).filter((x) => !facets.langs!.some((l) => l.lang === x)).map((x) => ({ lang: x, count: 0 }))]
+          options={[...facets.langs, ...(filters.lang ?? []).filter((x) => !facets.langs!.some((l) => l.lang === x)).map((x) => ({ lang: x, count: 0 }))]
             .map((l) => ({ value: l.lang, label: l.lang, count: l.count }))} />
       ) : null}
       {checks && !hideOrgType && facets.orgTypes ? (

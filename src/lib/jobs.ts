@@ -434,7 +434,8 @@ function looseWordCondition(t: string): Frag {
   const folded = foldText(t);
   if (folded.length < TYPO_MIN_LENGTH || folded.includes(" ")) return wordCondition(t);
   const stem = loosePrefix(t);
-  const prefix = stem && stem !== folded ? sql` or pb_fold(j.title) ~ ${`\\m${stem}`} or j.search_folded @@ to_tsquery('simple', ${`${stem}:*`})` : sql``;
+  // Similar words only in the TITLE: in running text a word start ("unit" in "United") finds unrelated vacancies.
+  const prefix = stem && stem !== folded ? sql` or pb_fold(j.title) ~ ${`\\m${stem}`}` : sql``;
   return sql`(${wordCondition(t)}${prefix} or pb_word_similarity(${folded}, pb_fold(j.title)) >= ${TYPO_TITLE_SIMILARITY})`;
 }
 
@@ -1065,7 +1066,54 @@ export type FilteredFacets = {
  * out its own filter, so you can switch between its options. One query over the open listings.
  * `mode` is the match mode the results used (see searchJobs).
  */
+/**
+ * Every organization, country, language, grade and contract type any listing has ever had (open
+ * or not), so a filter keeps offering a choice after its last vacancy closes (shown with 0).
+ * Read at most once an hour.
+ */
+type EverSeen = { orgs: { slug: string; name: string }[]; countries: string[]; languages: string[]; grades: string[]; types: string[] };
+let everSeenCache: { at: number; value: EverSeen } | null = null;
+async function everSeen(): Promise<EverSeen> {
+  if (everSeenCache && Date.now() - everSeenCache.at < 3_600_000) return everSeenCache.value;
+  const [r] = await transaction(async (tx) => await tx<EverSeen[]>`
+    select
+      (select coalesce(json_agg(json_build_object('slug', o.slug, 'name', o.name) order by o.name), '[]'::json)
+         from organizations o where exists (select 1 from jobs j where j.organization_id = o.id and not j.is_demo)) as orgs,
+      (select coalesce(array_agg(distinct country_code), '{}') from jobs where country_code is not null and not is_demo) as countries,
+      (select coalesce(array_agg(distinct l), '{}') from jobs, unnest(languages) l where not is_demo) as languages,
+      (select coalesce(array_agg(distinct grade), '{}') from jobs where grade is not null and not is_demo) as grades,
+      (select coalesce(array_agg(distinct job_type), '{}') from jobs where job_type is not null and not is_demo) as types`);
+  everSeenCache = { at: Date.now(), value: r };
+  return r;
+}
+
+/** Adds the choices that once had vacancies but have none for this search, with a count of 0, after the others. */
+function withEverSeen(f: FilteredFacets, e: EverSeen): FilteredFacets {
+  const has = <T,>(list: T[], key: (x: T) => string) => new Set(list.map(key));
+  const orgSet = has(f.orgs, (o) => o.slug);
+  const countrySet = has(f.countries, (c) => c.code);
+  const langSet = has(f.langs, (l) => l.lang);
+  const gradeSet = has(f.grades, (g) => g.grade);
+  const typeSet = has(f.types, (t) => t.job_type);
+  return {
+    ...f,
+    orgs: [...f.orgs, ...e.orgs.filter((o) => !orgSet.has(o.slug)).map((o) => ({ ...o, count: 0 }))],
+    countries: [...f.countries, ...e.countries.filter((c) => !countrySet.has(c)).flatMap((code) => {
+      const c = countryByCode(code);
+      return c ? [{ code, slug: c.slug, name: c.name, count: 0 }] : [];
+    }).sort((a, b) => a.name.localeCompare(b.name))],
+    langs: [...f.langs, ...e.languages.filter((l) => !langSet.has(l)).sort().map((lang) => ({ lang, count: 0 }))],
+    grades: [...f.grades, ...e.grades.filter((g) => !gradeSet.has(g)).map((grade) => ({ grade, count: 0 }))],
+    types: [...f.types, ...e.types.filter((t) => !typeSet.has(t)).map((job_type) => ({ job_type, count: 0 }))],
+  };
+}
+
 export async function filteredFacets(input: JobFilters, mode: MatchMode = "all"): Promise<FilteredFacets> {
+  const [f, e] = await Promise.all([filteredFacetsNow(input, mode), everSeen().catch(() => null)]);
+  return e ? withEverSeen(f, e) : f;
+}
+
+async function filteredFacetsNow(input: JobFilters, mode: MatchMode = "all"): Promise<FilteredFacets> {
   const f = withSearchIntent(input);
   const conds = filterConditions(f, mode);
   const active = FILTER_KEYS.filter((k) => conds[k]);

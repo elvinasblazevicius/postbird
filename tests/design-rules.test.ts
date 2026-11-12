@@ -49,12 +49,12 @@ describe("languages re-read from a stored summary", () => {
 describe("results heading", () => {
   const base = { from: 1, to: 20, pages: 3, sort: "newest" as const, showTotal: true };
   it("reads the same everywhere", () => {
-    expect(resultsHeading({ ...base, total: 0 })).toBe("No open vacancies match");
-    expect(resultsHeading({ ...base, total: 1, pages: 1 })).toBe("1 open vacancy");
-    expect(resultsHeading({ ...base, total: 5, to: 5, pages: 1 })).toBe("Newest first · 5 open vacancies");
-    expect(resultsHeading({ ...base, total: 5, to: 5, pages: 1, showTotal: false })).toBe("Newest first · 5 open vacancies");
-    expect(resultsHeading({ ...base, total: 1340, from: 21, to: 40 })).toBe("Newest first · 21–40 of 1,340");
-    expect(resultsHeading({ ...base, total: 45, from: 21, to: 40, showTotal: false, sort: "deadline" })).toBe("Closing soonest first · 21–40");
+    expect(resultsHeading({ ...base, total: 0 })).toBe("No vacancies found");
+    expect(resultsHeading({ ...base, total: 1, pages: 1 })).toBe("1 vacancy found");
+    expect(resultsHeading({ ...base, total: 5, to: 5, pages: 1 })).toBe("5 vacancies found");
+    expect(resultsHeading({ ...base, total: 5, to: 5, pages: 1, showTotal: false })).toBe("5 vacancies found");
+    expect(resultsHeading({ ...base, total: 1340, from: 21, to: 40 })).toBe("1,340 vacancies found · showing 21–40");
+    expect(resultsHeading({ ...base, total: 45, from: 21, to: 40, showTotal: false, sort: "deadline" })).toBe("Showing 21–40");
   });
 });
 
