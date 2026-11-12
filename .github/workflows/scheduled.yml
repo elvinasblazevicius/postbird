@@ -36,7 +36,7 @@ on:
         required: true
         default: sync
         type: choice
-        options: [sync, digest, setup, diagnose, sources, feed-coverage, tidy-jobs-dry-run, tidy-jobs]
+        options: [sync, digest, setup, diagnose, sources, feed-coverage, tidy-jobs-dry-run, tidy-jobs, copy-database]
 
 # actions: read lets the job check that CI passed for this commit before it applies migrations.
 permissions:
@@ -80,6 +80,8 @@ jobs:
           TASK: ${{ github.event.schedule == '23 6 * * *' && 'digest' || inputs.task || 'sync' }}
           MIGRATE: ${{ steps.ci.outputs.migrate }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Only for the "copy-database" task (moving the database, README): the new database's address.
+          NEW_DATABASE_URL: ${{ secrets.NEW_DATABASE_URL }}
           NEXT_PUBLIC_SITE_URL: ${{ secrets.SITE_URL }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
