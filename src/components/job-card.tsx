@@ -9,6 +9,8 @@ import { SaveButton } from "./job-tools";
 import { LISTING_SETTINGS } from "@/config/import";
 import { daysUntil, formatShortDate, jobPath, locationLabel, NOT_SPECIFIED } from "@/lib/site";
 import { ClosingPostmark } from "./postmark";
+import { ApplyLink } from "./tracking";
+import { applyLinkKind } from "@/lib/apply-link";
 
 export function Tag({ children, tone = "plain" }: { children: React.ReactNode; tone?: "plain" | "lilac" | "remote" | "signal" | "demo" }) {
   const tones = {
@@ -93,7 +95,7 @@ function PlaceWithFlag({ code, where }: { code: string | null; where: string }) 
 /**
  * One vacancy as a compact two-line row: the title, then organization · location · grade · type,
  * with the closing date on the right (on phones, at the end of that line). The whole row is the link (its accessible name is the title);
- * the bookmark button sits above it.
+ * the bookmark button and the Apply button (straight to the employer's vacancy) sit above it.
  */
 export function JobCard({ job, headingLevel = 3, stamp = false }: { job: JobListItem; headingLevel?: 2 | 3; stamp?: boolean }) {
   const H = `h${headingLevel}` as "h2" | "h3";
@@ -155,9 +157,23 @@ export function JobCard({ job, headingLevel = 3, stamp = false }: { job: JobList
           ) : null}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-1 self-center text-right text-sm">
-        {stamp ? <Deadline deadline={job.deadline} /> : <span className={chip ? "max-sm:hidden" : ""}><DateChip deadline={job.deadline} /></span>}
-        <SaveButton compact job={{ id: job.id, path: href, title: job.title, org: job.org_name }} />
+      <div className="flex shrink-0 flex-col items-end gap-2 self-center text-right text-sm">
+        <div className="flex items-center gap-1">
+          {stamp ? <Deadline deadline={job.deadline} /> : <span className={chip ? "max-sm:hidden" : ""}><DateChip deadline={job.deadline} /></span>}
+          <SaveButton compact job={{ id: job.id, path: href, title: job.title, org: job.org_name }} />
+        </div>
+        {/* Straight to the employer's vacancy, above the row's link (relative z-10). A careers home page says so. */}
+        {job.apply_url ? (
+          <ApplyLink
+            href={job.apply_url}
+            jobId={job.id}
+            className="relative z-10 inline-flex items-center gap-1 rounded-md border border-accent/40 px-2.5 py-1 text-[0.8rem] font-semibold text-accent hover:border-accent hover:bg-accent hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            {applyLinkKind(job.apply_url) === "homepage" ? "Careers site" : "Apply"}
+            <span className="sr-only">: {job.title}{job.org_name ? `, ${job.org_name}` : ""} (opens the employer&apos;s site in a new tab)</span>
+            <svg viewBox="0 0 16 16" className="h-3 w-3" aria-hidden="true"><path d="M6 3h7v7M13 3 4 12" fill="none" stroke="currentColor" strokeWidth="1.8" /></svg>
+          </ApplyLink>
+        ) : null}
       </div>
     </article>
   );

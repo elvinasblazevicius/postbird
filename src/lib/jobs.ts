@@ -30,6 +30,8 @@ export type JobListItem = {
   deadline: string | null;
   status: string;
   is_demo: boolean;
+  /** The employer's vacancy page (the card's Apply button); absent where a list is built without it. */
+  apply_url?: string | null;
 };
 
 export type JobDetail = JobListItem & {
@@ -227,7 +229,7 @@ const listColumns = () => sql`
   j.id::int as id, j.slug, j.title, o.name as org_name, o.slug as org_slug, o.short_name as org_short,
   case when o.logo is not null and not ${logoProtectedSql("o")} then o.slug end as org_logo,
   j.country_code, j.city, j.location_text, j.is_remote, j.category, j.job_type, j.grade,
-  j.published_at, j.first_seen_at, j.deadline::text as deadline, j.status, j.is_demo`;
+  j.published_at, j.first_seen_at, j.deadline::text as deadline, j.status, j.is_demo, j.apply_url`;
 
 /** The location text normalized exactly like normalizePlace() in src/lib/country-match.ts. */
 const FOLD_FROM_SQL = [...FOLD_FROM].join("") + [...FOLD_FROM].map((c) => c.toUpperCase()).join("") + DROP_CHARS;
@@ -719,7 +721,7 @@ export async function closingSoonJobs(limit = 6) {
 
 export async function getJob(id: number): Promise<JobDetail | null> {
   const rows = await sql<JobDetail[]>`
-    select ${listColumns()}, j.languages, j.desirable_languages, j.min_experience_years, j.summary, j.description_html, j.content_policy, j.apply_url, j.apply_host, j.reference,
+    select ${listColumns()}, j.languages, j.desirable_languages, j.min_experience_years, j.summary, j.description_html, j.content_policy, j.apply_host, j.reference,
            o.org_type, j.updated_at, j.last_seen_at
     from jobs j left join organizations o on o.id = j.organization_id
     where j.id = ${id}`;
