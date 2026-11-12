@@ -143,6 +143,8 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
           {typeLabel ? <span className="rounded-md bg-tint px-2 py-0.5 text-[0.8125rem] font-semibold text-tint-ink">{typeLabel}</span> : null}
           {posted?.fresh ? <span className="rounded-md bg-[#ffe680] px-2 py-0.5 text-[0.8125rem] font-bold text-ink">New</span> : null}
           {localLabel ? <span className="rounded-md border border-rule px-2 py-0.5 text-[0.8125rem] font-medium text-slate">{localLabel}</span> : null}
+          {/* Internationally recruited grades (Professional, Director, Field Service): open to all nationalities. */}
+          {!localLabel && job.grade && /^(P|D|FS)-/.test(job.grade) ? <span className="rounded-md border border-rule px-2 py-0.5 text-[0.8125rem] font-medium text-slate">International post</span> : null}
           {job.is_demo ? <Tag tone="demo">Demo data</Tag> : null}
         </p>
         <H className="font-sans text-[1.1rem] font-bold leading-snug tracking-normal text-ink">
