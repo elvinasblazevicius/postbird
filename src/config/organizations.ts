@@ -108,4 +108,6 @@ export const KNOWN_ORGS: KnownOrg[] = [
   { name: "International Medical Corps", short: "IMC", type: "NGO", aliases: ["IMC"], domains: ["internationalmedicalcorps.org"] },
   { name: "Street Child", type: "NGO", domains: ["street-child.org", "street-child.co.uk"] },
   { name: "Heifer International", short: "Heifer", type: "NGO", domains: ["heifer.org"] },
+  { name: "Management Sciences for Health", short: "MSH", type: "NGO", aliases: ["MSH"], domains: ["msh.org"] },
+  { name: "Plan International", type: "NGO", domains: ["plan-international.org"] },
 ];
