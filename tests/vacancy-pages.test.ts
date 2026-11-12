@@ -88,3 +88,15 @@ describe("one card per vacancy", () => {
     expect(folded.map((f) => [f.job.id, f.posts])).toEqual([[1, 2], [3, 1]]);
   });
 });
+
+describe("more new items than one import reads", () => {
+  it("flags a possible gap only when every item is newer than the last import", async () => {
+    const { mayHaveGap } = await import("@/lib/feeds/sync");
+    const at = (iso: string) => ({ published: iso, updated: null });
+    const last = new Date("2026-11-12T00:00:00Z");
+    expect(mayHaveGap([at("2026-11-12T01:00:00Z"), at("2026-11-12T02:00:00Z")], 2, last)).toBe(true);
+    expect(mayHaveGap([at("2026-11-11T23:00:00Z"), at("2026-11-12T02:00:00Z")], 2, last)).toBe(false);
+    expect(mayHaveGap([at("2026-11-12T01:00:00Z")], 2, last)).toBe(false);
+    expect(mayHaveGap([at("2026-11-12T01:00:00Z"), at("2026-11-12T02:00:00Z")], 2, null)).toBe(false);
+  });
+});

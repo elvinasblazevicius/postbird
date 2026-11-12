@@ -28,7 +28,7 @@ export const IMPORT_SETTINGS = {
   fetchTimeoutMs: 20_000,
 
   /** Maximum items read from one feed per sync (protects the free database). */
-  maxItemsPerFeed: 500,
+  maxItemsPerFeed: 2000,
 
   /**
    * Items asked for from an Inoreader output feed per sync (its "n" parameter). Inoreader sends
@@ -36,6 +36,13 @@ export const IMPORT_SETTINGS = {
    * most its API returns at once. An "n" already in the feed address is kept.
    */
   inoreaderItems: 500,
+
+  /**
+   * When a scheduled import finds that all `inoreaderItems` items are newer than the previous
+   * successful import (so older new ones may not have been reached), it reads the feed again with
+   * this many. If even that isn't enough, Admin → Overview shows a warning.
+   */
+  inoreaderCatchUpItems: 2000,
 
   /**
    * Websites whose items are never imported, whatever folder they arrive in (subdomains too):

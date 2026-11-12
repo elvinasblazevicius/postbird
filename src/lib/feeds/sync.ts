@@ -12,7 +12,7 @@ import { addEmployerLinksFromBoards } from "./board-links";
 import { enrichFromVacancyPages } from "./enrich";
 import { cleanupRateLimits } from "@/lib/rate-limit";
 import { purgeStaleSubscribers } from "@/lib/subscribers";
-import { purgeOpsEvents } from "@/lib/ops-events";
+import { purgeOpsEvents, recordOpsEvent } from "@/lib/ops-events";
 import { reduceOldClickIds } from "@/lib/analytics";
 import { canonicalizeUrl, isAggregatorUrl } from "./url";
 import { knownOrgByHost } from "./extract";
@@ -44,6 +44,7 @@ type FeedRow = {
   url: string;
   default_organization: string | null;
   content_policy: ContentPolicy;
+  last_ok_at: Date | null;
 };
 
 type ExistingJob = {
@@ -193,6 +194,18 @@ async function readCapped(res: Response, maxBytes: number): Promise<string> {
   return Buffer.concat(chunks, total).toString("utf8");
 }
 
+/**
+ * True when a feed returned as many items as asked for and even the oldest is newer than the last
+ * successful import: new items older than these may not have been reached. Items without a date
+ * don't count; with no earlier import there is nothing to compare with.
+ */
+export function mayHaveGap(items: { published: string | null; updated: string | null }[], asked: number, lastOk: Date | null): boolean {
+  if (!lastOk || items.length < asked) return false;
+  const times = items.map((i) => Date.parse(i.published ?? i.updated ?? "")).filter((t) => Number.isFinite(t));
+  if (!times.length) return false;
+  return Math.min(...times) > new Date(lastOk).getTime();
+}
+
 /** Inoreader output feeds send 20 items unless asked for more (IMPORT_SETTINGS.inoreaderItems). */
 export function withInoreaderItemCount(url: string, n: number = IMPORT_SETTINGS.inoreaderItems): string {
   try {
@@ -205,12 +218,12 @@ export function withInoreaderItemCount(url: string, n: number = IMPORT_SETTINGS.
   }
 }
 
-export async function fetchFeedText(url: string, timeoutMs: number = IMPORT_SETTINGS.fetchTimeoutMs): Promise<string> {
+export async function fetchFeedText(url: string, timeoutMs: number = IMPORT_SETTINGS.fetchTimeoutMs, itemCount: number = IMPORT_SETTINGS.inoreaderItems): Promise<string> {
   const ctrl = new AbortController();
   const limit = Math.max(1000, Math.min(timeoutMs, IMPORT_SETTINGS.fetchTimeoutMs));
   const timer = setTimeout(() => ctrl.abort(), limit);
   try {
-    const res = await fetch(withInoreaderItemCount(url), {
+    const res = await fetch(withInoreaderItemCount(url, itemCount), {
       signal: ctrl.signal,
       redirect: "follow",
       headers: {
@@ -313,7 +326,9 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
   try {
     await ensureEnvFeeds();
     const feeds = await sql<FeedRow[]>`
-      select id, name, url, default_organization, content_policy from feeds where is_active order by id`;
+      select id, name, url, default_organization, content_policy,
+             case when last_status = 'ok' then last_synced_at end as last_ok_at
+        from feeds where is_active order by id`;
     result.feedsTotal = feeds.length;
     if (feeds.length === 0) notes.push("No active feeds. Add one in Admin → Feeds or set INOREADER_FEED_URLS.");
 
@@ -328,9 +343,24 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
       }
       try {
         const body = await fetchFeedText(feed.url, Number.isFinite(workBudget) ? workBudget - (Date.now() - started) : undefined);
-        const parsed = parseFeed(body);
+        let parsed = parseFeed(body);
         if (isSuspendedInoreaderFeed(parsed.items)) {
           throw new Error("Inoreader has suspended this feed: exporting RSS needs an active Inoreader Pro plan. Nothing was imported or removed.");
+        }
+        // More new items than one read reaches? Scheduled import: read further back once; warn if still short.
+        if (isCli && mayHaveGap(parsed.items, IMPORT_SETTINGS.inoreaderItems, feed.last_ok_at)) {
+          try {
+            parsed = parseFeed(await fetchFeedText(feed.url, undefined, IMPORT_SETTINGS.inoreaderCatchUpItems));
+          } catch (e) {
+            notes.push(`Feed "${feed.name}": reading further back failed (${(e as Error).message}); imported the first ${parsed.items.length}.`);
+          }
+          if (mayHaveGap(parsed.items, IMPORT_SETTINGS.inoreaderCatchUpItems, feed.last_ok_at)) {
+            const msg = `Feed "${feed.name}" had more new items since the last import than one import reads (${IMPORT_SETTINGS.inoreaderCatchUpItems}); some older ones may have been missed. Run the import more often or raise inoreaderCatchUpItems in src/config/import.ts.`;
+            notes.push(msg);
+            await recordOpsEvent("sync", msg).catch(() => {});
+          } else {
+            notes.push(`Feed "${feed.name}" had more than ${IMPORT_SETTINGS.inoreaderItems} new items since the last import; read further back (${parsed.items.length} items) so none were missed.`);
+          }
         }
         let items = parsed.items.slice(0, IMPORT_SETTINGS.maxItemsPerFeed);
         result.itemsSeen += items.length;
