@@ -85,7 +85,7 @@ export function WeekInReviewStrip({ week, headingId = "week-heading", className 
               <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[0.95rem]">
                 {types.map((t) => (
                   <li key={t.value} className={item}>
-                    <Link href={jobsUrl({ orgtype: t.value, posted: "7" })} className={link}>{t.label}</Link>{" "}
+                    <Link href={jobsUrl({ orgtype: [t.value], posted: "7" })} className={link}>{t.label}</Link>{" "}
                     <span className="tabular-nums text-slate">{t.count.toLocaleString("en-US")}</span>
                   </li>
                 ))}

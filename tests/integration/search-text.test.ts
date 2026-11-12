@@ -75,9 +75,9 @@ describe.skipIf(!TEST_DB)("search text and local-only titles (database)", () => 
   });
 
   it("counts jobs by employer type for the landing pages", async () => {
-    expect(await countFor({ orgtype: "ngo" })).toBe(2);
-    expect(await countFor({ orgtype: "ifi" })).toBe(1);
-    expect(await countFor({ orgtype: "eu" })).toBe(0);
+    expect(await countFor({ orgtype: ["ngo"] })).toBe(2);
+    expect(await countFor({ orgtype: ["ifi"] })).toBe(1);
+    expect(await countFor({ orgtype: ["eu"] })).toBe(0);
     expect((await jobs.openJobsByIds([1, 2, 999999])).map((j) => j.id).sort()).toEqual([1, 2]);
   });
 });

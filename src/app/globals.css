@@ -414,3 +414,7 @@ a {
 #hero-search label:has(> input[type="checkbox"]) input:focus-visible {
   outline-color: var(--accent);
 }
+
+/* Filters applied in the background (src/components/auto-submit.tsx): the results dim while the new ones load. */
+section[aria-labelledby="results-heading"] { transition: opacity 0.15s ease; }
+html[data-filtering] section[aria-labelledby="results-heading"] { opacity: 0.5; transition-delay: 0.12s; }

@@ -29,7 +29,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     countryFacets(false),
     countFor({ remote: true }, false),
     regionFacets(false),
-    Promise.all(EMPLOYER_TYPE_PAGES.map((t) => countFor({ orgtype: t.orgtype }, false))),
+    Promise.all(EMPLOYER_TYPE_PAGES.map((t) => countFor({ orgtype: [t.orgtype] }, false))),
   ]);
   const newest = jobs.reduce<Date | undefined>((max, j) => (!max || j.updated_at > max ? j.updated_at : max), undefined);
 

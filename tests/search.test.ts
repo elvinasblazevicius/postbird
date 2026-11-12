@@ -83,8 +83,8 @@ describe("interpretQuery", () => {
   });
 
   it("leaves explicit filters alone (withSearchIntent)", () => {
-    const f = withSearchIntent({ q: "kenya internship", country: ["uganda"], type: "Consultancy" });
-    expect(f).toMatchObject({ q: undefined, country: ["uganda"], type: "Consultancy" });
+    const f = withSearchIntent({ q: "kenya internship", country: ["uganda"], type: ["Consultancy"] });
+    expect(f).toMatchObject({ q: undefined, country: ["uganda"], type: ["Consultancy"] });
     expect(withSearchIntent({ q: "kenya", region: ["africa"] }).country).toBeUndefined();
     expect(withSearchIntent({ q: "kenya" }).country).toEqual(["kenya"]);
   });
@@ -344,7 +344,7 @@ describe("listings that don't state a detail (unstated)", () => {
 
   it("is written into the URL and saved searches only with such a filter", () => {
     expect(jobsUrl({ grade: ["P-3"], unstated: true })).toBe("/jobs?grade=P-3&unstated=1");
-    expect(jobsUrl({ category: "health", unstated: true })).toBe("/jobs?category=health");
+    expect(jobsUrl({ category: ["health"], unstated: true })).toBe("/jobs?category=health");
     expect(normalizeSearch("unstated=1&grade=P-3&lang=French")).toBe("grade=P-3&lang=French&unstated=1");
     expect(normalizeSearch("unstated=1&category=health")).toBe("category=health");
     expect(alertStepKeep("grade=P-3&unstated=1")).toEqual([["grade", "P-3"], ["unstated", "1"]]);
@@ -352,7 +352,7 @@ describe("listings that don't state a detail (unstated)", () => {
   });
 
   it("lists the filters it widens, in a fixed order", () => {
-    expect(derivedFilters({ type: "Consultancy", grade: ["P-3"], category: "health" })).toEqual(["grade", "type"]);
+    expect(derivedFilters({ type: ["Consultancy"], grade: ["P-3"], category: ["health"] })).toEqual(["grade", "type"]);
     expect(derivedFilters({ q: "internship spanish" })).toEqual(["lang", "type"]);
     expect(derivedFilters({ q: "data" })).toEqual([]);
   });

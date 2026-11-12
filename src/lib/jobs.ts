@@ -75,12 +75,15 @@ export type JobFilters = {
   region?: string[];
   /** Grade groups ("P", "NO", "entry"…) or exact grades ("P-3"); a listing matches any of them. Sorted, no repeats. */
   grade?: string[];
-  orgtype?: string;
+  /** Organization types (ORG_TYPES values); any of them matches. Sorted, no repeats. */
+  orgtype?: string[];
   lang?: string;
   exp?: string;
-  category?: string;
+  /** Category slugs; any of them matches. Sorted, no repeats. */
+  category?: string[];
   remote?: boolean;
-  type?: string;
+  /** Contract types (JOB_TYPES); any of them matches. Sorted, no repeats. */
+  type?: string[];
   posted?: "1" | "7" | "30";
   closing?: "7" | "30";
   /** Leave out posts usually open only to nationals or residents of the duty-station country (see src/lib/grades.ts). */
@@ -150,17 +153,17 @@ export function parseFilters(sp: SP): JobFilters {
   if (regions.length) f.region = tidyList(regions);
   const grades = every(sp.grade).filter((grade) => GRADE_GROUPS.some((g) => g.value === grade || g.grades.includes(grade)) || /^(P|D|NO|G|GS|FS)-[0-9A-E]$|^(ASG|USG)$|^(SB|SC|LICA|NPSA|IPSA|ICS)-\d{1,2}$/.test(grade));
   if (grades.length) f.grade = tidyList(grades);
-  const orgtype = first(sp.orgtype);
-  if (orgtype && ORG_TYPES.some((o) => o.value === orgtype)) f.orgtype = orgtype;
+  const orgtypes = every(sp.orgtype).filter((o) => ORG_TYPES.some((t) => t.value === o));
+  if (orgtypes.length) f.orgtype = tidyList(orgtypes);
   const lang = first(sp.lang);
   if (lang && (LANGUAGES as readonly string[]).includes(lang)) f.lang = lang;
   const exp = first(sp.exp);
   if (exp && EXPERIENCE_BANDS.some((b) => b.value === exp)) f.exp = exp;
-  const category = first(sp.category);
-  if (category && categoryBySlug(category)) f.category = category;
+  const categories = every(sp.category).filter((c) => categoryBySlug(c));
+  if (categories.length) f.category = tidyList(categories);
   if (first(sp.remote) === "1" || first(sp.remote) === "true") f.remote = true;
-  const type = first(sp.type);
-  if (type && (JOB_TYPES as readonly string[]).includes(type)) f.type = type;
+  const types = every(sp.type).filter((t) => (JOB_TYPES as readonly string[]).includes(t));
+  if (types.length) f.type = tidyList(types);
   const posted = first(sp.posted);
   if (posted === "1" || posted === "7" || posted === "30") f.posted = posted;
   const closing = first(sp.closing);
@@ -182,12 +185,12 @@ export function jobsUrl(f: JobFilters, base = "/jobs"): string {
   for (const c of f.country ?? []) p.append("country", c);
   for (const r of f.region ?? []) p.append("region", r);
   for (const g of f.grade ?? []) p.append("grade", g);
-  if (f.orgtype) p.set("orgtype", f.orgtype);
+  for (const o of f.orgtype ?? []) p.append("orgtype", o);
   if (f.lang) p.set("lang", f.lang);
   if (f.exp) p.set("exp", f.exp);
-  if (f.category) p.set("category", f.category);
+  for (const c of f.category ?? []) p.append("category", c);
   if (f.remote) p.set("remote", "1");
-  if (f.type) p.set("type", f.type);
+  for (const t of f.type ?? []) p.append("type", t);
   if (f.posted) p.set("posted", f.posted);
   if (f.closing) p.set("closing", f.closing);
   if (f.hidelocal) p.set("hidelocal", "1");
@@ -201,8 +204,8 @@ export function jobsUrl(f: JobFilters, base = "/jobs"): string {
 
 /** How many filters are in use; each place, grade and organization of a multiple choice counts once. */
 export function activeFilterCount(f: JobFilters): number {
-  const multi = (f.country?.length ?? 0) + (f.region?.length ?? 0) + (f.grade?.length ?? 0) + (f.org?.length ?? 0);
-  return multi + [f.q, f.orgtype, f.lang, f.exp, f.category, f.remote, f.type, f.posted, f.closing, f.hidelocal].filter(Boolean).length;
+  const multi = [f.country, f.region, f.grade, f.org, f.orgtype, f.category, f.type].reduce((n, l) => n + (l?.length ?? 0), 0);
+  return multi + [f.q, f.lang, f.exp, f.remote, f.posted, f.closing, f.hidelocal].filter(Boolean).length;
 }
 
 /** A listing is shown while active and not past its published closing date (checked at query time, between syncs). */
@@ -217,9 +220,9 @@ export function withSearchIntent(f: JobFilters): JobFilters {
   return {
     ...f,
     q: i.text ?? undefined,
-    orgtype: f.orgtype ?? i.orgtype,
+    orgtype: f.orgtype?.length ? f.orgtype : i.orgtype ? [i.orgtype] : undefined,
     remote: f.remote || i.remote || undefined,
-    type: f.type ?? i.type,
+    type: f.type?.length ? f.type : i.type ? [i.type] : undefined,
     grade: f.grade?.length ? f.grade : i.grade ? [i.grade] : undefined,
     lang: f.lang ?? i.lang,
     country: f.country?.length ? f.country : f.region?.length || !i.country ? undefined : [i.country],
@@ -450,15 +453,15 @@ function filterConditions(f: JobFilters, mode: MatchMode = "all"): Partial<Recor
   // With `unstated`, each derived filter also matches listings that don't state the detail (UNSTATED).
   const orUnstated = (k: DerivedFilter, cond: Frag) => (f.unstated ? sql`(${cond} or ${UNSTATED[k]()})` : cond);
   if (f.grade?.length) c.grade = orUnstated("grade", sql`(${f.grade.map(gradeCondition).reduce((a, b) => sql`${a} or ${b}`)})`);
-  if (f.orgtype) c.orgtype = sql`o.org_type = ${ORG_TYPES.find((o) => o.value === f.orgtype)?.type ?? "--"}`;
+  if (f.orgtype?.length) c.orgtype = sql`o.org_type = any(${f.orgtype.map((v) => ORG_TYPES.find((o) => o.value === v)?.type ?? "--")})`;
   if (f.lang) c.lang = orUnstated("lang", sql`${f.lang} = any(j.languages)`);
   if (f.exp) {
     const band = EXPERIENCE_BANDS.find((b) => b.value === f.exp)!;
     c.exp = orUnstated("exp", sql`j.min_experience_years between ${band.min} and ${band.max}`);
   }
-  if (f.category) c.category = sql`j.category = ${f.category}`;
+  if (f.category?.length) c.category = sql`j.category = any(${f.category})`;
   if (f.remote) c.remote = sql`j.is_remote is true`;
-  if (f.type) c.type = orUnstated("type", sql`j.job_type = ${f.type}`);
+  if (f.type?.length) c.type = orUnstated("type", sql`j.job_type = any(${f.type})`);
   if (f.posted) c.posted = sql`coalesce(j.published_at, j.first_seen_at) >= now() - make_interval(days => ${Number(f.posted)})`;
   if (f.closing) c.closing = sql`j.deadline is not null and j.deadline <= (now() at time zone 'utc')::date + ${Number(f.closing)}::int`;
   // Same rule as isLocalOnly() in src/lib/grades.ts: the parsed grade, or words in the title.

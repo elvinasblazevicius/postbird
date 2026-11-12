@@ -74,12 +74,12 @@ describe.skipIf(!TEST_DB)("several organizations and unstated details (database)
     expect(await titles({ grade: ["P"] })).toEqual(["Finance Officer", "Programme Officer (P)"]);
     expect(await titles({ grade: ["P"], unstated: true })).toEqual(["Data Analyst", "Finance Officer", "Programme Officer (P)", "Protection Consultant"]);
     expect(await jobs.countJobs({ grade: ["P"], unstated: true })).toBe(4);
-    expect(await titles({ type: "Consultancy", unstated: true })).toEqual(["Data Analyst", "Protection Consultant"]);
+    expect(await titles({ type: ["Consultancy"], unstated: true })).toEqual(["Data Analyst", "Protection Consultant"]);
     expect(await titles({ exp: "3-5", unstated: true })).toEqual(["Data Analyst", "Finance Officer", "Programme Officer (P)", "Protection Consultant"]);
     // A desirable language counts as stated language requirements.
     expect(await titles({ lang: "French", unstated: true })).toEqual(["Data Analyst", "Driver", "Finance Officer"]);
     // Several at once: each filter takes the listings that don't state its own detail.
-    expect(await titles({ grade: ["P"], type: "Fixed-term", unstated: true })).toEqual(["Data Analyst", "Finance Officer", "Programme Officer (P)"]);
+    expect(await titles({ grade: ["P"], type: ["Fixed-term"], unstated: true })).toEqual(["Data Analyst", "Finance Officer", "Programme Officer (P)"]);
   });
 
   it("reads a language in the search words as the language filter", async () => {

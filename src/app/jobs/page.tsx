@@ -16,7 +16,7 @@ async function describe(f: JobFilters): Promise<string> {
   const parts: string[] = [];
   if (f.remote) parts.push("Remote");
   if (f.grade?.length) parts.push(orList(f.grade.map(gradeShortName)));
-  if (f.category) parts.push(categoryBySlug(f.category)?.name ?? "");
+  for (const c of f.category ?? []) parts.push(categoryBySlug(c)?.name ?? "");
   const orgs = f.org?.length ? await getOrganizations(f.org) : [];
   // "Jobs at the International Organization for Migration", not "International jobs at the International …":
   // with an organization named, "International" adds nothing.

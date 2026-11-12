@@ -13,7 +13,7 @@ type SP = Promise<Record<string, string | string[] | undefined>>;
 /** Metadata for an employer-type page; kept out of search indexes while it has too few (or no) jobs. */
 export async function employerTypeMetadata(orgtype: EmployerTypePage["orgtype"], searchParams: SP): Promise<Metadata> {
   const page = employerTypePage(orgtype);
-  const count = await countFor({ orgtype }, false);
+  const count = await countFor({ orgtype: [orgtype] }, false);
   return landingMetadata({
     title: page.metaTitle,
     description: count > 0 ? `${count} open vacancies. ${page.intro}` : page.intro,
@@ -30,8 +30,8 @@ export async function EmployerTypeListing({ orgtype, searchParams }: { orgtype: 
   delete filters.orgtype;
   // What this type of employer posts, from its open listings (a page-specific intro; nothing when the counts can't be read).
   const [profile, open] = await Promise.all([
-    filteredFacets({ orgtype }).then(postingProfile).catch(() => null),
-    countFor({ orgtype }).catch(() => null),
+    filteredFacets({ orgtype: [orgtype] }).then(postingProfile).catch(() => null),
+    countFor({ orgtype: [orgtype] }).catch(() => null),
   ]);
   // No listings of this type at all: say so plainly, and offer the general email rather than one for this type.
   const empty = open === 0;
@@ -47,7 +47,7 @@ export async function EmployerTypeListing({ orgtype, searchParams }: { orgtype: 
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <JobsBrowser
           filters={filters}
-          fixed={{ orgtype }}
+          fixed={{ orgtype: [orgtype] }}
           base={page.path}
           alertNoun={empty ? undefined : page.alertNoun}
           emptyTitle={empty ? `We don't list any vacancies from ${page.emptyName} right now.` : undefined}

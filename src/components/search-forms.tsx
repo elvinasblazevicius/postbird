@@ -253,7 +253,7 @@ function GradeChecks({ facets, filters }: { facets: FacetData; filters: JobFilte
           <li key={g.key}>
             {box(g.key, g.any, g.count)}
             {g.exact.length ? (
-              <details className="group/levels ml-6" open={g.exact.some((x) => selected.has(x.grade))}>
+              <details data-fold={`levels-${g.key}`} className="group/levels ml-6" open={g.exact.some((x) => selected.has(x.grade))}>
                 <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-accent [&::-webkit-details-marker]:hidden">
                   {g.name} levels
                   <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 transition-transform group-open/levels:rotate-180" aria-hidden="true"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
@@ -267,6 +267,41 @@ function GradeChecks({ facets, filters }: { facets: FacetData; filters: JobFilte
         ))}
         {other.map((x) => <li key={x.grade}>{box(x.grade, gradeText(x.grade), x.count)}</li>)}
       </ul>
+    </fieldset>
+  );
+}
+
+/**
+ * A multiple choice as tick boxes (any ticked value matches). Long lists show the first few and fold
+ * the rest away; the list opens by itself when a folded choice is ticked.
+ */
+function CheckList({ name, label, options, selected, visible = 6 }: { name: string; label: string; options: { value: string; label: string; count?: number }[]; selected?: string[]; visible?: number }) {
+  const chosen = new Set(selected ?? []);
+  const shown = options.filter((o) => (o.count ?? 1) > 0 || chosen.has(o.value));
+  if (!shown.length) return null;
+  const box = (o: (typeof shown)[number]) => (
+    <li key={o.value}>
+      <label className="flex cursor-pointer items-center gap-2 py-1 text-[0.95rem] text-ink">
+        <input type="checkbox" name={name} value={o.value} defaultChecked={chosen.has(o.value)} className="h-4 w-4 shrink-0 accent-[var(--accent)]" />
+        <span>{o.label}{o.count !== undefined ? <> <span className="text-slate">({o.count})</span></> : null}</span>
+      </label>
+    </li>
+  );
+  const head = shown.slice(0, visible);
+  const rest = shown.slice(visible);
+  return (
+    <fieldset>
+      <legend className="mb-1 block text-sm font-medium text-ink">{label}</legend>
+      <ul>{head.map(box)}</ul>
+      {rest.length ? (
+        <details data-fold={`list-${name}`} className="group/list" open={rest.some((o) => chosen.has(o.value))}>
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-accent [&::-webkit-details-marker]:hidden">
+            {rest.length} more
+            <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 transition-transform group-open/list:rotate-180" aria-hidden="true"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+          </summary>
+          <ul>{rest.map(box)}</ul>
+        </details>
+      ) : null}
     </fieldset>
   );
 }
@@ -287,9 +322,9 @@ function RemoteToggle({ checked, id }: { checked?: boolean; id: string }) {
 function MoreFilterFields({ idPrefix, filters, facets, hideOrgType = false }: { idPrefix: string; filters: JobFilters; facets: FacetData; hideOrgType?: boolean }) {
   return (
     <>
-      {facets.types && (facets.types.some((x) => x.count) || filters.type) ? (
-        <Select idPrefix={idPrefix} name="type" label="Contract type" value={filters.type} all="Any contract"
-          options={JOB_TYPES.map((t) => ({ t, count: facets.types!.find((x) => x.job_type === t)?.count ?? 0 })).filter((x) => x.count > 0 || x.t === filters.type).map((x) => ({ value: x.t, label: withCount(x.t, x.count) }))} />
+      {facets.types ? (
+        <CheckList name="type" label="Contract type" selected={filters.type}
+          options={JOB_TYPES.map((t) => ({ value: t, label: t, count: facets.types!.find((x) => x.job_type === t)?.count ?? 0 }))} />
       ) : null}
       {facets.exps && (facets.exps.some((e) => e.count) || filters.exp) ? (
         <Select idPrefix={idPrefix} name="exp" label="Experience required" value={filters.exp} all="Any experience"
@@ -299,9 +334,9 @@ function MoreFilterFields({ idPrefix, filters, facets, hideOrgType = false }: { 
         <Select idPrefix={idPrefix} name="lang" label="Language in requirements" value={filters.lang} all="Any language"
           options={[...facets.langs.filter((l) => l.count || l.lang === filters.lang), ...(filters.lang && !facets.langs.some((l) => l.lang === filters.lang) ? [{ lang: filters.lang, count: 0 }] : [])].map((l) => ({ value: l.lang, label: withCount(l.lang, l.count) }))} />
       ) : null}
-      {!hideOrgType && facets.orgTypes && (facets.orgTypes.some((o) => o.count) || filters.orgtype) ? (
-        <Select idPrefix={idPrefix} name="orgtype" label="Type of organization" value={filters.orgtype} all="Any type"
-          options={facets.orgTypes.filter((o) => o.count || o.value === filters.orgtype).map((o) => ({ value: o.value, label: withCount(o.name, o.count) }))} />
+      {!hideOrgType && facets.orgTypes ? (
+        <CheckList name="orgtype" label="Type of organization" selected={filters.orgtype}
+          options={facets.orgTypes.map((o) => ({ value: o.value, label: o.name, count: o.count }))} />
       ) : null}
       <Select idPrefix={idPrefix} name="closing" label="Deadline" value={filters.closing} all="Any deadline"
         options={[{ value: "7", label: "Closing within 7 days" }, { value: "30", label: "Closing within 30 days" }]} />
@@ -321,7 +356,7 @@ function MoreToggle() {
   );
 }
 
-const moreIsOpen = (f: JobFilters) => Boolean(f.type || f.posted || f.closing || f.lang || f.exp || f.orgtype);
+const moreIsOpen = (f: JobFilters) => Boolean(f.type?.length || f.posted || f.closing || f.lang || f.exp || f.orgtype?.length);
 
 /**
  * "Also show vacancies that don't state a grade": with a filter read from the posting's text in
@@ -362,7 +397,7 @@ export function HeroSearch({ facets }: { facets: FacetData }) {
           <MoreFilterFields idPrefix="hero" filters={{}} facets={facets} />
         </div>
       </details>
-      <AutoSubmit formId="hero-search" onChange={false} />
+      <AutoSubmit formId="hero-search" onChange={false} keepScroll={false} />
     </form>
   );
 }
@@ -391,7 +426,8 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
       {!("country" in hidden) && !("region" in hidden) ? <WhereFields facets={facets} filters={filters} idPrefix={P} /> : null}
       {!("org" in hidden) ? <OrgFields facets={facets} filters={filters} idPrefix={P} /> : null}
       {!("category" in hidden) ? (
-        <Select idPrefix={P} name="category" label="Category" value={filters.category} all="Any category" options={facets.categories.filter((c) => c.count > 0 || c.slug === filters.category).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) }))} />
+        <CheckList name="category" label="Category" selected={filters.category} visible={5}
+          options={facets.categories.map((c) => ({ value: c.slug, label: c.name, count: c.count }))} />
       ) : null}
       <GradeChecks facets={facets} filters={filters} />
       {!("remote" in hidden) ? (
@@ -407,7 +443,7 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
           <span className="block text-xs text-slate">National Officer, General Service and other posts usually open only to nationals or residents</span>
         </span>
       </label>
-      <details className="group/more" open={moreIsOpen(filters)}>
+      <details data-fold="more" className="group/more" open={moreIsOpen(filters)}>
         <MoreToggle />
         <div className="mt-3 space-y-4">
           <MoreFilterFields idPrefix={P} filters={filters} facets={facets} hideOrgType={"orgtype" in hidden} />
@@ -419,7 +455,7 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
         <button type="submit" className="flex-1 rounded-lg bg-brand px-4 py-2.5 font-semibold text-white hover:bg-accent">Show jobs</button>
         <Link href={jobsUrl({}, action)} className="rounded-lg px-3 py-2.5 text-sm font-medium text-accent hover:bg-mist">Clear</Link>
       </div>
-      <AutoSubmit formId={formId} onChange={submitOnChange} />
+      <AutoSubmit formId={formId} onChange={submitOnChange} keepScroll={submitOnChange} />
     </form>
   );
 }

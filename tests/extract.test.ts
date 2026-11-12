@@ -518,8 +518,13 @@ describe("EU and development-bank grades, contract types and languages", () => {
 
   it("accepts the new grades, groups, contract types and languages in the URL", () => {
     expect(parseFilters({ grade: ["AD", "AST-SC", "FG", "WBG", "AD-6", "AST/SC-2", "FG-IV", "GG", "AD-4", "GZ"] }).grade).toEqual(["AD", "AD-6", "AST-SC", "AST/SC-2", "FG", "FG-IV", "GG", "WBG"]);
-    expect(parseFilters({ type: "Contract agent" }).type).toBe("Contract agent");
-    expect(parseFilters({ type: "Traineeship" }).type).toBe("Traineeship");
+    expect(parseFilters({ type: "Contract agent" }).type).toEqual(["Contract agent"]);
+    expect(parseFilters({ type: "Traineeship" }).type).toEqual(["Traineeship"]);
+    // Several at once, unknown values dropped, and back into the URL one key per value.
+    const f = parseFilters({ type: ["Consultancy", "Internship", "Nonsense"], orgtype: ["un", "ngo", "xx"], category: ["health", "nope"] });
+    expect(f.type).toEqual(["Consultancy", "Internship"]);
+    expect(f.orgtype).toEqual(["ngo", "un"]);
+    expect(f.category).toEqual(["health"]);
     for (const lang of ["German", "Italian", "Dutch", "Polish", "Swedish"]) expect(parseFilters({ lang }).lang).toBe(lang);
   });
 

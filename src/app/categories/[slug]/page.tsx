@@ -14,7 +14,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   const { slug } = await params;
   const cat = categoryBySlug(slug);
   if (!cat) return { title: "Category not found" }; // the 404 page adds the noindex tag
-  const count = await countFor({ category: slug }, false);
+  const count = await countFor({ category: [slug] }, false);
   const name = cat.slug === "other" ? "Other international" : cat.name;
   return landingMetadata({
     title: `${name} jobs at the UN and international organizations`,
@@ -41,7 +41,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
         intro={`${cat.blurb} Openings at UN agencies and international organizations.`}
       />
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-        <JobsBrowser filters={filters} fixed={{ category: slug }} base={`/categories/${slug}`} />
+        <JobsBrowser filters={filters} fixed={{ category: [slug] }} base={`/categories/${slug}`} />
       </div>
     </>
   );

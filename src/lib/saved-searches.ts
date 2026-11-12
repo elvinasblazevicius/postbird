@@ -135,17 +135,17 @@ export async function describeSearch(query: string): Promise<string | null> {
   const f = filtersFromQuery(query);
   const parts: string[] = [];
   if (f.q) parts.push(`“${f.q}”`);
-  if (f.category) parts.push(`${categoryBySlug(f.category)?.name} jobs`);
+  if (f.category?.length) parts.push(`${orList(f.category.map((c) => categoryBySlug(c)?.name ?? c))} jobs`);
   if (f.org?.length) {
     const orgs = await getOrganizations(f.org).catch(() => []);
     parts.push(`at ${orList(f.org.map((s) => orgs.find((o) => o.slug === s)?.name ?? s))}`);
   }
-  if (f.orgtype) parts.push(ORG_TYPE_PHRASE[f.orgtype] ?? `at ${ORG_TYPES.find((o) => o.value === f.orgtype)?.name ?? f.orgtype}`);
+  if (f.orgtype?.length) parts.push(f.orgtype.length === 1 ? ORG_TYPE_PHRASE[f.orgtype[0]] ?? `at ${ORG_TYPES.find((o) => o.value === f.orgtype![0])?.name ?? f.orgtype[0]}` : `at ${orList(f.orgtype.map((v) => ORG_TYPES.find((o) => o.value === v)?.name ?? v))}`);
   const places = placeNames(f);
   if (places.length) parts.push(`in ${orList(places)}`);
   if (f.remote) parts.push("remote / home-based");
   if (f.grade?.length) parts.push(`grade ${orList(f.grade.map(gradeLabel))}`);
-  if (f.type) parts.push(f.type.toLowerCase());
+  if (f.type?.length) parts.push(orList(f.type.map((t) => t.toLowerCase())));
   if (f.exp) parts.push(`experience ${EXPERIENCE_BANDS.find((b) => b.value === f.exp)?.name.toLowerCase() ?? f.exp}`);
   if (f.lang) parts.push(`${f.lang} mentioned`);
   if (f.posted) parts.push(POSTED[f.posted]);

@@ -91,9 +91,15 @@ function filterChips(filters: JobFilters, fixed: Partial<JobFilters>, base: stri
   const grades = own.grade ?? [];
   for (const g of grades) chips.push({ key: "grade", label: `Grade: ${gradeLabel(g)}`, href: href({ grade: without(grades, g) }), fromSearch: fromSearch("grade") });
   if (grades.length) removals.push({ key: "grade", label: `Grade: ${orList(grades.map(gradeLabel))}`, href: href({ grade: undefined }) });
-  if (own.category) single("category", `Category: ${categoryBySlug(own.category)?.name ?? own.category}`, { category: undefined });
-  if (own.type) single("type", `Type: ${own.type}`, { type: undefined }, fromSearch("type"));
-  if (own.orgtype) single("orgtype", `Organization type: ${ORG_TYPES.find((o) => o.value === own.orgtype)?.name ?? own.orgtype}`, { orgtype: undefined }, fromSearch("orgtype"));
+  // Category, contract type and organization type: one chip per choice, like grades.
+  const multiChips = (key: "category" | "type" | "orgtype", label: string, name: (v: string) => string, search = false) => {
+    const list = own[key] ?? [];
+    for (const v of list) chips.push({ key, label: `${label}: ${name(v)}`, href: href({ [key]: without(list, v) }), fromSearch: search });
+    if (list.length) removals.push({ key, label: `${label}: ${orList(list.map(name))}`, href: href({ [key]: undefined }) });
+  };
+  multiChips("category", "Category", (v) => categoryBySlug(v)?.name ?? v);
+  multiChips("type", "Type", (v) => v, fromSearch("type"));
+  multiChips("orgtype", "Organization type", (v) => ORG_TYPES.find((o) => o.value === v)?.name ?? v, fromSearch("orgtype"));
   if (own.remote) single("remote", "Remote / home-based", { remote: undefined }, fromSearch("remote"));
   if (own.hidelocal) single("hidelocal", "Local-only posts hidden", { hidelocal: undefined });
   if (own.lang) single("lang", `Language: ${own.lang} mentioned`, { lang: undefined }, fromSearch("lang"));
@@ -194,9 +200,9 @@ export async function JobsBrowser({
   if (fixed.org) hidden.org = fixed.org.join(",");
   if (fixed.country) hidden.country = fixed.country.join(",");
   if (fixed.region) hidden.region = fixed.region.join(",");
-  if (fixed.category) hidden.category = fixed.category;
+  if (fixed.category?.length) hidden.category = fixed.category.join(",");
   if (fixed.remote) hidden.remote = "1";
-  if (fixed.orgtype) hidden.orgtype = fixed.orgtype;
+  if (fixed.orgtype?.length) hidden.orgtype = fixed.orgtype.join(",");
   // On landing pages the fixed filter is in the path, so don't repeat it in the form.
   const formHidden = base === "/jobs" ? {} : Object.fromEntries(Object.keys(hidden).map((k) => [k, ""]));
   const fallback = result.total === 0 ? await latestJobs(6) : [];
@@ -224,11 +230,13 @@ export async function JobsBrowser({
     : 0;
   const unstatedHref = unstatedMore ? jobsUrl({ ...filters, unstated: true, page: undefined }, base) : null;
 
+  // The forms' boxes are set from the address when drawn: a new address (a removed chip, Back) draws them afresh.
+  const formKey = jobsUrl({ ...filters, page: undefined }, base);
   // grid-cols-1 (minmax(0, 1fr)): on 320px phones the search field's own width can't widen the column past the screen.
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[18rem_1fr] lg:gap-8">
       <aside>
-        <MobileKeyword filters={filters} formId="filters-mobile" />
+        <MobileKeyword key={`k:${formKey}`} filters={filters} formId="filters-mobile" />
         <details className="group/panel rounded-xl border border-rule p-4 lg:hidden" open={false}>
           <summary className="flex cursor-pointer list-none items-center justify-between font-medium text-ink [&::-webkit-details-marker]:hidden">
             Filters{userFilters ? ` (${userFilters})` : ""}
@@ -236,11 +244,11 @@ export async function JobsBrowser({
             <span className="hidden text-sm text-accent group-open/panel:inline">Hide</span>
           </summary>
           <div className="mt-4">
-            <FilterForm formId="filters-mobile" filters={filters} facets={facets} action={base} hidden={formHidden} submitOnChange={false} keyword={false} />
+            <FilterForm key={`m:${formKey}`} formId="filters-mobile" filters={filters} facets={facets} action={base} hidden={formHidden} submitOnChange={false} keyword={false} />
           </div>
         </details>
         <div className="sticky top-24 hidden lg:block">
-          <FilterForm formId="filters-desktop" filters={filters} facets={facets} action={base} hidden={formHidden} />
+          <FilterForm key={`d:${formKey}`} formId="filters-desktop" filters={filters} facets={facets} action={base} hidden={formHidden} />
         </div>
       </aside>
 
