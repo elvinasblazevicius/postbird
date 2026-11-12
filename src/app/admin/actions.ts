@@ -145,8 +145,34 @@ export async function deleteFeedAction(form: FormData) {
 }
 
 // ── Sync ──
+/**
+ * Starts the full import on GitHub Actions (the scheduled workflow's "sync" task), which has no
+ * time limit, instead of a website run that Netlify stops after about 10 seconds. Needs
+ * GITHUB_DISPATCH_TOKEN (a fine-grained token for this repository with "Actions: Read and write")
+ * and GITHUB_REPOSITORY ("owner/repo"); without them it falls back to the short website run.
+ */
+async function startGithubSync(): Promise<boolean> {
+  const token = process.env.GITHUB_DISPATCH_TOKEN?.trim();
+  const repo = process.env.GITHUB_REPOSITORY?.trim();
+  if (!token || !repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) return false;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/scheduled.yml/dispatches`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json" },
+      body: JSON.stringify({ ref: "main", inputs: { task: "sync" } }),
+      signal: AbortSignal.timeout(8_000),
+    });
+    return res.status === 204;
+  } catch {
+    return false;
+  }
+}
+
 export async function syncNowAction(): Promise<void> {
   await requireAdmin();
+  if (await startGithubSync()) {
+    redirect("/admin/imports?started=github");
+  }
   const { runSync } = await loadSync();
   const result = await runSync("manual");
   revalidatePath("/admin", "layout");

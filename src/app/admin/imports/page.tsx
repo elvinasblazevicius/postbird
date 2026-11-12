@@ -6,8 +6,9 @@ import { AdminShell, fmtDateTime, StatusPill, Table } from "../ui";
 
 export const dynamic = "force-dynamic";
 
-export default async function ImportsPage() {
+export default async function ImportsPage({ searchParams }: { searchParams: Promise<{ started?: string }> }) {
   await requireAdmin();
+  const { started } = await searchParams;
   const runs = await sql<{
     id: number; trigger: string; status: string; started_at: Date; finished_at: Date | null; feeds_total: number; feeds_failed: number;
     items_seen: number; jobs_created: number; jobs_updated: number; jobs_unchanged: number; duplicates: number; items_failed: number; jobs_expired: number; message: string | null;
@@ -18,6 +19,11 @@ export default async function ImportsPage() {
       active="/admin/imports"
       actions={<form action={syncNowAction}><button className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-accent">Sync now</button></form>}
     >
+      {started === "github" ? (
+        <p role="status" className="mb-4 rounded-lg border border-rule bg-tint px-4 py-3 text-sm text-ink">
+          The full import has started on GitHub (no time limit). It appears here as a new &quot;cli&quot; run in about 1–3 minutes; reload the page to see it.
+        </p>
+      ) : null}
       <Table head={["Run", "Started", "Status", "Feeds", "Items", "New", "Updated", "Duplicates", "Failed", "Closed", "Note"]}>
         {runs.map((r) => (
           <tr key={r.id} className="align-top">

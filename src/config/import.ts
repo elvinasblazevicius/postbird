@@ -44,6 +44,31 @@ export const IMPORT_SETTINGS = {
   excludedSourceHosts: ["cvbankas.lt"],
 
   /**
+   * Reading the employer's own vacancy page once per job (scheduled import only, never the website's
+   * "Sync now"), to fill in facts the feed left out: closing date, place, contract type, grade,
+   * experience, languages. Facts only; the employer's text is never stored. robots.txt is obeyed,
+   * job boards are never visited, and each website gets at most one request every `perHostDelayMs`.
+   */
+  vacancyPages: {
+    enabled: true,
+    /** Jobs read per scheduled run (every 2 hours). */
+    perRun: 150,
+    /** Time the step may take per run. */
+    budgetMs: 6 * 60_000,
+    /** Pages read at the same time (each from a different website). */
+    concurrency: 4,
+    perHostDelayMs: 1_500,
+    timeoutMs: 15_000,
+    maxBytes: 2_000_000,
+    /** A page that gave nothing is read again after this many days, at most `maxAttempts` times in all. */
+    retryDays: 3,
+    maxAttempts: 3,
+    /** How the import introduces itself (and the name robots.txt rules may address). */
+    userAgent: "PostbirdBot/1.0 (+https://postbird.nuevanova.com/about; vacancy facts only)",
+    robotsName: "PostbirdBot",
+  },
+
+  /**
    * Items whose TITLE matches one of these are not imported: tenders,
    * requests for proposals and supplier calls are not jobs. They are logged
    * as "skipped" in Admin → Imports, so you can see what was left out.

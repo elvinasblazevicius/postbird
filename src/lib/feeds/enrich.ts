@@ -1,0 +1,187 @@
+/**
+ * The vacancy-page step of the scheduled import: for open jobs whose employer page hasn't been
+ * read yet (or is due a retry), read it once and fill in the facts the feed left out
+ * (src/lib/feeds/vacancy-page.ts). Polite by design: robots.txt is obeyed for our name or "*",
+ * job boards and PDFs are never fetched, one request per website at a time with a pause between
+ * them, a named user agent, a time budget and a per-run cap (IMPORT_SETTINGS.vacancyPages).
+ * Only empty fields are filled; the page's own facts are also stored (page_*) so later
+ * re-imports keep them (withPageFacts in sync.ts).
+ */
+import { IMPORT_SETTINGS } from "@/config/import";
+import { sql } from "@/lib/db";
+import { hostOf, isListingSite } from "./url";
+import { parseRobots, robotsAllows, type RobotsRules } from "./robots";
+import { factsFromPage, factsFromSystem, hasFacts, plausibleDeadline, systemApiUrl, type PageFacts } from "./vacancy-page";
+
+const S = IMPORT_SETTINGS.vacancyPages;
+
+export type EnrichResult = {
+  checked: number; withFacts: number; nothing: number; blocked: number; errors: number; skipped: number;
+  filled: { deadline: number; place: number; jobType: number; grade: number; experience: number; languages: number };
+  via: Record<string, number>;
+};
+
+type DueJob = {
+  id: number; title: string; apply_url: string; apply_host: string;
+  deadline: string | null; country_code: string | null; location_text: string | null; job_type: string | null;
+  grade: string | null; min_experience_years: number | null; languages: string[] | null;
+};
+
+class BlockedByRobots extends Error {}
+class NotReadable extends Error {}
+
+async function readCapped(res: Response, maxBytes: number): Promise<string> {
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) { await res.body?.cancel().catch(() => {}); throw new NotReadable("page too large"); }
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) { await reader.cancel().catch(() => {}); throw new NotReadable("page too large"); }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks, total).toString("utf8");
+}
+
+async function get(url: string, accept: string): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), S.timeoutMs);
+  try {
+    return await fetch(url, { signal: ctrl.signal, redirect: "follow", headers: { "user-agent": S.userAgent, accept, "accept-language": "en" } });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** robots.txt per host for this run: missing → allowed; unreadable → not allowed (cautious). */
+export async function robotsFor(host: string, cache: Map<string, RobotsRules>): Promise<RobotsRules> {
+  const hit = cache.get(host);
+  if (hit) return hit;
+  let rules: RobotsRules;
+  try {
+    const res = await get(`https://${host}/robots.txt`, "text/plain");
+    if (res.status === 404 || res.status === 410) rules = "allow-all";
+    else if (res.ok) rules = parseRobots(await readCapped(res, 500_000), S.robotsName);
+    else rules = "deny-all";
+  } catch {
+    rules = "deny-all";
+  }
+  cache.set(host, rules);
+  return rules;
+}
+
+export async function allowed(url: string, cache: Map<string, RobotsRules>): Promise<boolean> {
+  const u = new URL(url);
+  return robotsAllows(await robotsFor(u.host, cache), u.pathname + u.search);
+}
+
+/** Reads one job's facts: a recruitment system's job data when its address shows one, else the page. */
+async function readFacts(job: DueJob, cache: Map<string, RobotsRules>): Promise<PageFacts | null> {
+  const system = systemApiUrl(job.apply_url);
+  if (system) {
+    if (!(await allowed(system.api, cache))) throw new BlockedByRobots();
+    const res = await get(system.api, "application/json");
+    if (!res.ok) throw new NotReadable(`HTTP ${res.status}`);
+    const facts = factsFromSystem(system.via, JSON.parse(await readCapped(res, S.maxBytes)));
+    if (hasFacts(facts)) return facts;
+    // Some systems' pages also carry a JobPosting record; fall through to the page.
+  }
+  if (!(await allowed(job.apply_url, cache))) throw new BlockedByRobots();
+  const res = await get(job.apply_url, "text/html,application/xhtml+xml");
+  if (!res.ok) throw new NotReadable(`HTTP ${res.status}`);
+  const type = res.headers.get("content-type") ?? "";
+  if (!/html|xml/i.test(type)) { await res.body?.cancel().catch(() => {}); throw new NotReadable("not an HTML page"); }
+  // A redirect to a job board (or an expired-vacancy page on one) is not the employer's page.
+  if (isListingSite(hostOf(res.url))) { await res.body?.cancel().catch(() => {}); throw new NotReadable("redirected to a job board"); }
+  return factsFromPage(job.title, job.apply_url, await readCapped(res, S.maxBytes));
+}
+
+async function save(job: DueJob, result: string, f: PageFacts | null, r: EnrichResult): Promise<void> {
+  const deadline = plausibleDeadline(f?.deadline ?? null);
+  const placeEmpty = !job.country_code && !job.location_text;
+  if (f) {
+    if (!job.deadline && deadline) r.filled.deadline++;
+    if (placeEmpty && (f.countryCode || f.locationText)) r.filled.place++;
+    if (!job.job_type && f.jobType) r.filled.jobType++;
+    if (!job.grade && f.grade) r.filled.grade++;
+    if (job.min_experience_years == null && f.experienceYears != null) r.filled.experience++;
+    if (!job.languages?.length && f.languages?.length) r.filled.languages++;
+  }
+  await sql`
+    update jobs set
+      page_checked_at = now(), page_attempts = page_attempts + 1, page_result = ${result},
+      page_deadline = ${deadline}, page_country_code = ${f?.countryCode ?? null}, page_city = ${f?.city ?? null},
+      page_location_text = ${f?.locationText?.slice(0, 200) ?? null}, page_job_type = ${f?.jobType ?? null},
+      page_grade = ${f?.grade ?? null}, page_experience_years = ${f?.experienceYears ?? null}, page_languages = ${f?.languages ?? null},
+      deadline = coalesce(deadline, ${deadline}),
+      country_code = case when country_code is null and location_text is null then ${f?.countryCode ?? null} else country_code end,
+      city = case when country_code is null and location_text is null then ${f?.city ?? null} else city end,
+      location_text = case when country_code is null and location_text is null then ${f?.locationText?.slice(0, 200) ?? null} else location_text end,
+      job_type = coalesce(job_type, ${f?.jobType ?? null}),
+      grade = coalesce(grade, ${f?.grade ?? null}),
+      min_experience_years = coalesce(min_experience_years, ${f?.experienceYears ?? null}),
+      languages = case when coalesce(cardinality(languages), 0) = 0 then ${f?.languages ?? null} else languages end,
+      status = case when status = 'active' and coalesce(deadline, ${deadline}) < (now() at time zone 'utc')::date then 'expired' else status end,
+      updated_at = case when ${f ? hasFacts(f) : false} then now() else updated_at end
+    where id = ${job.id}`;
+}
+
+export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: number } = {}): Promise<EnrichResult> {
+  const r: EnrichResult = { checked: 0, withFacts: 0, nothing: 0, blocked: 0, errors: 0, skipped: 0, filled: { deadline: 0, place: 0, jobType: 0, grade: 0, experience: 0, languages: 0 }, via: {} };
+  if (!S.enabled) return r;
+  const started = Date.now();
+  const budget = opts.budgetMs ?? S.budgetMs;
+  const due = await sql<DueJob[]>`
+    select id::int as id, title, apply_url, apply_host, deadline::text as deadline, country_code, location_text, job_type, grade, min_experience_years, languages
+      from jobs
+     where status = 'active' and not is_demo
+       and (page_checked_at is null
+            or (page_result in ('none', 'error') and page_attempts < ${S.maxAttempts}
+                and page_checked_at < now() - make_interval(days => ${S.retryDays})))
+     order by page_checked_at nulls first, first_seen_at desc
+     limit ${opts.limit ?? S.perRun}`;
+
+  // One queue per website; each worker takes a whole website, so no site sees two requests at once.
+  const byHost = new Map<string, DueJob[]>();
+  for (const j of due) {
+    const host = (() => { try { return new URL(j.apply_url).host; } catch { return j.apply_host; } })();
+    byHost.set(host, [...(byHost.get(host) ?? []), j]);
+  }
+  const hosts = [...byHost.keys()];
+  const robots = new Map<string, RobotsRules>();
+
+  async function worker() {
+    for (let host = hosts.shift(); host !== undefined; host = hosts.shift()) {
+      for (const job of byHost.get(host)!) {
+        if (Date.now() - started > budget) return;
+        r.checked++;
+        if (isListingSite(job.apply_host) || /\.pdf(?:$|[?#])/i.test(job.apply_url)) {
+          r.skipped++;
+          await save(job, "skipped", null, r);
+          continue;
+        }
+        try {
+          const facts = await readFacts(job, robots);
+          if (facts && hasFacts(facts)) {
+            r.withFacts++;
+            r.via[facts.via] = (r.via[facts.via] ?? 0) + 1;
+            await save(job, "ok", facts, r);
+          } else {
+            r.nothing++;
+            await save(job, "none", null, r);
+          }
+        } catch (e) {
+          if (e instanceof BlockedByRobots) { r.blocked++; await save(job, "blocked", null, r); }
+          else { r.errors++; await save(job, "error", null, r); }
+        }
+        await new Promise((res) => setTimeout(res, S.perHostDelayMs));
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: S.concurrency }, worker));
+  return r;
+}

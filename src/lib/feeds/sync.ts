@@ -8,6 +8,8 @@ import type { RawItem } from "./parse";
 import { normalizeItem, ItemSkipped, type ContentPolicy, type NormalizedJob } from "./extract";
 import { parseFeed, FeedParseError } from "./parse";
 import { refreshOrgLogos } from "./logos";
+import { addEmployerLinksFromBoards } from "./board-links";
+import { enrichFromVacancyPages } from "./enrich";
 import { cleanupRateLimits } from "@/lib/rate-limit";
 import { purgeStaleSubscribers } from "@/lib/subscribers";
 import { purgeOpsEvents } from "@/lib/ops-events";
@@ -60,7 +62,28 @@ type ExistingJob = {
   languages: string[] | null; desirable_languages: string[] | null; min_experience_years: number | null;
   summary: string | null; description_html: string | null; content_policy: string;
   published_at: Date | null; deadline: string | null;
+  page_deadline: string | null; page_country_code: string | null; page_city: string | null; page_location_text: string | null;
+  page_job_type: string | null; page_grade: string | null; page_experience_years: number | null; page_languages: string[] | null;
 };
+
+/**
+ * The feed item's facts, with what the employer's vacancy page said (read by the vacancy-page step)
+ * filling the gaps, so a re-import never wipes a closing date or place the feed doesn't carry.
+ */
+export function withPageFacts(j: NormalizedJob, ex: Pick<ExistingJob, "page_deadline" | "page_country_code" | "page_city" | "page_location_text" | "page_job_type" | "page_grade" | "page_experience_years" | "page_languages">): NormalizedJob {
+  const noPlace = !j.countryCode && !j.locationText;
+  return {
+    ...j,
+    deadline: j.deadline ?? (ex.page_deadline ? String(ex.page_deadline).slice(0, 10) : null),
+    countryCode: noPlace ? ex.page_country_code : j.countryCode,
+    city: noPlace ? ex.page_city : j.city,
+    locationText: noPlace ? ex.page_location_text : j.locationText,
+    jobType: j.jobType ?? ex.page_job_type,
+    grade: j.grade ?? ex.page_grade,
+    minExperienceYears: j.minExperienceYears ?? ex.page_experience_years,
+    languages: j.languages?.length ? j.languages : ex.page_languages,
+  };
+}
 
 type ItemLog = { feed_id: number | null; job_id: number | null; outcome: string; title: string | null; url: string | null; message: string | null };
 
@@ -309,8 +332,19 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
         if (isSuspendedInoreaderFeed(parsed.items)) {
           throw new Error("Inoreader has suspended this feed: exporting RSS needs an active Inoreader Pro plan. Nothing was imported or removed.");
         }
-        const items = parsed.items.slice(0, IMPORT_SETTINGS.maxItemsPerFeed);
+        let items = parsed.items.slice(0, IMPORT_SETTINGS.maxItemsPerFeed);
         result.itemsSeen += items.length;
+        // Scheduled import only: board listings whose "Apply on the employer's website" link may be
+        // followed (board-links.ts) get the employer's address, so they aren't skipped.
+        if (isCli) {
+          try {
+            const b = await addEmployerLinksFromBoards(items, Date.now() + 4 * 60_000);
+            items = b.items;
+            if (b.found) notes.push(`${b.found} job-board items imported with the employer's own link found behind the board's apply link (${b.looked} looked up this run).`);
+          } catch (e) {
+            notes.push(`Employer links behind job boards were not looked up: ${(e as Error).message}`);
+          }
+        }
 
         // Normalise
         const ctx = { id: feedId, name: feed.name, defaultOrganization: feed.default_organization, contentPolicy: feed.content_policy };
@@ -336,7 +370,9 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
           select id, url_hash, fingerprint, status, primary_feed_id, category_locked, apply_host, apply_url, source_host, organization_id,
                  title, slug, country_code, city, location_text, is_remote, category, job_type, grade, reference,
                  languages, desirable_languages, min_experience_years,
-                 summary, description_html, content_policy, published_at, deadline::text as deadline
+                 summary, description_html, content_policy, published_at, deadline::text as deadline,
+                 page_deadline::text as page_deadline, page_country_code, page_city, page_location_text,
+                 page_job_type, page_grade, page_experience_years, page_languages
           from jobs where url_hash = any(${hashes}) or (fingerprint is not null and fingerprint = any(${fps}))`;
         const byHash = new Map(existing.map((e) => [e.url_hash, e]));
         const byFp = new Map(existing.filter((e) => e.fingerprint).map((e) => [e.fingerprint!, e]));
@@ -347,8 +383,9 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
 
         const touched: { job_id: number; feed_id: number; item_guid: string | null; item_url: string; source_title: string | null }[] = [];
 
-        for (const j of jobs) {
+        for (const feedJob of jobs) {
           if (outOfTime()) { stoppedEarly = true; break; }
+          let j = feedJob;
           try {
             const orgId = j.organization ? orgIds.get(j.organization.slug) ?? null : null;
             let ex = byHash.get(j.urlHash);
@@ -380,6 +417,7 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
             }
 
             const id = Number(ex.id);
+            j = withPageFacts(j, ex);
             touched.push({ job_id: id, feed_id: feedId, item_guid: j.guid, item_url: j.applyUrl, source_title: j.sourceTitle });
 
             const isPrimary = ex.primary_feed_id === null || Number(ex.primary_feed_id) === feedId;
@@ -470,6 +508,19 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
         await refreshOrgLogos(() => Number.POSITIVE_INFINITY);
       } catch (e) {
         notes.push(`Organization icons were not updated: ${(e as Error).message}`);
+      }
+    }
+
+    // Scheduled import only: facts the feeds left out, from the employers' own vacancy pages.
+    if (isCli && !stoppedEarly) {
+      try {
+        const e = await enrichFromVacancyPages();
+        if (e.checked) {
+          const f = e.filled;
+          notes.push(`Vacancy pages: ${e.checked} read (${e.withFacts} with facts, ${e.nothing} without, ${e.blocked} closed to robots, ${e.errors} unreachable, ${e.skipped} not readable). Filled: ${f.deadline} closing dates, ${f.place} places, ${f.jobType} contract types, ${f.grade} grades, ${f.experience} experience, ${f.languages} languages.`);
+        }
+      } catch (e) {
+        notes.push(`Vacancy pages were not read: ${(e as Error).message}`);
       }
     }
 
