@@ -120,7 +120,8 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
   const localLabel = localOnlyLabel(job, countryByCode(job.country_code)?.name);
   const posted = postedMarker(job);
   const typeLabel = job.org_type ? ORG_TYPE_LABEL[job.org_type] : null;
-  const chip = "inline-flex items-center gap-1.5 rounded-lg border border-rule px-2 py-0.5";
+  // Plain details (no boxes), so the card stays calm; only the grade is set apart.
+  const chip = "inline-flex items-center gap-1.5";
   const details = [
     job.job_type,
     job.is_remote && where !== "Remote" ? "Remote" : null,
@@ -140,11 +141,9 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
           {job.org_name
             ? <span className="font-bold text-ink">{orgDisplayName(job.org_name, job.org_short)}</span>
             : <span className="italic text-slate">Organization not in our source</span>}
-          {typeLabel ? <span className="rounded-md bg-tint px-2 py-0.5 text-[0.8125rem] font-semibold text-tint-ink">{typeLabel}</span> : null}
+          {/* The employer type only in wider cards: on a phone it would wrap onto a line of its own. */}
+          {typeLabel ? <span className="hidden text-[0.8125rem] font-medium text-slate @min-[34rem]:inline">· {typeLabel}</span> : null}
           {posted?.fresh ? <span className="rounded-md bg-[#ffe680] px-2 py-0.5 text-[0.8125rem] font-bold text-ink">New</span> : null}
-          {localLabel ? <span className="rounded-md border border-rule px-2 py-0.5 text-[0.8125rem] font-medium text-slate">{localLabel}</span> : null}
-          {/* Internationally recruited grades (Professional, Director, Field Service): open to all nationalities. */}
-          {!localLabel && job.grade && /^(P|D|FS)-/.test(job.grade) ? <span className="rounded-md border border-rule px-2 py-0.5 text-[0.8125rem] font-medium text-slate">International post</span> : null}
           {job.is_demo ? <Tag tone="demo">Demo data</Tag> : null}
         </p>
         <H className="font-sans text-[1.1rem] font-bold leading-snug tracking-normal text-ink">
@@ -153,10 +152,13 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
             {job.title}
           </Link>
         </H>
-        <ul className="flex flex-wrap gap-x-2 gap-y-1.5 text-sm text-tint-ink">
+        <ul className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-sm text-tint-ink">
           {where !== NOT_SPECIFIED ? <li className={chip}><Flag code={job.country_code} />{where}</li> : null}
           {/* The grade is the first thing most applicants check, so it stands out from the other details. */}
-          {grade ? <li className="inline-flex items-center rounded-lg border border-sky-rule bg-tint px-2 py-0.5 font-semibold text-ink">{grade}</li> : null}
+          {grade ? <li className="inline-flex items-center rounded-md bg-tint px-2 py-0.5 font-semibold text-ink">{grade}</li> : null}
+          {/* Who may apply: local posts (usually nationals only) or internationally recruited grades (Professional, Director, Field Service). */}
+          {localLabel ? <li className="inline-flex items-center font-medium text-due-mid-ink">{localLabel}</li>
+            : job.grade && /^(P|D|FS)-/.test(job.grade) ? <li className="inline-flex items-center font-medium text-accent">International post</li> : null}
           {details.map((d) => <li key={d} className={chip}>{d}</li>)}
           {posted && !posted.fresh ? <li className="inline-flex items-center py-0.5 text-slate"><span className="sr-only">Posted </span>{posted.text}</li> : null}
         </ul>
