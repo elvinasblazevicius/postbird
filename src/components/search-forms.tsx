@@ -328,29 +328,35 @@ function RemoteToggle({ checked, id }: { checked?: boolean; id: string }) {
 }
 
 /** Secondary filters, folded away to keep the form simple. */
-function MoreFilterFields({ idPrefix, filters, facets, hideOrgType = false }: { idPrefix: string; filters: JobFilters; facets: FacetData; hideOrgType?: boolean }) {
+function MoreFilterFields({ idPrefix, filters, facets, hideOrgType = false, part = "all" }: { idPrefix: string; filters: JobFilters; facets: FacetData; hideOrgType?: boolean; part?: "all" | "selects" | "checks" }) {
+  const checks = part !== "selects";
+  const selects = part !== "checks";
   return (
     <>
-      {facets.types ? (
+      {checks && facets.types ? (
         <CheckList name="type" label="Contract type" selected={filters.type}
           options={JOB_TYPES.map((t) => ({ value: t, label: t, count: facets.types!.find((x) => x.job_type === t)?.count ?? 0 }))} />
       ) : null}
-      {facets.exps && (facets.exps.some((e) => e.count) || filters.exp) ? (
+      {selects && facets.exps && (facets.exps.some((e) => e.count) || filters.exp) ? (
         <Select idPrefix={idPrefix} name="exp" label="Experience required" value={filters.exp} all="Any experience"
           options={facets.exps.filter((e) => e.count || e.value === filters.exp).map((e) => ({ value: e.value, label: withCount(e.name, e.count) }))} />
       ) : null}
-      {facets.langs && (facets.langs.some((l) => l.count) || filters.lang) ? (
-        <Select idPrefix={idPrefix} name="lang" label="Language in requirements" value={filters.lang} all="Any language"
+      {selects && facets.langs && (facets.langs.some((l) => l.count) || filters.lang) ? (
+        <Select idPrefix={idPrefix} name="lang" label="Language" value={filters.lang} all="Any language"
           options={[...facets.langs.filter((l) => l.count || l.lang === filters.lang), ...(filters.lang && !facets.langs.some((l) => l.lang === filters.lang) ? [{ lang: filters.lang, count: 0 }] : [])].map((l) => ({ value: l.lang, label: withCount(l.lang, l.count) }))} />
       ) : null}
-      {!hideOrgType && facets.orgTypes ? (
+      {checks && !hideOrgType && facets.orgTypes ? (
         <CheckList name="orgtype" label="Type of organization" selected={filters.orgtype}
           options={facets.orgTypes.map((o) => ({ value: o.value, label: o.name, count: o.count }))} />
       ) : null}
-      <Select idPrefix={idPrefix} name="closing" label="Deadline" value={filters.closing} all="Any deadline"
-        options={[{ value: "7", label: "Closing within 7 days" }, { value: "30", label: "Closing within 30 days" }]} />
-      <Select idPrefix={idPrefix} name="posted" label="Posted" value={filters.posted} all="Any time"
-        options={[{ value: "1", label: "Last 24 hours" }, { value: "7", label: "Last 7 days" }, { value: "30", label: "Last 30 days" }]} />
+      {selects ? (
+        <>
+          <Select idPrefix={idPrefix} name="closing" label="Deadline" value={filters.closing} all="Any deadline"
+            options={[{ value: "7", label: "Closing within 7 days" }, { value: "30", label: "Closing within 30 days" }]} />
+          <Select idPrefix={idPrefix} name="posted" label="Posted" value={filters.posted} all="Any time"
+            options={[{ value: "1", label: "Last 24 hours" }, { value: "7", label: "Last 7 days" }, { value: "30", label: "Last 30 days" }]} />
+        </>
+      ) : null}
     </>
   );
 }
@@ -390,7 +396,7 @@ export function HeroSearch({ facets }: { facets: FacetData }) {
       <div className="hero-main grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-start sm:gap-3">
         <div className="col-span-2 sm:col-span-1">
           <label htmlFor="hero-q" className="mb-1.5 block text-sm font-medium text-ink">What</label>
-          <input id="hero-q" name="q" type="search" placeholder="Job title, skill or keyword" className={fieldCls} autoComplete="off" />
+          <input id="hero-q" name="q" type="search" placeholder="Job title or keyword" className={fieldCls} autoComplete="off" />
         </div>
         <WhereFields facets={facets} filters={{}} idPrefix="hero" placeholder="Anywhere" />
         {/* Level with the fields: below the height of their labels (which phones hide). */}
@@ -398,12 +404,16 @@ export function HeroSearch({ facets }: { facets: FacetData }) {
       </div>
       <details className="group/more mt-3">
         <MoreToggle />
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {/* The dropdowns in an even grid, then the two lists of tick boxes side by side below them. */}
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Select idPrefix="hero" name="org" label="Organization" all="Any organization" options={facets.orgs.map((o) => ({ value: o.slug, label: withCount(o.name, o.count) }))} />
           <Select idPrefix="hero" name="category" label="Category" all="Any category" options={facets.categories.filter((c) => c.count > 0).map((c) => ({ value: c.slug, label: withCount(c.name, c.count) }))} />
           <GradeSelect facets={facets} filters={{}} idPrefix="hero" />
+          <MoreFilterFields idPrefix="hero" filters={{}} facets={facets} part="selects" />
           <RemoteToggle id="hero-remote" />
-          <MoreFilterFields idPrefix="hero" filters={{}} facets={facets} />
+        </div>
+        <div className="mt-4 grid gap-4 border-t border-rule pt-4 sm:grid-cols-2">
+          <MoreFilterFields idPrefix="hero" filters={{}} facets={facets} part="checks" />
         </div>
       </details>
       <AutoSubmit formId="hero-search" onChange={false} keepScroll={false} />
