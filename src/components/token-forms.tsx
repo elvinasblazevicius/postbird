@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { confirmAction, unsubscribeAction, type FormState } from "@/app/actions";
 import { alertSignupAction } from "@/app/alert-actions";
@@ -26,13 +26,22 @@ function Result({ state }: { state: FormState }) {
   );
 }
 
-/** Confirmation needs a click (not just opening the link) so email scanners can't confirm on someone's behalf. */
 /**
- * The confirmation page's heading, the address being confirmed and the button. Once confirmed, the
- * heading says so and the page offers what to do next (it used to keep asking to "Confirm your email").
+ * The confirmation page: opening the link from the email confirms at once, in the browser (a script
+ * submits the form as soon as the page has loaded), so the person doesn't have to click a second
+ * time. Email scanners that only fetch the link don't run scripts, so they never confirm on
+ * someone's behalf. Without JavaScript the button is there to click. Once confirmed, the heading
+ * says so and the page offers what to do next.
  */
 export function ConfirmForm({ token, email }: { token: string; email?: string }) {
   const [state, action, pending] = useActionState(confirmAction, initial);
+  const formRef = useRef<HTMLFormElement>(null);
+  const sent = useRef(false);
+  useEffect(() => {
+    if (sent.current) return;
+    sent.current = true;
+    formRef.current?.requestSubmit();
+  }, []);
   if (state.status === "success") {
     // The heading says what happened: a new weekly sign-up, or only an address confirmed (a paid plan, a canceled trial).
     const kind = state.confirmed?.kind ?? "address";
@@ -55,11 +64,11 @@ export function ConfirmForm({ token, email }: { token: string; email?: string })
       <h1 className="text-[2rem] font-semibold text-ink">Confirm your email</h1>
       {email ? (
         <p className="mt-3 mb-6 text-lg text-slate">
-          Confirm that <strong className="text-ink">{email}</strong> should receive our emails.
+          {pending ? <>Confirming <strong className="text-ink">{email}</strong>…</> : <>Confirm that <strong className="text-ink">{email}</strong> should receive our emails.</>}
         </p>
       ) : null}
       {state.status !== "idle" ? <Result state={state} /> : (
-        <form action={action}>
+        <form ref={formRef} action={action}>
           <input type="hidden" name="token" value={token} />
           <button disabled={pending} className="rounded-lg bg-brand px-6 py-3 text-base font-semibold text-white hover:bg-accent disabled:opacity-60">
             {pending ? "Confirming…" : "Confirm my email"}

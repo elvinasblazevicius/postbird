@@ -282,6 +282,16 @@ const FOLD_TO_SQL = FOLD_TO + FOLD_TO;
 const placeText = () =>
   sql`(' ' || regexp_replace(translate(lower(coalesce(j.location_text, '')), ${FOLD_FROM_SQL}, ${FOLD_TO_SQL}), '[^a-z0-9]+', ' ', 'g') || ' ')`;
 
+/** The title normalized like placeText, for country names in titles. */
+const titlePlaceText = () =>
+  sql`(' ' || regexp_replace(translate(lower(coalesce(j.title, '')), ${FOLD_FROM_SQL}, ${FOLD_TO_SQL}), '[^a-z0-9]+', ' ', 'g') || ' ')`;
+
+/** The title names one of these countries (longer names of other countries taken out first, as for the location). */
+function titleNamesCountries(codes: string[]): Frag | null {
+  const p = locationPatterns(codes);
+  return p ? sql`regexp_replace(${titlePlaceText()}, ${p.strip}, ' ', 'g') ~ ${p.match}` : null;
+}
+
 /**
  * Jobs in any of these countries: the listing's country, or a country its
  * location text names (a listing for "Nairobi, Kenya; Kampala, Uganda" is in both).
@@ -365,7 +375,7 @@ function wordCondition(t: string): Frag {
     c = sql`${c} or j.search_folded @@ plainto_tsquery('simple', ${folded})`;
     // A plural also finds the singular in the text ("engineers" → "engineer…").
     const one = singular(folded);
-    if (plain && one !== folded) c = sql`${c} or j.search_folded @@ to_tsquery('simple', ${`${one}:*`})`;
+    if (plain && one !== folded) c = sql`${c} or j.search_folded @@ to_tsquery('simple', ${`${one} | ${folded}`})`;
   }
   const places = placeTsQuery([t]);
   if (places) c = sql`${c} or j.search_folded @@ to_tsquery('simple', ${places})`;
@@ -539,8 +549,10 @@ function filterConditions(f: JobFilters, mode: MatchMode = "all"): Partial<Recor
       ...(f.country ?? []).flatMap((s) => countryBySlug(s)?.code ?? []),
       ...(f.region ?? []).flatMap((s) => regionBySlug(s)?.codes ?? []),
     ];
-    const placeWord = f.fromWords?.country ?? f.fromWords?.region;
-    c.where = orTitle(codes.length ? placeCondition([...new Set(codes)]) : sql`false`, titleHas(placeWord ? phrasePattern(placeWord) : null));
+    // A country read from the words also matches a title naming it, with the same rule as the
+    // location ("South Sudan" is not Sudan, "Papua New Guinea" is not Guinea).
+    const titlePlace = f.fromWords?.country ? titleNamesCountries(codes) : f.fromWords?.region ? titleHas(phrasePattern(f.fromWords.region)) : null;
+    c.where = orTitle(codes.length ? placeCondition([...new Set(codes)]) : sql`false`, titlePlace);
   }
   // With `unstated`, each derived filter also matches listings that don't state the detail (UNSTATED).
   const orUnstated = (k: DerivedFilter, cond: Frag) => (f.unstated ? sql`(${cond} or ${UNSTATED[k]()})` : cond);
@@ -555,7 +567,10 @@ function filterConditions(f: JobFilters, mode: MatchMode = "all"): Partial<Recor
   // The flag set at import, or a location that says so ("Home Based", "Remote", "Telework").
   if (f.remote) c.remote = sql`(j.is_remote is true or lower(coalesce(j.location_text, '') || ' ' || coalesce(j.city, '')) ~ ${REMOTE_PLACE_SQL})`;
   if (f.type?.length) {
-    const typeWord = f.fromWords?.type ? wordPattern(foldText(f.fromWords.type)) : null;
+    // The contract word as a whole word ("intern", "interns", "internship"), never the start of
+    // another word ("International").
+    const stem = f.fromWords?.type ? foldText(f.fromWords.type).replace(/(ships?|s)$/, "") : null;
+    const typeWord = stem ? `\\m${stem}(s|ship|ships)?\\M` : null;
     c.type = orUnstated("type", orTitle(sql`j.job_type = any(${f.type})`, typeWord ? sql`(pb_fold(j.title) ~ ${typeWord} or pb_fold(o.name) ~ ${typeWord})` : null));
   }
   if (f.posted) c.posted = sql`coalesce(j.published_at, j.first_seen_at) >= now() - make_interval(days => ${Number(f.posted)})`;

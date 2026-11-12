@@ -65,6 +65,7 @@ describe.skipIf(!TEST_DB)("search audit cases (database)", () => {
       { title: "Officer, Finance and Budget", org: who, cc: "CH", loc: "Geneva, Switzerland", cat: "finance" },
       { title: "Monitoring Assistant, SC5", org: wfp, cc: "KE", loc: "Nairobi, Kenya", cat: "monitoring-evaluation" },
       { title: "Consultant National en transformation numérique", org: undp, cc: "SN", loc: "Dakar, Sénégal", cat: "it" },
+      { title: "Response Officer, Juba, South Sudan", org: wfp, cc: "SS", loc: "Juba", cat: "programme-management" },
     ];
     for (const [i, r] of rows.entries()) {
       await sql`
@@ -117,7 +118,7 @@ describe.skipIf(!TEST_DB)("search audit cases (database)", () => {
 
   it("a country written the other way round is not read as its shorter neighbour", async () => {
     expect(await titles({ country: ["sudan"] })).toEqual(["Humanitarian Coordinator"]);
-    expect(await titles({ country: ["south-sudan"] })).toEqual(["Programme Policy Officer – Identity Management, CST II"]);
+    expect((await titles({ country: ["south-sudan"] })).sort()).toEqual(["Programme Policy Officer – Identity Management, CST II", "Response Officer, Juba, South Sudan"]);
     expect(await titles({ country: ["republic-of-the-congo"] })).toEqual(["Health Officer"]);
     expect((await titles({ country: ["democratic-republic-of-the-congo"] })).sort()).toEqual(["Chargé(e) d'Analyse sociale – SSA NOB basée en Ituri", "Supply Chain Officer – Planning"]);
   });
@@ -129,7 +130,7 @@ describe.skipIf(!TEST_DB)("search audit cases (database)", () => {
     expect(await countFor({ org: ["iom"] })).toBe(res.total);
     const all = await search({});
     expect(all.total).toBe(all.items.length);
-    expect(all.total).toBe(29);
+    expect(all.total).toBe(30);
   });
 
   it("short words match titles, places and organizations, not running text", async () => {
@@ -160,8 +161,18 @@ describe.skipIf(!TEST_DB)("search audit cases (database)", () => {
     expect(jobs.parseFilters({ category: allCategories }).category).toHaveLength(12);
   });
 
+  it("the looser matching doesn't over-match (re-check findings A to C)", async () => {
+    // "intern" is a whole word: not every vacancy at an "International …" organization.
+    expect(await q("intern")).toEqual([]);
+    // A plural never matches a longer word that starts with its singular ("units" is not "United").
+    // (Only the labelled "similar words" fallback, shown when nothing matches, may look wider.)
+    expect((await jobs.searchJobs({ q: "units" }, 50)).items).toEqual([]);
+    // A country word never matches a title that names a longer country containing it.
+    expect(await q("sudan")).toEqual(["Humanitarian Coordinator"]);
+  });
+
   it("nonsense input matches nothing instead of dozens of vacancies", async () => {
-    expect((await search({ q: "🚀" })).total).toBe(29);
+    expect((await search({ q: "🚀" })).total).toBe(30);
     expect(await q("🚀 engineer")).toHaveLength(2);
   });
 });

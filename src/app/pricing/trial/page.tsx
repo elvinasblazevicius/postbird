@@ -50,7 +50,7 @@ export default async function TrialPage({ searchParams }: Props) {
         intro={
           BILLING_LIVE ? (
             <>
-              A reminder before matching vacancies close, up to 20 searches, and new matches by email every day. {p.trialDays} days free, then {p.priceSummary}.
+              A list of matching vacancies that close in the next 3 days, up to 20 searches, and new matches by email every day. {p.trialDays} days free, then {p.priceSummary}.
               Cancel any time before the trial ends and you pay nothing.
             </>
           ) : (

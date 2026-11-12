@@ -376,8 +376,12 @@ export function singular(term: string): string {
 export function wordPattern(term: string): string {
   const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   if (term.length <= 4) return `\\m${esc(term)}\\M`;
-  if (/^[a-z0-9]+ies$/.test(term) && term.length >= 7) return `\\m${esc(term.slice(0, -3))}(y|ies)`;
-  return `\\m${esc(singular(term))}`;
+  // A plural matches the word and its singular as whole words only: "units" never "United",
+  // "plans" never "Planning".
+  if (/^[a-z0-9]+ies$/.test(term) && term.length >= 7) return `\\m${esc(term.slice(0, -3))}(y|ies)\\M`;
+  const one = singular(term);
+  if (one !== term) return `\\m(${esc(one)}|${esc(term)})\\M`;
+  return `\\m${esc(term)}`;
 }
 
 /**
