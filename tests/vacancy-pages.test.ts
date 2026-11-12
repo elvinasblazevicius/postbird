@@ -100,3 +100,16 @@ describe("more new items than one import reads", () => {
     expect(mayHaveGap([at("2026-11-12T01:00:00Z"), at("2026-11-12T02:00:00Z")], 2, null)).toBe(false);
   });
 });
+
+describe("still open?", () => {
+  it("recognises closed-vacancy wording in the main content only", async () => {
+    const { pageSaysClosed, systemSaysClosed } = await import("@/lib/feeds/vacancy-page");
+    expect(pageSaysClosed("<main><h1>Finance Officer</h1><p>This position is no longer accepting applications.</p></main>")).toBe(true);
+    expect(pageSaysClosed("<main><p>Sorry, the job you are looking for is no longer available.</p></main>")).toBe(true);
+    expect(pageSaysClosed("<nav><a>Closed vacancies</a> The position has been filled</nav><main><h1>Finance Officer</h1><p>Apply by sending your CV.</p></main>")).toBe(false);
+    expect(systemSaysClosed("smartrecruiters", { active: false })).toBe(true);
+    expect(systemSaysClosed("smartrecruiters", { active: true })).toBe(false);
+    expect(systemSaysClosed("oracle", { items: [] })).toBe(true);
+    expect(systemSaysClosed("workday", {})).toBe(false);
+  });
+});

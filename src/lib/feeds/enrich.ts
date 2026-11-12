@@ -12,7 +12,7 @@ import { IMPORT_SETTINGS } from "@/config/import";
 import { sql } from "@/lib/db";
 import { hostOf, isListingSite } from "./url";
 import { parseRobots, robotsAllows, type RobotsRules } from "./robots";
-import { factsFromPage, factsFromSystem, hasFacts, plausibleDeadline, systemApiUrl, type PageFacts } from "./vacancy-page";
+import { factsFromPage, factsFromSystem, hasFacts, pageSaysClosed, plausibleDeadline, systemApiUrl, systemSaysClosed, type PageFacts } from "./vacancy-page";
 
 const S = IMPORT_SETTINGS.vacancyPages;
 
@@ -179,6 +179,79 @@ export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: 
           if (e instanceof BlockedByRobots) { r.blocked++; await save(job, "blocked", null, r); }
           else { r.errors++; await save(job, "error", null, r); }
         }
+        await new Promise((res) => setTimeout(res, S.perHostDelayMs));
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: S.concurrency }, worker));
+  return r;
+}
+
+// ── Weekly "still open?" check for undated jobs ─────────────
+
+export type RecheckResult = { checked: number; closed: number; open: number; unknown: number };
+
+type UndatedJob = { id: number; apply_url: string; apply_host: string };
+
+/** "closed", "open", or "unknown" (blocked, unreachable, server error: the listing is left alone). */
+async function liveness(job: UndatedJob, cache: Map<string, RobotsRules>): Promise<"open" | "closed" | "unknown"> {
+  const system = systemApiUrl(job.apply_url);
+  if (system) {
+    if (!(await allowed(system.api, cache))) return "unknown";
+    const res = await get(system.api, "application/json");
+    if (res.status === 404 || res.status === 410) { await res.body?.cancel().catch(() => {}); return "closed"; }
+    if (!res.ok) { await res.body?.cancel().catch(() => {}); return "unknown"; }
+    try {
+      return systemSaysClosed(system.via, JSON.parse(await readCapped(res, S.maxBytes))) ? "closed" : "open";
+    } catch {
+      return "unknown";
+    }
+  }
+  if (!(await allowed(job.apply_url, cache))) return "unknown";
+  const res = await get(job.apply_url, "text/html,application/xhtml+xml");
+  if (res.status === 404 || res.status === 410) { await res.body?.cancel().catch(() => {}); return "closed"; }
+  if (!res.ok || !/html|xml/i.test(res.headers.get("content-type") ?? "")) { await res.body?.cancel().catch(() => {}); return "unknown"; }
+  return pageSaysClosed(await readCapped(res, S.maxBytes)) ? "closed" : "open";
+}
+
+/**
+ * Open jobs with no closing date, not checked in the last `recheckDays`: is the employer's page
+ * still there? Closed ones are hidden at once (status 'archived', as for undated jobs the feed
+ * stopped carrying); anything uncertain is left as it is.
+ */
+export async function recheckUndatedJobs(opts: { limit?: number; budgetMs?: number } = {}): Promise<RecheckResult> {
+  const r: RecheckResult = { checked: 0, closed: 0, open: 0, unknown: 0 };
+  if (!S.enabled || process.env.VITEST) return r;
+  const started = Date.now();
+  const budget = opts.budgetMs ?? 4 * 60_000;
+  const due = await sql<UndatedJob[]>`
+    select id::int as id, apply_url, apply_host from jobs
+     where status = 'active' and not is_demo and deadline is null
+       and first_seen_at < now() - interval '2 days'
+       and (live_checked_at is null or live_checked_at < now() - make_interval(days => ${S.recheckDays}))
+     order by live_checked_at nulls first, first_seen_at
+     limit ${opts.limit ?? S.recheckPerRun}`;
+  const byHost = new Map<string, UndatedJob[]>();
+  for (const j of due) {
+    if (isListingSite(j.apply_host) || /\.pdf(?:$|[?#])/i.test(j.apply_url)) continue;
+    const host = (() => { try { return new URL(j.apply_url).host; } catch { return j.apply_host; } })();
+    byHost.set(host, [...(byHost.get(host) ?? []), j]);
+  }
+  const hosts = [...byHost.keys()];
+  const robots = new Map<string, RobotsRules>();
+  async function worker() {
+    for (let host = hosts.shift(); host !== undefined; host = hosts.shift()) {
+      for (const job of byHost.get(host)!) {
+        if (Date.now() - started > budget) return;
+        r.checked++;
+        let state: "open" | "closed" | "unknown" = "unknown";
+        try { state = await liveness(job, robots); } catch { state = "unknown"; }
+        r[state]++;
+        await sql`
+          update jobs set live_checked_at = now(), live_result = ${state},
+            status = case when ${state} = 'closed' and status = 'active' then 'archived' else status end,
+            updated_at = case when ${state} = 'closed' then now() else updated_at end
+          where id = ${job.id}`;
         await new Promise((res) => setTimeout(res, S.perHostDelayMs));
       }
     }

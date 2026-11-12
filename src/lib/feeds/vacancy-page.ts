@@ -238,3 +238,25 @@ export function plausibleDeadline(d: string | null, today = new Date()): string 
   const now = today.getTime();
   return t < now - 7 * 86400_000 || t > now + 400 * 86400_000 ? null : d;
 }
+
+// ── Still open? ──────────────────────────────────────────────
+
+/**
+ * Wording employers use once a vacancy is closed. Read only in the page's main content, so a
+ * "closed vacancies" menu link or footer doesn't count.
+ */
+const CLOSED_RE =
+  /\b(?:no longer (?:accepting|available|open|active|exists?)|(?:position|vacancy|job|posting|post|role|opening) (?:has been|is|was) (?:filled|closed|withdrawn|cancell?ed|removed|expired)|(?:this|the) (?:job|position|vacancy|posting|offer|role) (?:is|has) (?:expired|closed|ended)|applications? (?:are|is) (?:now )?closed|(?:job|vacancy|posting) (?:has )?expired|deadline (?:for applications )?has passed|job (?:not found|could not be found)|the (?:job|page) you (?:are|were) looking for (?:is|was|could) (?:no longer|not))/i;
+
+export function pageSaysClosed(html: string): boolean {
+  return CLOSED_RE.test(htmlToText(mainContentHtml(html)).slice(0, 6000));
+}
+
+/** A recruitment system's answer for one job: "closed" only when the system says so plainly. */
+export function systemSaysClosed(via: "oracle" | "smartrecruiters" | "workday", data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  const d = data as Record<string, unknown>;
+  if (via === "smartrecruiters") return d.active === false;
+  if (via === "oracle") return Array.isArray(d.items) && d.items.length === 0;
+  return false;
+}

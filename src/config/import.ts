@@ -73,6 +73,13 @@ export const IMPORT_SETTINGS = {
     /** How the import introduces itself (and the name robots.txt rules may address). */
     userAgent: "PostbirdBot/1.0 (+https://postbird.nuevanova.com/about; vacancy facts only)",
     robotsName: "PostbirdBot",
+    /**
+     * Open jobs without a closing date: their employer page is checked again every `recheckDays`
+     * (at most `recheckPerRun` per run). A page that is gone (404/410), a job the recruitment
+     * system marks inactive, or a page saying applications are closed closes the listing at once.
+     */
+    recheckDays: 7,
+    recheckPerRun: 80,
   },
 
   /**

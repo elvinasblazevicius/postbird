@@ -9,7 +9,7 @@ import { normalizeItem, ItemSkipped, type ContentPolicy, type NormalizedJob } fr
 import { parseFeed, FeedParseError } from "./parse";
 import { refreshOrgLogos } from "./logos";
 import { addEmployerLinksFromBoards } from "./board-links";
-import { enrichFromVacancyPages } from "./enrich";
+import { enrichFromVacancyPages, recheckUndatedJobs } from "./enrich";
 import { cleanupRateLimits } from "@/lib/rate-limit";
 import { purgeStaleSubscribers } from "@/lib/subscribers";
 import { purgeOpsEvents, recordOpsEvent } from "@/lib/ops-events";
@@ -65,6 +65,7 @@ type ExistingJob = {
   published_at: Date | null; deadline: string | null;
   page_deadline: string | null; page_country_code: string | null; page_city: string | null; page_location_text: string | null;
   page_job_type: string | null; page_grade: string | null; page_experience_years: number | null; page_languages: string[] | null;
+  live_result: string | null;
 };
 
 /**
@@ -402,7 +403,7 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
                  languages, desirable_languages, min_experience_years,
                  summary, description_html, content_policy, published_at, deadline::text as deadline,
                  page_deadline::text as page_deadline, page_country_code, page_city, page_location_text,
-                 page_job_type, page_grade, page_experience_years, page_languages
+                 page_job_type, page_grade, page_experience_years, page_languages, live_result
           from jobs where url_hash = any(${hashes}) or (fingerprint is not null and fingerprint = any(${fps}))`;
         const byHash = new Map(existing.map((e) => [e.url_hash, e]));
         const byFp = new Map(existing.filter((e) => e.fingerprint).map((e) => [e.fingerprint!, e]));
@@ -469,6 +470,8 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
             // Primary feed: refresh the listing if anything changed.
             const newStatus =
               ex.status === "removed" ? "removed" :
+              // The employer's page said it is closed (recheckUndatedJobs): the feed carrying it again doesn't reopen it.
+              ex.live_result === "closed" && ex.status !== "active" ? ex.status :
               ex.status === "active" ? statusFor(j.deadline, today) :
               (j.deadline === null || j.deadline >= today) ? "active" : ex.status;
             const category = ex.category_locked ? ex.category : j.category;
@@ -551,6 +554,14 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
         }
       } catch (e) {
         notes.push(`Vacancy pages were not read: ${(e as Error).message}`);
+      }
+    }
+    if (isCli && !stoppedEarly) {
+      try {
+        const c = await recheckUndatedJobs();
+        if (c.checked) notes.push(`Still open? ${c.checked} undated jobs checked on the employer's page: ${c.closed} closed and hidden, ${c.open} still open, ${c.unknown} couldn't be checked.`);
+      } catch (e) {
+        notes.push(`Undated jobs were not re-checked: ${(e as Error).message}`);
       }
     }
 
