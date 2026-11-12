@@ -80,7 +80,7 @@ export function FindJobsMenu({ employers }: { employers: NavItem[] }) {
       <div
         id={panelId}
         hidden={!open}
-        className="absolute left-0 top-full z-50 -mt-2 w-60 rounded-xl border border-rule bg-paper p-2 shadow-[0_16px_40px_-16px_rgba(11,27,63,0.35)]"
+        className="absolute left-0 top-full z-50 -mt-2 w-max min-w-60 max-w-80 rounded-xl border border-rule bg-paper p-2 shadow-[0_16px_40px_-16px_rgba(11,27,63,0.35)]"
       >
         <Link href="/jobs" onClick={close} className="block rounded-lg px-3 py-2 text-[0.95rem] font-medium text-ink hover:bg-mist">All jobs</Link>
         <p className="mt-1 border-t border-rule px-3 pb-1 pt-2.5 text-xs font-semibold text-slate">Browse by employer</p>
