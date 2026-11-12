@@ -728,7 +728,7 @@ async function linkCheckout(tx: Tx, subId: string, target: Target, newlyLive: bo
   await tx`update paddle_checkouts set subscription_id = ${subId} where ref = ${target.checkout.ref}`;
   if (!newlyLive) return;
   const search = target.checkout.search ?? "";
-  // In a savepoint: a failure here (e.g. the 5-search limit) must not undo the event.
+  // In a savepoint: a failure here (e.g. the saved-search limit) must not undo the event.
   await tx.savepoint((sp) => addSavedSearch(target.subscriberId, search, sp))
     .catch((e: Error) => console.warn("paddle webhook: saved search not added", (e as Error).message));
 }

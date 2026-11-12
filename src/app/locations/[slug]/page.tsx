@@ -28,7 +28,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   const count = await countFor(place.fixed, false);
   return landingMetadata({
     title: `UN and international organization jobs in ${place.name}`,
-    description: `${count} open vacancies in ${place.name} at UN agencies and international organizations, with application deadlines and links to each employer's own website.`,
+    description: `${count} open ${count === 1 ? "vacancy" : "vacancies"} in ${place.name} at UN agencies and international organizations, with application deadlines and links to each employer's own website.`,
     path: `/locations/${slug}`,
     count,
     filters: parseFilters(await searchParams),

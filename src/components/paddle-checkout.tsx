@@ -188,14 +188,14 @@ function PlanChoice({ dark, compact, plan, setPlan, locked = false }: { dark: bo
             </span>
             <span className="mt-1.5 flex items-baseline gap-1">
               <span className="font-display text-3xl font-semibold leading-none">{p.price}</span>
-              <span className={`text-sm ${dark ? "text-white/75" : "text-slate"}`}>{p.per}</span>
+              <span className={`text-sm ${dark ? "text-white/90" : "text-slate"}`}>{p.per}</span>
             </span>
             <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
               {p.perMonth ? <span className={`font-semibold ${dark ? "text-white" : "text-remote"}`}>{p.perMonth}</span> : null}
               {p.note ? (
                 <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${dark ? "bg-white/15 text-white" : "bg-remote-bg text-remote"}`}>{p.note}</span>
               ) : null}
-              {!p.perMonth && !p.note ? <span className={dark ? "text-white/75" : "text-slate"}>{p.detail}, cancel any time</span> : null}
+              {!p.perMonth && !p.note ? <span className={dark ? "text-white/90" : "text-slate"}>{p.detail}, cancel any time</span> : null}
             </span>
           </label>
         ))}
@@ -245,7 +245,7 @@ function TermsAndButton({ dark, trial, plan, trialEnds, busy, label, type = "sub
           {bolded(noTrialLine(plan), RENEWING)} {links}
         </p>
       )}
-      <details className={`group/details mt-2 text-xs ${dark ? "text-white/80" : "text-slate"}`}>
+      <details className={`group/details mt-2 text-xs ${dark ? "text-white/90" : "text-slate"}`}>
         <summary className={`inline-flex cursor-pointer list-none items-center gap-1 py-1 font-medium underline-offset-2 hover:underline [&::-webkit-details-marker]:hidden ${dark ? "text-white" : "text-accent"}`}>
           Details
           <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 transition-transform group-open/details:rotate-180" aria-hidden="true"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
@@ -386,7 +386,7 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
       <input id={id("email")} name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} {...warmup.email} />
       <TermsAndButton dark={dark} trial confirmNote plan={plan} trialEnds={trialEnds} busy={busy} label={pending ? "Preparing…" : phase.step === "checkout" ? "Checkout open…" : trialButton} />
       {error ? <p role="alert" className={`mt-2 text-sm ${dark ? "text-[#ffd7d7]" : "text-[#9b1c1c]"}`}>{error}</p> : null}
-      <ul className={`mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs ${dark ? "text-white/70" : "text-slate"}`}>
+      <ul className={`mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs ${dark ? "text-white/90" : "text-slate"}`}>
         <li className="flex items-center gap-1.5">
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true"><path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2M3.5 7h9v6.5h-9z" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
           Secure checkout by Paddle

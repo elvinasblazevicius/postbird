@@ -66,9 +66,10 @@ export async function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-1 min-[360px]:gap-1.5 md:hidden">
-          <SavedCount className="px-1.5" />
+          {/* Narrow phones: the saved-jobs link is in the menu, so the header never grows wider than the screen. */}
+          <span className="max-[419.98px]:hidden"><SavedCount className="px-1.5" /></span>
           {/* Below 360px wide (e.g. 320px phones) an envelope with the same name for screen readers, so the header never scrolls sideways. */}
-          <AlertsButton className="inline-flex items-center whitespace-nowrap rounded-lg bg-highlight px-2.5 py-2 text-sm font-semibold text-ink hover:brightness-95 min-[360px]:px-3">
+          <AlertsButton className="inline-flex min-h-11 items-center whitespace-nowrap rounded-lg bg-highlight px-2.5 py-2 text-sm font-semibold text-ink hover:brightness-95 min-[360px]:px-3">
             <svg viewBox="0 0 20 20" className="h-5 w-5 min-[360px]:hidden" aria-hidden="true">
               <path d="M3 5.5h14v9H3z M3.5 6l6.5 5 6.5-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
             </svg>

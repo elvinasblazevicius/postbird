@@ -56,7 +56,7 @@ function PhoneWeekAndPlaces({ week, countries }: { week: WeekInReview; countries
           <ul className="mt-2 flex flex-wrap gap-2">
             {countries.slice(0, 4).map((c) => (
               <li key={c.slug}>
-                <Link href={`/locations/${c.slug}`} className="inline-flex items-center gap-1.5 rounded-lg border border-rule px-2.5 py-1.5 text-sm font-semibold text-ink hover:border-accent hover:text-accent">
+                <Link href={`/locations/${c.slug}`} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-rule px-2.5 py-1.5 text-sm font-semibold text-ink hover:border-accent hover:text-accent">
                   <Flag code={c.code} className="shadow-[0_0_0_1px_rgba(14,27,44,0.15)]" />
                   {c.name}
                   <span className="font-normal text-slate">{c.count}</span>
@@ -135,7 +135,7 @@ export default async function HomePage() {
                 <path d="M10 2.5 4 5v4.5c0 3.6 2.4 6.6 6 8 3.6-1.4 6-4.4 6-8V5l-6-2.5Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
                 <path d="m7.4 10 1.9 1.9 3.4-3.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <span>Independent site, not affiliated with the UN or any employer. Every Apply button goes to the employer&apos;s own website.</span>
+              <span>Independent site, not affiliated with the UN or any employer. Every Apply or Careers site button opens the employer&apos;s own website or application system.</span>
             </p>
             {employerTypes.length ? <nav aria-label="Employer types" className="mt-4">
               <ul className="flex flex-wrap gap-2">
@@ -143,7 +143,7 @@ export default async function HomePage() {
                   <li key={t.path}>
                     <Link
                       href={t.path}
-                      className="inline-flex items-baseline gap-1.5 rounded-full border border-sky-rule bg-paper px-3.5 py-1.5 text-sm font-semibold text-ink hover:border-brand hover:text-accent"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-sky-rule bg-paper px-3.5 py-1.5 text-sm font-semibold text-ink hover:border-brand hover:text-accent max-sm:min-h-11"
                     >
                       {t.label}
                       <span className="text-[0.8125rem] font-medium tabular-nums text-slate">{t.count.toLocaleString("en-US")}</span>
@@ -219,7 +219,7 @@ export default async function HomePage() {
                     <Link
                       key={c.slug}
                       href={`/locations/${c.slug}`}
-                      className="inline-flex items-center gap-2 rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm font-semibold text-ink hover:border-accent hover:text-accent"
+                      className="inline-flex items-center gap-2 rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm font-semibold text-ink hover:border-accent hover:text-accent max-sm:min-h-11"
                     >
                       <Flag code={c.code} className="shadow-[0_0_0_1px_rgba(14,27,44,0.15)]" />
                       {c.name}

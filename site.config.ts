@@ -144,7 +144,7 @@ const siteConfig = {
    * the site lists vacancies from these organizations but is not run by them.
    */
   disclaimer:
-    "Postbird is an independent job discovery site. It is not affiliated with, endorsed by or acting for the United Nations or any organization listed. Applications are made only through each employer's own website or application form.",
+    "Postbird is an independent job discovery site. It is not affiliated with, endorsed by or acting for the United Nations, the EU or any organization listed. Applications are made only through each employer's own website or application form.",
 
   /** Optional social links shown in the footer. Leave empty to hide. */
   social: {

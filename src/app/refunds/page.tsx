@@ -31,7 +31,7 @@ export default function RefundsPage() {
         )}
         <RefundPolicyText />
         <p>
-          To stop future charges, cancel from your account page (see <Link href="/terms#cancel" className="text-accent underline">Cancelling</Link>). Cancelling
+          To stop future charges, cancel from your account page (see <Link href="/terms#cancel" className="text-accent underline">Canceling</Link>). Canceling
           doesn&apos;t refund a charge by itself; to get one back, email us as above.
         </p>
         <p className="text-sm text-slate">

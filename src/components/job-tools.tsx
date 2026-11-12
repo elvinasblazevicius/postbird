@@ -107,7 +107,7 @@ export function SaveButton({ job, compact = false }: { job: Omit<SavedJob, "save
         aria-label={saved ? `Remove ${job.title} from saved jobs` : `Save ${job.title}`}
         title={blocked ? "This browser doesn't allow saving" : saved ? "Saved" : "Save"}
         // A 44×44px bordered square: easy to tap, and it lines up with the closing date beside it.
-        className={`relative z-10 flex h-11 w-11 items-center justify-center rounded-[10px] border border-rule bg-paper transition-[color,background-color,border-color,transform] duration-150 hover:border-sky-rule hover:bg-tint active:scale-90 ${saved ? "text-accent motion-safe:animate-[save-pop_220ms_ease-out]" : "text-tint-ink hover:text-accent"}`}
+        className={`relative z-10 flex h-11 w-11 items-center justify-center rounded-[10px] border border-field bg-paper transition-[color,background-color,border-color,transform] duration-150 hover:border-sky-rule hover:bg-tint active:scale-90 ${saved ? "text-accent motion-safe:animate-[save-pop_220ms_ease-out]" : "text-tint-ink hover:text-accent"}`}
       >
         <Bookmark filled={saved} />
       </button>
@@ -119,7 +119,7 @@ export function SaveButton({ job, compact = false }: { job: Omit<SavedJob, "save
         type="button"
         onClick={toggle}
         aria-pressed={saved}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm font-medium text-accent transition-[background-color,transform] duration-150 hover:bg-tint active:scale-[0.97]"
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-field bg-paper px-3 py-1.5 text-sm font-medium text-accent transition-[background-color,transform] duration-150 hover:bg-tint active:scale-[0.97]"
       >
         <Bookmark filled={saved} />
         {saved ? "Saved" : "Save"}
@@ -155,7 +155,7 @@ export function ShareButton({ url, title }: { url: string; title: string }) {
   };
   return (
     <span className="inline-flex min-w-0 items-center gap-2">
-      <button type="button" onClick={share} className="inline-flex items-center gap-1.5 rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm font-medium text-accent hover:bg-tint">
+      <button type="button" onClick={share} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-field bg-paper px-3 py-1.5 text-sm font-medium text-accent hover:bg-tint">
         <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0" aria-hidden="true"><path d="M8 10V2.5M5 5.5l3-3 3 3M3.5 8.5v5h9v-5" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
         Share
       </button>

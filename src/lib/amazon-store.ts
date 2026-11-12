@@ -1,7 +1,8 @@
 /**
- * Which Amazon store to send a visitor to, by country. Only stores that sell both the Kindle and
- * the print editions of a KDP book are listed; a country without its own store goes to the store
- * that usually delivers there (amazon.de for the rest of Europe), everyone else to amazon.com.
+ * Which Amazon store to send a visitor to, by country: the stores that list KDP books (the owner
+ * checked the book's page on the Belgian and German stores). A country without its own store goes
+ * to the store that usually delivers there (amazon.de for the rest of Europe), everyone else to
+ * amazon.com.
  */
 const STORE_BY_COUNTRY: Record<string, string> = {
   US: "amazon.com",

@@ -89,7 +89,7 @@ export default async function TrialPage({ searchParams }: Props) {
         {siteConfig.freeWeeklyEmail ? (
           <p className="mt-6 rounded-xl border border-rule p-4 text-[0.95rem] text-ink">
             Once a week is enough?{" "}
-            <Link href={`/alerts${search ? `?search=${encodeURIComponent(search)}` : ""}`} className="font-semibold text-accent underline">
+            <Link href={`/alerts${search ? `?search=${encodeURIComponent(search)}` : ""}#alert-signup`} className="font-semibold text-accent underline">
               Get the free weekly email
             </Link>{" "}
             for one search instead. No card needed.

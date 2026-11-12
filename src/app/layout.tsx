@@ -67,6 +67,18 @@ const headingExt = localFont({
   adjustFontFallback: false,
 });
 
+// Vietnamese letters of the heading font (job titles in Vietnamese would otherwise mix two typefaces inside a word).
+const headingVi = localFont({
+  src: [{ path: "../../node_modules/@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-vietnamese-wght-normal.woff2", style: "normal", weight: "200 800" }],
+  declarations: [
+    { prop: "unicode-range", value: "U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB" },
+  ],
+  variable: "--font-heading-vi",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
+});
+
 // Defaults for pages that don't set their own: never naming the EU (see defaultSiteCopy in
 // src/lib/eu-claim.ts). The homepage names it while EU institutions have open vacancies here.
 const defaults = defaultSiteCopy();
@@ -108,7 +120,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   } as React.CSSProperties;
 
   return (
-    <html lang="en" className={`${publicSans.variable} ${publicSansExt.variable} ${heading.variable} ${headingExt.variable} antialiased`} style={brandVars}>
+    <html lang="en" className={`${publicSans.variable} ${publicSansExt.variable} ${heading.variable} ${headingExt.variable} ${headingVi.variable} antialiased`} style={brandVars}>
       <body className="flex min-h-dvh flex-col">
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-paper focus:px-3 focus:py-2">
           Skip to content

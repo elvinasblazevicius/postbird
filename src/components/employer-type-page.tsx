@@ -17,7 +17,7 @@ export async function employerTypeMetadata(orgtype: EmployerTypePage["orgtype"],
   const count = await countFor({ orgtype: [orgtype] }, false);
   return landingMetadata({
     title: page.metaTitle,
-    description: count > 0 ? `${count} open vacancies. ${page.intro}` : page.intro,
+    description: count > 0 ? `${count} open ${count === 1 ? "vacancy" : "vacancies"}. ${page.intro}` : page.intro,
     path: page.path,
     count,
     filters: parseFilters(await searchParams),
@@ -55,7 +55,7 @@ export async function EmployerTypeListing({ orgtype, searchParams }: { orgtype: 
           generalAlert={empty}
         />
         {/* Our own EPSO workbook, only on the EU institutions page (as on EU job and organization pages). */}
-        {orgtype === "eu" ? <EpsoBook className="mt-10 max-w-2xl" source="eu-jobs" /> : null}
+        {orgtype === "eu" ? <EpsoBook className="mt-10" source="eu-jobs" /> : null}
       </div>
     </>
   );

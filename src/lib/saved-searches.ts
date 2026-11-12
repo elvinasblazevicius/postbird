@@ -17,7 +17,7 @@ export const FREE_SAVED_SEARCHES = 1;
 
 /**
  * How many saved searches a subscriber with this billing status may keep: up to MAX_SAVED_SEARCHES
- * with a plan (LIVE_STATUSES; same rule as the database trigger, migration 008).
+ * with a plan (LIVE_STATUSES; same rule as the database trigger, migration 026).
  */
 export function searchLimit(billingStatus: string): number {
   return isLiveStatus(billingStatus) ? MAX_SAVED_SEARCHES : FREE_SAVED_SEARCHES;
@@ -167,8 +167,8 @@ export type AddSearchResult = { ok: true; added: boolean } | { ok: false; error:
 
 /**
  * Adds a saved search (already normalized). Adding one that exists is not an
- * error. The limit (5 with a plan, 1 without) is enforced by the database
- * (trigger saved_searches_limit, migration 008).
+ * error. The limit (20 with a plan, 1 without) is enforced by the database
+ * (trigger saved_searches_limit, migration 026).
  * db: a transaction to run in (the Paddle webhook), otherwise the pool.
  */
 export async function addSavedSearch(subscriberId: number, search: string, db: Db = sql): Promise<AddSearchResult> {

@@ -10,7 +10,7 @@ export type BillingStatus = "none" | "trialing" | "active" | "past_due" | "pause
 export const ALERT_STATUSES: BillingStatus[] = ["trialing", "active"];
 /**
  * Statuses where a Paddle subscription still exists (not yet canceled): a plan. Same rule as the
- * database trigger on saved searches (migration 008). Subscribers with one never get the free weekly email.
+ * database trigger on saved searches (migration 026). Subscribers with one never get the free weekly email.
  */
 export const LIVE_STATUSES: BillingStatus[] = ["trialing", "active", "past_due", "paused"];
 

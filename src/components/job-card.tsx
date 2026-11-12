@@ -19,19 +19,7 @@ export function Tag({ children, tone = "plain" }: { children: React.ReactNode; t
     signal: "bg-signal-bg text-signal",
     demo: "bg-[#fde8e8] text-[#9b1c1c]",
   };
-  return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[0.8rem] font-medium ${tones[tone]}`}>{children}</span>;
-}
-
-/**
- * A closing date in words: "Closes 12 Nov" and how many days are left ("3 days", "today",
- * "tomorrow"; none beyond 60 days), urgent (red) only within LISTING_SETTINGS.closingSoonDays.
- * Null without a published closing date.
- */
-export function closingChip(deadline: string | null): { date: string; left: string | null; urgent: boolean } | null {
-  const n = daysUntil(deadline);
-  if (n === null || n < 0) return null;
-  const left = n === 0 ? "today" : n === 1 ? "tomorrow" : n <= 60 ? `${n} days` : null;
-  return { date: `Closes ${formatShortDate(deadline)}`, left, urgent: n <= LISTING_SETTINGS.closingSoonDays };
+  return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[0.8125rem] font-medium ${tones[tone]}`}>{children}</span>;
 }
 
 const WEEKDAY = new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" });
@@ -50,14 +38,17 @@ export function deadlineTone(daysLeft: number): string {
  */
 function DeadlineBox({ deadline, jobId }: { deadline: string | null; jobId: number }) {
   const n = daysUntil(deadline);
-  if (deadline === null || n === null || n < 0) {
-    return <p className="rounded-[10px] bg-due-none-bg px-3 py-2 text-[0.95rem] font-semibold leading-snug text-slate">No closing date given</p>;
+  if (deadline === null || n === null) {
+    return <p className="flex min-h-11 items-center rounded-[10px] bg-due-none-bg px-3 py-2 text-[0.95rem] font-semibold leading-snug text-slate">No closing date given</p>;
+  }
+  if (n < 0) {
+    return <p className="flex min-h-11 items-center rounded-[10px] bg-due-none-bg px-3 py-2 text-[0.95rem] font-semibold leading-snug text-slate">Closed {formatShortDate(deadline)}</p>;
   }
   const tone = deadlineTone(n);
   const lead = n === 0 ? "Closes today" : n === 1 ? "Closes tomorrow" : n <= 60 ? `Closes in ${n} days` : "Closes";
   const day = `${WEEKDAY.format(new Date(`${deadline}T00:00:00Z`))} ${formatShortDate(deadline)}`;
   return (
-    <p className={`flex flex-wrap items-center justify-between gap-x-2.5 gap-y-0.5 rounded-[10px] px-3 py-2 leading-snug ${tone}`}>
+    <p className={`flex min-h-11 flex-wrap items-center justify-between gap-x-2.5 gap-y-0.5 rounded-[10px] px-3 py-2 leading-snug ${tone}`}>
       <span className="font-bold">{lead}</span>
       <span className="inline-flex items-center gap-1.5 text-sm">
         {day}
@@ -119,7 +110,7 @@ export function foldSameVacancies<T extends Parameters<typeof sameVacancyKey>[0]
  * vacancy's page (its accessible name is the title); the bookmark, the calendar link and Apply
  * (straight to the employer's vacancy) sit above it.
  */
-export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem; headingLevel?: 2 | 3; stamp?: boolean; posts?: number }) {
+export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem; headingLevel?: 2 | 3; posts?: number }) {
   const H = `h${headingLevel}` as "h2" | "h3";
   const href = jobPath(job);
   const lang = titleLanguage(job.title);
@@ -140,10 +131,12 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
     posts > 1 ? `${posts} posts` : null,
   ].filter((x): x is string => Boolean(x));
   return (
-    <article className="group relative flex flex-wrap items-center gap-x-5 gap-y-2.5 rounded-xl border border-rule bg-paper px-4 py-3.5 transition-[border-color,box-shadow] duration-150 hover:border-sky-rule hover:shadow-[0_4px_14px_rgba(11,99,206,0.10)] motion-safe:animate-[rise-in_220ms_ease-out_both]">
-      <div className="flex min-w-0 flex-[999_1_24rem] flex-col gap-1.5">
-        {/* Phones: room on the right for the bookmark in the card's corner. */}
-        <p className="flex min-h-[2.25rem] flex-wrap content-center items-center gap-x-2 gap-y-1 pr-12 text-sm leading-snug sm:min-h-0 sm:pr-0">
+    <article className="group @container relative rounded-xl border border-rule bg-paper px-4 py-3.5 transition-[border-color,box-shadow] duration-150 hover:border-sky-rule hover:shadow-[0_4px_14px_rgba(11,99,206,0.10)] motion-safe:animate-[rise-in_220ms_ease-out_both]">
+      {/* The layout follows the card's own width: side by side in a wide card, stacked in a narrow one (a phone, or a list beside the filters). */}
+      <div className="flex flex-col gap-2.5 @min-[44rem]:flex-row @min-[44rem]:items-start @min-[44rem]:gap-5">
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        {/* Narrow card: room on the right for the bookmark in the card's corner. */}
+        <p className="flex min-h-[2.25rem] flex-wrap content-center items-center gap-x-2 gap-y-1 pr-12 text-sm leading-snug @min-[44rem]:min-h-0 @min-[44rem]:pr-0">
           {job.org_name
             ? <span className="font-bold text-ink">{orgDisplayName(job.org_name, job.org_short)}</span>
             : <span className="italic text-slate">Organization not in our source</span>}
@@ -166,9 +159,10 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
           {posted && !posted.fresh ? <li className="inline-flex items-center py-0.5 text-slate"><span className="sr-only">Posted </span>{posted.text}</li> : null}
         </ul>
       </div>
-      <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:min-w-[16.25rem] sm:flex-[1_1_20rem] sm:grid-cols-[minmax(0,1fr)_2.75rem] sm:gap-x-2.5">
-        <div className="sm:col-start-1 sm:row-start-1"><DeadlineBox deadline={job.deadline} jobId={job.id} /></div>
-        <span className="absolute right-2.5 top-2.5 sm:static sm:col-start-2 sm:row-start-1 sm:self-start">
+      {/* Narrow card: date and Apply side by side (stacked on a phone). Wide card: one above the other at the same width, bookmark beside the date. */}
+      <div className="grid grid-cols-1 gap-2 @min-[26rem]:grid-cols-2 @min-[44rem]:w-[20rem] @min-[44rem]:shrink-0 @min-[44rem]:grid-cols-[minmax(0,1fr)_2.75rem] @min-[44rem]:gap-x-2.5">
+        <div className="grid @min-[44rem]:col-start-1 @min-[44rem]:row-start-1"><DeadlineBox deadline={job.deadline} jobId={job.id} /></div>
+        <span className="absolute right-2.5 top-2.5 @min-[44rem]:static @min-[44rem]:col-start-2 @min-[44rem]:row-start-1 @min-[44rem]:self-start">
           <SaveButton compact job={{ id: job.id, path: href, title: job.title, org: job.org_name }} />
         </span>
         {/* Straight to the employer's vacancy, above the card's link (relative z-10). A careers home page says so. */}
@@ -176,7 +170,7 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
           <ApplyLink
             href={job.apply_url}
             jobId={job.id}
-            className="group/apply relative z-10 inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] bg-brand px-4 text-[0.95rem] font-bold text-white hover:bg-accent active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:col-start-1 sm:row-start-2"
+            className="group/apply relative z-10 inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] bg-brand px-4 text-[0.95rem] font-bold text-white hover:bg-accent active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent @min-[44rem]:col-start-1 @min-[44rem]:row-start-2"
           >
             {applyLinkKind(job.apply_url, job.title) === "homepage" ? "Careers site" : "Apply"}
             <span className="sr-only">: {job.title}{job.org_name ? `, ${job.org_name}` : ""} (opens the employer&apos;s site in a new tab)</span>
@@ -184,12 +178,13 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
           </ApplyLink>
         ) : null}
       </div>
+      </div>
     </article>
   );
 }
 
 /** A list of cards, one per vacancy (identical posts folded into one). `mobileLimit`: how many show on phones. */
-export function JobList({ jobs, headingLevel = 3, mobileLimit }: { jobs: JobListItem[]; headingLevel?: 2 | 3; mobileLimit?: number; columns?: 1 | 2; stamp?: boolean }) {
+export function JobList({ jobs, headingLevel = 3, mobileLimit }: { jobs: JobListItem[]; headingLevel?: 2 | 3; mobileLimit?: number }) {
   return (
     <ul className="grid gap-2.5">
       {foldSameVacancies(jobs).map(({ job: j, posts }, i) => (
@@ -199,9 +194,4 @@ export function JobList({ jobs, headingLevel = 3, mobileLimit }: { jobs: JobList
       ))}
     </ul>
   );
-}
-
-/** Kept for older callers: the same list. */
-export function JobGrid({ jobs, mobileLimit }: { jobs: JobListItem[]; mobileLimit?: number; stamp?: boolean }) {
-  return <JobList jobs={jobs} mobileLimit={mobileLimit} />;
 }

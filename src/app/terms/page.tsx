@@ -101,7 +101,7 @@ export default function TermsPage() {
                 account.
               </li>
             </ul>
-            <h3 id="cancel" className="scroll-mt-24 pt-1 text-lg font-semibold">Cancelling</h3>
+            <h3 id="cancel" className="scroll-mt-24 pt-1 text-lg font-semibold">Canceling</h3>
             <p>
               Cancel any time: open your account (the link is in every alert email, or{" "}
               <a className="text-accent underline" href="/account/login">get your account link by email</a>) and choose &quot;Cancel plan&quot;. You can also

@@ -146,11 +146,11 @@ function RepeatSelect({ name, label, idPrefix, chosen, groups, anyLabel, chooseL
  * matches): a type-ahead picker with chips (regions listed above countries); without JavaScript,
  * one select per chosen place and "Add another place" under them.
  */
-export function WhereFields({ facets, filters, idPrefix, label = "Where", name = "where" }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string; name?: string }) {
+export function WhereFields({ facets, filters, idPrefix, label = "Where", name = "where", placeholder = "Anywhere: type a place" }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string; name?: string; placeholder?: string }) {
   const chosen = chosenPlaces(filters);
   return (
     <MultiCombobox name={name} label={label} idPrefix={idPrefix} groups={placeChoices(facets, filters)} chosen={chosen} max={MAX_PLACES}
-      placeholder="Anywhere: type a place" itemNoun="place" itemsNoun="places" anyHint="Jobs in any of the places you choose">
+      placeholder={placeholder} itemNoun="place" itemsNoun="places" anyHint="Jobs in any of the places you choose">
       <RepeatSelect name={name} label={label} idPrefix={idPrefix} chosen={chosen} groups={placeGroups(facets, filters)} max={MAX_PLACES}
         anyLabel="Anywhere" chooseLabel="Choose a place" addLabel="Add another place" addHint="Jobs in any of the places you choose" removeLabel="Remove this place" itemNoun="place" />
     </MultiCombobox>
@@ -254,7 +254,7 @@ function GradeChecks({ facets, filters }: { facets: FacetData; filters: JobFilte
             {box(g.key, g.any, g.count)}
             {g.exact.length ? (
               <details data-fold={`levels-${g.key}`} className="group/levels ml-6" open={g.exact.some((x) => selected.has(x.grade))}>
-                <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-accent [&::-webkit-details-marker]:hidden">
+                <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-accent max-sm:min-h-9 [&::-webkit-details-marker]:hidden">
                   {g.name} levels
                   <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 transition-transform group-open/levels:rotate-180" aria-hidden="true"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
                 </summary>
@@ -348,7 +348,7 @@ function MoreFilterFields({ idPrefix, filters, facets, hideOrgType = false }: { 
 
 function MoreToggle() {
   return (
-    <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-accent [&::-webkit-details-marker]:hidden">
+    <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-accent max-sm:min-h-11 [&::-webkit-details-marker]:hidden">
       <span className="group-open/more:hidden">More filters</span>
       <span className="hidden group-open/more:inline">Fewer filters</span>
       <svg viewBox="0 0 12 12" className="h-3 w-3 transition-transform group-open/more:rotate-180" aria-hidden="true"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
@@ -377,14 +377,13 @@ function UnstatedToggle({ filters, idPrefix }: { filters: JobFilters; idPrefix: 
 export function HeroSearch({ facets }: { facets: FacetData }) {
   return (
     <form id="hero-search" action="/jobs" method="get" role="search">
-      {/* No card around it: the fields sit on the hero itself (white labels and focus ring: #hero-search in globals.css). */}
       {/* On phones the labels are visually hidden (still read by screen readers) and Where sits beside the button, to keep jobs near the top. */}
-      <div className="hero-main grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1.7fr_1fr_auto] sm:items-start sm:gap-3">
+      <div className="hero-main grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-start sm:gap-3">
         <div className="col-span-2 sm:col-span-1">
           <label htmlFor="hero-q" className="mb-1.5 block text-sm font-medium text-ink">What</label>
           <input id="hero-q" name="q" type="search" placeholder="Job title, skill or keyword" className={fieldCls} autoComplete="off" />
         </div>
-        <WhereFields facets={facets} filters={{}} idPrefix="hero" />
+        <WhereFields facets={facets} filters={{}} idPrefix="hero" placeholder="Anywhere" />
         {/* Level with the fields: below the height of their labels (which phones hide). */}
         <button type="submit" className="self-start rounded-lg bg-brand px-5 py-2.5 text-base font-semibold text-white hover:bg-accent sm:mt-[1.625rem] sm:px-7">Search<span className="hidden sm:inline"> jobs</span></button>
       </div>

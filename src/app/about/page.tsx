@@ -61,8 +61,8 @@ export default async function AboutPage() {
         <section>
           <h2 className="text-2xl font-semibold leading-tight">How to apply</h2>
           <p className="mt-3">
-            Every listing has an <strong>Apply</strong> button that opens the employer&apos;s own website: the vacancy itself, the employer&apos;s application form, or its careers page when that is all the posting links to. Applications go directly to the employer.
-            We never accept applications, and genuine international organizations don&apos;t charge fees at any stage of recruitment. Treat any request for payment as a scam.
+            Every listing has a button (<strong>Apply</strong>, or <strong>Careers site</strong>) that opens the employer&apos;s own website or application system: the vacancy itself, the employer&apos;s application form, or its careers page when that is all the posting links to. Applications go directly to the employer.
+            We never accept applications, and genuine international organizations don&apos;t charge fees at any stage of recruitment. Treat any request for payment to apply for a job, or to be offered one, as a scam. {siteConfig.name}&apos;s only paid product is optional daily email alerts; applying is always free.
           </p>
         </section>
         {covered.length ? (

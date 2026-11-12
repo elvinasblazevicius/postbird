@@ -80,13 +80,13 @@ function EarlyAccessSignup({ source, tone = "light" }: { source: string; tone?: 
       {state.status === "error" ? (
         <p role="alert" className={`mt-2 text-sm ${dark ? "text-[#ffd7d7]" : "text-[#9b1c1c]"}`}>{state.message}</p>
       ) : (
-        <p className={`mt-2 text-sm ${dark ? "text-white/70" : "text-slate"}`}>
+        <p className={`mt-2 text-sm ${dark ? "text-white/90" : "text-slate"}`}>
           {paid
             ? earlyAccessLine()
             : "We'll email you once to confirm. Unsubscribe any time."}
         </p>
       )}
-      <PrivacyNote className={`mt-1 text-sm ${dark ? "text-white/70" : "text-slate"}`} />
+      <PrivacyNote className={`mt-1 text-sm ${dark ? "text-white/90" : "text-slate"}`} />
     </form>
   );
 }

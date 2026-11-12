@@ -19,7 +19,8 @@ function layout(title: string, bodyHtml: string, footerHtml: string): string {
 </table></td></tr></table></body></html>`;
 }
 
-const postal = () => `${siteConfig.name} is run by ${siteConfig.operator.name}, ${siteConfig.operator.address}.`;
+/** Every email ends with who runs the site and that it is independent (the first email an ad visitor gets included). */
+const postal = () => `${siteConfig.name} is run by ${siteConfig.operator.name}, ${siteConfig.operator.address}. ${siteConfig.name} is independent and not affiliated with the UN, the EU or any employer listed.`;
 
 function button(href: string, label: string): string {
   return `<a href="${esc(href)}" style="display:inline-block;background:${siteConfig.colors.brand};color:#ffffff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:8px">${esc(label)}</a>`;

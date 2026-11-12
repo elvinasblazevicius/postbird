@@ -34,13 +34,18 @@ function Result({ state }: { state: FormState }) {
 export function ConfirmForm({ token, email }: { token: string; email?: string }) {
   const [state, action, pending] = useActionState(confirmAction, initial);
   if (state.status === "success") {
+    // The heading says what happened: a new weekly sign-up, or only an address confirmed (a paid plan, a canceled trial).
+    const kind = state.confirmed?.kind ?? "address";
+    const heading = kind === "weekly" || kind === "waitlist" ? "You\u2019re signed up" : "Address confirmed";
     return (
       <>
-        <h1 className="text-[2rem] font-semibold text-ink">You&apos;re signed up</h1>
+        <h1 className="text-[2rem] font-semibold text-ink">{heading}</h1>
         <div className="mt-4"><Result state={state} /></div>
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <Link href="/jobs" className="rounded-lg bg-brand px-5 py-3 text-base font-semibold text-white hover:bg-accent">Browse open jobs</Link>
-          <Link href="/pricing" className="rounded-lg border border-rule bg-paper px-5 py-3 text-base font-semibold text-ink hover:border-accent hover:text-accent">See daily alerts</Link>
+          {state.confirmed?.offerDaily ? (
+            <Link href="/pricing" className="rounded-lg border border-rule bg-paper px-5 py-3 text-base font-semibold text-ink hover:border-accent hover:text-accent">See daily alerts</Link>
+          ) : null}
         </div>
       </>
     );

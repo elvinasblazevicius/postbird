@@ -13,7 +13,7 @@ const CODES = [
 
 export function HeroFlags({ className = "" }: { className?: string }) {
   return (
-    <div aria-hidden="true" className={`grid grid-cols-6 gap-2 lg:-rotate-[4deg] lg:gap-3 ${className}`}>
+    <div aria-hidden="true" className={`grid grid-cols-6 gap-2 max-lg:max-w-md lg:-rotate-[4deg] lg:gap-3 ${className}`}>
       {CODES.map((code, i) => (
         // eslint-disable-next-line @next/next/no-img-element
         <img

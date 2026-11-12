@@ -16,6 +16,8 @@
   --mist: #f3f9ff;
   --rule: #d6e6f5;
   --slate: #40536e;
+  /* Boundary of text fields and other controls: 3.1:1 on white. */
+  --field: #7f93ad;
   /* The home page's hero and other bright surfaces. */
   --sky-wash: #ddf1ff;
   --sky-rule: #bfe0fa;
@@ -36,7 +38,6 @@
   --due-later-bg: #eaf4fd;
   --due-none-bg: #f1f4f8;
   /* Postmark ink (the closing-date stamps): a deep franking blue, about 10:1 on white. */
-  --postmark: #2b4170;
 }
 
 @theme inline {
@@ -47,6 +48,7 @@
   --color-mist: var(--mist);
   --color-rule: var(--rule);
   --color-slate: var(--slate);
+  --color-field: var(--field);
   --color-signal: var(--signal);
   --color-signal-bg: var(--signal-bg);
   --color-remote: var(--remote);
@@ -69,7 +71,7 @@
   /* The latin-ext families come first; their unicode-range keeps them to letters the latin files lack (see layout.tsx). */
   --font-sans: var(--font-public-sans-ext), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
   /* The heading face (the token keeps its old name: it is used across the site). */
-  --font-serif: var(--font-heading-ext), var(--font-heading), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-heading-vi), var(--font-heading-ext), var(--font-heading), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
 html {
@@ -84,11 +86,21 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* The smallest text on the site is 13px (Tailwind's text-xs is 12px by default). */
+@theme {
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.45;
+}
+
 @layer base {
   h1, h2, h3 {
     font-family: var(--font-serif);
     font-optical-sizing: auto;
     letter-spacing: -0.015em;
+  }
+  /* No single word left alone on a heading's last line. */
+  h1, h2 {
+    text-wrap: balance;
   }
 }
 
@@ -102,19 +114,32 @@ body {
   background: color-mix(in srgb, var(--accent) 18%, white);
 }
 
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 4px;
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  /* On the blue band the blue ring would barely show, so it is white there. Inside a light card on
+   * the band (white, or marked .on-light) the ring sits on a light surface again and stays blue. */
+  :where(.bg-candy-band) :focus-visible {
+    outline-color: #ffffff;
+  }
+  :where(.bg-candy-band) :where(.bg-paper, .bg-white, .on-light) :focus-visible {
+    outline-color: var(--accent);
+  }
+  /* Placeholders in the same readable grey everywhere (7.8:1 on white). */
+  ::placeholder {
+    color: var(--slate);
+    opacity: 1;
+  }
 }
-/* On the dark brand surfaces (#10264f) the blue ring would barely show (about 1.5:1), so it is
- * white there (about 14:1). Inside a white card on those surfaces (the hero search) the ring sits
- * on white again and stays blue (about 9:1). */
-:where(.bg-candy-hero, .bg-candy-band) :focus-visible {
-  outline-color: #ffffff;
-}
-:where(.bg-candy-hero, .bg-candy-band) :where(.bg-paper, .bg-white) :focus-visible {
-  outline-color: var(--accent);
+
+/* Text fields and selects with the default hairline (border-rule) get a boundary that can be seen
+ * (3:1 on white). Not in a layer, so it applies over that utility; focus and error states keep
+ * their own colours. */
+:is(input, select, textarea).border-rule:not(:focus) {
+  border-color: var(--field);
 }
 
 a {
@@ -176,7 +201,6 @@ a {
 }
 
 /* Brand surfaces: one deep-to-bright blue direction, no decorative blobs */
-.bg-candy-hero,
 .bg-candy-band {
   background-color: var(--brand);
 }
@@ -199,42 +223,6 @@ a {
 }
 .bg-candy-band > :not(.world-dots) {
   position: relative;
-}
-
-/*
- * Homepage hero: the postmark again, as a faint cancellation across the deep-blue field (a double
- * ring with wavy lines running out of it, white at a few per cent, so the white text keeps its
- * contrast), and an airmail edge (red and white diagonal stripes) along the bottom. No motion.
- */
-.hero-cancel {
-  position: absolute;
-  pointer-events: none;
-  user-select: none;
-  color: #ffffff;
-  width: 560px;
-  right: -230px;
-  top: -24px;
-  opacity: 0.07;
-  transform: rotate(-7deg);
-  /* The waves fade out before they reach the headline and the search fields. */
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 50%);
-  mask-image: linear-gradient(to right, transparent 0%, #000 50%);
-}
-@media (min-width: 1024px) {
-  .hero-cancel {
-    width: 860px;
-    right: -120px;
-    top: -10px;
-    opacity: 0.09;
-  }
-}
-.airmail-edge {
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 6px;
-  pointer-events: none;
-  background: repeating-linear-gradient(-45deg, var(--candy) 0 10px, transparent 10px 16px, #ffffff 16px 26px, transparent 26px 32px);
-  opacity: 0.85;
 }
 
 /* Inner page headers: quiet paper band with a hairline, like an institution's
@@ -265,146 +253,6 @@ a {
     overflow: hidden;
     clip: rect(0 0 0 0);
     white-space: nowrap;
-  }
-}
-
-/*
- * Postmark: the site's one signature element (src/components/postmark.tsx). A round date stamp
- * with a double ring, set at a slight angle like a real cancellation; dates only. Transparent
- * inside, so it sits on white rows, their grey hover and the grey bands alike.
- */
-@layer components {
-  .postmark {
-    display: inline-flex;
-    align-items: center;
-    color: var(--postmark);
-    flex-shrink: 0;
-  }
-  .postmark-urgent {
-    color: var(--signal);
-  }
-  .postmark-ring {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    border: 1.5px solid currentColor;
-    border-radius: 9999px;
-    text-align: center;
-    line-height: 1.1;
-    transform: rotate(-7deg);
-  }
-  .postmark-ring::before {
-    content: "";
-    position: absolute;
-    inset: 3px;
-    border: 1px solid currentColor;
-    border-radius: inherit;
-    opacity: 0.45;
-  }
-  /* Never below 12px (0.75rem), so the small stamp stays readable. */
-  .postmark-top {
-    font-size: 0.75rem;
-    font-weight: 500;
-  }
-  .postmark-main {
-    font-family: var(--font-serif);
-    font-weight: 600;
-    font-variant-numeric: lining-nums tabular-nums;
-    white-space: nowrap;
-  }
-  /* A little smaller than the top line: it sits where the ring curves in, so it must not touch it. */
-  .postmark-bottom {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-  .postmark-sm .postmark-ring {
-    width: 4.5rem;
-    height: 4.5rem;
-  }
-  .postmark-sm .postmark-main {
-    font-size: 0.95rem;
-    margin: 0.05rem 0;
-  }
-  .postmark-lg .postmark-ring {
-    width: 6.5rem;
-    height: 6.5rem;
-  }
-  .postmark-lg .postmark-top {
-    font-size: 0.8125rem;
-  }
-  .postmark-lg .postmark-main {
-    font-size: 1.6rem;
-    margin: 0.1rem 0;
-  }
-  .postmark-lg .postmark-bottom {
-    font-size: 0.8125rem;
-  }
-  /*
-   * The date chip in list rows (StampChip in src/components/job-card.tsx): upright and of one
-   * width, with tabular figures, so the dates line up down a list and read at a glance. The ink and
-   * a light inner ring recall the round stamp, which keeps its tilt on job pages and in "Closing
-   * soon". Never below 12px.
-   */
-  .postmark-chip {
-    position: relative;
-    display: inline-flex;
-    align-items: baseline;
-    justify-content: center;
-    gap: 0.3em;
-    min-width: 14em;
-    padding: 0.2rem 0.6rem 0.15rem;
-    border: 1.5px solid currentColor;
-    border-radius: 9999px;
-    color: var(--postmark);
-    font-size: 0.75rem;
-    font-weight: 500;
-    font-variant-numeric: lining-nums tabular-nums;
-    line-height: 1.2;
-    white-space: nowrap;
-  }
-  .postmark-chip::before {
-    content: "";
-    position: absolute;
-    inset: 2px;
-    border: 1px solid currentColor;
-    border-radius: inherit;
-    opacity: 0.25;
-    pointer-events: none;
-  }
-  .postmark-chip.postmark-urgent {
-    color: var(--signal);
-  }
-  .postmark-chip-date {
-    font-family: var(--font-serif);
-    font-size: 0.875rem;
-    font-weight: 600;
-    font-variant-numeric: lining-nums tabular-nums;
-  }
-  .postmark-chip-left {
-    display: inline-flex;
-    gap: 0.3em;
-    font-weight: 600;
-  }
-  .postmark-waves {
-    width: 2.75rem;
-    height: 2rem;
-    margin-right: -0.45rem;
-    opacity: 0.55;
-    transform: rotate(-7deg);
-  }
-  .postmark-lg .postmark-waves {
-    width: 3.5rem;
-    height: 2.6rem;
-  }
-  /* Phones: barely tilted, so the small text stays easy to read. */
-  @media (max-width: 639.98px) {
-    .postmark-ring,
-    .postmark-waves {
-      transform: rotate(-2deg);
-    }
   }
 }
 

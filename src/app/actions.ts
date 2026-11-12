@@ -13,6 +13,8 @@ export type FormState = {
   message: string;
   /** A next step shown after the message (a link on this site). */
   link?: { href: string; label: string };
+  /** After a confirmation: what was confirmed, for the page's heading and buttons. */
+  confirmed?: { kind: "weekly" | "paid" | "trialCanceled" | "waitlist" | "address"; offerDaily: boolean };
 };
 
 const SERVER_ERROR = "Something went wrong on our side. Please try again in a minute.";
@@ -96,7 +98,7 @@ export async function confirmAction(_prev: FormState, form: FormData): Promise<F
     after(async () => {
       await runWelcomeRetries(1, id).catch((e: Error) => console.error("welcome after confirmation failed", e.message));
     });
-    return { status: "success", message: "Confirmed. We'll email you the link to your account page now, and your alerts start with the next daily run." };
+    return { status: "success", message: "Confirmed. We'll email you the link to your account page now, and your alerts start with the next daily run.", confirmed: { kind: "paid", offerDaily: false } };
   }
   // A trial at this address was canceled because it wasn't confirmed in time: it didn't use up the free trial.
   if (res.trialCanceled) {
@@ -105,13 +107,15 @@ export async function confirmAction(_prev: FormState, form: FormData): Promise<F
       status: "success",
       message: `Your trial was canceled because the address wasn't confirmed in time. You can start it again.${weekly}`,
       link: { href: "/pricing/trial", label: "Start the free trial" },
+      confirmed: { kind: "trialCanceled", offerDaily: false },
     };
   }
   if (res.weeklyEmail) {
-    return { status: "success", message: "Confirmed. Your weekly email comes on Mondays, and only when there are new vacancies that match your search." };
+    // A sign-up from a Meta ad came for the free email: the page doesn't offer it the paid plan.
+    return { status: "success", message: "Confirmed. Your weekly email comes on Mondays, and only when there are new vacancies that match your search.", confirmed: { kind: "weekly", offerDaily: !res.fromMetaAd } };
   }
-  if (res.waitlist) return { status: "success", message: `Confirmed: you're on the early-access list. ${earlyAccess()}` };
-  return { status: "success", message: "Your address is confirmed." };
+  if (res.waitlist) return { status: "success", message: `Confirmed: you're on the early-access list. ${earlyAccess()}`, confirmed: { kind: "waitlist", offerDaily: false } };
+  return { status: "success", message: "Your address is confirmed.", confirmed: { kind: "address", offerDaily: false } };
 }
 
 const PLAN_CHOICES = ["monthly", "three_months", "would_not_pay"] as const;

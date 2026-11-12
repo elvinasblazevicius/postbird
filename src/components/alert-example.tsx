@@ -137,7 +137,7 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
               )
             ) : null}
           </div>
-          <p className="border-t border-rule px-4 py-2.5 text-xs text-slate">Your account · Unsubscribe</p>
+          <p className="border-t border-rule px-4 py-2.5 text-xs text-slate">{kind === "weekly" ? "Change your search · Unsubscribe" : "Your account · Unsubscribe"}</p>
         </div>
       </figure>
     </section>

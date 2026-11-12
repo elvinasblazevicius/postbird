@@ -109,7 +109,7 @@ export default function PrivacyPage() {
           {ASK_FIRST} ({ASK_FIRST_UNKNOWN}), nothing except the <code>gch_geo</code> session flag (and your choice, once you make it) is stored on your device, and
           {META ? " neither Microsoft's nor Meta's tag is loaded," : " Microsoft's tag isn't loaded,"} unless you click &quot;Allow&quot;. If you click &quot;No thanks&quot; later, we delete the {META ? "Microsoft and Meta" : "Microsoft"} cookies and storage entries
           listed above that were set on this site, and the remembered campaign tags{META ? ", and tell Meta's pixel to stop sending anything" : ""}. In the United States it runs unless you opt out; we treat a Global Privacy Control signal from your browser as an opt-out. You can change your choice at any time with &quot;Cookie settings / Your privacy choices&quot; at
-          the bottom of every page. You can also opt out of personalised Microsoft ads at{" "}
+          the bottom of every page. You can also opt out of personalized Microsoft ads at{" "}
           <a className="text-accent underline" href="https://account.microsoft.com/privacy/ad-settings" rel="noopener">account.microsoft.com/privacy/ad-settings</a> and of
           interest-based ads generally at <a className="text-accent underline" href="https://optout.aboutads.info" rel="noopener">optout.aboutads.info</a>
           {META ? (

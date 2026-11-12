@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
+import { isMetaVisit, META_VISIT_QUERY } from "@/lib/ad-visit";
 
 export type NavItem = { href: string; label: string };
 
@@ -102,15 +103,26 @@ export function FindJobsMenu({ employers }: { employers: NavItem[] }) {
   );
 }
 
-/** The email button in the header ("Free weekly email"), marked when you are on /alerts. */
+/**
+ * The alerts button in the header, marked when you are on /alerts. On a page reached from a Meta
+ * ad (the tag is in the address) it opens /alerts with the same tag, so that visitor keeps seeing
+ * the free weekly email only.
+ */
 export function AlertsButton({ className, children }: { className: string; children: React.ReactNode }) {
   const pathname = usePathname() ?? "";
+  const router = useRouter();
   const here = isActive(pathname, "/alerts");
+  const keepAdTag = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    if (!isMetaVisit(Object.fromEntries(new URLSearchParams(window.location.search)))) return;
+    e.preventDefault();
+    router.push(`/alerts?${META_VISIT_QUERY}`);
+  };
   return (
     // Marked like the other header links: the brand underline at the header's bottom edge (inside it), not a ring.
     // The wrapper is as tall as the header, so the underline never hangs below the sticky header.
     <span className={`relative flex h-[72px] items-center ${here ? "after:absolute after:inset-x-1 after:bottom-0 after:h-[2px] after:bg-brand" : ""}`}>
-      <Link href="/alerts" aria-current={here ? "page" : undefined} className={className}>
+      <Link href="/alerts" onClick={keepAdTag} aria-current={here ? "page" : undefined} className={className}>
         {children}
       </Link>
     </span>
@@ -141,7 +153,7 @@ export function MobileMenu({ main, employers, more }: { main: NavItem[]; employe
         aria-expanded={open}
         aria-controls={panelId}
         onClick={toggle}
-        className="flex items-center gap-1.5 rounded-lg border border-rule px-3 py-2 text-sm font-medium text-ink"
+        className="flex min-h-11 items-center gap-1.5 rounded-lg border border-rule px-3 py-2 text-sm font-medium text-ink"
       >
         Menu {chevron(open)}
       </button>

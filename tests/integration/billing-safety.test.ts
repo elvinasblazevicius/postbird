@@ -433,6 +433,8 @@ describe.skipIf(!TEST_DB)("billing safety (database)", () => {
         status: "success",
         message: "Your trial was canceled because the address wasn't confirmed in time. You can start it again. Your weekly email comes on Mondays, and only when there are new vacancies that match your search.",
         link: { href: "/pricing/trial", label: "Start the free trial" },
+        // The page says "Address confirmed" (not "You're signed up") and doesn't push the paid plan again.
+        confirmed: { kind: "trialCanceled", offerDaily: false },
       });
       const [row] = await sql`
         select confirmed_at, paddle_subscription_id, billing_status, trial_ends_at, canceled_at, unconfirmed_trial_sub, had_plan(subscribers) as sql_had_plan

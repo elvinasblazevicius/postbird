@@ -3,6 +3,7 @@ import { sql, transaction, type Tx } from "@/lib/db";
 import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { confirmationEmail } from "@/lib/email-templates";
 import { absoluteUrl } from "@/lib/site";
+import { isMetaVisit } from "@/lib/ad-visit";
 import { recordEvent } from "@/lib/analytics";
 import { releaseDailyQuota, takeDailyQuotaSlot, type QuotaSlot } from "@/lib/rate-limit";
 import { replaceWithWeeklySearch } from "@/lib/saved-searches";
@@ -160,12 +161,14 @@ export type ConfirmResult =
       paidPlan: boolean;
       /** The plan at this address is a trial the daily job canceled because the address wasn't confirmed in time (billing flag trial_unconfirmed). */
       trialCanceled: boolean;
+      /** The sign-up came from a Meta ad (its saved campaign tag): the confirmation page doesn't offer the paid plan. */
+      fromMetaAd: boolean;
     };
 
 export async function confirmSubscriber(t: unknown): Promise<ConfirmResult> {
   if (!isLinkToken(t)) return { ok: false };
   const rows = await transaction(async (tx) => {
-    const updated = await tx<{ id: number; premium_waitlist: boolean; wants_alerts: boolean; weekly_email: boolean; paid_plan: boolean; plan_live: boolean; trial_canceled: boolean; weekly_search: string | null }[]>`
+    const updated = await tx<{ id: number; premium_waitlist: boolean; wants_alerts: boolean; weekly_email: boolean; paid_plan: boolean; plan_live: boolean; trial_canceled: boolean; weekly_search: string | null; utm_source: string | null }[]>`
     with prev as (
       select id, status as prev_status, pending_changes as prev_changes from subscribers where confirm_token = ${t} for update
     )
@@ -192,7 +195,8 @@ export async function confirmSubscriber(t: unknown): Promise<ConfirmResult> {
               -- Only a trial the daily job canceled: one canceled in Paddle by someone also leaves unconfirmed_trial_sub set.
               (billing_status = 'canceled' and coalesce(subscribers.paddle_subscription_id = subscribers.unconfirmed_trial_sub, false)
                and exists (select 1 from billing_flags f where f.subscription_id = subscribers.paddle_subscription_id and f.kind = 'trial_unconfirmed')) as trial_canceled,
-              prev.prev_changes->>'weekly_search' as weekly_search`;
+              prev.prev_changes->>'weekly_search' as weekly_search,
+              subscribers.attribution->>'utm_source' as utm_source`;
     const row = updated[0];
     // The free weekly email follows one search: the one just chosen. A plan keeps its own searches.
     if (row && row.weekly_search !== null && !row.plan_live) await replaceWithWeeklySearch(row.id, row.weekly_search, tx);
@@ -204,6 +208,7 @@ export async function confirmSubscriber(t: unknown): Promise<ConfirmResult> {
   return {
     ok: true, id: r.id, waitlist: r.premium_waitlist, alerts: r.wants_alerts, weekly: r.weekly_search !== null,
     weeklyEmail: r.weekly_email, paidPlan: r.paid_plan, trialCanceled: r.trial_canceled,
+    fromMetaAd: isMetaVisit({ utm_source: r.utm_source ?? undefined }),
   };
 }
 

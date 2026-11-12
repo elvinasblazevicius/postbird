@@ -182,7 +182,7 @@ export default async function JobPage({ params }: Props) {
   const nearby = !description && !more.length ? await nearbyJobs(job, orgOthers).catch(() => null) : null;
   const ld = jobPostingLd(job);
   const dl = deadlineLabel(job.deadline);
-  // "Closes in 75 days" (never the date again: the stamp beside it shows it).
+  // "Closes in 75 days" (the date itself is on the line under it).
   const left = daysUntil(job.deadline);
   const closesIn = left === null || left < 0 ? null : left === 0 ? "Closes today" : left === 1 ? "Closes tomorrow" : `Closes in ${left} days`;
   const category = categoryBySlug(job.category);
@@ -220,7 +220,8 @@ export default async function JobPage({ params }: Props) {
   const target = applyTarget({ url: job.apply_url, host: job.apply_host, orgName: job.org_name, orgShort: job.org_short, homepage });
   const otherAtOrg = Math.max(0, orgOpen - 1);
   // The free weekly email when it is on; otherwise the paid alerts' trial page.
-  const alertHref = `${siteConfig.freeWeeklyEmail ? "/alerts" : "/pricing/trial"}?search=${encodeURIComponent(`category=${job.category}`)}`;
+  const alertSearch = job.category && job.category !== "other" ? `?search=${encodeURIComponent(`category=${job.category}`)}` : "";
+  const alertHref = siteConfig.freeWeeklyEmail ? `/alerts${alertSearch}#alert-signup` : `/pricing/trial${alertSearch}`;
 
   const applyButton = (
     <ApplyLink
@@ -228,7 +229,7 @@ export default async function JobPage({ params }: Props) {
       jobId={job.id}
       className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-3.5 text-base font-semibold text-white hover:bg-accent"
     >
-      {homepage ? "Find it on the careers site" : "Apply"}
+      {homepage ? <><span className="sm:hidden">Careers site</span><span className="max-sm:hidden">Find it on the careers site</span></> : "Apply"}
       <span className="sr-only"> (opens the employer&apos;s site in a new tab)</span>
       <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true"><path d="M6 3h7v7M13 3 4 12" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
     </ApplyLink>
@@ -251,7 +252,7 @@ export default async function JobPage({ params }: Props) {
   ) : job.deadline ? (
     <p className="rounded-[10px] bg-due-none-bg px-4 py-3 font-semibold text-slate">Closed {formatDate(job.deadline)}</p>
   ) : (
-    <p className="rounded-[10px] bg-due-none-bg px-4 py-3 text-sm text-slate">No closing date in our source. Check the employer&apos;s page.</p>
+    <p className="rounded-[10px] bg-due-none-bg px-4 py-3 text-sm text-slate">No closing date given. Check the employer&apos;s page.</p>
   );
 
   /** Where Apply goes, that applying is free, and (UN-system vacancies) the guide to reading one. */

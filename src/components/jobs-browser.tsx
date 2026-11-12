@@ -21,7 +21,7 @@ function Pagination({ page, pages, filters, base, showLast = true }: { page: num
   return (
     <nav aria-label="Pagination" className="mt-8 flex flex-wrap items-center gap-1.5">
       {page > 1 ? (
-        <Link rel="prev" href={jobsUrl({ ...filters, page: page - 1 }, base)} className="rounded-lg border border-rule px-3 py-2 text-sm text-ink hover:bg-mist">Previous</Link>
+        <Link rel="prev" href={jobsUrl({ ...filters, page: page - 1 }, base)} className="inline-flex items-center rounded-lg border border-rule px-3 py-2 text-sm text-ink hover:bg-mist max-sm:min-h-11">Previous</Link>
       ) : null}
       {list.map((n, i) => (
         <span key={n} className="flex items-center gap-1.5">
@@ -29,14 +29,14 @@ function Pagination({ page, pages, filters, base, showLast = true }: { page: num
           <Link
             href={jobsUrl({ ...filters, page: n }, base)}
             aria-current={n === page ? "page" : undefined}
-            className={`min-w-10 rounded-lg px-3 py-2 text-center text-sm ${n === page ? "bg-brand font-semibold text-white" : "border border-rule text-ink hover:bg-mist"}`}
+            className={`inline-flex min-w-10 items-center justify-center rounded-lg px-3 py-2 text-center text-sm max-sm:min-h-11 max-sm:min-w-11 ${n === page ? "bg-brand font-semibold text-white" : "border border-rule text-ink hover:bg-mist"}`}
           >
             {n}
           </Link>
         </span>
       ))}
       {page < pages ? (
-        <Link rel="next" href={jobsUrl({ ...filters, page: page + 1 }, base)} className="rounded-lg border border-rule px-3 py-2 text-sm text-ink hover:bg-mist">Next</Link>
+        <Link rel="next" href={jobsUrl({ ...filters, page: page + 1 }, base)} className="inline-flex items-center rounded-lg border border-rule px-3 py-2 text-sm text-ink hover:bg-mist max-sm:min-h-11">Next</Link>
       ) : null}
     </nav>
   );
@@ -248,7 +248,7 @@ export async function JobsBrowser({
             <FilterForm key={`m:${formKey}`} formId="filters-mobile" filters={filters} facets={facets} action={base} hidden={formHidden} submitOnChange={false} keyword={false} />
           </div>
         </details>
-        <div className="sticky top-24 hidden lg:block">
+        <div className="sticky top-24 hidden max-h-[calc(100dvh-7rem)] overflow-y-auto overscroll-contain pb-1 pr-1 lg:block">
           <FilterForm key={`d:${formKey}`} formId="filters-desktop" filters={filters} facets={facets} action={base} hidden={formHidden} />
         </div>
       </aside>
@@ -284,7 +284,7 @@ export async function JobsBrowser({
                     key={o.key}
                     href={jobsUrl({ ...filters, sort: o.key as JobFilters["sort"], page: undefined }, base)}
                     aria-current={active ? "true" : undefined}
-                    className={`rounded-full px-3 py-1 ${active ? "bg-brand text-white" : "text-accent hover:bg-tint"}`}
+                    className={`inline-flex items-center rounded-full px-3 py-1 max-sm:min-h-11 ${active ? "bg-brand text-white" : "text-accent hover:bg-tint"}`}
                   >
                     {o.label}
                   </Link>
@@ -327,7 +327,7 @@ export async function JobsBrowser({
                   source="search-alert"
                   className="font-medium text-accent underline underline-offset-2 hover:text-brand"
                 >
-                  {BILLING_LIVE ? `daily alerts, free for ${siteConfig.premium.trialDays} days` : "daily alerts (paid plan)"}
+                  {BILLING_LIVE ? `daily alerts (paid plan, ${siteConfig.premium.trialDays}-day free trial)` : "daily alerts (paid plan)"}
                 </TrackedLink>
               </span>
             ) : (

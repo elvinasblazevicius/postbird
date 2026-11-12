@@ -69,11 +69,11 @@ export default async function PricingPage() {
           <>
             Every Monday, the past week&apos;s new vacancies that match one search you choose (keywords, organization, location), or the week&apos;s newest vacancies if you
             choose nothing. It lists up to 10, with a link to see the rest. If nothing new matches, we don&apos;t send it that week. No card or account is needed, and
-            every email has a one-click unsubscribe. <Link href="/alerts" className="text-accent underline">Get the weekly email</Link>
+            every email has a one-click unsubscribe. <Link href="/alerts#alert-signup" className="text-accent underline">Get the weekly email</Link>
           </>,
         ],
         [
-          "What do paid alerts add?",
+          "What do daily alerts add?",
           <>New matches every day instead of once a week, so you see a vacancy up to 6 days sooner, and up to 20 searches instead of one, each with the same full filters. Each alert also lists matching vacancies that close in the next 3 days, once each, so a deadline doesn&apos;t slip past you. While you have a paid plan you get your alerts instead of the weekly email, not both.</>,
         ],
       ]
@@ -123,7 +123,7 @@ export default async function PricingPage() {
               <li key={f} className="flex gap-2.5"><Check />{f}</li>
             ))}
           </ul>
-          <Link href={siteConfig.freeWeeklyEmail ? "/alerts" : "/jobs"} className="mt-8 rounded-lg border border-rule px-5 py-3 text-center font-semibold text-ink hover:bg-mist">
+          <Link href={siteConfig.freeWeeklyEmail ? "/alerts#alert-signup" : "/jobs"} className="mt-8 rounded-lg border border-rule px-5 py-3 text-center font-semibold text-ink hover:bg-mist">
             {siteConfig.freeWeeklyEmail ? "Get the free weekly email" : "Browse jobs"}
           </Link>
         </section>

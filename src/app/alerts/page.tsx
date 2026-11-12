@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/page-header";
 import { FreeWeeklyForm, PremiumInterestForm } from "@/components/token-forms";
 import { earlyAccessLine } from "@/lib/early-access-copy";
 import { BILLING_LIVE } from "@/lib/billing/live";
+import { isMetaVisit, META_VISIT_QUERY } from "@/lib/ad-visit";
 import { describeSearch, searchFromAlertStep } from "@/lib/saved-searches";
 import { INDEPENDENCE_NOTE, siteConfig } from "@/lib/site";
 
@@ -42,7 +43,7 @@ export default async function AlertsPage({ searchParams }: Props) {
   const search = searchFromAlertStep(sp);
   // Visitors from Meta ads came for the free weekly email; the paid daily plan isn't shown to them on this page
   // (Employment ads into job-scam-prone markets: no paid offer next to vacancies). /pricing still has it.
-  const fromMeta = [sp.utm_source].flat().includes("meta");
+  const fromMeta = isMetaVisit(sp);
   const searchLabel = search ? await describeSearch(search) : null;
   if (free) {
     const trialHref = `/pricing/trial${search ? `?search=${encodeURIComponent(search)}` : ""}`;
@@ -53,13 +54,13 @@ export default async function AlertsPage({ searchParams }: Props) {
           crumbs={[{ href: "/", label: "Home" }, { href: "/alerts", label: fromMeta ? "Weekly email" : "Job alerts" }]}
           intro={fromMeta
             ? "Every Monday, the past week's new vacancies at UN agencies, NGOs and other international organizations that match your search. Free, with no card and no account. If nothing new matches, we don't send anything that week."
-            : "Pick a search once. We send you the new vacancies at UN agencies, NGOs and other international organizations that match it: every Monday for free, or every morning with daily alerts. If nothing new matches, we don't send anything."}
+            : "Pick a search once. We send you the new vacancies at UN agencies, NGOs and other international organizations that match it: every Monday for free, or once a day with daily alerts. When there is nothing to tell you, we don't email."}
           note={INDEPENDENCE_NOTE}
         />
         {fromMeta ? null : (
           <section className="mx-auto max-w-6xl px-4 pt-10 sm:px-6" aria-labelledby="choice-h">
             <h2 id="choice-h" className="sr-only">Weekly email or daily alerts</h2>
-            <div className="max-w-3xl">
+            <div>
               <AlertsChoice weeklyHref="#alert-signup" trialHref={trialHref} source={search ? "alerts-daily-search" : "alerts-daily"} />
             </div>
           </section>
@@ -72,7 +73,7 @@ export default async function AlertsPage({ searchParams }: Props) {
                 source={search ? "search-weekly" : "alerts-page"}
                 search={search ?? undefined}
                 searchLabel={searchLabel}
-                watch={<WatchFields fold search={search} searchLabel={searchLabel} resetHref="/alerts#alert-signup" hint="Leave these empty to get the week's newest vacancies. The weekly email follows one search; you can change it later." />}
+                watch={<WatchFields fold search={search} searchLabel={searchLabel} resetHref={fromMeta ? `/alerts?${META_VISIT_QUERY}#alert-signup` : "/alerts#alert-signup"} hint="Leave these empty to get the week's newest vacancies. The weekly email follows one search; you can change it later." />}
               />
             </div>
           </section>
