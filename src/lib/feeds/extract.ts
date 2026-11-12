@@ -173,6 +173,19 @@ export function toOrgRef(name: string): OrgRef {
   return { name: clean, slug: slugify(clean, 60), short: null, type: null, website: null };
 }
 
+/**
+ * An employer's internal unit written in its "Organization" field, not an organization:
+ * "AF_COD Democratic Republic of Congo", "WP_VUT Vanuatu", "HQ/OSH Op Support, Sec Mgmt…"
+ * (WHO), "BOL Bolivia" (PAHO country office). A known short name ("WFP Kenya") is kept.
+ */
+export function isUnitCode(name: string): boolean {
+  const n = name.trim();
+  if (/^[A-Z]{2,4}[_/][A-Z0-9]{2,6}\b/.test(n)) return true;
+  const m = n.match(/^([A-Z]{3}) (.{3,40})$/);
+  return !!m && !knownOrgByName(m[1]) && findCountries(m[2]).length === 1 && !ORGISH_WORD.test(m[2]);
+}
+const ORGISH_WORD = /\b(office|programme|program|mission|fund|agency)\b/i;
+
 const ORGISH = /\b(organi[sz]ation|fund|programme|program|agency|bank|council|committee|office|institute|foundation|international|united nations|union|commission|association|society|federation|mission|cent(re|er)|secretariat|ngo|alliance|network|trust|unit|authority|court|tribunal|initiative|partnership|facility|corps|rescue|relief|aid|care|vision|children)\b/i;
 
 /**
@@ -517,7 +530,8 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
 
   // Organization
   let orgName: string | null = null;
-  const labelledOrg = labelled(head, ORG_LABELS, 120);
+  const labelledRaw = labelled(head, ORG_LABELS, 120);
+  const labelledOrg = labelledRaw && !isUnitCode(labelledRaw) ? labelledRaw : null;
   const hostOrg = knownOrgByHost(applyHost) ?? knownOrgByAtsPath(applyUrl);
   const authorOrg = knownOrgByName(raw.author);
   const sourceOrg = knownOrgByName(raw.sourceTitle?.replace(/\b(jobs?|careers?|vacanc(y|ies)|opportunities|rss|feed)\b/gi, ""));
@@ -581,6 +595,11 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   }
   if (countries.length === 1) countryCode = countries[0];
   else if (countries.length === 0 && knownCity) countryCode = DUTY_STATIONS[knownCity] ?? null;
+  // WHO's unit field names the country office ("AF_COD Democratic Republic of Congo").
+  if (!countryCode && countries.length === 0 && !locationText && labelledRaw && isUnitCode(labelledRaw)) {
+    const unitCountry = findCountries(labelledRaw.replace(/^\S+\s+/, ""));
+    if (unitCountry.length === 1) countryCode = unitCountry[0];
+  }
   // several countries → keep the source's wording, no single country
 
   if (!locationText && knownCity) locationText = knownCity;

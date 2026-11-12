@@ -554,3 +554,17 @@ describe("organization named at the start of a title", () => {
     expect(knownOrgFromTitle("Senior Finance Associate")).toBeUndefined();
   });
 });
+
+describe("internal unit codes are not organizations", () => {
+  it("spots WHO and PAHO unit codes", async () => {
+    const { isUnitCode } = await import("@/lib/feeds/extract");
+    expect(isUnitCode("AF_COD Democratic Republic of Congo")).toBe(true);
+    expect(isUnitCode("WP_VUT Vanuatu")).toBe(true);
+    expect(isUnitCode("HQ/OSH Op Support, Sec Mgmt, Health and Wellbeing Services")).toBe(true);
+    expect(isUnitCode("BOL Bolivia")).toBe(true);
+  });
+  it("keeps real organization names", async () => {
+    const { isUnitCode } = await import("@/lib/feeds/extract");
+    for (const n of ["WFP Kenya", "UNDP Bangladesh", "World Health Organization", "IOM", "Save the Children", "FAO"]) expect(isUnitCode(n)).toBe(false);
+  });
+});

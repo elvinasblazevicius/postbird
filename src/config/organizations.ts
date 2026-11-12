@@ -34,6 +34,7 @@ export const KNOWN_ORGS: KnownOrg[] = [
   { name: "UNICEF", short: "UNICEF", type: "UN system", aliases: ["United Nations Children's Fund", "United Nations Childrens Fund", "UN Children's Fund"], domains: ["unicef.org"] },
   { name: "UNDP", short: "UNDP", type: "UN system", aliases: ["United Nations Development Programme"], domains: ["undp.org"] },
   { name: "World Health Organization", short: "WHO", type: "UN system", aliases: ["WHO"], domains: ["who.int"] },
+  { name: "Pan American Health Organization", short: "PAHO", type: "UN system", aliases: ["PAHO"], domains: ["paho.org"] },
   { name: "UNOPS", short: "UNOPS", type: "UN system", aliases: ["United Nations Office for Project Services"], domains: ["unops.org"] },
   { name: "UNHCR", short: "UNHCR", type: "UN system", aliases: ["United Nations High Commissioner for Refugees", "UN Refugee Agency", "The UN Refugee Agency", "ACNUR"], domains: ["unhcr.org"] },
   { name: "World Food Programme", short: "WFP", type: "UN system", aliases: ["WFP", "United Nations World Food Programme"], domains: ["wfp.org"] },
