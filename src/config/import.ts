@@ -62,6 +62,8 @@ export const IMPORT_SETTINGS = {
     perRun: 300,
     /** Time the step may take per run. */
     budgetMs: 9 * 60_000,
+    /** Extra time per run for pages built with JavaScript, read with a headless browser where one is installed. */
+    browserBudgetMs: 4 * 60_000,
     /** Pages read at the same time (each from a different website). */
     concurrency: 4,
     perHostDelayMs: 1_500,

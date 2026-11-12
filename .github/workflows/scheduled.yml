@@ -75,6 +75,14 @@ jobs:
             echo "migrate=false" >> "$GITHUB_OUTPUT"
             echo "::notice::CI hasn't succeeded for this commit (${conclusion:-no run found}), so migrations are not applied by this run."
           fi
+      # The import reads vacancy pages built with JavaScript with a headless browser (src/lib/feeds/rendered-page.ts).
+      # Not a dependency of the website; if this step fails the import runs without it.
+      - name: Browser for vacancy pages built with JavaScript
+        if: ${{ github.event.schedule != '23 6 * * *' && (inputs.task || 'sync') == 'sync' }}
+        continue-on-error: true
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.63.0
+          npx playwright install --with-deps chromium
       - name: Run task
         env:
           TASK: ${{ github.event.schedule == '23 6 * * *' && 'digest' || inputs.task || 'sync' }}

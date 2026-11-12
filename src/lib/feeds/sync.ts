@@ -550,7 +550,7 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
         const e = await enrichFromVacancyPages();
         if (e.checked) {
           const f = e.filled;
-          notes.push(`Vacancy pages: ${e.checked} read (${e.withFacts} with facts, ${e.nothing} without, ${e.blocked} closed to robots, ${e.errors} unreachable, ${e.skipped} not readable). Filled: ${f.deadline} closing dates, ${f.place} places, ${f.jobType} contract types, ${f.grade} grades, ${f.experience} experience, ${f.languages} languages.`);
+          notes.push(`Vacancy pages: ${e.checked} read (${e.withFacts} with facts, ${e.nothing} without, ${e.blocked} closed to robots, ${e.errors} unreachable, ${e.skipped} not readable${e.rendered ? `; ${e.rendered} built with JavaScript read in a browser, ${e.renderedWithFacts} with facts` : ""}). Filled: ${f.deadline} closing dates, ${f.place} places, ${f.jobType} contract types, ${f.grade} grades, ${f.experience} experience, ${f.languages} languages.`);
         }
       } catch (e) {
         notes.push(`Vacancy pages were not read: ${(e as Error).message}`);

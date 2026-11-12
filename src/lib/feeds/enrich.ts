@@ -12,12 +12,15 @@ import { IMPORT_SETTINGS } from "@/config/import";
 import { sql } from "@/lib/db";
 import { hostOf, isListingSite } from "./url";
 import { parseRobots, robotsAllows, type RobotsRules } from "./robots";
+import { looksBuiltByScript, openRenderer } from "./rendered-page";
 import { factsFromPage, factsFromSystem, hasFacts, pageSaysClosed, plausibleDeadline, systemApiUrl, systemSaysClosed, type PageFacts } from "./vacancy-page";
 
 const S = IMPORT_SETTINGS.vacancyPages;
 
 export type EnrichResult = {
   checked: number; withFacts: number; nothing: number; blocked: number; errors: number; skipped: number;
+  /** Pages built in the browser that were read with a headless browser (of them, how many gave facts). */
+  rendered: number; renderedWithFacts: number;
   filled: { deadline: number; place: number; jobType: number; grade: number; experience: number; languages: number };
   via: Record<string, number>;
 };
@@ -30,6 +33,8 @@ type DueJob = {
 
 class BlockedByRobots extends Error {}
 class NotReadable extends Error {}
+/** The page's HTML is an empty shell filled in by JavaScript. */
+class BuiltByScript extends Error {}
 
 async function readCapped(res: Response, maxBytes: number): Promise<string> {
   const declared = Number(res.headers.get("content-length"));
@@ -98,7 +103,10 @@ async function readFacts(job: DueJob, cache: Map<string, RobotsRules>): Promise<
   if (!/html|xml/i.test(type)) { await res.body?.cancel().catch(() => {}); throw new NotReadable("not an HTML page"); }
   // A redirect to a job board (or an expired-vacancy page on one) is not the employer's page.
   if (isListingSite(hostOf(res.url))) { await res.body?.cancel().catch(() => {}); throw new NotReadable("redirected to a job board"); }
-  return factsFromPage(job.title, job.apply_url, await readCapped(res, S.maxBytes));
+  const html = await readCapped(res, S.maxBytes);
+  const facts = factsFromPage(job.title, job.apply_url, html);
+  if (!hasFacts(facts) && looksBuiltByScript(html)) throw new BuiltByScript();
+  return facts;
 }
 
 async function save(job: DueJob, result: string, f: PageFacts | null, r: EnrichResult): Promise<void> {
@@ -131,7 +139,7 @@ async function save(job: DueJob, result: string, f: PageFacts | null, r: EnrichR
 }
 
 export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: number } = {}): Promise<EnrichResult> {
-  const r: EnrichResult = { checked: 0, withFacts: 0, nothing: 0, blocked: 0, errors: 0, skipped: 0, filled: { deadline: 0, place: 0, jobType: 0, grade: 0, experience: 0, languages: 0 }, via: {} };
+  const r: EnrichResult = { checked: 0, withFacts: 0, nothing: 0, blocked: 0, errors: 0, skipped: 0, rendered: 0, renderedWithFacts: 0, filled: { deadline: 0, place: 0, jobType: 0, grade: 0, experience: 0, languages: 0 }, via: {} };
   // Tests never visit real websites (the readers have their own unit tests).
   if (!S.enabled || process.env.VITEST) return r;
   const started = Date.now();
@@ -156,6 +164,7 @@ export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: 
   }
   const hosts = [...byHost.keys()];
   const robots = new Map<string, RobotsRules>();
+  const builtByScript: DueJob[] = [];
 
   async function worker() {
     for (let host = hosts.shift(); host !== undefined; host = hosts.shift()) {
@@ -178,7 +187,8 @@ export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: 
             await save(job, "none", null, r);
           }
         } catch (e) {
-          if (e instanceof BlockedByRobots) { r.blocked++; await save(job, "blocked", null, r); }
+          if (e instanceof BuiltByScript) builtByScript.push(job); // read with a browser below
+          else if (e instanceof BlockedByRobots) { r.blocked++; await save(job, "blocked", null, r); }
           else { r.errors++; await save(job, "error", null, r); }
         }
         await new Promise((res) => setTimeout(res, S.perHostDelayMs));
@@ -186,7 +196,32 @@ export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: 
     }
   }
   await Promise.all(Array.from({ length: S.concurrency }, worker));
+  await readBuiltByScript(builtByScript, Date.now(), S.browserBudgetMs, r);
   return r;
+}
+
+/** Pages whose text arrives through JavaScript: one headless browser, one page at a time. */
+async function readBuiltByScript(jobs: DueJob[], started: number, budget: number, r: EnrichResult): Promise<void> {
+  if (!jobs.length) return;
+  const renderer = Date.now() - started < budget ? await openRenderer() : null;
+  try {
+    for (const job of jobs) {
+      const html = renderer && Date.now() - started < budget ? await renderer.render(job.apply_url) : null;
+      const facts = html ? factsFromPage(job.title, job.apply_url, html) : null;
+      if (html) r.rendered++;
+      if (facts && hasFacts(facts)) {
+        r.withFacts++; r.renderedWithFacts++;
+        r.via[facts.via] = (r.via[facts.via] ?? 0) + 1;
+        await save(job, "ok", facts, r);
+      } else {
+        r.nothing++;
+        await save(job, "none", null, r);
+      }
+      if (renderer) await new Promise((res) => setTimeout(res, S.perHostDelayMs));
+    }
+  } finally {
+    await renderer?.close();
+  }
 }
 
 // ── Weekly "still open?" check ─────────────
