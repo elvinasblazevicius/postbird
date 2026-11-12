@@ -252,6 +252,9 @@ export function MultiCombobox({ name, label, idPrefix, groups, chosen: initial, 
           hidden={!open || full}
           className="absolute inset-x-0 top-full z-30 mt-1 max-h-72 overflow-y-auto rounded-lg border border-rule bg-paper py-1 text-[0.95rem] shadow-[0_8px_24px_rgba(14,31,61,0.12)]"
         >
+          <li role="presentation" className="px-3 pb-1 pt-2 text-xs font-medium text-slate">
+            {chosen.length ? `${chosen.length} chosen. Pick another, or press Escape.` : `Choose one or more ${itemsNoun}.`}
+          </li>
           {shown.map((g, gi) => (
             <li key={g.label || gi} role="presentation">
               {g.label ? <div id={`${base}-g${gi}${uid}`} role="presentation" className="px-3 pb-1 pt-2 text-xs font-medium text-slate">{g.label}</div> : null}
@@ -271,7 +274,11 @@ export function MultiCombobox({ name, label, idPrefix, groups, chosen: initial, 
                       onClick={() => add(o)}
                       className={`flex cursor-pointer items-baseline justify-between gap-3 px-3 py-2 ${isActive ? "bg-mist text-accent" : "text-ink"}`}
                     >
-                      <span className="min-w-0">{o.name}</span>
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        {/* A tick box, so the list reads as "choose one or more". */}
+                        <span aria-hidden="true" className={`h-4 w-4 shrink-0 rounded-[4px] border ${isActive ? "border-accent" : "border-field"} bg-paper`} />
+                        <span className="min-w-0">{o.name}</span>
+                      </span>
                       {o.count !== undefined ? <span className="shrink-0 text-sm tabular-nums text-slate">{o.count}</span> : null}
                     </li>
                   );
