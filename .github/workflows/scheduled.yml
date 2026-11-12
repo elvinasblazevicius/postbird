@@ -36,7 +36,7 @@ on:
         required: true
         default: sync
         type: choice
-        options: [sync, digest, setup, diagnose, sources, feed-coverage, tidy-jobs-dry-run, tidy-jobs, copy-database]
+        options: [sync, digest, setup, diagnose, sources, feed-coverage, tidy-jobs-dry-run, tidy-jobs, copy-database, ai-fill-trial]
 
 # actions: read lets the job check that CI passed for this commit before it applies migrations.
 permissions:
@@ -93,6 +93,8 @@ jobs:
           NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY: ${{ secrets.NEXT_PUBLIC_PADDLE_PRICE_QUARTERLY }}
           NEXT_PUBLIC_PADDLE_ENV: ${{ secrets.NEXT_PUBLIC_PADDLE_ENV }}
           PADDLE_API_KEY: ${{ secrets.PADDLE_API_KEY }}
+          # Only for the "ai-fill-trial" task (reads vacancy pages with DeepSeek; writes nothing).
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
           if [ -z "$DATABASE_URL" ]; then echo "::error::Add the DATABASE_URL repository secret."; exit 1; fi
           if [ -z "$ANALYTICS_SALT" ] && [ -z "$CRON_SECRET" ]; then

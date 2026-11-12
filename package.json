@@ -23,7 +23,8 @@
     "copy-database": "bash scripts/copy-database.sh",
     "feed-coverage": "tsx --env-file-if-exists=.env.local scripts/feed-coverage.ts",
     "tidy-jobs-dry-run": "tsx --env-file-if-exists=.env.local scripts/tidy-jobs.ts --dry-run",
-    "reclassify": "tsx --env-file-if-exists=.env.local scripts/reclassify.ts"
+    "reclassify": "tsx --env-file-if-exists=.env.local scripts/reclassify.ts",
+    "ai-fill-trial": "tsx --env-file-if-exists=.env.local scripts/ai-fill-trial.ts"
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
