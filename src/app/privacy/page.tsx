@@ -40,7 +40,7 @@ export default function PrivacyPage() {
     <>
       <PageHeader width="max-w-3xl" title="Privacy" crumbs={[{ href: "/", label: "Home" }, { href: "/privacy", label: "Privacy" }]} />
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-12 text-[1.02rem] leading-relaxed text-ink sm:px-6">
-        <p className="text-sm text-slate">Last updated 10 November 2026</p>
+        <p className="text-sm text-slate">Last updated 12 November 2026</p>
         <p>
           This page explains what {siteConfig.name} collects, why, who helps us process it and what you can ask us to do with it.
         </p>
@@ -144,9 +144,9 @@ export default function PrivacyPage() {
 
         <H2>Our book link</H2>
         <p>
-          Pages about EU institution vacancies show a test-preparation book published by {op.name}, which runs {siteConfig.name}. Its link goes to books2read, a
-          third-party store-picker that sends you on to the bookshop you choose. books2read and the shops have their own privacy policies. We only count the click,
-          as described above.
+          Pages about EU institution vacancies show a test-preparation book published by {op.name}, which runs {siteConfig.name}. Its link goes to the book&apos;s
+          page on Amazon. To open the Amazon store for your country, we look at the country your connection comes from at the moment you click; we don&apos;t store it.
+          Amazon has its own privacy policy. We only count the click, as described above.
         </p>
         {BILLING_LIVE ? <H2 id="payments">Payments</H2> : null}
         {BILLING_LIVE ? (
@@ -165,7 +165,7 @@ export default function PrivacyPage() {
         <H2>Who processes data for us</H2>
         <ul className="list-disc space-y-1 pl-6">
           <li>Netlify (United States): hosts the website.</li>
-          <li>Supabase (servers in Australia): stores the database.</li>
+          <li>Supabase (servers in the United States): stores the database.</li>
           <li>Resend (United States): sends our emails.</li>
           {mail ? <li>Our email hosting provider: receives and stores the messages you send to {mailLink}.</li> : null}
           <li>GitHub (United States): runs our scheduled jobs, including sending alert emails.</li>

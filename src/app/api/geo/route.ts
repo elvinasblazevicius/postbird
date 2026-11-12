@@ -5,6 +5,8 @@
  *
  * Response: { "country": string | null, "consentRequired": boolean }
  */
+import { countryFromHeaders } from "@/lib/visitor-country";
+
 export const dynamic = "force-dynamic";
 
 /**
@@ -14,34 +16,6 @@ export const dynamic = "force-dynamic";
  */
 function consentRequiredFor(country: string | null): boolean {
   return country !== "US";
-}
-
-function netlifyCountry(raw: string): string | null {
-  const attempts = [raw.trim()];
-  try {
-    attempts.push(Buffer.from(raw.trim(), "base64").toString("utf8"));
-  } catch {
-    /* not base64 */
-  }
-  for (const text of attempts) {
-    if (!text.startsWith("{")) continue;
-    try {
-      // Netlify's x-nf-geo: { city, country: { code, name }, subdivision: { code, name }, timezone, ... }.
-      const geo = JSON.parse(text) as { country?: { code?: unknown } };
-      if (typeof geo.country?.code === "string") return geo.country.code;
-    } catch {
-      /* try the next form */
-    }
-  }
-  return null;
-}
-
-function countryFromHeaders(h: Headers): string | null {
-  const nf = h.get("x-nf-geo");
-  const raw = (nf ? netlifyCountry(nf) : null) || h.get("x-vercel-ip-country") || h.get("x-country") || h.get("cf-ipcountry");
-  const v = raw?.trim().toUpperCase() ?? "";
-  // "XX"/"T1" are "unknown"/"Tor" placeholders used by some CDNs.
-  return /^[A-Z]{2}$/.test(v) && v !== "XX" && v !== "T1" ? v : null;
 }
 
 export function GET(req: Request) {
