@@ -384,8 +384,8 @@ describe("language names in the search words", () => {
   });
 
   it("never replace a language filter that is set (withSearchIntent)", () => {
-    expect(withSearchIntent({ q: "french officer" })).toMatchObject({ q: "officer", lang: "French" });
-    expect(withSearchIntent({ q: "french officer", lang: "Arabic" })).toMatchObject({ q: "officer", lang: "Arabic" });
+    expect(withSearchIntent({ q: "french officer" })).toMatchObject({ q: "officer", lang: ["French"] });
+    expect(withSearchIntent({ q: "french officer", lang: ["Arabic"] })).toMatchObject({ q: "officer", lang: ["Arabic"] });
   });
 });
 

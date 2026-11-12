@@ -57,7 +57,7 @@ export default async function JobsPage({ searchParams }: Props) {
         compact
         title={heading}
         crumbs={[{ href: "/", label: "Home" }, { href: "/jobs", label: "Jobs" }]}
-        intro="Open vacancies from UN agencies, NGOs and other international organizations. Filter by place, organization, grade, contract type and closing date."
+        intro={activeFilterCount(filters) ? undefined : "Open vacancies from UN agencies, NGOs and other international organizations. Filter by place, organization, grade, contract type and closing date."}
         note={INDEPENDENCE_NOTE}
       />
       <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-8">

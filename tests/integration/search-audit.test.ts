@@ -156,7 +156,7 @@ describe.skipIf(!TEST_DB)("search audit cases (database)", () => {
 
   it("filter values in an address work in any letter case, and every ticked box counts", () => {
     expect(jobs.parseFilters({ where: "Kenya", org: "IOM", grade: "p-3", type: "consultancy", lang: "french", remote: "yes" }))
-      .toEqual({ country: ["kenya"], org: ["iom"], grade: ["P-3"], type: ["Consultancy"], lang: "French", remote: true });
+      .toEqual({ country: ["kenya"], org: ["iom"], grade: ["P-3"], type: ["Consultancy"], lang: ["French"], remote: true });
     const allCategories = ["data-analytics", "it", "monitoring-evaluation", "human-resources", "finance", "procurement-logistics", "legal-compliance", "food-security-agriculture", "health", "wash", "education", "security"];
     expect(jobs.parseFilters({ category: allCategories }).category).toHaveLength(12);
   });
@@ -169,6 +169,11 @@ describe.skipIf(!TEST_DB)("search audit cases (database)", () => {
     expect((await jobs.searchJobs({ q: "units" }, 50)).items).toEqual([]);
     // A country word never matches a title that names a longer country containing it.
     expect(await q("sudan")).toEqual(["Humanitarian Coordinator"]);
+  });
+
+  it("language and experience take several choices (any of them)", () => {
+    expect(jobs.parseFilters({ lang: ["Spanish", "french", "Klingon"], exp: ["6-9", "3-5", "99"] })).toEqual({ lang: ["French", "Spanish"], exp: ["3-5", "6-9"] });
+    expect(jobs.jobsUrl({ lang: ["French", "Spanish"], exp: ["3-5", "6-9"] })).toBe("/jobs?lang=French&lang=Spanish&exp=3-5&exp=6-9");
   });
 
   it("nonsense input matches nothing instead of dozens of vacancies", async () => {

@@ -52,6 +52,7 @@ export default async function TrialPage({ searchParams }: Props) {
             <>
               A list of matching vacancies that close in the next 3 days, up to 20 searches, and new matches by email every day. {p.trialDays} days free, then {p.priceSummary}.
               Cancel any time before the trial ends and you pay nothing.
+              <span className="mt-2 block text-sm">{siteConfig.name} is independent and not affiliated with the UN, the EU or any employer listed. Applying for jobs is always free.</span>
             </>
           ) : (
           <>

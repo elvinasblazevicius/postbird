@@ -35,13 +35,16 @@ const LOCAL_TITLE_WORDS = [
   "national posts?",
   "locally[- ]recruited",
   "nationals of [a-z' -]{3,40} only",
-  "(open|opened) (to|for) (the )?nationals",
+  "(open|opened) (to|for) (the )?nationals of [a-z' -]{3,40} only",
+  "(open|opened) (to|for) [a-z]+ nationals only",
+  "only nationals?",
   "gs-?[1-7]",
   "g-[1-7]",
   // "G6" without a hyphen; never "G7" (the group of seven) nor "G5 Sahel" (an organization).
   "g[2-6](?! sahel)",
-  // National Officer levels: NO-A to NO-E, UNICEF's NO-1 to NO-5, and "NOB" written together.
-  "no-?[a-e1-5]",
+  // National Officer levels: NO-A to NO-E and UNICEF's NO-1 to NO-5 with the hyphen; "NOA" to "NOE"
+  // written together only in capitals is checked in isLocalOnlyTitle (here the title is lower-cased).
+  "no-[a-e1-5]",
   // Service contracts and local service agreements: SC5, SC-5, SB-3, NPSA 8, LICA-6.
   "s[bc]-?[1-9][0-9]?",
   "npsa[- ]?[0-9]{1,2}",
@@ -64,12 +67,19 @@ export const LOCAL_ONLY_TITLE_SQL = `\\m(${LOCAL_TITLE_WORDS.join("|")})\\M|${LO
 const LOCAL_ONLY_TITLE_RE = new RegExp(`(?<![a-z0-9])(${LOCAL_TITLE_WORDS.join("|")})(?![a-z0-9])|${LOCAL_TITLE_SUFFIX}`);
 
 /** Titles that name the National Officer category, from which the grade group NO is inferred. */
-const NATIONAL_OFFICER_WORDS = "national (professional |project |programme |program )?officers?|npos?|no-?[a-e1-5]";
+const NATIONAL_OFFICER_WORDS = "national (professional |project |programme |program )?officers?|npos?|no-[a-e1-5]";
 export const NATIONAL_OFFICER_TITLE_SQL = `\\m(${NATIONAL_OFFICER_WORDS})\\M`;
 const NATIONAL_OFFICER_TITLE_RE = new RegExp(`(?<![a-z0-9])(${NATIONAL_OFFICER_WORDS})(?![a-z0-9])`);
 
+/**
+ * National Officer levels written together in capitals ("NOB", "NO B"), read on the title as
+ * written (case matters: "nob" in other words is not a grade). Postgres and JavaScript.
+ */
+export const NO_LEVEL_CAPS_SQL = "(^|[^A-Za-z0-9])NO ?[A-E]([^A-Za-z0-9]|$)";
+const NO_LEVEL_CAPS_RE = /(^|[^A-Za-z0-9])NO ?[A-E]([^A-Za-z0-9]|$)/;
+
 export function isLocalOnlyTitle(title: string | null | undefined): boolean {
-  return Boolean(title && LOCAL_ONLY_TITLE_RE.test(title.toLowerCase()));
+  return Boolean(title && (LOCAL_ONLY_TITLE_RE.test(title.toLowerCase()) || NO_LEVEL_CAPS_RE.test(title)));
 }
 
 /**
@@ -83,7 +93,7 @@ export function isLocalOnly(job: { grade: string | null | undefined; title: stri
 
 /** Does the title name the National Officer category ("National Professional Officer", "NPO")? */
 export function isNationalOfficerTitle(title: string | null | undefined): boolean {
-  return Boolean(title && NATIONAL_OFFICER_TITLE_RE.test(title.toLowerCase()));
+  return Boolean(title && (NATIONAL_OFFICER_TITLE_RE.test(title.toLowerCase()) || NO_LEVEL_CAPS_RE.test(title)));
 }
 
 /**
@@ -95,7 +105,7 @@ export function isNationalOfficerTitle(title: string | null | undefined): boolea
 export function titleGradeGroup(title: string | null | undefined): "NO" | "P" | "G" | null {
   if (!title) return null;
   const t = title.toLowerCase();
-  if (NATIONAL_OFFICER_TITLE_RE.test(t)) return "NO";
+  if (NATIONAL_OFFICER_TITLE_RE.test(t) || NO_LEVEL_CAPS_RE.test(title)) return "NO";
   if (PROFESSIONAL_TITLE_RE.test(t)) return "P";
   if (GENERAL_SERVICE_TITLE_RE.test(t)) return "G";
   return null;

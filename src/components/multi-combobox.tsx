@@ -284,7 +284,7 @@ export function MultiCombobox({ name, label, idPrefix, groups, chosen: initial, 
         </ul>
       </div>
       <p id={ids.hint} data-combobox-hint="" className="mt-1 text-xs text-slate">
-        {full ? `Up to ${max} ${itemsNoun}. Remove one to add another.` : `Type to search, or press the down arrow for the list. ${anyHint}.`}
+        {full ? `Up to ${max} ${itemsNoun}. Remove one to add another.` : <>You can choose several.<span className="sr-only"> Type to search, or press the down arrow for the list. {anyHint}.</span></>}
       </p>
       {unresolved ? (
         <p role="alert" className="mt-1 text-sm font-medium text-signal">

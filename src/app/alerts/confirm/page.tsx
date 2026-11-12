@@ -28,12 +28,12 @@ export default async function ConfirmPage({ searchParams }: Props) {
       ) : !token ? (
         <p className="mt-3 text-lg text-slate">
           Open the link in the confirmation email we sent you to finish signing up. Didn&apos;t get it? Check your spam folder or{" "}
-          <Link href="/alerts" className="text-accent underline">sign up again</Link>.
+          <Link href="/alerts#alert-signup" className="text-accent underline">sign up again</Link>.
         </p>
       ) : (
         <p className="mt-3 text-lg text-slate">
           This confirmation link has already been used or is no longer valid. If you&apos;re not receiving our emails,{" "}
-          <Link href="/alerts" className="text-accent underline">sign up again</Link>.
+          <Link href="/alerts#alert-signup" className="text-accent underline">sign up again</Link>.
         </p>
       )}
     </div>

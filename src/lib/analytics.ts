@@ -39,7 +39,7 @@ export async function recordEvent(e: { type: EventType; path?: string | null; jo
   }
 }
 
-const CAMPAIGN_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "msclkid", "landing"];
+const CAMPAIGN_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "msclkid", "landing", "fbclid"];
 
 /** Keep only known campaign fields, trimmed. */
 export function cleanCampaign(c: Record<string, unknown> | null | undefined): Record<string, string> | null {

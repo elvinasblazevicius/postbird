@@ -304,13 +304,14 @@ function MoreFilterFields({ idPrefix, filters, facets, hideOrgType = false, part
         <CheckList name="type" label="Contract type" selected={filters.type}
           options={JOB_TYPES.map((t) => ({ value: t, label: t, count: facets.types!.find((x) => x.job_type === t)?.count ?? 0 }))} />
       ) : null}
-      {selects && facets.exps && (facets.exps.some((e) => e.count) || filters.exp) ? (
-        <Select idPrefix={idPrefix} name="exp" label="Experience required" value={filters.exp} all="Any experience"
-          options={facets.exps.filter((e) => e.count || e.value === filters.exp).map((e) => ({ value: e.value, label: withCount(e.name, e.count) }))} />
+      {checks && facets.exps && (facets.exps.some((e) => e.count) || filters.exp?.length) ? (
+        <CheckList name="exp" label="Experience required" selected={filters.exp}
+          options={facets.exps.filter((e) => e.count || filters.exp?.includes(e.value)).map((e) => ({ value: e.value, label: e.name, count: e.count }))} />
       ) : null}
-      {selects && facets.langs && (facets.langs.some((l) => l.count) || filters.lang) ? (
-        <Select idPrefix={idPrefix} name="lang" label="Language" value={filters.lang} all="Any language"
-          options={[...facets.langs.filter((l) => l.count || l.lang === filters.lang), ...(filters.lang && !facets.langs.some((l) => l.lang === filters.lang) ? [{ lang: filters.lang, count: 0 }] : [])].map((l) => ({ value: l.lang, label: withCount(l.lang, l.count) }))} />
+      {checks && facets.langs && (facets.langs.some((l) => l.count) || filters.lang?.length) ? (
+        <CheckList name="lang" label="Language" selected={filters.lang} visible={6}
+          options={[...facets.langs.filter((l) => l.count || filters.lang?.includes(l.lang)), ...(filters.lang ?? []).filter((x) => !facets.langs!.some((l) => l.lang === x)).map((x) => ({ lang: x, count: 0 }))]
+            .map((l) => ({ value: l.lang, label: l.lang, count: l.count }))} />
       ) : null}
       {checks && !hideOrgType && facets.orgTypes ? (
         <CheckList name="orgtype" label="Type of organization" selected={filters.orgtype}
@@ -338,7 +339,7 @@ function MoreToggle() {
   );
 }
 
-const moreIsOpen = (f: JobFilters) => Boolean(f.type?.length || f.posted || f.closing || f.lang || f.exp || f.orgtype?.length);
+const moreIsOpen = (f: JobFilters) => Boolean(f.type?.length || f.posted || f.closing || f.lang?.length || f.exp?.length || f.orgtype?.length);
 
 /**
  * "Also show vacancies that don't state a grade": with a filter read from the posting's text in

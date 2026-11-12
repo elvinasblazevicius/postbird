@@ -260,7 +260,7 @@ describe("requirements", () => {
     for (const l of ["Ukrainian", "Turkish", "Swahili", "Dari", "Pashto", "Persian", "Somali", "Amharic", "Hausa", "Bengali", "Urdu", "Burmese", "Indonesian", "Japanese"]) {
       expect(LANGUAGES as readonly string[], l).toContain(l);
       // The filter accepts each one (and its links keep it).
-      expect(parseFilters({ lang: l }).lang, l).toBe(l);
+      expect(parseFilters({ lang: l }).lang, l).toEqual([l]);
     }
   });
 
@@ -525,7 +525,7 @@ describe("EU and development-bank grades, contract types and languages", () => {
     expect(f.type).toEqual(["Consultancy", "Internship"]);
     expect(f.orgtype).toEqual(["ngo", "un"]);
     expect(f.category).toEqual(["health"]);
-    for (const lang of ["German", "Italian", "Dutch", "Polish", "Swedish"]) expect(parseFilters({ lang }).lang).toBe(lang);
+    for (const lang of ["German", "Italian", "Dutch", "Polish", "Swedish"]) expect(parseFilters({ lang }).lang).toEqual([lang]);
   });
 
   it("treats languages named as alternatives as any of them, not each required", () => {

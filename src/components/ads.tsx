@@ -24,7 +24,7 @@ const ATTR_KEY = ATTRIBUTION_KEY;
 const CONSENT_KEY = "gch_ads_consent";
 const GEO_KEY = "gch_geo";
 const OPEN_EVENT = "postbird:cookie-settings";
-const ATTR_FIELDS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "msclkid"] as const;
+const ATTR_FIELDS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "msclkid", "fbclid"] as const;
 
 export type Attribution = Partial<Record<(typeof ATTR_FIELDS)[number], string>> & { landing?: string; at?: string };
 
@@ -122,8 +122,11 @@ const CONSENT_EVENT = "postbird:consent-changed";
  * enough to count a visit as coming from an ad, without an identifier.
  */
 export function withoutClickId(a: Attribution | null): Attribution | null {
-  if (!a || storageAllowed || !a.msclkid) return a;
-  return { ...a, msclkid: "present" };
+  if (!a) return a;
+  // Meta's click id is only ever kept as "present": it marks a visit from a Meta ad, nothing more.
+  const b = a.fbclid ? { ...a, fbclid: "present" } : a;
+  if (storageAllowed || !b.msclkid) return b;
+  return { ...b, msclkid: "present" };
 }
 
 /** True when advertising measurement is allowed for this visitor (consent given, or not required and not refused). */

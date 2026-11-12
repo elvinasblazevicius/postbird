@@ -6,7 +6,7 @@ import { LISTING_SETTINGS } from "@/config/import";
 import { countriesInLocation, DROP_CHARS, FOLD_FROM, FOLD_TO, locationPatterns } from "@/lib/country-match";
 import { sql, transaction } from "@/lib/db";
 import { logoProtectedSql } from "@/lib/feeds/logos";
-import { GENERAL_SERVICE_TITLE_SQL, gradeGroupOf, LOCAL_ONLY_GRADE_SQL, LOCAL_ONLY_TITLE_SQL, NATIONAL_OFFICER_TITLE_SQL, PROFESSIONAL_TITLE_SQL, titleGradeGroup } from "@/lib/grades";
+import { GENERAL_SERVICE_TITLE_SQL, gradeGroupOf, LOCAL_ONLY_GRADE_SQL, LOCAL_ONLY_TITLE_SQL, NATIONAL_OFFICER_TITLE_SQL, NO_LEVEL_CAPS_SQL, PROFESSIONAL_TITLE_SQL, titleGradeGroup } from "@/lib/grades";
 import { ABBREVIATIONS, categoriesForWord, foldText, gradeTitlePattern, interpretQuery, orgNamesForTerm, placeVariants, queryWords, searchTerms, singular, wordPattern, type QueryWords } from "@/lib/search-intent";
 
 export type JobListItem = {
@@ -77,8 +77,10 @@ export type JobFilters = {
   grade?: string[];
   /** Organization types (ORG_TYPES values); any of them matches. Sorted, no repeats. */
   orgtype?: string[];
-  lang?: string;
-  exp?: string;
+  /** Languages mentioned in the requirements; any of them matches. Sorted, no repeats. */
+  lang?: string[];
+  /** Experience bands (EXPERIENCE_BANDS values); any of them matches. Sorted, no repeats. */
+  exp?: string[];
   /** Category slugs; any of them matches. Sorted, no repeats. */
   category?: string[];
   remote?: boolean;
@@ -164,11 +166,10 @@ export function parseFilters(sp: SP): JobFilters {
   if (grades.length) f.grade = tidyList(grades);
   const orgtypes = slugs(sp.orgtype).filter((o) => ORG_TYPES.some((t) => t.value === o));
   if (orgtypes.length) f.orgtype = tidyList(orgtypes);
-  const lang = first(sp.lang);
-  const knownLang = lang ? (LANGUAGES as readonly string[]).find((l) => l.toLowerCase() === lang.toLowerCase()) : undefined;
-  if (knownLang) f.lang = knownLang;
-  const exp = first(sp.exp);
-  if (exp && EXPERIENCE_BANDS.some((b) => b.value === exp)) f.exp = exp;
+  const langs = every(sp.lang).flatMap((l) => (LANGUAGES as readonly string[]).find((x) => x.toLowerCase() === l.toLowerCase()) ?? []);
+  if (langs.length) f.lang = tidyList(langs);
+  const exps = every(sp.exp).filter((e) => EXPERIENCE_BANDS.some((b) => b.value === e));
+  if (exps.length) f.exp = tidyList(exps);
   const categories = slugs(sp.category).filter((c) => categoryBySlug(c));
   if (categories.length) f.category = tidyList(categories);
   if (["1", "true", "yes"].includes((first(sp.remote) ?? "").toLowerCase())) f.remote = true;
@@ -196,8 +197,8 @@ export function jobsUrl(f: JobFilters, base = "/jobs"): string {
   for (const r of f.region ?? []) p.append("region", r);
   for (const g of f.grade ?? []) p.append("grade", g);
   for (const o of f.orgtype ?? []) p.append("orgtype", o);
-  if (f.lang) p.set("lang", f.lang);
-  if (f.exp) p.set("exp", f.exp);
+  for (const l of f.lang ?? []) p.append("lang", l);
+  for (const e of f.exp ?? []) p.append("exp", e);
   for (const c of f.category ?? []) p.append("category", c);
   if (f.remote) p.set("remote", "1");
   for (const t of f.type ?? []) p.append("type", t);
@@ -214,8 +215,8 @@ export function jobsUrl(f: JobFilters, base = "/jobs"): string {
 
 /** How many filters are in use; each place, grade and organization of a multiple choice counts once. */
 export function activeFilterCount(f: JobFilters): number {
-  const multi = [f.country, f.region, f.grade, f.org, f.orgtype, f.category, f.type].reduce((n, l) => n + (l?.length ?? 0), 0);
-  return multi + [f.q, f.lang, f.exp, f.remote, f.posted, f.closing, f.hidelocal].filter(Boolean).length;
+  const multi = [f.country, f.region, f.grade, f.org, f.orgtype, f.category, f.type, f.lang, f.exp].reduce((n, l) => n + (l?.length ?? 0), 0);
+  return multi + [f.q, f.remote, f.posted, f.closing, f.hidelocal].filter(Boolean).length;
 }
 
 /** A listing is shown while active and not past its published closing date (checked at query time, between syncs). */
@@ -261,7 +262,7 @@ export function withSearchIntent(f: JobFilters): JobFilters {
     remote: f.remote || i.remote || undefined,
     type: f.type?.length ? f.type : i.type ? [i.type] : undefined,
     grade: f.grade?.length ? f.grade : i.grade ? [i.grade] : undefined,
-    lang: f.lang ?? i.lang,
+    lang: f.lang?.length ? f.lang : i.lang ? [i.lang] : undefined,
     country: f.country?.length ? f.country : f.region?.length || !i.country ? undefined : [i.country],
     // A region read from the words ("africa"), unless a place is already chosen in the filter.
     region: f.region?.length ? f.region : f.country?.length || !i.region ? undefined : [i.region],
@@ -313,7 +314,7 @@ export type DerivedFilter = (typeof DERIVED_FILTERS)[number];
 /** The derived filters in use, including those read from the search words ("p3", "internship", "french"). */
 export function derivedFilters(f: JobFilters): DerivedFilter[] {
   const read = withSearchIntent(f);
-  return DERIVED_FILTERS.filter((k) => (k === "grade" ? Boolean(read.grade?.length) : Boolean(read[k])));
+  return DERIVED_FILTERS.filter((k) => Boolean(read[k]?.length));
 }
 
 /** The filters a visitor can set (and remove one at a time). */
@@ -501,7 +502,7 @@ function textCondition(q: string, mode: MatchMode): Frag {
  * Used for the grade counts, so such a listing counts once, under its group.
  */
 const gradeKey = () => sql`coalesce(j.grade, case
-  when lower(j.title) ~ ${NATIONAL_OFFICER_TITLE_SQL} then 'NO'
+  when lower(j.title) ~ ${NATIONAL_OFFICER_TITLE_SQL} or j.title ~ ${NO_LEVEL_CAPS_SQL} then 'NO'
   when lower(j.title) ~ ${PROFESSIONAL_TITLE_SQL} then 'P'
   when lower(j.title) ~ ${GENERAL_SERVICE_TITLE_SQL} then 'G' end)`;
 
@@ -558,10 +559,11 @@ function filterConditions(f: JobFilters, mode: MatchMode = "all"): Partial<Recor
   const orUnstated = (k: DerivedFilter, cond: Frag) => (f.unstated ? sql`(${cond} or ${UNSTATED[k]()})` : cond);
   if (f.grade?.length) c.grade = orUnstated("grade", orTitle(sql`(${f.grade.map(gradeCondition).reduce((a, b) => sql`${a} or ${b}`)})`, titleHas(f.fromWords?.grade ? gradeTitlePattern(f.fromWords.grade) : null)));
   if (f.orgtype?.length) c.orgtype = sql`o.org_type = any(${f.orgtype.map((v) => ORG_TYPES.find((o) => o.value === v)?.type ?? "--")})`;
-  if (f.lang) c.lang = orUnstated("lang", sql`${f.lang} = any(j.languages)`);
-  if (f.exp) {
-    const band = EXPERIENCE_BANDS.find((b) => b.value === f.exp)!;
-    c.exp = orUnstated("exp", sql`j.min_experience_years between ${band.min} and ${band.max}`);
+  if (f.lang?.length) c.lang = orUnstated("lang", sql`j.languages && ${f.lang}::text[]`);
+  if (f.exp?.length) {
+    const bands = f.exp.flatMap((v) => EXPERIENCE_BANDS.find((b) => b.value === v) ?? []);
+    const any = bands.map((b): Frag => sql`j.min_experience_years between ${b.min} and ${b.max}`).reduce((a, b) => sql`${a} or ${b}`, sql`false`);
+    c.exp = orUnstated("exp", sql`(${any})`);
   }
   if (f.category?.length) c.category = sql`j.category = any(${f.category})`;
   // The flag set at import, or a location that says so ("Home Based", "Remote", "Telework").
@@ -576,7 +578,7 @@ function filterConditions(f: JobFilters, mode: MatchMode = "all"): Partial<Recor
   if (f.posted) c.posted = sql`coalesce(j.published_at, j.first_seen_at) >= now() - make_interval(days => ${Number(f.posted)})`;
   if (f.closing) c.closing = sql`j.deadline is not null and j.deadline <= (now() at time zone 'utc')::date + ${Number(f.closing)}::int`;
   // Same rule as isLocalOnly() in src/lib/grades.ts: the parsed grade, or words in the title.
-  if (f.hidelocal) c.hidelocal = sql`(coalesce(j.grade, '') !~ ${LOCAL_ONLY_GRADE_SQL} and lower(j.title) !~ ${LOCAL_ONLY_TITLE_SQL})`;
+  if (f.hidelocal) c.hidelocal = sql`(coalesce(j.grade, '') !~ ${LOCAL_ONLY_GRADE_SQL} and lower(j.title) !~ ${LOCAL_ONLY_TITLE_SQL} and j.title !~ ${NO_LEVEL_CAPS_SQL})`;
   return c;
 }
 
@@ -958,7 +960,7 @@ async function queryFacetSnapshot(includeDemo: boolean): Promise<FacetSnapshot> 
                 'active', count(*)::int,
                 'orgs', count(distinct organization_id)::int,
                 'countries', count(distinct country_code)::int,
-                'remote', (count(*) filter (where is_remote))::int,
+                'remote', (count(*) filter (where is_remote or lower(coalesce(location_text, '')) ~ ${REMOTE_PLACE_SQL}))::int,
                 'this_week', (count(*) filter (where posted >= now() - interval '7 days'))::int)
          from open) as stats`);
   return r;

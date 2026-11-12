@@ -86,7 +86,7 @@ describe.skipIf(!TEST_DB)("places, best match, grade groups and languages (datab
   });
 
   it("filters by required languages only", async () => {
-    expect(await titles({ lang: "French" })).toEqual(["Data Analyst"]);
+    expect(await titles({ lang: ["French"] })).toEqual(["Data Analyst"]);
     const job = await jobs.getJob((await jobs.searchJobs({ q: "legal" }, 5)).items[0].id);
     expect(job?.desirable_languages).toEqual(["French"]);
   });

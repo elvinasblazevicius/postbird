@@ -258,8 +258,12 @@ export function detectJobType(text: string): string | null {
   return null;
 }
 
+/** Titles naming gender work go to Gender even when they also name another field ("Gender Specialist, … Procurement Project"). */
+const GENDER_FIRST = /\bgender\b/;
+
 export function detectCategory(title: string): string {
   const s = ` ${normalizeForCompare(title)} `;
+  if (GENDER_FIRST.test(s)) return "gender";
   for (const c of CATEGORY_MATCHERS) if (c.res.some((re) => re.test(s))) return c.slug;
   return OTHER_CATEGORY.slug;
 }

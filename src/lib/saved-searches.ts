@@ -146,8 +146,8 @@ export async function describeSearch(query: string): Promise<string | null> {
   if (f.remote) parts.push("remote / home-based");
   if (f.grade?.length) parts.push(`grade ${orList(f.grade.map(gradeLabel))}`);
   if (f.type?.length) parts.push(orList(f.type.map((t) => t.toLowerCase())));
-  if (f.exp) parts.push(`experience ${EXPERIENCE_BANDS.find((b) => b.value === f.exp)?.name.toLowerCase() ?? f.exp}`);
-  if (f.lang) parts.push(`${f.lang} mentioned`);
+  if (f.exp?.length) parts.push(`experience ${orList(f.exp.map((v) => EXPERIENCE_BANDS.find((b) => b.value === v)?.name.toLowerCase() ?? v))}`);
+  if (f.lang?.length) parts.push(`${orList(f.lang)} mentioned`);
   if (f.posted) parts.push(POSTED[f.posted]);
   if (f.closing) parts.push(`closing within ${f.closing} days`);
   if (f.hidelocal) parts.push("without local-only posts");

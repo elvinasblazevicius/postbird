@@ -93,7 +93,7 @@ function filterChips(filters: JobFilters, fixed: Partial<JobFilters>, base: stri
   for (const g of grades) chips.push({ key: "grade", label: `Grade: ${gradeLabel(g)}`, href: href({ grade: without(grades, g) }), fromSearch: fromSearch("grade") });
   if (grades.length) removals.push({ key: "grade", label: `Grade: ${orList(grades.map(gradeLabel))}`, href: href({ grade: undefined }) });
   // Category, contract type and organization type: one chip per choice, like grades.
-  const multiChips = (key: "category" | "type" | "orgtype", label: string, name: (v: string) => string, search = false) => {
+  const multiChips = (key: "category" | "type" | "orgtype" | "lang" | "exp", label: string, name: (v: string) => string, search = false) => {
     const list = own[key] ?? [];
     for (const v of list) chips.push({ key, label: `${label}: ${name(v)}`, href: href({ [key]: without(list, v) }), fromSearch: search });
     if (list.length) removals.push({ key, label: `${label}: ${orList(list.map(name))}`, href: href({ [key]: undefined }) });
@@ -103,8 +103,8 @@ function filterChips(filters: JobFilters, fixed: Partial<JobFilters>, base: stri
   multiChips("orgtype", "Organization type", (v) => ORG_TYPES.find((o) => o.value === v)?.name ?? v, fromSearch("orgtype"));
   if (own.remote) single("remote", "Remote / home-based", { remote: undefined }, fromSearch("remote"));
   if (own.hidelocal) single("hidelocal", "Local-only posts hidden", { hidelocal: undefined });
-  if (own.lang) single("lang", `Language: ${own.lang} mentioned`, { lang: undefined }, fromSearch("lang"));
-  if (own.exp) single("exp", `Experience: ${EXPERIENCE_BANDS.find((b) => b.value === own.exp)?.name ?? own.exp}`, { exp: undefined });
+  multiChips("lang", "Language", (v) => `${v} mentioned`, fromSearch("lang"));
+  multiChips("exp", "Experience", (v) => EXPERIENCE_BANDS.find((b) => b.value === v)?.name ?? v);
   if (own.posted) single("posted", `Posted: ${POSTED_LABELS[own.posted]}`, { posted: undefined });
   if (own.closing) single("closing", `Closing within ${own.closing} days`, { closing: undefined });
   // Not a removal for the empty state: it only ever adds listings.
@@ -248,7 +248,7 @@ export async function JobsBrowser({
             <FilterForm key={`m:${formKey}`} formId="filters-mobile" filters={filters} facets={facets} action={base} hidden={formHidden} submitOnChange={false} keyword={false} />
           </div>
         </details>
-        <div className="sticky top-24 hidden max-h-[calc(100dvh-7rem)] overflow-y-auto overscroll-contain pb-1 pr-1 lg:block">
+        <div className="filter-scroll sticky top-24 hidden max-h-[calc(100dvh-7rem)] overflow-y-auto overscroll-contain pb-1 pr-2 lg:block">
           <FilterForm key={`d:${formKey}`} formId="filters-desktop" filters={filters} facets={facets} action={base} hidden={formHidden} />
         </div>
       </aside>
@@ -317,7 +317,7 @@ export async function JobsBrowser({
             <svg viewBox="0 0 16 16" className="mt-1 h-4 w-4 shrink-0 text-accent" aria-hidden="true"><path d="M8 2a4 4 0 0 0-4 4v2.5L2.5 11h11L12 8.5V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
             {siteConfig.freeWeeklyEmail ? (
               <span>
-                <Link href={`/alerts?search=${encodeURIComponent(alertSearch)}`} className="font-medium text-accent underline-offset-2 hover:underline">
+                <Link href={`/alerts?search=${encodeURIComponent(alertSearch)}#alert-signup`} className="font-medium text-accent underline underline-offset-2 hover:text-brand">
                   Get new matches for this search in a free weekly email
                 </Link>
                 <span className="text-slate"> · or </span>

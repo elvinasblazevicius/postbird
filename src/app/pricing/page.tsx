@@ -12,7 +12,7 @@ import { siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
-const TITLE = "Pricing — email alerts for international jobs";
+const TITLE = "Pricing — job alerts for international jobs";
 const DESCRIPTION = siteConfig.freeWeeklyEmail
   ? `Browsing every vacancy is free, and so is a weekly email with new matches for one search. ${siteConfig.premium.name} with up to 20 searches: ${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}.`
   : `Browsing every vacancy is free. ${siteConfig.premium.name}: new vacancies by email, filtered by keyword, organization and location. ${siteConfig.premium.trialDays}-day free trial, then ${siteConfig.premium.priceSummary}.`;
