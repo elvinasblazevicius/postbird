@@ -36,10 +36,12 @@ export function AutoSubmit({ formId, onChange: submitOnChange = true, keepScroll
       const { field, open } = restore;
       restore = null;
       for (const d of Array.from(form.querySelectorAll<HTMLDetailsElement>("details[data-fold]"))) if (open.includes(d.dataset.fold!)) d.open = true;
-      const match = field && (Array.from(form.elements).find((el) => {
-        const f = el as HTMLInputElement;
-        return f.name === field.name && f.type !== "hidden" && (f.type !== "checkbox" || f.value === field.value);
-      }) as HTMLElement | undefined);
+      const match = field && (field.name.startsWith("combobox:")
+        ? form.querySelector<HTMLElement>(`input[data-combobox-input="${field.name.slice(9)}"]`) ?? undefined
+        : Array.from(form.elements).find((el) => {
+          const f = el as HTMLInputElement;
+          return f.name === field.name && f.type !== "hidden" && (f.type !== "checkbox" || f.value === field.value);
+        }) as HTMLElement | undefined);
       match?.focus({ preventScroll: true });
     }
     let changed: { name: string; value: string } | undefined;
@@ -49,7 +51,8 @@ export function AutoSubmit({ formId, onChange: submitOnChange = true, keepScroll
       if (!submitOnChange) return;
       if (t instanceof HTMLSelectElement || (t instanceof HTMLInputElement && t.type === "checkbox") || t.dataset?.autosubmit === "true") {
         const f = t as HTMLInputElement;
-        changed = f.name ? { name: f.name, value: f.value } : undefined;
+        // A place or organization picker has no name of its own: remember which one it is.
+        changed = f.name ? { name: f.name, value: f.value } : t.dataset.field ? { name: `combobox:${t.dataset.field}`, value: "" } : undefined;
         form.requestSubmit();
       }
     };
@@ -62,7 +65,13 @@ export function AutoSubmit({ formId, onChange: submitOnChange = true, keepScroll
       };
       changed = undefined;
       const params = new URLSearchParams();
-      for (const [k, v] of new FormData(form)) if (typeof v === "string" && v.trim()) params.append(k, v);
+      // The same choice is never sent twice (a picker's typed text can add a field the form already has).
+      const seen = new Set<string>();
+      for (const [k, v] of new FormData(form)) {
+        if (typeof v !== "string" || !v.trim() || seen.has(`${k}=${v}`)) continue;
+        seen.add(`${k}=${v}`);
+        params.append(k, v);
+      }
       const qs = params.toString();
       const action = new URL(form.action, location.href);
       // A panel that opened to show the form (on phones) closes when the results are shown.

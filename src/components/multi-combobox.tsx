@@ -1,8 +1,9 @@
 "use client";
 
-import { useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-export type ComboOption = { value: string; name: string; count?: number };
+/** `keys`: other names the option is found by when typing (acronyms and aliases: "IOM", "USA", "DRC"). */
+export type ComboOption = { value: string; name: string; count?: number; keys?: string[] };
 export type ComboGroup = { label: string; options: ComboOption[] };
 
 /** Most options listed at once; typing narrows the rest down. */
@@ -24,7 +25,9 @@ function useHydrated() {
  * server and until the page has hydrated.
  *
  * Keyboard: Down/Up open the list and move through it, Enter adds the highlighted option, Escape
- * closes the list (or clears the text), Backspace in an empty field removes the last chip. Each
+ * closes the list (or clears the text), Backspace in an empty field removes the last chip. Text
+ * left in the field is never thrown away silently: on leaving the field or submitting the form it
+ * becomes a choice when it names exactly one option; otherwise the form waits and says so. Each
  * chip has its own remove button. Additions and removals are announced in a polite live region.
  * In a form with AutoSubmit (the desktop filter panel), a change applies at once (data-autosubmit).
  */
@@ -63,9 +66,9 @@ export function MultiCombobox({ name, label, idPrefix, groups, chosen: initial, 
     let total = 0;
     const out: { label: string; options: ComboOption[] }[] = [];
     for (const g of groups) {
-      const matches = g.options.filter((o) => !chosen.includes(o.value) && (!q || fold(o.name).includes(q)));
+      const matches = g.options.filter((o) => !chosen.includes(o.value) && (!q || fold(o.name).includes(q) || Boolean(o.keys?.some((k) => fold(k).startsWith(q)))));
       if (q) {
-        const starts = (o: ComboOption) => fold(o.name).split(/[^a-z0-9]+/).some((w) => w.startsWith(q));
+        const starts = (o: ComboOption) => fold(o.name).split(/[^a-z0-9]+/).some((w) => w.startsWith(q)) || Boolean(o.keys?.some((k) => fold(k) === q));
         matches.sort((a, b) => Number(starts(b)) - Number(starts(a)));
       }
       const room = Math.max(0, SHOWN - total);
@@ -101,6 +104,55 @@ export function MultiCombobox({ name, label, idPrefix, groups, chosen: initial, 
     if (refocus) inputRef.current?.focus();
     changed();
   };
+
+  /** The one option the typed text names: an exact name or alias, or the only option that matches. Null when none or several. */
+  const resolve = (text: string): ComboOption | null => {
+    const q = fold(text.trim());
+    if (!q || full) return null;
+    const all = groups.flatMap((g) => g.options).filter((o) => !chosen.includes(o.value));
+    const exact = all.filter((o) => fold(o.name) === q || o.keys?.some((k) => fold(k) === q));
+    if (exact.length === 1) return exact[0];
+    const partial = all.filter((o) => fold(o.name).includes(q) || o.keys?.some((k) => fold(k).startsWith(q)));
+    return partial.length === 1 ? partial[0] : null;
+  };
+  const [unresolved, setUnresolved] = useState("");
+
+  // Submitting with text still in the field: take it as a choice when it names one option (the
+  // hidden field is added to the form at once, so this very submit carries it); otherwise stop
+  // the submit and say why, instead of searching everywhere as if nothing had been typed.
+  const queryRef = useRef(query);
+  const resolveRef = useRef(resolve);
+  useEffect(() => {
+    queryRef.current = query;
+    resolveRef.current = resolve;
+  });
+  useEffect(() => {
+    const onSubmit = (e: Event) => {
+      const form = changeRef.current?.closest("form");
+      const text = queryRef.current.trim();
+      if (!form || e.target !== form || !text) return;
+      const o = resolveRef.current(text);
+      if (o) {
+        const field = document.createElement("input");
+        field.type = "hidden";
+        field.name = name;
+        field.value = o.value;
+        field.dataset.typed = "true";
+        changeRef.current!.appendChild(field);
+        setChosen((c) => (c.includes(o.value) ? c : [...c, o.value]));
+        setQuery("");
+        setTimeout(() => field.remove(), 0);
+      } else {
+        e.preventDefault();
+        e.stopPropagation();
+        setUnresolved(text);
+        setOpen(true);
+        inputRef.current?.focus();
+      }
+    };
+    document.addEventListener("submit", onSubmit, true);
+    return () => document.removeEventListener("submit", onSubmit, true);
+  }, [name]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -138,7 +190,7 @@ export function MultiCombobox({ name, label, idPrefix, groups, chosen: initial, 
   // Where each group's options start in the flat list (for the option ids and the highlight).
   const starts = shown.map((_, gi) => shown.slice(0, gi).reduce((n, g) => n + g.options.length, 0));
   return (
-    <div ref={changeRef} data-autosubmit="true" data-combobox="" role="group" aria-labelledby={ids.label}>
+    <div ref={changeRef} data-autosubmit="true" data-combobox="" data-field={name} role="group" aria-labelledby={ids.label}>
       <label id={ids.label} htmlFor={ids.input} className="mb-1.5 block text-sm font-medium text-ink">{label}</label>
       {chosen.map((v) => <input key={v} type="hidden" name={name} value={v} />)}
       {chosen.length ? (
@@ -174,14 +226,21 @@ export function MultiCombobox({ name, label, idPrefix, groups, chosen: initial, 
           spellCheck={false}
           value={query}
           placeholder={full ? `Up to ${max} ${itemsNoun}` : chosen.length ? `Add another ${itemNoun}` : placeholder}
+          data-combobox-input={name}
           onChange={(e) => {
             setQuery(e.target.value);
+            setUnresolved("");
             setOpen(true);
             setActive(0);
           }}
           onFocus={() => setOpen(false)}
           onClick={() => !full && setOpen((o) => !o)}
-          onBlur={() => setOpen(false)}
+          onBlur={() => {
+            setOpen(false);
+            // Text left in the field that names one option becomes that choice.
+            const o = resolve(query);
+            if (o) add(o);
+          }}
           onKeyDown={onKeyDown}
           className="w-full rounded-lg border border-rule bg-paper px-3 py-2.5 pr-8 text-[0.95rem] text-ink placeholder:text-slate focus:border-accent focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)] read-only:bg-mist"
         />
@@ -227,6 +286,11 @@ export function MultiCombobox({ name, label, idPrefix, groups, chosen: initial, 
       <p id={ids.hint} data-combobox-hint="" className="mt-1 text-xs text-slate">
         {full ? `Up to ${max} ${itemsNoun}. Remove one to add another.` : `Type to search, or press the down arrow for the list. ${anyHint}.`}
       </p>
+      {unresolved ? (
+        <p role="alert" className="mt-1 text-sm font-medium text-signal">
+          &ldquo;{unresolved}&rdquo; isn&apos;t in the list. Pick {itemNoun === "organization" ? "an" : "a"} {itemNoun} from the list, or clear the field.
+        </p>
+      ) : null}
       <p className="sr-only" aria-live="polite">{announce}</p>
     </div>
   );

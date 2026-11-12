@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { countryBySlug } from "@/config/countries";
+import { KNOWN_ORGS } from "@/config/organizations";
 import { andList, STATED_DETAIL } from "@/lib/filter-labels";
 import { FILTER_GRADE_GROUPS, gradeGroupOf, gradeText } from "@/lib/grades";
 import { derivedFilters, JOB_TYPES, jobsUrl, type JobFilters } from "@/lib/jobs";
@@ -63,7 +65,7 @@ const chosenPlaces = (f: JobFilters) => [...(f.region ?? []).map((r) => `region-
 function placeChoices(facets: FacetData, filters: JobFilters): ComboGroup[] {
   return [
     { label: "Regions", options: facets.regions.filter((r) => r.count > 0 || filters.region?.includes(r.slug)).map((r) => ({ value: `region-${r.slug}`, name: r.name, count: r.count })) },
-    { label: "Countries", options: facets.countries.filter((c) => c.count > 0 || filters.country?.includes(c.slug)).map((c) => ({ value: c.slug, name: c.name, count: c.count })) },
+    { label: "Countries", options: facets.countries.filter((c) => c.count > 0 || filters.country?.includes(c.slug)).map((c) => ({ value: c.slug, name: c.name, count: c.count, keys: countryBySlug(c.slug)?.aliases })) },
   ];
 }
 
@@ -76,6 +78,13 @@ function placeGroups(facets: FacetData, filters: JobFilters): Group[] {
 export function WhereSelect({ facets, filters, idPrefix, label = "Where", name = "where" }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string; name?: string }) {
   return <Select idPrefix={idPrefix} name={name} label={label} all="Anywhere" value={chosenPlaces(filters)[0]} groups={placeGroups(facets, filters)} />;
 }
+
+/** The other names an organization is found by in the picker: its short name and aliases ("IOM", "MSF", "Doctors Without Borders"). */
+const ORG_KEYS = new Map<string, string[]>(KNOWN_ORGS.flatMap((o) => {
+  const all = [o.name, o.short, ...(o.aliases ?? [])].filter((n): n is string => Boolean(n));
+  return all.map((n) => [n.toLowerCase(), all] as [string, string[]]);
+}));
+const orgKeys = (name: string): string[] | undefined => ORG_KEYS.get(name.toLowerCase())?.filter((k) => k.toLowerCase() !== name.toLowerCase());
 
 /** Most places one search can hold. */
 const MAX_PLACES = 5;
@@ -166,7 +175,7 @@ export function OrgFields({ facets, filters, idPrefix, name = "org", counts = tr
   const orgs = facets.orgs.filter((o) => o.count > 0 || chosen.includes(o.slug));
   const options = orgs.map((o) => ({ value: o.slug, label: counts ? withCount(o.name, o.count) : o.name }));
   return (
-    <MultiCombobox name={name} label="Organization" idPrefix={idPrefix} groups={[{ label: "", options: orgs.map((o) => ({ value: o.slug, name: o.name, count: counts ? o.count : undefined })) }]}
+    <MultiCombobox name={name} label="Organization" idPrefix={idPrefix} groups={[{ label: "", options: orgs.map((o) => ({ value: o.slug, name: o.name, count: counts ? o.count : undefined, keys: orgKeys(o.name) })) }]}
       chosen={chosen} max={MAX_ORGS} placeholder="Any organization: type a name" itemNoun="organization" itemsNoun="organizations" anyHint="Jobs at any of the organizations you choose">
       <RepeatSelect name={name} label="Organization" idPrefix={idPrefix} chosen={chosen} groups={[{ label: "", options }]} max={MAX_ORGS}
         anyLabel="Any organization" chooseLabel="Choose an organization" addLabel="Add another organization" addHint="Jobs at any of the organizations you choose" removeLabel="Remove this organization" itemNoun="organization" />
