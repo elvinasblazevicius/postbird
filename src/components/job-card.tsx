@@ -131,7 +131,7 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
     posts > 1 ? `${posts} posts` : null,
   ].filter((x): x is string => Boolean(x));
   return (
-    <article className="group @container relative rounded-xl border border-rule bg-paper px-4 py-3.5 transition-[border-color,box-shadow] duration-150 hover:border-sky-rule hover:shadow-[0_4px_14px_rgba(11,99,206,0.10)] motion-safe:animate-[rise-in_220ms_ease-out_both]">
+    <article className="group @container relative rounded-xl border border-[#bccfe5] bg-paper px-4 py-3.5 shadow-[0_1px_3px_rgba(11,31,58,0.08)] transition-[border-color,box-shadow] duration-150 hover:border-sky-rule hover:shadow-[0_4px_14px_rgba(11,99,206,0.10)] motion-safe:animate-[rise-in_220ms_ease-out_both]">
       {/* The layout follows the card's own width: side by side in a wide card, stacked in a narrow one (a phone, or a list beside the filters). */}
       <div className="flex flex-col gap-2.5 @min-[44rem]:flex-row @min-[44rem]:items-start @min-[44rem]:gap-5">
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -188,7 +188,7 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
 /** A list of cards, one per vacancy (identical posts folded into one). `mobileLimit`: how many show on phones. */
 export function JobList({ jobs, headingLevel = 3, mobileLimit }: { jobs: JobListItem[]; headingLevel?: 2 | 3; mobileLimit?: number }) {
   return (
-    <ul className="grid gap-2.5">
+    <ul className="grid gap-3">
       {foldSameVacancies(jobs).map(({ job: j, posts }, i) => (
         <li key={j.id} className={mobileLimit !== undefined && i >= mobileLimit ? "max-sm:hidden" : undefined}>
           <JobCard job={j} headingLevel={headingLevel} posts={posts} />
