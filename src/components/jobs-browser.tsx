@@ -224,7 +224,10 @@ export async function JobsBrowser({
   const suggestion = filters.q && (result.total === 0 || result.matchMode === "any") ? await searchSuggestion(filters.q).catch(() => null) : null;
   const suggestionHref = suggestion ? jobsUrl({ ...filters, q: suggestion.q, page: undefined }, base) : null;
   // Filters read from the posting's text leave out listings that don't state the detail: say how many, with a way to add them.
-  const derived = derivedFilters(effective);
+  // Not for a detail read from the search words ("russian", "consultancy"): a vacancy that doesn't
+  // state it doesn't hold the word, and a result always holds the search words.
+  const fromWords = withSearchIntent(effective).fromWords ?? {};
+  const derived = derivedFilters(effective).filter((k) => !(k in fromWords && fromWords[k as keyof typeof fromWords]));
   const unstatedMore = derived.length && !effective.unstated
     ? Math.max(0, (await countJobs({ ...effective, unstated: true }, result.matchMode).catch(() => result.total)) - result.total)
     : 0;
@@ -307,7 +310,7 @@ export async function JobsBrowser({
 
         {result.matchMode === "any" ? (
           <p role="status" className="mb-4 rounded-xl border border-rule bg-mist px-4 py-3 text-[0.95rem] text-ink">
-            No exact matches. Showing jobs that match some of your words or similar words.
+            No vacancy has all your words. Showing those with some of them.
             {suggestion && suggestionHref ? (
               <> Did you mean <Link href={suggestionHref} className="font-medium text-accent underline underline-offset-2">{suggestion.q}</Link>?</>
             ) : null}

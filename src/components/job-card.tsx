@@ -39,7 +39,8 @@ export function deadlineTone(daysLeft: number): string {
 function DeadlineBox({ deadline, jobId }: { deadline: string | null; jobId: number }) {
   const n = daysUntil(deadline);
   if (deadline === null || n === null) {
-    return <p className="flex min-h-11 items-center rounded-[10px] bg-due-none-bg px-3 py-2 text-[0.95rem] font-semibold leading-snug text-slate">No closing date given</p>;
+    // Quiet on purpose: the dated vacancies' closing dates are what should stand out.
+    return <p className="flex min-h-11 items-center px-3 py-2 text-sm leading-snug text-slate">No closing date given</p>;
   }
   if (n < 0) {
     return <p className="flex min-h-11 items-center rounded-[10px] bg-due-none-bg px-3 py-2 text-[0.95rem] font-semibold leading-snug text-slate">Closed {formatShortDate(deadline)}</p>;
