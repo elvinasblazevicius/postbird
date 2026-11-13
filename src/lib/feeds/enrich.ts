@@ -25,7 +25,7 @@ export type EnrichResult = {
   /** Pages built in the browser that were read with a headless browser (of them, how many gave facts). */
   rendered: number; renderedWithFacts: number;
   /** Pages the AI read for details the rules missed; values it filled; its token use. */
-  ai: { asked: number; filled: number; rejected: number; tokensIn: number; tokensOut: number };
+  ai: { asked: number; filled: number; rejected: number; tokensIn: number; tokensOut: number; why: Record<string, number> };
   filled: { deadline: number; place: number; jobType: number; grade: number; experience: number; languages: number };
   via: Record<string, number>;
 };
@@ -137,6 +137,8 @@ async function withAi(job: DueJob, facts: PageFacts | null, text: string | null,
     r.ai.asked++; r.ai.tokensIn += ai.usage.input; r.ai.tokensOut += ai.usage.output;
     const c = checkFacts(ai.facts, text);
     r.ai.rejected += c.rejected.length;
+    // "country: quote not on the page" → counted under that reason, without the value.
+    for (const why of c.rejected) { const k = why.replace(/"[^"]*"|\d{4}-\d{2}-\d{2}/g, "…"); r.ai.why[k] = (r.ai.why[k] ?? 0) + 1; }
     const out: PageFacts = { ...f };
     if (needDate && c.deadline) { out.deadline = c.deadline; r.ai.filled++; }
     if (needPlace && c.countryCode) {
@@ -196,7 +198,7 @@ async function save(job: DueJob, result: string, f: PageFacts | null, r: EnrichR
 }
 
 export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: number } = {}): Promise<EnrichResult> {
-  const r: EnrichResult = { checked: 0, withFacts: 0, nothing: 0, blocked: 0, errors: 0, skipped: 0, rendered: 0, renderedWithFacts: 0, ai: { asked: 0, filled: 0, rejected: 0, tokensIn: 0, tokensOut: 0 }, filled: { deadline: 0, place: 0, jobType: 0, grade: 0, experience: 0, languages: 0 }, via: {} };
+  const r: EnrichResult = { checked: 0, withFacts: 0, nothing: 0, blocked: 0, errors: 0, skipped: 0, rendered: 0, renderedWithFacts: 0, ai: { asked: 0, filled: 0, rejected: 0, tokensIn: 0, tokensOut: 0, why: {} }, filled: { deadline: 0, place: 0, jobType: 0, grade: 0, experience: 0, languages: 0 }, via: {} };
   // Tests never visit real websites (the readers have their own unit tests).
   if (!S.enabled || process.env.VITEST) return r;
   const started = Date.now();
@@ -271,7 +273,8 @@ async function readBuiltByScript(jobs: DueJob[], started: number, budget: number
       const facts = await withAi(job, html ? factsFromPage(job.title, job.apply_url, html) : null, pageTextOf(html) ?? feedTextOf(job), r);
       if (html) r.rendered++;
       if (facts && hasFacts(facts)) {
-        r.withFacts++; r.renderedWithFacts++;
+        r.withFacts++;
+        if (html) r.renderedWithFacts++;
         r.via[facts.via] = (r.via[facts.via] ?? 0) + 1;
         await save(job, "ok", facts, r, pageTextOf(html));
       } else {
