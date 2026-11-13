@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { checkFacts, type AiFacts } from "@/lib/feeds/ai-extract";
 
 const empty = { value: null, quote: null };
-const facts = (over: Partial<AiFacts>): AiFacts => ({ closingDate: empty, country: empty, organization: empty, contractType: empty, grade: empty, ...over });
+const facts = (over: Partial<AiFacts>): AiFacts => ({ closingDate: empty, country: empty, city: empty, organization: empty, contractType: empty, grade: empty, ...over });
 const PAGE = "Programme Officer. Duty Station: Nairobi, Kenya. Grade: P-3. Type of contract: Fixed-term. Deadline for applications: 30 November 2026. UNICEF";
 const today = new Date("2026-11-12T00:00:00Z");
 
@@ -31,5 +31,14 @@ describe("AI fill-in checks", () => {
     }), PAGE, today);
     expect(c).toMatchObject({ deadline: null, countryCode: null, contractType: null });
     expect(c.rejected).toHaveLength(3);
+  });
+
+  it("keeps a city only when it is a place name in the text", () => {
+    const ok = checkFacts(facts({ country: { value: "Kenya", quote: "Nairobi, Kenya" }, city: { value: "Nairobi", quote: "Duty Station: Nairobi" } }), PAGE, today);
+    expect(ok).toMatchObject({ countryCode: "KE", city: "Nairobi" });
+    const bad = checkFacts(facts({ city: { value: "Kenya", quote: "Nairobi, Kenya" } }), PAGE, today);
+    expect(bad.city).toBeNull();
+    const missing = checkFacts(facts({ city: { value: "Mombasa", quote: "Duty Station: Mombasa" } }), PAGE, today);
+    expect(missing.city).toBeNull();
   });
 });

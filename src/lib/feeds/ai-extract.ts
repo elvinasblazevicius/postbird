@@ -12,6 +12,7 @@ export type AiField<T> = { value: T | null; quote: string | null };
 export type AiFacts = {
   closingDate: AiField<string>;
   country: AiField<string>;
+  city: AiField<string>;
   organization: AiField<string>;
   contractType: AiField<string>;
   grade: AiField<string>;
@@ -19,6 +20,8 @@ export type AiFacts = {
 export type CheckedFacts = {
   deadline: string | null;
   countryCode: string | null;
+  /** The duty station's town or city, only with a country (the AI's or the listing's own). */
+  city: string | null;
   organization: string | null;
   contractType: string | null;
   grade: string | null;
@@ -29,11 +32,12 @@ export type CheckedFacts = {
 const PROMPT = `You read job vacancy pages for a job board. From the page text, extract only what the page states explicitly:
 - closing_date: the application deadline, as YYYY-MM-DD
 - country: the duty station's country (in English)
+- city: the duty station's town or city (as written, without the country); null for home-based or several places
 - organization: the hiring organization's name
 - contract_type: one of "Fixed-term", "Temporary", "Consultancy", "Internship", "Volunteer", "Fellowship", "Traineeship"
 - grade: the post's grade as written (e.g. P-3, NO-B, G-5, FS-4)
 For each field return {"value": ..., "quote": ...} where quote is the exact words from the page (copied character for character, 3 to 120 characters) that state it. If the page doesn't state a field, return {"value": null, "quote": null}. Never guess, infer or use outside knowledge.
-Answer with one JSON object with exactly these keys: closing_date, country, organization, contract_type, grade.`;
+Answer with one JSON object with exactly these keys: closing_date, country, city, organization, contract_type, grade.`;
 
 const CONTRACT_TYPES = ["Fixed-term", "Temporary", "Consultancy", "Internship", "Volunteer", "Fellowship", "Traineeship"];
 
@@ -66,7 +70,7 @@ export async function askDeepSeek(title: string, pageText: string): Promise<{ fa
     return { value: typeof v?.value === "string" && v.value.trim() ? v.value.trim() : null, quote: typeof v?.quote === "string" && v.quote.trim() ? v.quote.trim() : null };
   };
   return {
-    facts: { closingDate: field("closing_date"), country: field("country"), organization: field("organization"), contractType: field("contract_type"), grade: field("grade") },
+    facts: { closingDate: field("closing_date"), country: field("country"), city: field("city"), organization: field("organization"), contractType: field("contract_type"), grade: field("grade") },
     usage: { input: data.usage?.prompt_tokens ?? 0, output: data.usage?.completion_tokens ?? 0 },
   };
 }
@@ -74,7 +78,7 @@ export async function askDeepSeek(title: string, pageText: string): Promise<{ fa
 /** Keeps only the values whose quote is in the page text and that pass the checks. */
 export function checkFacts(f: AiFacts, pageText: string, today = new Date()): CheckedFacts {
   const page = norm(pageText);
-  const out: CheckedFacts = { deadline: null, countryCode: null, organization: null, contractType: null, grade: null, rejected: [] };
+  const out: CheckedFacts = { deadline: null, countryCode: null, city: null, organization: null, contractType: null, grade: null, rejected: [] };
   const quoted = (name: string, x: AiField<string>): string | null => {
     if (!x.value) return null;
     if (!x.quote || x.quote.length < 3 || !page.includes(norm(x.quote))) { out.rejected.push(`${name}: quote not on the page`); return null; }
@@ -89,6 +93,12 @@ export function checkFacts(f: AiFacts, pageText: string, today = new Date()): Ch
   if (c) {
     const codes = findCountries(c);
     if (codes.length === 1) out.countryCode = codes[0]; else out.rejected.push(`country: "${c}" not one known country`);
+  }
+  const city = quoted("city", f.city);
+  if (city) {
+    // A place name: letters, spaces, hyphens, apostrophes and dots, not a country, not "remote" or "various".
+    const okName = /^[\p{L}][\p{L} .'’-]{1,58}$/u.test(city) && !findCountries(city).length && !/\b(remote|home|various|multiple|any|tbd|several)\b/i.test(city);
+    if (okName) out.city = city; else out.rejected.push(`city: "${city}" not a town or city`);
   }
   const o = quoted("organization", f.organization);
   if (o) out.organization = o.slice(0, 120);

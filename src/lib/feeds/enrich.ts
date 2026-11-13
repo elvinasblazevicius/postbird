@@ -14,6 +14,7 @@ import { hostOf, isListingSite } from "./url";
 import { parseRobots, robotsAllows, type RobotsRules } from "./robots";
 import { looksBuiltByScript, openRenderer } from "./rendered-page";
 import { askDeepSeek, checkFacts } from "./ai-extract";
+import { countryByCode } from "@/config/countries";
 import { htmlToText } from "@/lib/text";
 import { EMPTY_FACTS, factsFromPage, factsFromSystem, hasFacts, mainContentHtml, pageSaysClosed, plausibleDeadline, systemApiUrl, systemSaysClosed, type PageFacts } from "./vacancy-page";
 
@@ -33,6 +34,7 @@ type DueJob = {
   id: number; title: string; apply_url: string; apply_host: string;
   deadline: string | null; country_code: string | null; location_text: string | null; job_type: string | null;
   grade: string | null; min_experience_years: number | null; languages: string[] | null; page_attempts: number;
+  description_html: string | null; ai_checked_at: Date | null;
 };
 
 class BlockedByRobots extends Error {}
@@ -114,35 +116,46 @@ async function readFacts(job: DueJob, cache: Map<string, RobotsRules>): Promise<
 }
 
 /**
- * Details the rules left empty (closing date, country, contract type, grade), read by the AI from
- * the page text and kept only when they pass checkFacts (the quote must be on the page). Only on a
- * job's first reading, at most `S.aiPerRun` pages per run, and only with DEEPSEEK_API_KEY set.
+ * Details the rules left empty (closing date, place, contract type, grade), read by the AI from the
+ * vacancy's text and kept only when they pass checkFacts (the quote must be in the text). `text` is
+ * the employer's page, or the feed's own text when the page can't be read. Once per job
+ * (ai_checked_at), at most `S.aiPerRun` jobs per run, and only with DEEPSEEK_API_KEY set. `now`
+ * false: not yet (an unreachable page may come back on a later try).
  */
-async function withAi(job: DueJob, facts: PageFacts | null, html: string | null, r: EnrichResult): Promise<PageFacts | null> {
-  if (!html || !process.env.DEEPSEEK_API_KEY || job.page_attempts > 0 || r.ai.asked >= S.aiPerRun) return facts;
+async function withAi(job: DueJob, facts: PageFacts | null, text: string | null, r: EnrichResult, now = true): Promise<PageFacts | null> {
+  if (!now || !text || text.length < 300 || !process.env.DEEPSEEK_API_KEY || job.ai_checked_at || r.ai.asked >= S.aiPerRun) return facts;
   const f: PageFacts = facts ?? { ...EMPTY_FACTS, via: "text" };
   const needDate = !job.deadline && !f.deadline;
   const needPlace = !job.country_code && !job.location_text && !f.countryCode && !f.locationText;
   const needType = !job.job_type && !f.jobType;
   const needGrade = !job.grade && !f.grade;
   if (!needDate && !needPlace && !needType && !needGrade) return facts;
-  const text = pageTextOf(html);
-  if (!text || text.length < 300) return facts;
   try {
     const ai = await askDeepSeek(job.title, text);
     if (!ai) return facts;
+    await sql`update jobs set ai_checked_at = now() where id = ${job.id}`;
     r.ai.asked++; r.ai.tokensIn += ai.usage.input; r.ai.tokensOut += ai.usage.output;
     const c = checkFacts(ai.facts, text);
     r.ai.rejected += c.rejected.length;
     const out: PageFacts = { ...f };
     if (needDate && c.deadline) { out.deadline = c.deadline; r.ai.filled++; }
-    if (needPlace && c.countryCode) { out.countryCode = c.countryCode; r.ai.filled++; }
+    if (needPlace && c.countryCode) {
+      out.countryCode = c.countryCode;
+      if (c.city) { out.city = c.city; out.locationText = `${c.city}, ${countryByCode(c.countryCode)?.name ?? c.countryCode}`; }
+      r.ai.filled++;
+    }
     if (needType && c.contractType) { out.jobType = c.contractType; r.ai.filled++; }
     if (needGrade && c.grade) { out.grade = c.grade; r.ai.filled++; }
     return out;
   } catch {
     return facts; // the AI being down never stops the import
   }
+}
+
+/** The feed's own text for a job whose page can't be read. */
+function feedTextOf(job: DueJob): string | null {
+  const t = htmlToText(job.description_html ?? "").trim();
+  return t.length >= 300 ? t.slice(0, 20_000) : null;
 }
 
 /** The page's main text as kept for search and the AI (migration 028): plain text, at most 20,000 characters. */
@@ -189,7 +202,7 @@ export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: 
   const started = Date.now();
   const budget = opts.budgetMs ?? S.budgetMs;
   const due = await sql<DueJob[]>`
-    select id::int as id, title, apply_url, apply_host, deadline::text as deadline, country_code, location_text, job_type, grade, min_experience_years, languages, page_attempts
+    select id::int as id, title, apply_url, apply_host, deadline::text as deadline, country_code, location_text, job_type, grade, min_experience_years, languages, page_attempts, description_html, ai_checked_at
       from jobs
      where status = 'active' and not is_demo
        and (page_checked_at is null
@@ -222,7 +235,7 @@ export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: 
         }
         try {
           const read = await readFacts(job, robots);
-          const facts = await withAi(job, read.facts, read.html, r);
+          const facts = await withAi(job, read.facts, pageTextOf(read.html) ?? feedTextOf(job), r);
           if (facts && hasFacts(facts)) {
             r.withFacts++;
             r.via[facts.via] = (r.via[facts.via] ?? 0) + 1;
@@ -233,8 +246,10 @@ export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: 
           }
         } catch (e) {
           if (e instanceof BuiltByScript) builtByScript.push(job); // read with a browser below
-          else if (e instanceof BlockedByRobots) { r.blocked++; await save(job, "blocked", null, r); }
-          else { r.errors++; await save(job, "error", null, r); }
+          // The page can't be read: the AI reads the feed's own text instead (closed to robots: now;
+          // unreachable: on the last try, as the page may come back).
+          else if (e instanceof BlockedByRobots) { r.blocked++; await save(job, "blocked", await withAi(job, null, feedTextOf(job), r), r); }
+          else { r.errors++; await save(job, "error", await withAi(job, null, feedTextOf(job), r, job.page_attempts + 1 >= S.maxAttempts), r); }
         }
         await new Promise((res) => setTimeout(res, S.perHostDelayMs));
       }
@@ -242,6 +257,7 @@ export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: 
   }
   await Promise.all(Array.from({ length: S.concurrency }, worker));
   await readBuiltByScript(builtByScript, Date.now(), S.browserBudgetMs, r);
+  await aiFillGaps(r);
   return r;
 }
 
@@ -252,7 +268,7 @@ async function readBuiltByScript(jobs: DueJob[], started: number, budget: number
   try {
     for (const job of jobs) {
       const html = renderer && Date.now() - started < budget ? await renderer.render(job.apply_url) : null;
-      const facts = html ? await withAi(job, factsFromPage(job.title, job.apply_url, html), html, r) : null;
+      const facts = await withAi(job, html ? factsFromPage(job.title, job.apply_url, html) : null, pageTextOf(html) ?? feedTextOf(job), r);
       if (html) r.rendered++;
       if (facts && hasFacts(facts)) {
         r.withFacts++; r.renderedWithFacts++;
@@ -267,6 +283,50 @@ async function readBuiltByScript(jobs: DueJob[], started: number, budget: number
   } finally {
     await renderer?.close();
   }
+}
+
+/**
+ * Open vacancies whose page has been read (or couldn't be) and that still lack a closing date, a
+ * place, a contract type or a grade: the AI reads their kept text once (the employer's page text,
+ * else the feed's description; nothing is fetched). Only empty fields are filled, and the values
+ * are also kept as page facts so a later re-import doesn't drop them (withPageFacts in sync.ts).
+ */
+async function aiFillGaps(r: EnrichResult): Promise<void> {
+  if (!process.env.DEEPSEEK_API_KEY) return;
+  const room = S.aiPerRun - r.ai.asked;
+  if (room <= 0) return;
+  const jobs = await sql<(DueJob & { page_text: string | null })[]>`
+    select id::int as id, title, apply_url, apply_host, deadline::text as deadline, country_code, location_text, job_type, grade,
+           min_experience_years, languages, page_attempts, description_html, ai_checked_at, page_text
+      from jobs
+     where status = 'active' and not is_demo and ai_checked_at is null and page_checked_at is not null
+       and (deadline is null or (country_code is null and location_text is null) or job_type is null or grade is null)
+     order by first_seen_at desc
+     limit ${room}`;
+  const started = Date.now();
+  const queue = [...jobs];
+  async function worker() {
+    for (let job = queue.shift(); job; job = queue.shift()) {
+      if (Date.now() - started > S.aiBudgetMs) return;
+      const f = await withAi(job, null, job.page_text ?? feedTextOf(job), r);
+      if (!f) continue;
+      const deadline = plausibleDeadline(f.deadline);
+      const place = !job.country_code && !job.location_text && f.countryCode;
+      await sql`
+        update jobs set
+          page_deadline = coalesce(page_deadline, ${deadline}), deadline = coalesce(deadline, ${deadline}),
+          page_country_code = coalesce(page_country_code, ${place ? f.countryCode : null}), page_city = coalesce(page_city, ${place ? f.city : null}),
+          page_location_text = coalesce(page_location_text, ${place ? f.locationText : null}),
+          country_code = case when country_code is null and location_text is null then ${place ? f.countryCode : null} else country_code end,
+          city = case when country_code is null and location_text is null then ${place ? f.city : null} else city end,
+          location_text = case when country_code is null and location_text is null then ${place ? f.locationText : null} else location_text end,
+          page_job_type = coalesce(page_job_type, ${f.jobType}), job_type = coalesce(job_type, ${f.jobType}),
+          page_grade = coalesce(page_grade, ${f.grade}), grade = coalesce(grade, ${f.grade}),
+          updated_at = now()
+        where id = ${job.id}`;
+    }
+  }
+  await Promise.all(Array.from({ length: 4 }, worker));
 }
 
 // ── Weekly "still open?" check ─────────────

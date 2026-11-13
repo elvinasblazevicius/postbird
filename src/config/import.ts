@@ -64,8 +64,13 @@ export const IMPORT_SETTINGS = {
     budgetMs: 9 * 60_000,
     /** Extra time per run for pages built with JavaScript, read with a headless browser where one is installed. */
     browserBudgetMs: 4 * 60_000,
-    /** Pages per run whose missing details the AI may read (only with DEEPSEEK_API_KEY set; about $0.001 each). */
-    aiPerRun: 40,
+    /**
+     * Vacancies per run whose missing details the AI reads (only with DEEPSEEK_API_KEY set; about
+     * $0.001 each). Each open vacancy with a gap is read once; the backlog is worked through run by run.
+     */
+    aiPerRun: 150,
+    /** Time per run for the AI reading vacancies already in the database (four at a time). */
+    aiBudgetMs: 6 * 60_000,
     /** Pages read at the same time (each from a different website). */
     concurrency: 4,
     perHostDelayMs: 1_500,
