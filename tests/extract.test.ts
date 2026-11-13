@@ -568,3 +568,11 @@ describe("internal unit codes are not organizations", () => {
     for (const n of ["WFP Kenya", "UNDP Bangladesh", "World Health Organization", "IOM", "Save the Children", "FAO"]) expect(isUnitCode(n)).toBe(false);
   });
 });
+
+describe("NATO-style labels", () => {
+  it("reads \"Duty Location: Brunssum, The Netherlands\"", () => {
+    const j = normalizeItem({ title: "Staff Officer (Information Analyst)", links: ["https://nato.taleo.net/careersection/2/jobdetail.ftl?job=1"], contentHtml: "<p>Title: Staff Officer (Information Analyst)</p><p>Grade: 15</p><p>Duty Location: Brunssum, The Netherlands</p><p>Closing date for applications: 13 December 2026</p>", categories: [] } as never, { defaultOrganization: "NATO" } as FeedContext);
+    expect(j.countryCode).toBe("NL");
+    expect(j.city).toBe("Brunssum");
+  });
+});
