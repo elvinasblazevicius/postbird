@@ -133,9 +133,9 @@ async function tidyTowns(out: TidyResult, dryRun: boolean) {
     const country = countryByCode(r.country_code)?.name ?? "";
     let town = seg.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
     if (country) town = town.replace(new RegExp(`\\s*${country.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i"), "").trim();
-    town = town.replace(/\s+(?:AP|Operations Office|Office|Zone)$/i, "").trim();
+    town = town.replace(/\s+(?:USA|US|UK|Vietnam|DRC)$/i, "").replace(/\s+[A-Z]{2}$/, "").replace(/\s+(?:AP|GMD|Operations Office|Office|Zone)$/i, "").trim();
     // Only a plain town name: no country left over, no remote or regional wording, not too long.
-    if (!town || town.length > 30 || /\d|remote|cluster|region|national|country|multiple/i.test(town) || town.toLowerCase() === country.toLowerCase()) continue;
+    if (!town || town.length > 30 || /\d|remote|cluster|region|national|country|multiple/i.test(town) || /^(nord|sud|north|south|east|west|centre|center)\b/i.test(town) || town.toLowerCase() === country.toLowerCase()) continue;
     out.places++;
     out.lines.push(`#${r.id}: town "${town}"`);
     if (!dryRun) await sql`update jobs set city = ${town}, updated_at = now() where id = ${r.id}`;
@@ -183,12 +183,19 @@ async function tidyPlaces(out: TidyResult, dryRun: boolean) {
   }
 }
 
+/** An organization's stored website as a full address ("icrc.org" → "https://icrc.org/"), or null. */
+const siteUrl = (w: string | null) => {
+  if (!w) return null;
+  try { return new URL(/^https?:\/\//i.test(w) ? w : `https://${w}`).toString(); } catch { return null; }
+};
+
 /** Employers' job-search pages, for a listing whose only link is a page about recruitment (a guide, "diversity and inclusion"). */
 const CAREERS_HOMES: [RegExp, string][] = [
   [/^(world health organization|who)$/i, "https://careers.who.int/careersection/ex/jobsearch.ftl"],
   [/^(international organization for migration|iom)$/i, "https://www.iom.int/careers"],
   [/^(european investment bank|eib)$/i, "https://www.eib.org/en/about/careers"],
   [/^(unicef)$/i, "https://jobs.unicef.org/"],
+  [/^(international committee of the red cross|icrc)$/i, "https://careers.icrc.org/"],
 ];
 
 async function tidyApplyLinks(out: TidyResult, dryRun: boolean) {
@@ -202,7 +209,7 @@ async function tidyApplyLinks(out: TidyResult, dryRun: boolean) {
     const id = rule && !onPage ? (r.description_html ?? "").match(rule.id)?.[1] ?? r.title.match(rule.id)?.[1] : undefined;
     // No vacancy page to build: a link to a page about recruitment becomes the employer's job search, which the button calls "Careers site".
     const home = !id && r.apply_url && isGuideLink(r.apply_url)
-      ? CAREERS_HOMES.find(([re]) => re.test(r.org_name ?? "") || re.test(r.org_short ?? ""))?.[1] ?? r.org_website
+      ? CAREERS_HOMES.find(([re]) => re.test(r.org_name ?? "") || re.test(r.org_short ?? ""))?.[1] ?? siteUrl(r.org_website)
       : null;
     if (!id && !home) continue;
     const url = id ? rule!.url(id) : home!;
