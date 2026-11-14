@@ -551,6 +551,11 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
     // Scheduled import only: facts the feeds left out, from the employers' own vacancy pages.
     if (isCli && !stoppedEarly) {
       try {
+        // Taleo pages (FAO, WHO, IAEA, NATO) were read before their hidden fields were (taleoText in
+        // vacancy-page.ts): those still missing a closing date or a place are read once more.
+        await sql`update jobs set page_checked_at = null, page_attempts = 0
+                   where status = 'active' and not is_demo and apply_url ~* 'careersection/[^?]*jobdetail'
+                     and (deadline is null or country_code is null) and page_checked_at < '2026-11-14T13:30:00Z'`;
         const e = await enrichFromVacancyPages();
         if (e.checked) {
           const f = e.filled;

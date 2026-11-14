@@ -162,3 +162,19 @@ describe("general careers pages", () => {
     expect(findEmployerLink(only, "Programme Manager")).toBe("https://www.iom.int/iom-job-categories");
   });
 });
+
+describe("Taleo vacancy pages (hidden initialHistory fields)", () => {
+  it("reads the closing date, grade and duty station by their shape", async () => {
+    const { factsFromPage } = await import("@/lib/feeds/vacancy-page");
+    const fields = ["ftlx0", "descRequisition", "2602337", "Statistician (Statistical Working System)", "13/Nov/2026", "13/Nov/2026", "04/Dec/2026, 11\\:59\\:00 PM", "ESS", "Staff position", "Professional", "P-3", "Italy-Rome", "Fixed-term\\: one year", "!*!<p>We are looking for a statistician with at least five years of experience in official statistics, survey methods and data dissemination for international organizations and member countries.</p>"];
+    const html = `<html><body><input type="hidden" name="initialHistory" id="initialHistory" value="${encodeURIComponent(fields.join("!|!"))}"></body></html>`;
+    const today = new Date();
+    const f = factsFromPage("Statistician (Statistical Working System)", "https://jobs.fao.org/careersection/fao_external/jobdetail.ftl?job=2602337", html);
+    expect(f?.via).toBe("taleo");
+    expect(f?.grade).toBe("P-3");
+    expect(f?.countryCode).toBe("IT");
+    expect(f?.city).toBe("Rome");
+    // A date more than about a year ahead is never taken; 4 Dec 2026 is within it until late 2027.
+    if (today < new Date("2027-11-01")) expect(f?.deadline).toBe("2026-12-04");
+  });
+});

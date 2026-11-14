@@ -22,7 +22,7 @@ export type PageFacts = {
   grade: string | null;
   experienceYears: number | null;
   languages: string[] | null;
-  via: "oracle" | "smartrecruiters" | "workday" | "jsonld" | "text";
+  via: "oracle" | "smartrecruiters" | "workday" | "jsonld" | "taleo" | "text";
 };
 
 export const EMPTY_FACTS: Omit<PageFacts, "via"> = {
@@ -238,7 +238,46 @@ function believableValidThrough(d: string | null, today = new Date()): string | 
  * other way round: a date the page labels as its closing date wins over the record's "valid
  * through", which many recruitment systems fill with their own expiry (90 days, a year).
  */
+/**
+ * Taleo vacancy pages (FAO, WHO, IAEA, NATO…) draw their fields with JavaScript from one hidden
+ * value, "initialHistory": the fields in order, separated by "!|!" ("13/Nov/2026", "04/Dec/2026,
+ * 11:59:00 PM", "P-3", "Italy-Rome", then the description). The values are read by their shape:
+ * the latest date after the posting date is the closing date, a grade code is the grade, and
+ * "Country-City" is the duty station. Null when the page isn't a Taleo page.
+ */
+export function taleoText(html: string): string | null {
+  const raw = html.match(/id="initialHistory"[^>]*value="([^"]*)"/)?.[1] ?? html.match(/value="([^"]*)"[^>]*id="initialHistory"/)?.[1];
+  if (!raw) return null;
+  // Decoded leniently: a stray "%" in the text must not lose the whole page.
+  const decoded = raw.replace(/&amp;/g, "&").replace(/(?:%[0-9A-Fa-f]{2})+/g, (seq) => { try { return decodeURIComponent(seq); } catch { return seq; } });
+  const parts = decoded.split("!|!").map((p) => p.replace(/\\(.)/g, "$1").replace(/^!\*!/, "").trim()).filter(Boolean);
+  const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  const dateOf = (p: string): string | null => {
+    let m = p.match(/^(\d{1,2})\/([A-Za-z]{3})\/(\d{4})/); // 04/Dec/2026
+    if (m && MONTHS[m[2].toLowerCase()]) return `${m[3]}-${String(MONTHS[m[2].toLowerCase()]).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+    m = p.match(/^([A-Za-z]{3})[a-z]* (\d{1,2}), (\d{4})/); // Dec 3, 2026
+    if (m && MONTHS[m[1].toLowerCase()]) return `${m[3]}-${String(MONTHS[m[1].toLowerCase()]).padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+    return null;
+  };
+  const dates = [...new Set(parts.map(dateOf).filter((d): d is string => Boolean(d)))].sort();
+  const closing = dates.length >= 2 ? dates[dates.length - 1] : null;
+  const grade = parts.find((p) => /^(?:P|D|G|GS|NO[A-D]?|FS|NPSA|IPSA|ICS|SB|LICA|IICA|A|B|C)-?\d{1,2}$/.test(p) && /\d/.test(p));
+  const place = parts.find((p) => /^[A-Z][\p{L} .'(),]{2,40}-[A-Z][\p{L} .'-]{1,40}$/u.test(p));
+  const description = parts.filter((p) => p.length > 200 && /<[a-z]/i.test(p)).sort((a, b) => b.length - a.length)[0] ?? "";
+  const facts = [
+    closing ? `<p>Closing date: ${closing}</p>` : "",
+    grade ? `<p>Grade: ${grade}</p>` : "",
+    place ? `<p>Duty station: ${place.replace(/^(.+?)-(.+)$/, "$2, $1")}</p>` : "",
+  ].join("");
+  return facts || description ? `${facts}${description}` : null;
+}
+
 export function factsFromPage(title: string, url: string, html: string): PageFacts | null {
+  const taleo = taleoText(html);
+  if (taleo) {
+    const t = factsFromText(title, url, `<main>${taleo}</main>`);
+    if (hasFacts(t)) return { ...t!, via: "taleo" };
+  }
   const ld = factsFromJobPosting(html);
   const text = factsFromText(title, url, html);
   if (!ld) return hasFacts(text) ? text : null;
