@@ -48,6 +48,13 @@ describe("findDuplicates", () => {
       row(1310, { title: "Education Officer, Chilpancingo, Guerrero", apply_url: "https://jobs.unicef.org/cw/en-us/job/596992", country_code: "MX", deadline: "2026-11-22" }),
     ])]).toEqual([[1337, 1310]]);
   });
+  it("keeps posts apart whose links of one kind give different vacancy numbers", () => {
+    const t = "Finance and Administration Assistant";
+    expect(findDuplicates([
+      row(1186, { title: t, country_code: "KH", deadline: "2026-12-01", apply_url: "https://worldvision.wd1.myworkdayjobs.com/en-US/WVI/job/Phnom-Srok/Finance-and-Administration-Assistant_JR53993" }),
+      row(1196, { title: t, country_code: "KH", deadline: "2026-12-01", apply_url: "https://worldvision.wd1.myworkdayjobs.com/en-US/WVI/job/Kralanh/Finance-and-Administration-Assistant_JR53869" }),
+    ]).size).toBe(0);
+  });
   it("matches a vacancy number in a title, and one number on a recruitment site shared by two employers", () => {
     expect(findDuplicates([
       row(1, { title: "National consultant, First Foods Action Plan, 596955", apply_url: "https://jobs.unicef.org/cw/en-us/job/596955" }),

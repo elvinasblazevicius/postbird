@@ -63,6 +63,21 @@ const withinSite = (a: string | null, b: string | null) => {
   const [x, y] = [linkKey(a), linkKey(b)];
   return Boolean(x && y && (x.startsWith(`${y}/`) || y.startsWith(`${x}/`)));
 };
+/**
+ * Two links of the same kind on the same recruitment site with different vacancy numbers
+ * ("…/job/Phnom-Srok/…_JR53993" and "…/job/Kralanh/…_JR53869"): separate vacancies, whatever else
+ * the copies share. Links of different kinds (UNICEF's "/jobs/…-00138514-…" and "/cw/en-us/job/596992")
+ * number vacancies differently, so they don't tell.
+ */
+const distinctPosts = (a: DedupeRow, b: DedupeRow) => {
+  const shape = (u: string | null) => {
+    try { const x = new URL(u ?? ""); return `${x.hostname.replace(/^www\./, "")}/${x.pathname.split("/").filter(Boolean).slice(0, 2).join("/")}`.toLowerCase(); } catch { return null; }
+  };
+  const [sa, sb] = [shape(a.apply_url), shape(b.apply_url)];
+  if (!sa || sa !== sb) return false;
+  const [ra, rb] = [linkRefs(a), linkRefs(b)];
+  return ra.length > 0 && rb.length > 0 && !ra.some((x) => rb.includes(x));
+};
 /** A title long enough to name one vacancy ("Education Officer, Chilpancingo, Guerrero"), not a common post ("E T Consultant", "Agronomist"). */
 const specific = (t: string) => norm(t).split(" ").filter((w) => w.length > 1).length >= 4;
 /** A copy with neither a closing date nor a place: nothing in it tells it apart from a fuller copy. */
@@ -148,7 +163,7 @@ export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
     for (const r of [...g].sort(before)) {
       if (out.has(r.id)) continue;
       const same = kept.find((k) =>
-        fits(k.country_code, r.country_code) && datesFit(k.deadline, r.deadline) &&
+        !distinctPosts(k, r) && fits(k.country_code, r.country_code) && datesFit(k.deadline, r.deadline) &&
         ((linkKey(k.apply_url) !== null && linkKey(k.apply_url) === linkKey(r.apply_url)) ||
          (ownCopies === 1 && fromBoard(k) !== fromBoard(r)) ||
          // A copy that links only to a careers page or a guide adds nothing to one with the same title.
