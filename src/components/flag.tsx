@@ -13,7 +13,6 @@ export function Flag({ code, className = "" }: { code: string | null | undefined
       aria-hidden="true"
       width={20}
       height={15}
-      loading="lazy"
       decoding="async"
       className={`inline-block h-[0.9em] w-auto shrink-0 rounded-[2px] shadow-[0_0_0_1px_rgba(11,27,63,0.12)] ${className}`}
     />

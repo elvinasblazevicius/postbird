@@ -17,7 +17,7 @@ export function Tag({ children, tone = "plain" }: { children: React.ReactNode; t
     lilac: "bg-lilac text-lilac-ink",
     remote: "bg-remote-bg text-remote",
     signal: "bg-signal-bg text-signal",
-    demo: "bg-[#fde8e8] text-[#9b1c1c]",
+    demo: "border border-dashed border-[#bfd0e3] text-slate",
   };
   return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[0.8125rem] font-medium ${tones[tone]}`}>{children}</span>;
 }
@@ -35,10 +35,10 @@ export function deadlineTone(daysLeft: number): string {
 /**
  * The closing date in a card's footer: how long is left and the day, in one tinted pill ("Closes in
  * 2 days  Mon 16 Nov"): red within 3 days, amber within two weeks, light blue after; plain grey text
- * when the employer publishes no date. The words carry the same information as the colour. On wide
- * screens a small calendar link adds the date to the visitor's calendar.
+ * when the employer publishes no date. The words carry the same information as the colour. (The
+ * job's own page has the link that adds the date to a calendar.)
  */
-function DeadlinePill({ deadline, jobId }: { deadline: string | null; jobId: number }) {
+function DeadlinePill({ deadline }: { deadline: string | null }) {
   const n = daysUntil(deadline);
   if (deadline === null || n === null) {
     // Quiet on purpose: the dated vacancies' closing dates are what should stand out.
@@ -50,18 +50,7 @@ function DeadlinePill({ deadline, jobId }: { deadline: string | null; jobId: num
   return (
     <p className={`inline-flex max-w-full flex-wrap items-center gap-x-2 rounded-2xl px-3 py-1 text-sm leading-snug ${deadlineTone(n)}`}>
       <span className="font-semibold">{lead}</span>
-      <span className="inline-flex items-center gap-1 opacity-90">
-        {day}
-        <a
-          href={`/api/calendar/${jobId}`}
-          rel="nofollow"
-          title="Add the closing date to your calendar"
-          className="relative z-10 -my-1 hidden rounded-md p-1 opacity-70 hover:bg-paper/60 hover:opacity-100 sm:inline-flex"
-        >
-          <span className="sr-only">Add the closing date to your calendar</span>
-          <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M3 8.5h14M7 3v3M13 3v3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
-        </a>
-      </span>
+      <span className="opacity-90">{day}</span>
     </p>
   );
 }
@@ -98,6 +87,26 @@ export function foldSameVacancies<T extends Parameters<typeof sameVacancyKey>[0]
   return [...out.values()];
 }
 
+/** Employer types that grade their posts: a card says "Grade not stated" only for these. */
+const GRADED_TYPES = new Set(["UN system", "EU institution"]);
+
+/** Long official country names shortened for a pill ("Democratic Republic of the Congo" → "DR Congo"). */
+const SHORT_COUNTRIES: [RegExp, string][] = [
+  [/Democratic Republic of the Congo/g, "DR Congo"], [/Central African Republic/g, "CAR"], [/United Republic of Tanzania/g, "Tanzania"],
+  [/Bolivarian Republic of Venezuela/g, "Venezuela"], [/Venezuela \(Bolivarian Republic of\)/g, "Venezuela"], [/Republic of Korea/g, "South Korea"],
+  [/Democratic People's Republic of Korea/g, "North Korea"], [/Lao People's Democratic Republic/g, "Laos"], [/Syrian Arab Republic/g, "Syria"],
+  [/Iran \(Islamic Republic of\)/g, "Iran"], [/Republic of Moldova/g, "Moldova"], [/Plurinational State of Bolivia|Bolivia \(Plurinational State of\)/g, "Bolivia"],
+  [/United Kingdom of Great Britain and Northern Ireland/g, "United Kingdom"], [/United States of America/g, "United States"], [/Occupied Palestinian Territory/g, "Palestine"],
+];
+const shortCountries = (s: string) => SHORT_COUNTRIES.reduce((t, [re, short]) => t.replace(re, short), s);
+
+const GlobeIcon = () => (
+  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0 text-slate" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M1.8 8h12.4M8 1.8c1.8 2 1.8 10.4 0 12.4M8 1.8c-1.8 2-1.8 10.4 0 12.4" fill="none" stroke="currentColor" strokeWidth="1.3" /></svg>
+);
+const PinIcon = () => (
+  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0" aria-hidden="true"><path d="M8 14.5s4.8-4.6 4.8-8.1A4.8 4.8 0 0 0 3.2 6.4c0 3.5 4.8 8.1 4.8 8.1z" fill="none" stroke="currentColor" strokeWidth="1.3" /><circle cx="8" cy="6.4" r="1.6" fill="currentColor" /></svg>
+);
+
 /** "Data Analyst (P-3)" when the grade is shown beside it: "Data Analyst". */
 function titleWithoutGrade(title: string, grade: string | null): string {
   if (!grade) return title;
@@ -125,17 +134,16 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
   const posted = postedMarker(job);
   const title = titleWithoutGrade(job.title, grade);
   // Every pill has the same shape and a visible border; facts the listing doesn't give get a dashed pill, so each card shows the same row in the same order.
-  const pill = "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[0.8125rem] leading-5";
+  const pill = "inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[0.8125rem] leading-5 [&>span]:truncate";
   const plain = `${pill} border-[#bfd0e3] bg-paper text-ink`;
   const missing = `${pill} border-dashed border-[#bfd0e3] text-slate`;
   // Required languages besides English (two at most): their own kind of pill, easy to spot.
   const languages = (job.languages ?? []).slice(0, 2);
-  // Always in this order: contract, remote, experience, language of the posting, number of posts, when it was posted.
+  // Always in this order: contract, remote, experience, number of posts, when it was posted.
   const details = [
     job.job_type,
-    job.is_remote && where !== "Remote" && where !== NOT_SPECIFIED ? "Remote" : null,
+    job.is_remote && where !== NOT_SPECIFIED && !/remote|home[- ]?based/i.test(where) ? "Remote" : null,
     job.min_experience_years ? `${job.min_experience_years}+ years experience` : null,
-    lang ? `In ${lang.name}` : null,
     posts > 1 ? `${posts} posts` : null,
     posted && !posted.fresh ? `Posted ${posted.text}` : null,
   ].filter((x): x is string => Boolean(x));
@@ -160,19 +168,24 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
       </div>
       <ul className="mt-2 flex flex-wrap items-center gap-1.5 text-sm">
         {/* Always in this order: place, grade, who may apply, languages. */}
-        {where !== NOT_SPECIFIED ? <li className={plain}><Flag code={job.country_code} />{where}</li>
+        {where !== NOT_SPECIFIED ? <li className={plain}><Flag code={job.country_code} /><span>{shortCountries(where)}</span></li>
           : job.is_remote ? <li className={plain}>Remote</li> : <li className={missing}>Duty station not stated</li>}
-        {/* The grade is the first thing most applicants check, so it stands out from the other details. */}
-        {grade ? <li className={`${pill} border-[#c3d8ee] bg-tint font-semibold text-ink`}>{grade}</li> : <li className={missing}>Grade not stated</li>}
-        {/* Who may apply: local posts (usually nationals only) or internationally recruited grades (Professional, Director, Field Service). */}
-        {localLabel ? <li className={`${pill} border-[#f0d58a] bg-due-mid-bg font-medium text-due-mid-ink`}>{localLabel}</li>
-          : job.grade && /^(P|D|FS)-/.test(job.grade) ? <li className={`${pill} border-[#b5dcf7] bg-sky-wash font-medium text-accent`}>International post</li> : null}
+        {/* The grade is the first thing most applicants check, so it stands out from the other details. Employers
+            without a grade system (NGOs, development banks) have no grade to state, so no placeholder for them. */}
+        {grade ? <li className={`${pill} border-[#c3d8ee] bg-tint font-semibold text-ink`}>{grade}</li>
+          : GRADED_TYPES.has(job.org_type ?? "") ? <li className={missing}>Grade not stated</li> : null}
+        {/* Who may apply: local posts (usually nationals only) or internationally recruited grades (Professional,
+            Director, Field Service). Neutral colours with an icon: red, amber and blue belong to the closing date. */}
+        {localLabel ? <li className={`${pill} border-[#e3d6c2] bg-[#f6f1e9] font-medium text-[#5c4a2e]`}><PinIcon /><span>{shortCountries(localLabel)}</span></li>
+          : job.grade && /^(P|D|FS)-/.test(job.grade) ? <li className={`${pill} border-[#bfd0e3] bg-paper font-medium text-ink`}><GlobeIcon />International post</li> : null}
+        {/* Languages: a posting in another language, then the languages it requires besides English. */}
+        {lang ? <li className={`${pill} border-[#d6ccf3] bg-[#f1edfb] font-medium text-[#4a3b8f]`}>In {lang.name}</li> : null}
         {languages.map((l) => <li key={l} className={`${pill} border-[#d6ccf3] bg-[#f1edfb] font-medium text-[#4a3b8f]`}>{l} required</li>)}
       </ul>
       {details.length ? <p className="mt-1.5 text-[0.8125rem] leading-snug text-slate">{details.join(" · ")}</p> : null}
       {/* Date and Apply share one row on every width: the date's day moves under "Closes in…" when space is short. */}
-      <div className="mt-3 flex items-center justify-between gap-3 border-t border-rule pt-2.5 [&>p]:min-w-0">
-        <DeadlinePill deadline={job.deadline} jobId={job.id} />
+      <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-rule pt-2 [&>p]:min-w-0">
+        <DeadlinePill deadline={job.deadline} />
         {/* Straight to the employer's vacancy, above the card's link (relative z-10). A careers home page says so. */}
         {job.apply_url ? (
           <ApplyLink
