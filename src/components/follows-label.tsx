@@ -34,8 +34,12 @@ export function FollowsLabel({ initial, kept }: { initial: string; kept?: string
         const orgs = chosenNames(form, "watch_org");
         const places = chosenNames(form, "watch_where");
         const parts = [q ? `“${q}”` : "", orgs.length ? `at ${orList(orgs)}` : "", places.length ? `in ${orList(places)}` : "", kept ?? ""].filter(Boolean);
-        setLabel(parts.length ? parts.join(", ") : "all new vacancies");
+        const next = parts.length ? parts.join(", ") : "all new vacancies";
+        setLabel(next);
         document.querySelectorAll<HTMLElement>("[data-carried-search]").forEach((e) => (e.hidden = true));
+        // The rest of the page that names the search: the Daily alerts card's line, and the example email's note.
+        document.querySelectorAll<HTMLElement>("[data-follows-copy]").forEach((e) => (e.textContent = next));
+        document.querySelectorAll<HTMLElement>("[data-example-stale]").forEach((e) => (e.hidden = false));
       }, 0);
     form.addEventListener("input", update);
     form.addEventListener("change", update);

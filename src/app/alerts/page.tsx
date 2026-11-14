@@ -10,6 +10,7 @@ import { FreeWeeklyForm, PremiumInterestForm } from "@/components/token-forms";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { isMetaVisit } from "@/lib/ad-visit";
 import { describeSearch, searchFromAlertStep } from "@/lib/saved-searches";
+import { countJobs, filtersFromQuery } from "@/lib/jobs";
 import { INDEPENDENCE_NOTE, siteConfig } from "@/lib/site";
 
 const free = siteConfig.freeWeeklyEmail;
@@ -50,6 +51,8 @@ export default async function AlertsPage({ searchParams }: Props) {
     const keptSearch = search ? new URLSearchParams(search) : null;
     for (const k of ["q", "org", "where", "country", "region"]) keptSearch?.delete(k);
     const kept = keptSearch?.size ? await describeSearch(keptSearch.toString()) : null;
+    // A carried search with nothing open today: said plainly (the alert still works for what comes).
+    const openNow = search ? await countJobs(filtersFromQuery(search)).catch(() => null) : null;
     const weeklyForm = (
       <FreeWeeklyForm
         compact
@@ -67,9 +70,10 @@ export default async function AlertsPage({ searchParams }: Props) {
           title={fromMeta ? "Free weekly job email" : "Get job alerts"}
           crumbs={[{ href: "/", label: "Home" }, { href: "/alerts", label: fromMeta ? "Weekly email" : "Job alerts" }]}
           intro={fromMeta
-            ? "Every Monday, the past week's new vacancies at UN agencies, NGOs and other international organizations: all of them, or only those with your keywords. Free, with no card and no account. If nothing new matches, we don't send anything that week."
+            ? "Every Monday, the week's new UN and NGO vacancies: all of them, or only those with your keywords. Free, no card, no account."
             : "New vacancies at UN agencies, NGOs and other international organizations that match your search, by email: daily with closing-date reminders, or every Monday for free."}
-          note={INDEPENDENCE_NOTE}
+          // Ad visitors on phones: the form on the first screen; the same notice is in every page's footer.
+          note={fromMeta ? <span className="max-sm:hidden">{INDEPENDENCE_NOTE}</span> : INDEPENDENCE_NOTE}
         />
         {fromMeta ? (
           // Visitors from Meta ads: only the free weekly email (see above), in the same card as on the plain page.
@@ -88,7 +92,8 @@ export default async function AlertsPage({ searchParams }: Props) {
               <h2 id="choice-h" className="sr-only">Daily alerts or weekly email</h2>
               {searchLabel ? (
                 <p data-carried-search="" className="mb-4 rounded-xl border border-sky-rule bg-sky-wash px-4 py-3 text-[0.95rem] text-ink">
-                  Your alerts will follow the search you just made: <strong>{searchLabel}</strong>. Nothing to search again.{" "}
+                  Your alerts will follow the search you just made: <strong>{searchLabel}</strong>.{" "}
+                  {openNow === 0 ? "Nothing matches it today: we email only when a new vacancy does. " : "Nothing to search again. "}
                   <Link href="/alerts" className="font-medium text-accent underline underline-offset-2">Start from scratch</Link>
                 </p>
               ) : null}

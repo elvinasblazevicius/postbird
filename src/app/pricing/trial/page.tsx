@@ -47,13 +47,14 @@ export default async function TrialPage({ searchParams }: Props) {
   return (
     <>
       <PageHeader
+        compact={BILLING_LIVE}
         title={BILLING_LIVE ? `Start your ${p.trialDays}-day free trial` : `${p.name} launch soon`}
         crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Pricing" }, { href: "/pricing/trial", label: BILLING_LIVE ? "Free trial" : "Early access" }]}
         intro={
           BILLING_LIVE ? (
             <>
               New matching vacancies by email every day, and a reminder {CLOSING_SOON_DAYS} days before each published closing date. {p.trialDays} days free,
-              then {p.priceSummary}. Cancel before the trial ends and you pay nothing.
+              then {p.priceSummary}.
             </>
           ) : (
           <>
@@ -65,8 +66,14 @@ export default async function TrialPage({ searchParams }: Props) {
         }
         note={BILLING_LIVE ? INDEPENDENCE_NOTE : undefined}
       />
-      <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
+      <div className="mx-auto max-w-2xl px-4 py-6 sm:px-6 sm:py-12">
         <CoverageLine className="mb-6 max-sm:hidden" />
+        {BILLING_LIVE ? (
+          // Phones: the header's intro is hidden (compact), so the offer in one line, with the form right below.
+          <p className="mb-5 text-[0.95rem] text-ink sm:hidden">
+            New matches every day and a reminder {CLOSING_SOON_DAYS} days before each published closing date. {p.trialDays} days free.
+          </p>
+        ) : null}
         {remindJob ? (
           <div className="mb-6 rounded-xl border border-rule bg-candy-soft p-4 text-ink">
             <p>
@@ -91,12 +98,13 @@ export default async function TrialPage({ searchParams }: Props) {
               // instead, and more searches (organization, place, grade) are added on the account page.
               searchLabel ? (
                 <p className="rounded-xl border border-sky-rule bg-sky-wash px-4 py-3 text-[0.95rem] text-ink">
-                  Your daily alerts will follow your search: <strong>{searchLabel}</strong>. You can add up to {MAX_SAVED_SEARCHES} searches after signing up.
+                  Your daily alerts will follow your search: <strong>{searchLabel}</strong>. You can add up to {MAX_SAVED_SEARCHES} searches after signing up.{" "}
+                  <a href="/pricing/trial#alert-signup" className="font-medium text-accent underline underline-offset-2">Change</a>
                 </p>
               ) : (
                 <div className="space-y-1.5">
                   <WatchFields part="keywords" search={null} searchLabel={null} />
-                  <p className="text-sm text-slate">Leave empty for every new vacancy. After signing up you can add up to {MAX_SAVED_SEARCHES} searches, with organization and place.</p>
+                  <p className="text-sm text-slate">Leave empty for every new vacancy. Add up to {MAX_SAVED_SEARCHES} searches later.</p>
                 </div>
               )
             }
@@ -112,7 +120,7 @@ export default async function TrialPage({ searchParams }: Props) {
           </p>
         ) : null}
         <div className="mt-12">
-          <AlertExample search={search} />
+          <AlertExample heading="What a daily alert looks like" search={search} />
         </div>
       </div>
     </>

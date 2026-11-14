@@ -172,6 +172,15 @@ function MobileKeyword({ filters, formId }: { filters: JobFilters; formId: strin
  * Search results with filters. `fixed` filters belong to a landing page
  * (e.g. one organization) and are not shown as editable fields.
  */
+/** Next to the alert button: how many results publish a closing date, the ones a daily alert's reminder covers. */
+export function coverageLine(dated: number, total: number): string {
+  const days = CLOSING_SOON_DAYS;
+  if (dated === 0) return total === 1 ? "It has no published closing date, so there is no reminder for it." : "None of these has a published closing date yet, so there is no reminder for them.";
+  if (total === 1) return `It has a published closing date: daily alerts remind you ${days} days before it closes.`;
+  if (dated === total) return `All ${total.toLocaleString("en-US")} have a published closing date: daily alerts remind you ${days} days before each one closes.`;
+  return `${dated.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} have a published closing date: daily alerts remind you ${days} days before those close.`;
+}
+
 /** The yellow "get alerts" button: the one bright action next to search results. */
 const ALERT_BUTTON = "inline-flex min-h-10 items-center rounded-lg bg-highlight px-3.5 py-1.5 text-[0.95rem] font-semibold text-ink no-underline shadow-[inset_0_-2px_0_rgb(0_0_0/0.12)] hover:brightness-95";
 
@@ -260,12 +269,7 @@ export async function JobsBrowser({
         </TrackedLink>
       )}
       {dated !== null && BILLING_LIVE ? (
-        <span className="text-slate">
-          {dated === result.total
-            ? result.total === 1 ? "It has a published closing date." : `All ${result.total.toLocaleString("en-US")} have a published closing date.`
-            : `${dated.toLocaleString("en-US")} of these ${result.total.toLocaleString("en-US")} have a published closing date.`}
-          {dated > 0 ? ` Daily alerts remind you ${CLOSING_SOON_DAYS} days before ${dated === 1 ? "it closes" : "each one closes"}.` : ""}
-        </span>
+        <span className="text-slate">{coverageLine(dated, result.total)}</span>
       ) : null}
     </div>
   ) : null;
@@ -313,6 +317,12 @@ export async function JobsBrowser({
               ? `No exact matches · ${result.total.toLocaleString("en-US")} similar ${result.total === 1 ? "vacancy" : "vacancies"}`
               : resultsHeading({ total: result.total, from, to, pages: result.pages, sort: result.sort, showTotal })}
           </h2>
+          {/* Phones: the full alert box comes after the first cards; a short way to it right by the count. */}
+          {alertRow && siteConfig.freeWeeklyEmail ? (
+            <Link href={`/alerts?search=${encodeURIComponent(alertSearch)}`} className="inline-flex min-h-10 items-center rounded-lg bg-highlight px-3 text-sm font-semibold text-ink no-underline sm:hidden">
+              Get alerts
+            </Link>
+          ) : null}
           {result.total > 0 ? (
             <div className="flex items-center gap-1 text-sm" aria-label="Sort">
               <span className="mr-1 text-slate">Sort:</span>

@@ -78,14 +78,25 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
   // Weekly: the open listings posted in the past 7 days (as the weekly email). Daily: a search that leaves out local-only
   // posts (the hidelocal filter, the SQL rule), with what was posted in the past day, or the past week on a quiet day.
   // Demo listings never count. With `search` (the visitor's own), the example follows it.
-  const own = search ? filtersFromQuery(search) : null;
+  let own = search ? filtersFromQuery(search) : null;
   const pick = (posted: "1" | "7") =>
     searchJobs({ ...(own ?? {}), posted, sort: "newest", page: undefined, hidelocal: kind === "daily" || own?.hidelocal || undefined, excludeDemo: true }, 30).catch(() => ({ items: [] as JobListItem[], total: 0 }));
-  const [first, closing] = await Promise.all([pick(kind === "daily" ? "1" : "7"), kind === "daily" ? closingSoonJobs(12).catch(() => []) : Promise.resolve([])]);
+  const [firstTry, closing] = await Promise.all([pick(kind === "daily" ? "1" : "7"), kind === "daily" ? closingSoonJobs(12).catch(() => []) : Promise.resolve([])]);
+  let first = firstTry;
   // A quiet day: the daily example is built from the past week instead, and says so.
-  const pastWeek = kind === "daily" && first.total < EXAMPLE_ROWS;
-  const all = pastWeek ? await pick("7") : first;
+  let pastWeek = kind === "daily" && first.total < EXAMPLE_ROWS;
+  let all = pastWeek ? await pick("7") : first;
+  // Nothing new for the visitor's own search: the example is built without it, and says so (never "matches your search").
+  const ownEmpty = Boolean(own) && all.items.length === 0;
+  if (ownEmpty) {
+    own = null;
+    first = await pick(kind === "daily" ? "1" : "7");
+    pastWeek = kind === "daily" && first.total < EXAMPLE_ROWS;
+    all = pastWeek ? await pick("7") : first;
+  }
   const ownLabel = own && all.items.length ? await describeSearch(search!).catch(() => null) : null;
+  // The subject and heading speak of "your search" only for a search the example really follows.
+  const yours = Boolean(ownLabel) || !ownEmpty;
   // Without the visitor's search: shown as one saved search, as a subscriber would set it up: the
   // field of work most of these new listings are in (a handful of matches, not every new vacancy).
   const counts = new Map<string, number>();
@@ -106,16 +117,19 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
     : topCategory
       ? `Your search: ${categoryName(topCategory)}${kind === "daily" ? ", international posts" : ""}`
       : kind === "daily" ? "All new vacancies, without local-only posts" : "All new vacancies";
+  const matchWord = real && yours ? `${n === 1 ? "vacancy matches" : "vacancies match"} your search` : n === 1 ? "vacancy" : "vacancies";
   const subject = kind === "weekly"
-    ? `${cappedCount(n)} new ${n === 1 ? "vacancy matches" : "vacancies match"} your search this week`
+    ? `${cappedCount(n)} new ${matchWord} this week`
     : pastWeek && real
       ? `Example: ${cappedCount(n)} new ${n === 1 ? "vacancy" : "vacancies"} this week`
-      : `${cappedCount(n)} new ${n === 1 ? "vacancy matches" : "vacancies match"} your search${soon.length ? `, ${soon.length} closing soon` : ""}`;
-  const intro = !real
-    ? "Illustrative example"
-    : pastWeek
-      ? "An example built from the past week’s listings (a quiet day had too few to show)."
-      : "Example built from current listings";
+      : `${real ? "" : "Example: "}${cappedCount(n)} new ${matchWord}${soon.length ? `, ${soon.length} closing soon` : ""}`;
+  const intro = ownEmpty
+    ? `Nothing new matches your search ${kind === "daily" ? "in the past week" : "this week"}, so this example is built from other current listings. Your emails follow your own search, and when nothing new matches, we don’t send one.`
+    : !real
+      ? "Illustrative example"
+      : pastWeek
+        ? "An example built from the past week’s listings (a quiet day had too few to show)."
+        : "Example built from current listings";
   const rows = real
     ? jobs.map((j) => ({ key: j.id, title: j.title, meta: jobMeta(j), href: jobPath(j) }))
     : ILLUSTRATIVE.map((j) => ({ key: j.title, title: j.title, meta: j.meta }));
@@ -124,6 +138,8 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
     <section aria-labelledby="sample-heading">
       <h2 id="sample-heading" className="text-xl font-semibold text-ink">{heading}</h2>
       <p className="mt-1 text-sm text-slate">{intro}</p>
+      {/* Shown by FollowsLabel (src/components/follows-label.tsx) once the visitor changes the search above. */}
+      <p data-example-stale="" hidden className="mt-1 text-sm text-ink">This example was built for the search you arrived with. Your emails will follow the search you set above.</p>
       <figure className="mt-3 rounded-xl border border-rule bg-mist p-2 sm:p-3">
         <figcaption className="px-2 pb-2 pt-1 text-[0.8125rem] leading-relaxed text-slate">
           <span className="block"><span className="text-ink">From:</span> {siteConfig.name}</span>

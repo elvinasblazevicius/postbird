@@ -953,6 +953,18 @@ export async function organizationFacets(limit = 500, includeDemo = true) {
     where ${isListed()} and (${includeDemo} or not j.is_demo) group by o.id order by count(*) desc, o.name limit ${limit}`;
 }
 
+/**
+ * Every organization that has had a listing (for the alert sign-up's picker: an alert is about
+ * vacancies still to come, so one with nothing open today can be followed too). Open counts first.
+ */
+export async function alertOrganizations() {
+  return sql<{ slug: string; name: string; count: number }[]>`
+    select o.slug, o.name, count(j.id) filter (where ${isListed()} and not j.is_demo)::int as count
+    from organizations o join jobs j on j.organization_id = o.id
+    where not j.is_demo
+    group by o.id order by 3 desc, o.name limit 1500`;
+}
+
 type Count<K> = { k: K; n: number };
 type PlaceRow = { c: string | null; l: string | null; n: number };
 type FacetSnapshot = {

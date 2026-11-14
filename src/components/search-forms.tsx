@@ -165,10 +165,12 @@ function RepeatSelect({ name, label, idPrefix, chosen, groups, anyLabel, chooseL
  * matches): a type-ahead picker with chips (regions listed above countries); without JavaScript,
  * one select per chosen place and "Add another place" under them.
  */
-export function WhereFields({ facets, filters, idPrefix, label = "Where", name = "where", placeholder = "Anywhere: type a place" }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string; name?: string; placeholder?: string }) {
+export function WhereFields({ facets, filters, idPrefix, label = "Where", name = "where", placeholder = "Anywhere: type a place", counts = true }: { facets: FacetData; filters: JobFilters; idPrefix: string; label?: string; name?: string; placeholder?: string; counts?: boolean }) {
   const chosen = chosenPlaces(filters);
+  // Without counts (the alert sign-up, where every country is offered): "Kenya", not "Kenya (0)".
+  const groups = counts ? placeChoices(facets) : placeChoices(facets).map((g) => ({ ...g, options: g.options.map((o) => ({ ...o, count: undefined })) }));
   return (
-    <MultiCombobox name={name} label={label} idPrefix={idPrefix} groups={placeChoices(facets)} chosen={chosen} max={MAX_PLACES}
+    <MultiCombobox name={name} label={label} idPrefix={idPrefix} groups={groups} chosen={chosen} max={MAX_PLACES}
       placeholder={placeholder} itemNoun="place" itemsNoun="places" anyHint="Jobs in any of the places you choose">
       <RepeatSelect name={name} label={label} idPrefix={idPrefix} chosen={chosen} groups={placeGroups(facets)} max={MAX_PLACES}
         anyLabel="Anywhere" chooseLabel="Choose a place" addLabel="Add another place" addHint="Jobs in any of the places you choose" removeLabel="Remove this place" itemNoun="place" />
@@ -501,7 +503,7 @@ export function WatchFieldset({ facets, filters, hint, hideLegend = false, part 
   const places = (
     <div className={part === "places" ? "grid gap-4" : "grid gap-4 sm:grid-cols-2"}>
       <OrgFields idPrefix="watch" name="watch_org" facets={facets} filters={filters} counts={false} />
-      <WhereFields idPrefix="watch" name="watch_where" facets={facets} filters={filters} label="Location" />
+      <WhereFields idPrefix="watch" name="watch_where" facets={facets} filters={filters} label="Location" counts={false} />
     </div>
   );
   if (part === "places") return <div className="space-y-3">{hint ? <p className="text-sm text-slate">{hint}</p> : null}{places}</div>;

@@ -171,25 +171,26 @@ function PlanChoice({ dark, compact, plan, setPlan, locked = false }: { dark: bo
     <fieldset className="mb-4" disabled={locked}>
       <legend className={`mb-2 block text-sm font-medium ${dark ? "text-white/90" : "text-ink"}`}>Choose your plan</legend>
       {/* Room above each card for the "Best value" badge that sits on its top edge (also when the cards stack on phones). */}
-      <div className={`grid gap-x-3 gap-y-5 pt-3 ${compact ? "@md:grid-cols-2" : "sm:grid-cols-2"}`}>
+      {/* Side by side, also on phones (two short cards rather than a screen of stacked ones). */}
+      <div className={`grid gap-x-2 gap-y-5 pt-3 sm:gap-x-3 ${compact ? "@md:grid-cols-2" : "grid-cols-2"}`}>
         {plans.map((p) => (
           <label
             key={p.value}
-            className={`relative flex cursor-pointer flex-col rounded-xl border-2 px-4 pb-3.5 pt-4 transition-colors ${
+            className={`relative flex cursor-pointer flex-col rounded-xl border-2 px-3 pb-3 pt-4 transition-colors sm:px-4 sm:pb-3.5 ${
               dark
                 ? "border-white/25 text-white has-[:checked]:border-[var(--highlight)] has-[:checked]:bg-white/10 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-white/70"
                 : "border-rule bg-paper text-ink hover:border-[color-mix(in_srgb,var(--accent)_45%,var(--rule))] has-[:checked]:border-accent has-[:checked]:bg-[color-mix(in_srgb,var(--accent)_6%,white)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[color-mix(in_srgb,var(--accent)_35%,transparent)]"
             }`}
           >
             {p.best ? (
-              <span className="absolute -top-3 left-4 rounded-full bg-remote px-2.5 py-0.5 text-xs font-semibold tracking-wide text-white shadow-sm">Best value</span>
+              <span className="absolute -top-3 left-3 rounded-full sm:left-4 bg-remote px-2.5 py-0.5 text-xs font-semibold tracking-wide text-white shadow-sm">Best value</span>
             ) : null}
             <span className="flex items-center justify-between gap-2">
               <span className="font-semibold">{p.label}</span>
               <input type="radio" name="plan" value={p.value} checked={plan === p.value} onChange={() => setPlan(p.value)} className={`h-4 w-4 ${dark ? "accent-[var(--highlight)]" : "accent-[var(--accent)]"}`} />
             </span>
-            <span className="mt-1.5 flex items-baseline gap-1">
-              <span className="font-display text-3xl font-semibold leading-none">{p.price}</span>
+            <span className="mt-1.5 flex flex-wrap items-baseline gap-x-1">
+              <span className="font-display text-[1.6rem] font-semibold leading-none sm:text-3xl">{p.price}</span>
               <span className={`text-sm ${dark ? "text-white/90" : "text-slate"}`}>{p.per}</span>
             </span>
             <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">

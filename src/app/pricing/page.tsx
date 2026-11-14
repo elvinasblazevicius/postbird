@@ -104,7 +104,17 @@ export default async function PricingPage() {
             ? `Daily alerts${BILLING_LIVE ? "" : ", launching soon,"} email you new matches every day for up to 20 searches, and remind you of each matching vacancy 3 days before its published closing date. Every vacancy, search and filter stays free, and so does a weekly email for one search.`
             : `Every vacancy, search and filter is free. Paid email alerts${BILLING_LIVE ? "" : ", launching soon,"} bring new matches to your inbox so you don't have to keep checking.`
         }
-      />
+      >
+        {siteConfig.freeWeeklyEmail && BILLING_LIVE ? (
+          // Both ways in on the first screen: the trial, and the free email for those who don't want a card on file.
+          <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <TrackedLink href="/pricing/trial" event="premium_cta_click" source="pricing-hero" className="inline-flex min-h-11 items-center rounded-[10px] bg-highlight px-5 font-bold text-ink no-underline shadow-[inset_0_-2px_0_rgb(11_31_58/0.16)] hover:brightness-95">
+              Start {p.trialDays}-day free trial
+            </TrackedLink>
+            <Link href="/alerts#alert-signup" className="font-semibold text-accent underline underline-offset-2">Prefer free? Get the weekly email, no card needed</Link>
+          </div>
+        ) : null}
+      </PageHeader>
       <div className="mx-auto max-w-4xl px-4 pt-8 max-sm:hidden sm:px-6">
         <CoverageLine />
       </div>
@@ -143,7 +153,7 @@ export default async function PricingPage() {
               </div>
             ))}
           </dl>
-          <TrackedLink href="/pricing/trial" event="premium_cta_click" source="pricing" className="mt-8 rounded-lg bg-brand px-5 py-3 text-center font-semibold text-white hover:bg-accent">
+          <TrackedLink href="/pricing/trial" event="premium_cta_click" source="pricing" className="mt-8 rounded-lg bg-highlight px-5 py-3 text-center font-bold text-ink shadow-[inset_0_-2px_0_rgb(11_31_58/0.16)] hover:brightness-95">
             {BILLING_LIVE ? `Start ${p.trialDays}-day free trial` : EARLY_ACCESS_BUTTON}
           </TrackedLink>
           <p className="mt-3 text-sm text-slate">{BILLING_LIVE ? trialLine : earlyAccessLine()}</p>
@@ -162,7 +172,7 @@ export default async function PricingPage() {
               <li key={f} className="flex gap-2.5"><Check />{f}</li>
             ))}
           </ul>
-          <Link href={siteConfig.freeWeeklyEmail ? "/alerts#alert-signup" : "/jobs"} className="mt-8 rounded-lg border border-rule px-5 py-3 text-center font-semibold text-ink hover:bg-mist">
+          <Link href={siteConfig.freeWeeklyEmail ? "/alerts#alert-signup" : "/jobs"} className="mt-8 rounded-lg bg-brand px-5 py-3 text-center font-semibold text-white hover:bg-accent">
             {siteConfig.freeWeeklyEmail ? "Get the free weekly email" : "Browse jobs"}
           </Link>
         </section>

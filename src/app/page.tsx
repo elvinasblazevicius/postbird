@@ -137,7 +137,7 @@ export default async function HomePage() {
                 <path d="M10 7v3.7l2.4 1.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <span>
-                <strong className="font-semibold">Closing-date reminders:</strong> daily alerts email you each matching vacancy 3 days before its published closing date.{" "}
+                <strong className="font-semibold">Closing-date reminders:</strong> daily alerts send new matches every day, plus a reminder 3 days before each published closing date.{" "}
                 <Link href={BILLING_LIVE ? "/pricing/trial" : "/pricing"} className="font-medium text-accent underline underline-offset-2">{BILLING_LIVE ? `Start a ${siteConfig.premium.trialDays}-day free trial` : "See how"}</Link>
               </span>
             </p>

@@ -209,7 +209,7 @@ export default function PrivacyPage() {
           ) : null}
           <li>
             {BILLING_LIVE
-              ? "Early-access list: we email you once to say alerts are open, and delete your address 30 days later unless you start a trial."
+              ? "Early-access list (only people who joined before daily alerts opened): we email you once to say alerts are open, and delete your address 30 days later unless you start a trial."
               : "Early-access list: until paid alerts launch; if we decide not to launch, we tell you and delete the list within 30 days."}
           </li>
           {BILLING_LIVE ? (

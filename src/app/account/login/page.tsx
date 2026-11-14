@@ -54,7 +54,7 @@ export default function AccountLoginPage() {
       </details>
 
       <p className="mt-6 text-[0.95rem] text-ink">
-        Not signed up yet? <Link href="/alerts" className="font-semibold text-accent underline underline-offset-2">Get job alerts</Link>
+        Not signed up yet? <Link href="/alerts" className="font-semibold text-accent underline underline-offset-2">Get the free weekly email or daily alerts</Link>
       </p>
     </div>
   );
