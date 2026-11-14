@@ -85,15 +85,6 @@ export function postedMarker(job: { published_at: Date | null; first_seen_at: Da
   return days <= 30 ? { text: `${days}d ago`, fresh: false } : null;
 }
 
-/** The organization's type in a few words, for the badge beside its name. */
-const ORG_TYPE_LABEL: Record<string, string> = {
-  "UN system": "UN system",
-  "EU institution": "EU institution",
-  "International financial institution": "Development bank or IFI",
-  "International organization": "International organization",
-  NGO: "NGO",
-};
-
 /** The same vacancy posted more than once (identical title, organization, place and closing date). */
 export function sameVacancyKey(j: Pick<JobListItem, "title" | "org_name" | "country_code" | "city" | "location_text" | "deadline">): string {
   return [j.title.trim().toLowerCase(), j.org_name ?? "", j.country_code ?? "", (j.city ?? j.location_text ?? "").toLowerCase(), j.deadline ?? ""].join("|");
@@ -128,7 +119,6 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
   // "Nationals of Kenya only" for National Officer posts, "Local post · Kenya" for other local posts (localOnlyLabel).
   const localLabel = localOnlyLabel(job, countryByCode(job.country_code)?.name);
   const posted = postedMarker(job);
-  const typeLabel = job.org_type ? ORG_TYPE_LABEL[job.org_type] : null;
   // Plain details (no boxes), so the card stays calm; only the grade is set apart.
   const chip = "inline-flex items-center gap-1.5";
   const details = [
@@ -149,8 +139,6 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
         <p className="flex min-h-[2.25rem] flex-wrap content-center items-center gap-x-2 gap-y-1 pr-12 text-sm leading-snug @min-[44rem]:min-h-0 @min-[44rem]:pr-0">
           {/* No employer name when the source gives none (the listing on the employer's site has it): nothing guessed here. */}
           {job.org_name ? <span className="font-bold text-ink">{orgDisplayName(job.org_name, job.org_short)}</span> : null}
-          {/* The employer type only in wider cards: on a phone it would wrap onto a line of its own. */}
-          {typeLabel ? <span className="hidden text-[0.8125rem] font-medium text-slate @min-[34rem]:inline">· {typeLabel}</span> : null}
           {posted?.fresh ? <span className="rounded-md bg-[#ffe680] px-2 py-0.5 text-[0.8125rem] font-bold text-ink">New</span> : null}
           {job.is_demo ? <Tag tone="demo">Demo data</Tag> : null}
         </p>
