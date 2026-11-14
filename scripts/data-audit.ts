@@ -5,7 +5,7 @@
  * Usage: npm run data-audit   (or the "data-audit" option of the GitHub workflow)
  */
 import { getSql } from "../src/lib/db";
-import { findDuplicates, type DedupeRow } from "../src/lib/feeds/dedupe";
+import { explainPair, findDuplicates, type DedupeRow } from "../src/lib/feeds/dedupe";
 
 async function main() {
   const sql = getSql();
@@ -91,6 +91,10 @@ async function main() {
     const dups = findDuplicates(rows);
     const active = [...dups].filter(([id]) => rows.find((r) => r.id === id)?.status === "active");
     console.log(`${rows.length} rows checked, ${dups.size} duplicates, ${active.length} of them still listed: ${active.slice(0, 40).map(([a, b]) => `#${a}→#${b}`).join(" ")}`);
+    for (const [x, y] of [[227, 386], [937, 795], [938, 796], [1131, 1243]]) {
+      const [a, b] = [rows.find((r) => r.id === x), rows.find((r) => r.id === y)];
+      if (a && b) console.log(`#${x}/#${y}: ${explainPair(a, b)} | same group: ${rows.filter((r) => r.organization_id === a.organization_id && r.title === a.title).map((r) => `#${r.id}(${r.status})`).join(" ")}`);
+    }
     for (const id of [227, 386, 937, 938, 795, 796, 1131, 1243]) {
       const r = rows.find((x) => x.id === id);
       console.log(`#${id}: ${r ? `${r.status} | ref ${r.reference ?? "-"} | ${r.apply_url}` : "not in rows"} | ${dups.has(id) ? `dup of #${dups.get(id)}` : "kept"}`);

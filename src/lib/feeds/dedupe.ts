@@ -215,3 +215,12 @@ export async function removeDuplicateListings(): Promise<number> {
   }
   return taken;
 }
+
+/** For the data audit: why two listings are or aren't the same vacancy. */
+export function explainPair(a: DedupeRow, b: DedupeRow): string {
+  return JSON.stringify({
+    norm: [norm(a.title), norm(b.title)], org: [a.organization_id, b.organization_id], country: [a.country_code, b.country_code],
+    deadline: [a.deadline, b.deadline], link: [linkKey(a.apply_url), linkKey(b.apply_url)], board: [isListingSite(a.source_host), isListingSite(b.source_host)],
+    distinct: distinctPosts(a, b), specific: specific(a.title), bare: [bare(a), bare(b)],
+  });
+}
