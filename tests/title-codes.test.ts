@@ -18,5 +18,11 @@ describe("cleanTitle: codes and sentences", () => {
     ["Monitoring & Evaluation Officer, NO-, Temporary Position, days, Sarajevo, #", "Monitoring & Evaluation Officer, Temporary Position, Sarajevo"],
     ["Driver (G-), TA, #, Lashkar Gah, # and # Kandahar", "Driver, TA, Lashkar Gah, and Kandahar"],
     ["Senior Officer, P4 Programme", "Senior Officer, P4 Programme"],
+    ["Paho Consultant – Comunicación Institucional y apoyo a Alianzas para el", "PAHO Consultant – Comunicación Institucional y apoyo a Alianzas"],
+    ["DRIVER, IITA RWANDA", "Driver, IITA Rwanda"],
+    ["Research Team Lead – Iita Kenya", "Research Team Lead – IITA Kenya"],
+    ["International Health Consultant (remote with travel for . months)", "International Health Consultant (remote with travel for months)"],
+    ["Impact Evaluation Officer", "Impact Evaluation Officer"],
+    ["Meal Allowance Clerk", "Meal Allowance Clerk"],
   ])("%s", (raw, clean) => expect(cleanTitle(raw)).toBe(clean));
 });

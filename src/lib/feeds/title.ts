@@ -3,6 +3,8 @@
  * ALL-CAPS titles and capitalised runs, bilingual "English || Arabic" titles, gender tags such as
  * "(m/w/d)" and hyphens used as separators.
  */
+import { KNOWN_ORGS } from "@/config/organizations";
+
 const SMALL = new Set(["a", "an", "and", "as", "at", "by", "for", "in", "of", "on", "or", "the", "to", "with", "de", "du", "des", "la", "le", "et", "y", "en"]);
 
 function titleCaseWord(w: string, first: boolean): string {
@@ -21,7 +23,18 @@ function titleCaseWord(w: string, first: boolean): string {
 const GENDER_TAG = /\s*[([]\s*[fmhwdx]\s*[/|]\s*[fmhwdx](?:\s*[/|]\s*[fmhwdx])?\s*[)\]]/gi;
 
 /** Words kept in capitals when a run of capitalised words is tidied (organizations and common acronyms). */
-const KEEP_CAPS = new Set(["NATO", "OSCE", "OECD", "UNDP", "UNICEF", "UNHCR", "UNFPA", "UNOPS", "UNESCO", "UNIDO", "UNEP", "UNRWA", "UNAIDS", "UNFCCC", "UNCTAD", "UNITAR", "UNMISS", "MONUSCO", "MINUSCA", "IFAD", "IAEA", "INTERPOL", "WASH", "LOGFAS", "ECSAT", "ESCB", "EEAS", "EPSO", "IFRC", "ICRC", "OCHA", "OHCHR", "UNHCHR", "MEAL", "GBV", "PSEA", "AVRR", "HIV", "AIDS", "ICTM", "MPOX", "COVID"]);
+const KEEP_CAPS_LISTED = new Set(["NATO", "OSCE", "OECD", "UNDP", "UNICEF", "UNHCR", "UNFPA", "UNOPS", "UNESCO", "UNIDO", "UNEP", "UNRWA", "UNAIDS", "UNFCCC", "UNCTAD", "UNITAR", "UNMISS", "MONUSCO", "MINUSCA", "IFAD", "IAEA", "INTERPOL", "WASH", "LOGFAS", "ECSAT", "ESCB", "EEAS", "EPSO", "IFRC", "ICRC", "OCHA", "OHCHR", "UNHCHR", "MEAL", "GBV", "PSEA", "AVRR", "HIV", "AIDS", "ICTM", "MPOX", "COVID",
+  "PAHO", "WHO", "WFP", "FAO", "ILO", "IOM", "ITU", "UPU", "WIPO", "WMO", "IMO", "ICAO", "UNV", "UNU", "UNSSC", "ITC", "IFC", "MIGA", "IMF", "EBRD", "EIB", "ADB", "AFDB", "IDB", "CERN", "ESA", "ECB", "GIZ", "NRC", "IRC", "MSF", "CRS", "IDLO",
+  "IITA", "ILRI", "ICRISAT", "CIAT", "CIMMYT", "CIP", "IRRI", "IWMI", "ICARDA", "CIFOR", "ICRAF", "CGIAR", "LACRO", "ESARO", "WCARO", "MENARO", "EAPRO", "ECARO",
+  "ECLAC", "ESCAP", "ESCWA", "UNECE", "UNECA", "DPPA", "OIOS", "UNMAS", "UNOCT", "UNODC", "UNOV", "UNON", "UNOG", "ICT", "GIS", "SDG", "NGO", "PMU", "PIU", "MEL", "WASH", "HR", "IT"]);
+/** Organizations' short names that are ordinary words in capitals ("HEALTH CARE OFFICER") aren't kept. */
+const ORDINARY_WORDS = new Set(["CARE", "PATH", "HI", "AHA", "ALIMA", "MEDAIR", "IMPACT", "ACTED", "RI", "AU", "EC", "UN"]);
+/** Acronyms that are also words in a title ("Meal Allowance"), left as written. */
+const NOT_RESTORED = new Set(["MEAL", "AIDS", "WASH", "INTERPOL", "COVID", "MPOX", "NATO"]);
+const KEEP_CAPS = new Set([
+  ...KEEP_CAPS_LISTED,
+  ...KNOWN_ORGS.flatMap((o) => [o.short, ...(o.aliases ?? [])]).filter((w): w is string => Boolean(w) && /^[A-Z][A-Z0-9&]{1,9}$/.test(w!) && !ORDINARY_WORDS.has(w!)),
+]);
 
 /**
  * Runs of two or more capitalised words inside a mixed title ("RESEARCH COORDINATOR AND DATA ANALYST –
@@ -80,6 +93,9 @@ export function cleanTitle(raw: string): string {
     .replace(/(^|[\s,])#(?=[\s,]|$)/g, "$1")
     // A duration whose number a feed dropped ("Perú-Lima, 11 meses" arriving as "…Lima, meses").
     .replace(/(^|[^\d\s])\s+(?:años|meses|mois|jours|días|dias|semanas)\b/giu, "$1")
+    // A number a feed dropped from a date or duration ("… Alianzas para el" from "… para el 2027", "for . months").
+    .replace(/\s+\.\s+(?=(?:days?|weeks?|months?|years?)\b)/gi, " ")
+    .replace(/(?:\s+(?:para|de|del|el|la|las|los|en|for|of|the|and|in|to|y|et|du|des|le))+\s*$/i, "")
     // A name written twice ("PAHO PAHO Consultant").
     .replace(/^(\p{L}{2,12})\s+\1\b/iu, "$1")
     .replace(/\s*,(?:\s*,)+/g, ",")
@@ -99,6 +115,8 @@ export function cleanTitle(raw: string): string {
   } else {
     t = tidyCapsRuns(t);
   }
+  // An organization's acronym an earlier tidy-up wrote as a word ("Paho Consultant", "Iita Kenya"): capitals again.
+  t = t.replace(/\b\p{Lu}\p{Ll}{3,9}\b/gu, (w) => (KEEP_CAPS.has(w.toUpperCase()) && !NOT_RESTORED.has(w.toUpperCase()) ? w.toUpperCase() : w));
   // "Data Analyst (m/w/d)", "Chargé de projet (H/F) - Paris": the tag goes, and a separator it leaves at the end too.
   t = t.replace(GENDER_TAG, "").replace(/\s*[-–—:|,]\s*$/u, "");
   // A hyphen with a space on one or both sides separates parts of the title: "Officer- TVET",

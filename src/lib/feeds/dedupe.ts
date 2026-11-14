@@ -41,7 +41,10 @@ export type DedupeRow = {
  */
 const norm = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
   .replace(/\b(?:no|nob|p|d|g|gs|ns|sb|fs|ics|lica|iica|npsa|ipsa)[ -]?\d+[a-z]?\b/g, " ")
-  .replace(/[^a-z]+/g, " ").trim();
+  .replace(/[^a-z]+/g, " ")
+  // A duration whose number a copy lost ("…, LACRO/3 años" and "…, LACRO", "8 months" and "months").
+  .replace(/\b(?:anos|meses|mois|jours|dias|semanas|days?|weeks?|months?|years?)\b/g, " ")
+  .replace(/\s+/g, " ").trim();
 /** An application link without scheme, "www.", fragment, tracking parameters or trailing slash (its query kept: "?job=123" tells vacancies apart). */
 const linkKey = (u: string | null) => {
   if (!u) return null;
