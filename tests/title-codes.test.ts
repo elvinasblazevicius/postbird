@@ -24,5 +24,8 @@ describe("cleanTitle: codes and sentences", () => {
     ["International Health Consultant (remote with travel for . months)", "International Health Consultant (remote with travel for months)"],
     ["Impact Evaluation Officer", "Impact Evaluation Officer"],
     ["Meal Allowance Clerk", "Meal Allowance Clerk"],
+    ["Oficial de Proyecto WASHNFI Base de Caracas", "Oficial de Proyecto WASH/NFI Base de Caracas"],
+    ["Oficial Técnicoa", "Oficial Técnico/a"],
+    ["Roster of Consultants – ATACH, Seoul, Seoul", "Roster of Consultants – ATACH, Seoul"],
   ])("%s", (raw, clean) => expect(cleanTitle(raw)).toBe(clean));
 });

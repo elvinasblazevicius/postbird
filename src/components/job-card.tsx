@@ -159,7 +159,7 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
           </Link>
         </H>
         <ul className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-sm text-tint-ink">
-          {where !== NOT_SPECIFIED ? <li className={chip}><Flag code={job.country_code} />{where}</li> : null}
+          {where !== NOT_SPECIFIED ? <li className={chip}><Flag code={job.country_code} />{where}</li> : job.is_remote ? null : <li className="text-slate">Duty station not stated</li>}
           {/* The grade is the first thing most applicants check, so it stands out from the other details. */}
           {grade ? <li className="inline-flex items-center rounded-md bg-tint px-2 py-0.5 font-semibold text-ink">{grade}</li> : null}
           {/* Who may apply: local posts (usually nationals only) or internationally recruited grades (Professional, Director, Field Service). */}
@@ -212,7 +212,7 @@ export function JobList({ jobs, headingLevel = 3, mobileLimit, phoneExtra, first
           {i === mentionAt && mentionLine ? (
             <li className="mt-2 flex items-center gap-3 text-[0.9rem] text-slate" data-mentioned-only>
               <span className="h-px flex-1 bg-rule" aria-hidden="true" />
-              <span>{i === 0 ? "No title holds your words: these vacancies mention them in the description" : "Also mentioned in the description"}</span>
+              <span>{i === 0 ? (folded.length === 1 ? "Your words aren't in its title: this vacancy mentions them in the description" : "No title holds your words: these vacancies mention them in the description") : "Also mentioned in the description"}</span>
               <span className="h-px flex-1 bg-rule" aria-hidden="true" />
             </li>
           ) : null}

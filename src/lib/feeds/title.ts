@@ -96,6 +96,11 @@ export function cleanTitle(raw: string): string {
     // A number a feed dropped from a date or duration ("… Alianzas para el" from "… para el 2027", "for . months").
     .replace(/\s+\.\s+(?=(?:days?|weeks?|months?|years?)\b)/gi, " ")
     .replace(/(?:\s+(?:para|de|del|el|la|las|los|en|for|of|the|and|in|to|y|et|du|des|le))+\s*$/i, "")
+    // A slash a feed dropped: "WASHNFI" (WASH/NFI), "Técnicoa" (Técnico/a).
+    .replace(/\bWASHNFI\b/g, "WASH/NFI")
+    .replace(/\b(T[ée]cnico|M[ée]dico|Psic[óo]logo|Abogado|Ingeniero|Licenciado|Encargado|Asociado)a\b/gu, "$1/a")
+    // A city written twice ("Seoul, Seoul").
+    .replace(/\b(\p{Lu}[\p{L}-]{2,20}),\s*\1\b/gu, "$1")
     // A name written twice ("PAHO PAHO Consultant").
     .replace(/^(\p{L}{2,12})\s+\1\b/iu, "$1")
     .replace(/\s*,(?:\s*,)+/g, ",")

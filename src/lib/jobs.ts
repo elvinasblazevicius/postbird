@@ -472,7 +472,13 @@ function topicIn(q: string | undefined, weights: "A" | "AC"): Frag | null {
     .filter((t) => /^[a-z0-9]+$/.test(t) && !placeVariants(t).length && !orgNamesForTerm(t).length && !ABBREVIATIONS[t])
     .slice(0, 8);
   if (!terms.length) return null;
-  const query = terms.map((t) => { const one = singular(t); return one !== t ? `(${t}:${weights} | ${one}:${weights})` : `${t}:${weights}`; }).join(" | ");
+  // Word forms count ("agua" finds "aguas", "ingeniero" finds "Ingeniería", "finance" finds "financial"):
+  // a word of six letters or more without its last vowel, as a prefix.
+  const stem = (t: string) => (t.length >= 6 ? t.replace(/[aeiou]$/, "") : t);
+  const query = terms.map((t) => {
+    const forms = [...new Set([t, singular(t)])].map((w) => `${stem(w)}:*${weights}`);
+    return forms.length > 1 ? `(${forms.join(" | ")})` : forms[0];
+  }).join(" | ");
   return sql`(j.search_folded @@ to_tsquery('simple', ${query}))`;
 }
 

@@ -16,10 +16,25 @@ import { factsFromPage } from "./vacancy-page";
 import { isUnitCode, placeFromTitle, knownOrgByAtsPath, knownOrgByHost, knownOrgByName, knownOrgFromTitle, normalizeGrade, orgFromTitleAndLink, toOrgRef, withoutTrailingPlace } from "./extract";
 import { cleanTitle, stripOrgFromTitle } from "./title";
 
-export type TidyResult = { checked: number; titles: number; employers: number; descriptions: number; grades: number; places: number; lines: string[] };
+export type TidyResult = { checked: number; titles: number; employers: number; descriptions: number; grades: number; places: number; links: number; lines: string[] };
+
+/**
+ * Employers whose vacancy page can be built from the vacancy number the listing's text gives, used
+ * when a copy's application link points elsewhere (a job board's copy whose only employer link was
+ * WHO's diversity page, say): "Team Lead (Pharmacovigilance) (2604518)".
+ */
+const VACANCY_PAGES: { org: RegExp; onPage: RegExp; id: RegExp; url: (id: string) => string }[] = [
+  {
+    org: /^(world health organization|who)$/i,
+    onPage: /careers\.who\.int\/careersection\/[^?]*jobdetail\.ftl\?(?:[^#]*&)?job=\d{6,8}/i,
+    id: /\((\d{7})\)/,
+    url: (id) => `https://careers.who.int/careersection/ex/jobdetail.ftl?job=${id}`,
+  },
+];
 
 export async function tidyListings({ dryRun = false }: { dryRun?: boolean } = {}): Promise<TidyResult> {
-  const out: TidyResult = { checked: 0, titles: 0, employers: 0, descriptions: 0, grades: 0, places: 0, lines: [] };
+  const out: TidyResult = { checked: 0, titles: 0, employers: 0, descriptions: 0, grades: 0, places: 0, links: 0, lines: [] };
+  await tidyApplyLinks(out, dryRun);
   // Places first: a title's trailing place ("…, Maseru – Lesotho") is read before the title clean-up drops it.
   await tidyPlaces(out, dryRun);
   await tidyTitlesAndEmployers(out, dryRun);
@@ -107,5 +122,22 @@ async function tidyPlaces(out: TidyResult, dryRun: boolean) {
     out.places++;
     out.lines.push(`#${r.id}: place "${[f.city, f.countryCode, f.locationText].filter(Boolean).join(" | ")}"`);
     if (!dryRun) await sql`update jobs set country_code = ${f.countryCode ?? null}, city = ${f.city ?? null}, location_text = ${f.locationText ?? null}, updated_at = now() where id = ${r.id}`;
+  }
+}
+
+async function tidyApplyLinks(out: TidyResult, dryRun: boolean) {
+  const rows = await sql<{ id: number; title: string; apply_url: string | null; description_html: string | null; org_name: string | null; org_short: string | null }[]>`
+    select j.id::int, j.title, j.apply_url, j.description_html, o.name as org_name, o.short_name as org_short
+      from jobs j join organizations o on o.id = j.organization_id
+     where j.status = 'active' and not j.is_demo`;
+  for (const r of rows) {
+    const rule = VACANCY_PAGES.find((v) => v.org.test(r.org_name ?? "") || v.org.test(r.org_short ?? ""));
+    if (!rule || (r.apply_url && rule.onPage.test(r.apply_url))) continue;
+    const id = (r.description_html ?? "").match(rule.id)?.[1] ?? r.title.match(rule.id)?.[1];
+    if (!id) continue;
+    const url = rule.url(id);
+    out.links++;
+    out.lines.push(`#${r.id}: apply link ${r.apply_url ?? "-"} → ${url}`);
+    if (!dryRun) await sql`update jobs set apply_url = ${url}, apply_host = ${new URL(url).hostname}, updated_at = now() where id = ${r.id}`;
   }
 }

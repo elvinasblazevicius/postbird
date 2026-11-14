@@ -36,6 +36,28 @@ describe("findDuplicates", () => {
       row(777, { title: "Health Innovation Consultant, UNICEF Office of Innovation (OOI)", apply_url: "https://jobs.unicef.org/cw/en-us/job/596957", country_code: null }),
     ])]).toEqual([[852, 777]]);
   });
+  it("matches a bare copy of a long title, and two copies with the same closing date and country", () => {
+    const t = "Junior Electrical Systems Asset Manager";
+    expect([...findDuplicates([
+      row(1239, { title: t, apply_url: "https://jobs.smartrecruiters.com/CERN/744000163511846", country_code: "CH", deadline: "2026-12-03" }),
+      row(1257, { title: t, apply_url: "https://careers.cern/jobs/en-el-mo-2026-253-grae-2/", country_code: null }),
+    ])]).toEqual([[1257, 1239]]);
+    expect(findDuplicates([row(1, { title: "Agronomist", country_code: null }), row(2, { title: "Agronomist", country_code: "IT", deadline: "2026-12-01" })]).size).toBe(0);
+    expect([...findDuplicates([
+      row(1337, { title: "Education Officer, (NO-1), Chilpancingo, Guerrero", apply_url: "https://jobs.unicef.org/jobs/education-officer-no-1-ta-364-days-00138514-chilpancingo", country_code: "MX", deadline: "2026-11-22" }),
+      row(1310, { title: "Education Officer, Chilpancingo, Guerrero", apply_url: "https://jobs.unicef.org/cw/en-us/job/596992", country_code: "MX", deadline: "2026-11-22" }),
+    ])]).toEqual([[1337, 1310]]);
+  });
+  it("matches a vacancy number in a title, and one number on a recruitment site shared by two employers", () => {
+    expect(findDuplicates([
+      row(1, { title: "National consultant, First Foods Action Plan, 596955", apply_url: "https://jobs.unicef.org/cw/en-us/job/596955" }),
+      row(2, { title: "National consultant – First Foods Action Plan 596955", apply_url: "https://jobs.unicef.org/jobs/national-consultant-first-foods-sierra-leone" }),
+    ]).size).toBe(1);
+    expect(findDuplicates([
+      row(1248, { organization_id: 1, title: "Communications Analyst", apply_url: "https://estm.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/requisitions/job/38070" }),
+      row(1277, { organization_id: 2, title: "Communications Analyst", apply_url: "https://estm.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/38070" }),
+    ]).size).toBe(1);
+  });
   it("reads titles without numbers or grade codes", () => {
     expect([...findDuplicates([
       row(1, { title: "Education Officer, (NO-1), Chilpancingo, Guerrero", source_host: "unjobnet.org", deadline: "2026-11-22" }),

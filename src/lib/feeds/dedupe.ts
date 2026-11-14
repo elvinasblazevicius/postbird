@@ -63,6 +63,10 @@ const withinSite = (a: string | null, b: string | null) => {
   const [x, y] = [linkKey(a), linkKey(b)];
   return Boolean(x && y && (x.startsWith(`${y}/`) || y.startsWith(`${x}/`)));
 };
+/** A title long enough to name one vacancy ("Education Officer, Chilpancingo, Guerrero"), not a common post ("E T Consultant", "Agronomist"). */
+const specific = (t: string) => norm(t).split(" ").filter((w) => w.length > 1).length >= 4;
+/** A copy with neither a closing date nor a place: nothing in it tells it apart from a fuller copy. */
+const bare = (r: DedupeRow) => r.deadline === null && r.country_code === null;
 const fits = <T,>(a: T | null, b: T | null) => a === null || b === null || a === b;
 /** Closing dates that agree: the same, one missing, or a day apart (the same date read in two time zones). */
 const datesFit = (a: string | null, b: string | null) => a === null || b === null || Math.abs(Date.parse(a) - Date.parse(b)) <= 86_400_000;
@@ -71,6 +75,8 @@ const datesFit = (a: string | null, b: string | null) => a === null || b === nul
  * recruitment-system link ("…_JR128362"), and the number the link ends with or passes as the job
  * ("/job/38070", "…-596957-sweden", "?job=2604422"; five digits or more, so never a year).
  */
+/** The vacancy numbers in a listing's link only (see refsOf). */
+const linkRefs = (r: DedupeRow): string[] => refsOf({ ...r, reference: null, title: "" });
 const refsOf = (r: DedupeRow): string[] => {
   const out = new Set<string>();
   const add = (v: string | null | undefined) => {
@@ -78,6 +84,8 @@ const refsOf = (r: DedupeRow): string[] => {
     if (k.length >= 4 && /\d/.test(k)) out.add(k);
   };
   add(r.reference);
+  // A number the employer put in the title ("…, 11 months, 596974"): UNICEF's vacancy number.
+  add(r.title.match(/(?:^|[\s,(#])(\d{6,8})(?=[\s,)]|$)/)?.[1]);
   const u = r.apply_url ?? "";
   add(u.match(/[/_-](JR-?\d{4,}|REQ-?\d{4,}|R-?\d{5,})(?=[/?#_-]|$)/i)?.[1]);
   try {
@@ -113,7 +121,13 @@ export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
   const byRef = new Map<string, DedupeRow>();
   for (const r of [...rows].sort(before)) {
     if (r.organization_id === null) continue;
-    const keys = refsOf(r).map((ref) => `${r.organization_id}|${ref}`);
+    // The employer's number, and the number in a link on the same recruitment site (two employers
+    // sharing one site, UNDP and UNV, still mean one vacancy by one number there).
+    const host = (() => { try { return new URL(r.apply_url ?? "").hostname.replace(/^www\./, ""); } catch { return null; } })();
+    const keys = [
+      ...refsOf(r).map((ref) => `${r.organization_id}|${ref}`),
+      ...(host ? linkRefs(r).map((ref) => `@${host}|${ref}`) : []),
+    ];
     // The same number: the same vacancy even when the copies' closing dates differ (the employer's copy's date is kept).
     const kept = keys.map((k) => byRef.get(k)).find((k) => k && fits(k.country_code, r.country_code));
     if (kept) {
@@ -138,7 +152,10 @@ export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
         ((linkKey(k.apply_url) !== null && linkKey(k.apply_url) === linkKey(r.apply_url)) ||
          (ownCopies === 1 && fromBoard(k) !== fromBoard(r)) ||
          // A copy that links only to a careers page or a guide adds nothing to one with the same title.
-         linkKey(r.apply_url) === null || linkKey(k.apply_url) === null || withinSite(k.apply_url, r.apply_url)));
+         linkKey(r.apply_url) === null || linkKey(k.apply_url) === null || withinSite(k.apply_url, r.apply_url) ||
+         // A long, specific title: a bare copy (no closing date, no place) of a fuller one, or two copies
+         // with the same closing date and country (one vacancy read from two of the employer's feeds).
+         (specific(r.title) && (bare(r) || bare(k) || (r.deadline !== null && r.deadline === k.deadline && r.country_code !== null && r.country_code === k.country_code)))));
       if (same) {
         out.set(r.id, same.id);
         // The kept copy takes the closing date and place the other one had (it is checked against the next copies too).
