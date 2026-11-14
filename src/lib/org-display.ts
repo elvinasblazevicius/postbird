@@ -20,3 +20,15 @@ export function orgDisplayName(name: string, short?: string | null): string {
   const s = short ?? known?.short ?? null;
   return s && isAcronym(s) && !name.includes(s) ? `${name} (${s})` : name;
 }
+
+/**
+ * The name on a vacancy card, where one line is all there is room for: the full name with its
+ * abbreviation when that fits ("Inter-American Development Bank (IDB)"), else the abbreviation
+ * people know it by ("UNICEF", "IFRC"), else the full name (cut short by the card).
+ */
+export function orgCardName(name: string, short?: string | null, max = 38): string {
+  const full = orgDisplayName(name, short);
+  if (full.length <= max) return full;
+  const abbr = full.match(/\(([^()]+)\)$/)?.[1];
+  return abbr && isAcronym(abbr) ? abbr : full;
+}

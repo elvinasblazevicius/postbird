@@ -9,7 +9,7 @@ import { SaveButton } from "./job-tools";
 import { daysUntil, formatShortDate, jobPath, locationLabel, NOT_SPECIFIED } from "@/lib/site";
 import { ApplyLink } from "./tracking";
 import { applyLinkKind } from "@/lib/apply-link";
-import { orgDisplayName } from "@/lib/org-display";
+import { orgCardName, orgDisplayName } from "@/lib/org-display";
 
 export function Tag({ children, tone = "plain" }: { children: React.ReactNode; tone?: "plain" | "lilac" | "remote" | "signal" | "demo" }) {
   const tones = {
@@ -117,10 +117,13 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
   const grade = displayGrade(job);
   const where = locationLabel(job);
   // "Nationals of Kenya only" for National Officer posts, "Local post · Kenya" for other local posts (localOnlyLabel).
-  const localLabel = localOnlyLabel(job, countryByCode(job.country_code)?.name);
+  const countryName = countryByCode(job.country_code)?.name;
+  // The country is already on the place pill: "Local post", not "Local post · Colombia" beside "Colombia".
+  const localLabel = localOnlyLabel(job, countryName)?.replace(countryName ? ` · ${countryName}` : "\u0000", "") ?? null;
   const posted = postedMarker(job);
-  // Plain details (no boxes), so the card stays calm; only the grade is set apart.
-  const chip = "inline-flex items-center gap-1.5";
+  // The facts as small outlined pills, one look for all; the grade and who may apply are filled, as the facts applicants check first.
+  const pill = "inline-flex items-center gap-1.5 rounded-full border border-rule px-2.5 py-0.5 text-[0.8125rem] leading-5 text-ink";
+  const filled = "inline-flex items-center rounded-full px-2.5 py-0.5 text-[0.8125rem] leading-5";
   const details = [
     job.job_type,
     job.is_remote && where !== "Remote" ? "Remote" : null,
@@ -136,10 +139,10 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
       <div className="flex flex-col gap-2.5 @min-[44rem]:flex-row @min-[44rem]:items-start @min-[44rem]:gap-5">
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         {/* Narrow card: room on the right for the bookmark in the card's corner. */}
-        <p className="flex min-h-[2.25rem] flex-wrap content-center items-center gap-x-2 gap-y-1 pr-12 text-sm leading-snug @min-[44rem]:min-h-0 @min-[44rem]:pr-0">
+        <p className="flex min-h-[2.25rem] items-center gap-x-2 pr-12 text-sm leading-snug @min-[44rem]:min-h-0 @min-[44rem]:pr-0 [&>*:not(:first-child)]:shrink-0">
           {/* No employer name when the source gives none (the listing on the employer's site has it): nothing guessed here. */}
-          {job.org_name ? <span className="font-bold text-ink">{orgDisplayName(job.org_name, job.org_short)}</span> : null}
-          {posted?.fresh ? <span className="rounded-md bg-[#ffe680] px-2 py-0.5 text-[0.8125rem] font-bold text-ink">New</span> : null}
+          {job.org_name ? <span className="min-w-0 truncate font-semibold text-slate" title={orgDisplayName(job.org_name, job.org_short)}>{orgCardName(job.org_name, job.org_short)}</span> : null}
+          {posted?.fresh ? <span className="rounded-full bg-[#ffe680] px-2.5 py-0.5 text-[0.75rem] font-bold leading-5 text-ink">New</span> : null}
           {job.is_demo ? <Tag tone="demo">Demo data</Tag> : null}
         </p>
         <H className="font-sans text-[1.1rem] font-bold leading-snug tracking-normal text-ink">
@@ -148,19 +151,19 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
             {job.title}
           </Link>
         </H>
-        <ul className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-sm text-tint-ink">
-          {where !== NOT_SPECIFIED ? <li className={chip}><Flag code={job.country_code} />{where}</li> : job.is_remote ? null : <li className="text-slate">Duty station not stated</li>}
+        <ul className="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm">
+          {where !== NOT_SPECIFIED ? <li className={pill}><Flag code={job.country_code} />{where}</li> : job.is_remote ? null : <li className="px-1 text-[0.8125rem] text-slate">Duty station not stated</li>}
           {/* The grade is the first thing most applicants check, so it stands out from the other details. */}
-          {grade ? <li className="inline-flex items-center rounded-md bg-tint px-2 py-0.5 font-semibold text-ink">{grade}</li> : null}
+          {grade ? <li className={`${filled} bg-tint font-semibold text-ink`}>{grade}</li> : null}
           {/* Who may apply: local posts (usually nationals only) or internationally recruited grades (Professional, Director, Field Service). */}
-          {localLabel ? <li className="inline-flex items-center font-medium text-due-mid-ink">{localLabel}</li>
-            : job.grade && /^(P|D|FS)-/.test(job.grade) ? <li className="inline-flex items-center font-medium text-accent">International post</li> : null}
-          {details.map((d) => <li key={d} className={chip}>{d}</li>)}
-          {posted && !posted.fresh ? <li className="inline-flex items-center py-0.5 text-slate"><span className="sr-only">Posted </span>{posted.text}</li> : null}
+          {localLabel ? <li className={`${filled} bg-due-mid-bg font-medium text-due-mid-ink`}>{localLabel}</li>
+            : job.grade && /^(P|D|FS)-/.test(job.grade) ? <li className={`${filled} bg-sky-wash font-medium text-accent`}>International post</li> : null}
+          {details.map((d) => <li key={d} className={pill}>{d}</li>)}
+          {posted && !posted.fresh ? <li className="px-1 text-[0.8125rem] text-slate"><span className="sr-only">Posted </span>{posted.text}</li> : null}
         </ul>
       </div>
       {/* Narrow card: date and Apply side by side (stacked on a phone). Wide card: one above the other at the same width, bookmark beside the date. */}
-      <div className="grid grid-cols-1 gap-2 @min-[26rem]:grid-cols-2 @min-[44rem]:w-[20rem] @min-[44rem]:shrink-0 @min-[44rem]:grid-cols-[minmax(0,1fr)_2.75rem] @min-[44rem]:gap-x-2.5">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch gap-2 @min-[44rem]:w-[20rem] @min-[44rem]:shrink-0 @min-[44rem]:grid-cols-[minmax(0,1fr)_2.75rem] @min-[44rem]:gap-x-2.5">
         <div className="grid @min-[44rem]:col-start-1 @min-[44rem]:row-start-1"><DeadlineBox deadline={job.deadline} jobId={job.id} /></div>
         <span className="absolute right-2.5 top-2.5 @min-[44rem]:static @min-[44rem]:col-start-2 @min-[44rem]:row-start-1 @min-[44rem]:self-start">
           <SaveButton compact job={{ id: job.id, path: href, title: job.title, org: job.org_name }} />
@@ -170,7 +173,7 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
           <ApplyLink
             href={job.apply_url}
             jobId={job.id}
-            className="group/apply relative z-10 inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] bg-brand px-4 text-[0.95rem] font-bold text-white hover:bg-accent active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent @min-[44rem]:col-start-1 @min-[44rem]:row-start-2"
+            className="group/apply relative z-10 inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] bg-brand px-5 text-[0.95rem] font-bold text-white hover:bg-accent active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent @min-[44rem]:col-start-1 @min-[44rem]:row-start-2"
           >
             {applyLinkKind(job.apply_url, job.title) === "homepage" ? "Careers site" : "Apply"}
             <span className="sr-only">: {job.title}{job.org_name ? `, ${job.org_name}` : ""} (opens the employer&apos;s site in a new tab)</span>
