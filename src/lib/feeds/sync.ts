@@ -5,6 +5,7 @@
 import { IMPORT_SETTINGS } from "@/config/import";
 import { sql } from "@/lib/db";
 import { removeDuplicateListings } from "./dedupe";
+import { tidyListings } from "./tidy";
 import type { RawItem } from "./parse";
 import { normalizeItem, ItemSkipped, type ContentPolicy, type NormalizedJob } from "./extract";
 import { parseFeed, FeedParseError } from "./parse";
@@ -581,6 +582,15 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
     await sql`
       update jobs set status = 'removed', removed_reason = 'Links to a funder page, not the vacancy', updated_at = now()
       where status = 'active' and (apply_host = 'jica.go.jp' or apply_host like '%.jica.go.jp')`;
+    // The import's current rules again over every open listing (titles, employers, board text, grades,
+    // places from the description), so a rule added later reaches what is already listed (src/lib/feeds/tidy.ts).
+    try {
+      const t = await tidyListings();
+      const parts = [t.titles && `${t.titles} titles`, t.employers && `${t.employers} employers`, t.descriptions && `${t.descriptions} descriptions`, t.grades && `${t.grades} grades`, t.places && `${t.places} places`].filter(Boolean);
+      if (parts.length) notes.push(`Tidied open listings: ${parts.join(", ")}.`);
+    } catch (e) {
+      notes.push(`Listings were not tidied: ${(e as Error).message}`);
+    }
     // The same vacancy from the employer's feed and from a job board: one listing (src/lib/feeds/dedupe.ts).
     try {
       const dups = await removeDuplicateListings();

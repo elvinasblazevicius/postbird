@@ -438,6 +438,18 @@ function placeOnly(segment: string): { countries: string[]; city: string | null 
   return { countries, city };
 }
 
+/** The place a title's last parts name ("Officer (NO-3), Maseru – Lesotho"): country code, city and the part as written. */
+export function placeFromTitle(title: string): { countryCode: string | null; city: string | null; locationText: string } | null {
+  for (const seg of titleTailSegments(title)) {
+    const place = placeOnly(seg);
+    if (place && (place.countries.length === 1 || place.city)) {
+      const city = place.city;
+      return { countryCode: place.countries.length === 1 ? place.countries[0] : city ? DUTY_STATIONS[city] ?? null : null, city, locationText: seg };
+    }
+  }
+  return null;
+}
+
 /**
  * The title without a last part that only repeats where the post is ("Youth Participation Intern,
  * 6 months – Eswatini (formerly Swaziland), Eswatini"): the card shows the place anyway.

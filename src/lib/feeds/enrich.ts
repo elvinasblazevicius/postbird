@@ -337,9 +337,14 @@ async function aiFillGaps(r: EnrichResult): Promise<void> {
     select id::int as id, title, apply_url, apply_host, deadline::text as deadline, country_code, location_text, job_type, grade,
            min_experience_years, languages, page_attempts, description_html, ai_checked_at, organization_id::int as organization_id, page_text
       from jobs
-     where status = 'active' and not is_demo and ai_checked_at is null and page_checked_at is not null
-       and (deadline is null or (country_code is null and location_text is null) or job_type is null or grade is null or organization_id is null)
-     order by first_seen_at desc
+     where status = 'active' and not is_demo and page_checked_at is not null
+       and ((ai_checked_at is null
+             and (deadline is null or (country_code is null and location_text is null) or job_type is null or grade is null or organization_id is null))
+         -- Still without an employer or a place a week after the AI's last look: it looks again (the rules for
+         -- accepting its answer get better; a listing missing only a closing date or grade is not asked twice).
+         or (ai_checked_at < now() - interval '7 days'
+             and (organization_id is null or (country_code is null and coalesce(location_text, '') = '' and coalesce(is_remote, false) = false))))
+     order by ai_checked_at nulls first, first_seen_at desc
      limit ${room}`;
   const started = Date.now();
   const queue = [...jobs];

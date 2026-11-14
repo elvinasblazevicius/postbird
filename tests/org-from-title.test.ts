@@ -25,3 +25,12 @@ describe("linkNamesOrg", () => {
     expect(linkNamesOrg("https://apply.workable.com/ciff/j/1", "UNICEF")).toBe(false);
   });
 });
+
+import { placeFromTitle } from "@/lib/feeds/extract";
+describe("placeFromTitle", () => {
+  it("reads a trailing place", () => {
+    expect(placeFromTitle("Technology for Development Specialist (NO-3), Maseru – Lesotho, ESAR")?.countryCode).toBe("LS");
+    expect(placeFromTitle("Finance Officer – Nairobi")?.countryCode).toBe("KE");
+    expect(placeFromTitle("Finance Officer")).toBeNull();
+  });
+});
