@@ -12,6 +12,8 @@
   --highlight: #ffd23f;
   --ink: #0b1f3a;
   --paper: #ffffff;
+  /* The page behind cards and panels: a barely-there cool tint, so white cards stand off it. */
+  --page: #f4f7fb;
   /* Light sky tints: the page's quiet surfaces and hairlines. */
   --mist: #f3f9ff;
   --rule: #d6e6f5;
@@ -79,7 +81,7 @@ html {
 }
 
 body {
-  background: var(--paper);
+  background: var(--page);
   color: var(--ink);
   font-family: var(--font-sans);
   font-feature-settings: "kern", "liga";

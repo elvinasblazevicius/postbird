@@ -137,7 +137,7 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
     posted && !posted.fresh ? posted.text : null,
   ].filter((x): x is string => Boolean(x));
   return (
-    <article className="group relative rounded-xl border border-[#bccfe5] bg-paper px-4 py-3.5 shadow-[0_1px_3px_rgba(11,31,58,0.08)] transition-[border-color,box-shadow] duration-150 hover:border-sky-rule hover:shadow-[0_4px_14px_rgba(11,99,206,0.10)]">
+    <article className="group relative rounded-xl border border-[#d3e0ee] bg-paper px-4 py-3.5 shadow-[0_1px_3px_rgba(11,31,58,0.08)] transition-[border-color,box-shadow] duration-150 hover:border-sky-rule hover:shadow-[0_4px_14px_rgba(11,99,206,0.10)]">
       <span className="absolute right-2.5 top-2.5">
         <SaveButton compact job={{ id: job.id, path: href, title: job.title, org: job.org_name }} />
       </span>
