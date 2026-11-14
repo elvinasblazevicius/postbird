@@ -96,12 +96,13 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
   }
   const ownLabel = own && all.items.length ? await describeSearch(search!).catch(() => null) : null;
   // The subject and heading speak of "your search" only for a search the example really follows.
-  const yours = Boolean(ownLabel) || !ownEmpty;
   // Without the visitor's search: shown as one saved search, as a subscriber would set it up: the
   // field of work most of these new listings are in (a handful of matches, not every new vacancy).
   const counts = new Map<string, number>();
   if (!ownLabel) for (const j of all.items) if (j.category && j.category !== "other") counts.set(j.category, (counts.get(j.category) ?? 0) + 1);
   const topCategory = ownLabel ? null : [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  // "Your search" only for a search the example really follows: the visitor's own, or the one it shows as an example search.
+  const yours = Boolean(ownLabel) || Boolean(topCategory);
   const inSearch = topCategory ? all.items.filter((j) => j.category === topCategory) : all.items;
   const found = topCategory ? { items: inSearch, total: inSearch.length } : all;
   const jobs = pickRows(found.items);
