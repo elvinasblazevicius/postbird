@@ -4,6 +4,7 @@
  */
 import { IMPORT_SETTINGS } from "@/config/import";
 import { sql } from "@/lib/db";
+import { removeDuplicateListings } from "./dedupe";
 import type { RawItem } from "./parse";
 import { normalizeItem, ItemSkipped, type ContentPolicy, type NormalizedJob } from "./extract";
 import { parseFeed, FeedParseError } from "./parse";
@@ -572,6 +573,25 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
     await sql`
       update jobs set status = 'removed', removed_reason = 'Links to a job board, not the employer', updated_at = now()
       where status <> 'removed' and (apply_host = any(${LISTING_HOSTS}) or apply_host like any(${LISTING_HOSTS.map((h) => `%.${h}`)}))`;
+
+    // A funder's programme page taken for the application link (a JICA-funded UN Volunteer post
+    // linking to JICA's page about the scheme, see FUNDER_PAGES in employer-link.ts): not the employer's.
+    await sql`
+      update jobs set status = 'removed', removed_reason = 'Links to a funder page, not the vacancy', updated_at = now()
+      where status = 'active' and (apply_host = 'jica.go.jp' or apply_host like '%.jica.go.jp')`;
+    // The same vacancy from the employer's feed and from a job board: one listing (src/lib/feeds/dedupe.ts).
+    try {
+      const dups = await removeDuplicateListings();
+      if (dups) notes.push(`${dups} duplicate listings of the same vacancy taken down.`);
+    } catch (e) {
+      notes.push(`Duplicates were not checked: ${(e as Error).message}`);
+    }
+    // Placeholders a source puts where the place should be ("UNAVAILABLE, India"): no city rather than a wrong one.
+    await sql`
+      update jobs set city = null,
+             location_text = nullif(btrim(regexp_replace(location_text, '^\s*(unavailable|n/?a|tbd|tbc)\s*,?\s*', '', 'i')), ''),
+             updated_at = now()
+      where status = 'active' and city ~* '^\s*(unavailable|n/?a|tbd|tbc)\s*$'`;
 
     // Expire / archive / clean up
     const expired = await sql`

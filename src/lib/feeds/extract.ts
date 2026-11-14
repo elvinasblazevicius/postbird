@@ -10,6 +10,7 @@ import { DUTY_STATIONS } from "@/config/cities";
 import { KNOWN_ORGS, type KnownOrg } from "@/config/organizations";
 import { LANGUAGE_ALIASES, LANGUAGES } from "@/config/regions";
 import { IMPORT_SETTINGS } from "@/config/import";
+import { stripBoardText } from "@/lib/board-text";
 import { escapeRegExp, excerpt, htmlToText, normalizeForCompare, oneLine, sanitizeDescriptionMax, slugify } from "@/lib/text";
 import { extractDeadline, parseFeedDate } from "./dates";
 import type { RawItem } from "./parse";
@@ -233,13 +234,16 @@ const EU_TITLE_GRADE_RE = new RegExp(`\\b(${EU_GRADE_SOURCE})\\b`);
 
 /** A grade as stored: "P-3", "NO-B", "USG", "AD-6", "AST/SC-2", "FG-IV", "GG" (see gradeText in src/lib/grades.ts). */
 export function normalizeGrade(g: string): string {
-  const u = g.toUpperCase().replace(/\s+/g, " ").trim();
+  let u = g.toUpperCase().replace(/\s+/g, " ").trim();
+  // A "range" of one grade: "A6 - A6" is A6.
+  const same = u.match(/^(\S+) ?[-–] ?(\S+)$/);
+  if (same && same[1] === same[2]) u = same[1];
   const sc = u.match(/^AST ?[/-] ?SC ?-? ?([1-6])$/);
   if (sc) return `AST/SC-${sc[1]}`;
   const eu = u.match(/^(AD|AST|FG) ?-? ?(\d{1,2}|IV|I{1,3})$/);
   if (eu) return `${eu[1]}-${eu[2]}`;
   if (/^G[A-K]$/.test(u)) return u;
-  const m = u.match(/^(USG|ASG|NO|GS|FS|SB|LICA|NPSA|IPSA|ICS|D|P|G)-?(\w+)$/);
+  const m = u.match(/^(USG|ASG|NO|GS|FS|SB|LICA|NPSA|IPSA|ICS|D|P|G)[- ]?(\w+)$/);
   if (!m) return u;
   if (m[1] === "USG" || m[1] === "ASG") return m[1];
   return `${m[1]}-${m[2]}`;
@@ -402,7 +406,7 @@ const REMOTE_RE = /\b(remote|home[- ]?based|work from home|working from home|tel
 
 /** Names that are also common words, US states or personal names: trusted only in labelled fields. */
 const AMBIGUOUS_PLACES = new Set(["georgia", "jordan", "chad", "guinea", "niger", "mali", "turkey", "panama", "lebanon"]);
-const PLACEHOLDER_RE = /\b(tbd|tba|to be (?:determined|confirmed)|n\/?a|various|multiple|several|any|office|country office|headquarters|hq|field|global|worldwide|anywhere)\b/i;
+const PLACEHOLDER_RE = /\b(unavailable|not available|tbd|tba|to be (?:determined|confirmed)|n\/?a|various|multiple|several|any|office|country office|headquarters|hq|field|global|worldwide|anywhere)\b/i;
 
 /**
  * A title segment counts as a place only if it consists of place names and
@@ -664,7 +668,8 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   }
   if (policy === "full" && bodyHtml) {
     // Capped without breaking the markup (a plain slice could cut a tag in half or leave tags open).
-    const cleaned = sanitizeDescriptionMax(bodyHtml, 60_000);
+    // Without what a job board added to the employer's text (src/lib/board-text.ts).
+    const cleaned = stripBoardText(sanitizeDescriptionMax(bodyHtml, 60_000));
     descriptionHtml = cleaned.length > 20 ? cleaned : null;
   }
 

@@ -296,10 +296,11 @@ export async function JobsBrowser({
       <div hidden data-alert-search={generalAlert ? "" : alertSearch} />
       <section aria-labelledby="results-heading">
         {chips.length ? (
-          <div className="mb-4">
+          // On phones the keyword is already in the search box above: its chip is left out there (and the row, when it is the only one).
+          <div className={`mb-4 ${chips.every((c) => c.key === "q") ? "max-lg:hidden" : ""}`}>
             <ul className="flex flex-wrap gap-2" aria-label="Filters in use">
               {chips.map((c) => (
-                <li key={c.label}><ChipLink chip={c} /></li>
+                <li key={c.label} className={c.key === "q" ? "max-lg:hidden" : undefined}><ChipLink chip={c} /></li>
               ))}
             </ul>
           </div>

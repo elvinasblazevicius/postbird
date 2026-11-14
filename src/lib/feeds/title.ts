@@ -55,6 +55,13 @@ export function cleanTitle(raw: string): string {
   t = t.replace(/^[A-Z]{2,5}\s?(?:19|20)\d\d\s?[-/]?\s?\d{2,4}\s*[|:–—-]\s*/, "");
   // "The European Union Delegation to Kazakhstan is looking for: Accounts Clerk": the role only.
   t = t.replace(/^.{3,140}?\bis\s+(?:looking\s+for|recruiting|hiring)\s*(?:an?\s+)?:\s*/i, "");
+  // "Prosper Global is looking for Country Director." (no colon): the role only, without the full stop.
+  t = t.replace(/^\p{Lu}[\p{L}&.' -]{1,60}?\s+is\s+(?:looking\s+for|recruiting|hiring|seeking)\s+(?:an?\s+)?(?=\p{Lu})/u, "").replace(/(?<=\p{L}|\))\.$/u, "");
+  // Internal vacancy codes written into the title: "VA26P197V01 Project Manager", "SVN2026041_Senior Project
+  // Associate", "VN-EC017-2026-M&E Monitoring…", "K26373 Field Research Coordinator", "IRS26375 Seed Systems Specialist".
+  t = t
+    .replace(/^(\S+\s+)?(?:[A-Z]{1,4}\d{2}[A-Z]\d{3}[A-Z]\d{2}\s|[A-Z]{2,4}\d{6,8}_|VN-[A-Z]{2}\d{3}-+(?:\d{4}-+)?(?:[A-Z&]+\s)?|[A-Z]{1,3}\d{5}\s)(?=\S)/, (m, org: string | undefined) => org ?? "")
+    .replace(/\s*\(\s*RFP\d+\s*\)/gi, "");
   // "Field Documentation Officer || موثق/ـة ميداني/ـة": keep the Latin-script part.
   if (t.includes("||")) {
     const parts = t.split("||").map((p) => p.trim()).filter(Boolean);

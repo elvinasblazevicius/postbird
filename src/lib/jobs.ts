@@ -1,3 +1,4 @@
+import { stripBoardText } from "@/lib/board-text";
 import { cache } from "react";
 import { ALL_CATEGORIES, categoryBySlug } from "@/config/categories";
 import { countryByCode, countryBySlug } from "@/config/countries";
@@ -772,6 +773,28 @@ export function resetSuggestionVocabulary(): void {
  * over the cached vocabulary; ties go to the alphabetically first word). Returns the corrected
  * search, or null when nothing close was found.
  */
+/**
+ * Spanish and French words for fields of work, with the English words vacancies use (folded, no
+ * accents). Only for "Did you mean": a search never matches a vacancy that doesn't hold its word.
+ */
+const TRANSLATIONS: Record<string, string[]> = {
+  agua: ["water", "wash"], saneamiento: ["sanitation", "wash"], higiene: ["hygiene", "wash"], eau: ["water", "wash"], assainissement: ["sanitation", "wash"],
+  ingeniero: ["engineer"], ingeniera: ["engineer"], ingenieur: ["engineer"], ingenieria: ["engineering"],
+  salud: ["health"], sante: ["health"], medico: ["doctor", "medical"], medecin: ["doctor", "medical"], enfermera: ["nurse"], enfermero: ["nurse"], infirmier: ["nurse"],
+  finanzas: ["finance"], contable: ["accountant", "finance"], comptable: ["accountant", "finance"], contabilidad: ["accounting"], comptabilite: ["accounting"],
+  educacion: ["education"], education: ["education"], proteccion: ["protection"], protection: ["protection"],
+  logistica: ["logistics"], logistique: ["logistics"], adquisiciones: ["procurement"], compras: ["procurement"], achats: ["procurement"],
+  comunicacion: ["communications", "communication"], communication: ["communications"], recursos: ["resources"], humanos: ["human"],
+  pasante: ["intern", "internship"], pasantia: ["internship"], practicas: ["internship"], stagiaire: ["intern"], stage: ["internship"],
+  consultor: ["consultant"], consultora: ["consultant"], consultoria: ["consultancy"],
+  seguridad: ["security"], securite: ["security"], alimentaria: ["food"], nutricion: ["nutrition"], genero: ["gender"], genre: ["gender"],
+  migracion: ["migration"], refugiados: ["refugee", "refugees"], refugies: ["refugee", "refugees"], derechos: ["rights"], droits: ["rights"],
+  monitoreo: ["monitoring"], evaluacion: ["evaluation"], suivi: ["monitoring"], evaluation: ["evaluation"],
+  datos: ["data"], donnees: ["data"], informatica: ["it"], clima: ["climate"], climat: ["climate"], medio: ["environment"], ambiente: ["environment"], environnement: ["environment"],
+  asistente: ["assistant"], coordinador: ["coordinator"], coordinadora: ["coordinator"], coordonnateur: ["coordinator"], especialista: ["specialist"], specialiste: ["specialist"],
+  oficial: ["officer"], responsable: ["manager", "officer"], gerente: ["manager"], director: ["director"], directeur: ["director"],
+};
+
 export async function searchSuggestion(q: string | undefined): Promise<{ q: string; words: string[] } | null> {
   const text = q ? interpretQuery(q).text : null;
   if (!q || !text) return null;
@@ -782,10 +805,12 @@ export async function searchSuggestion(q: string | undefined): Promise<{ q: stri
   const words: string[] = [];
   for (const term of terms) {
     if (vocab.words.has(term)) continue;
+    // A Spanish or French word no vacancy holds: the English word the vacancies use, when one does ("saneamiento" → "sanitation").
+    const english = TRANSLATIONS[term]?.find((w) => vocab.words.has(w));
     const grams = wordTrigrams(term);
-    let best: string | null = null;
+    let best: string | null = english ?? null;
     let bestScore = 0;
-    for (const v of vocab.trigrams) {
+    for (const v of english ? [] : vocab.trigrams) {
       const score = trigramSimilarity(grams, v.grams);
       if (score < TYPO_SUGGEST_SIMILARITY) continue;
       if (score > bestScore || (score === bestScore && best !== null && v.word < best)) {
@@ -874,6 +899,8 @@ export async function getJob(id: number): Promise<JobDetail | null> {
     where j.id = ${id}`;
   const job = rows[0];
   if (!job) return null;
+  // Listings imported before a job board's words were removed at import (src/lib/board-text.ts).
+  if (job.description_html) job.description_html = stripBoardText(job.description_html) || null;
   job.sources = await sql<JobDetail["sources"]>`
     select s.source_title, f.name as feed_name, s.item_url from job_sources s join feeds f on f.id = s.feed_id
     where s.job_id = ${id} order by s.first_seen_at`;

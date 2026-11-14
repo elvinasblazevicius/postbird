@@ -349,7 +349,7 @@ export default async function JobPage({ params }: Props) {
   const updated = <>Listing last updated from our source {formatDate(job.last_seen_at)}.</>;
   // `hideFrom`: the breakpoint from which the page shows Apply in view without it.
   const stickyBar = (hideFrom: "sm:hidden" | "lg:hidden") => (
-    <div className={`sticky bottom-0 z-30 -mx-4 flex items-center gap-3 border-t border-rule bg-paper/95 px-4 py-3 backdrop-blur ${hideFrom}`}>
+    <div className={`sticky bottom-0 z-30 -mx-4 flex items-center gap-3 border-t border-rule bg-paper px-4 py-3 shadow-[0_-2px_8px_rgb(11_31_58/0.08)] ${hideFrom}`}>
       {dl ? <p className={`shrink-0 text-sm ${dl.urgent ? "font-semibold text-signal" : "text-slate"}`}>{dl.text}</p> : null}
       <div className="min-w-0 flex-1">{applyButton}</div>
     </div>

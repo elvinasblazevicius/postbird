@@ -69,7 +69,10 @@ function DeadlineBox({ deadline, jobId }: { deadline: string | null; jobId: numb
 }
 
 /** "New" for a listing posted in the last 48 hours, "3d ago" up to 30 days, nothing after that. */
-export function postedMarker(job: { published_at: Date | null; first_seen_at: Date }, now: number = Date.now()): { text: string; fresh: boolean } | null {
+export function postedMarker(job: { published_at: Date | null; first_seen_at: Date; deadline?: string | Date | null }, now: number = Date.now()): { text: string; fresh: boolean } | null {
+  // Without the employer's posting date, a vacancy that closes within a week was most likely posted
+  // long before we found it: no "New" (or "2d ago") that would suggest otherwise.
+  if (!job.published_at && job.deadline && new Date(job.deadline).getTime() - now < 7 * 86_400_000) return null;
   const posted = new Date(job.published_at ?? job.first_seen_at).getTime();
   if (Number.isNaN(posted)) return null;
   const hours = (now - posted) / 3_600_000;
@@ -134,7 +137,7 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
     posts > 1 ? `${posts} posts` : null,
   ].filter((x): x is string => Boolean(x));
   return (
-    <article className="group @container relative rounded-xl border border-[#bccfe5] bg-paper px-4 py-3.5 shadow-[0_1px_3px_rgba(11,31,58,0.08)] transition-[border-color,box-shadow] duration-150 hover:border-sky-rule hover:shadow-[0_4px_14px_rgba(11,99,206,0.10)] motion-safe:animate-[rise-in_220ms_ease-out_both]">
+    <article className="group @container relative rounded-xl border border-[#bccfe5] bg-paper px-4 py-3.5 shadow-[0_1px_3px_rgba(11,31,58,0.08)] transition-[border-color,box-shadow] duration-150 hover:border-sky-rule hover:shadow-[0_4px_14px_rgba(11,99,206,0.10)]">
       {/* The layout follows the card's own width: side by side in a wide card, stacked in a narrow one (a phone, or a list beside the filters). */}
       <div className="flex flex-col gap-2.5 @min-[44rem]:flex-row @min-[44rem]:items-start @min-[44rem]:gap-5">
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">

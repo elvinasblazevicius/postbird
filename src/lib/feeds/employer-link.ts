@@ -16,6 +16,8 @@ export { isGeneralCareersPage };
 const NOT_ORG_SITES = ["google.com", "googleusercontent.com", "dropbox.com", "onedrive.live.com", "sharepoint.com", "wetransfer.com", "bit.ly", "t.ly", "tinyurl.com"];
 /** UN procurement portal: a link there means a tender, not a job. */
 export const PROCUREMENT_HOSTS = ["ungm.org"];
+/** Programme pages of funders that postings mention (a JICA-funded UN Volunteer post links to JICA's page about the scheme): never the application. */
+const FUNDER_PAGES = ["jica.go.jp"];
 const SOCIAL = ["facebook.com", "twitter.com", "x.com", "instagram.com", "youtube.com", "youtu.be", "tiktok.com", "whatsapp.com", "t.me", "wa.me"];
 
 const JOBISH = /(job|career|vacanc|recruit|apply|application|position|opportunit|requisition|talent|hiring|work(?:ing)?-(?:with|for|at|internationally)|join-?us|emploi|empleo|candidat|postul|\bforms?\b|viewform)/i;
@@ -81,7 +83,7 @@ function linksIn(body: string): Found[] {
 
 function usable(url: string): boolean {
   const host = hostOf(url);
-  if (!host || isAggregatorUrl(url) || isListingSite(host) || endsWithHost(host, SOCIAL)) return false;
+  if (!host || isAggregatorUrl(url) || isListingSite(host) || endsWithHost(host, SOCIAL) || endsWithHost(host, FUNDER_PAGES)) return false;
   if (FILE.test(url) || /[?&](action|module)=download|\/download\b/i.test(url)) return false;
   if (host === "linkedin.com" || host.endsWith(".linkedin.com")) return /\/jobs\/view\//.test(url);
   return true;

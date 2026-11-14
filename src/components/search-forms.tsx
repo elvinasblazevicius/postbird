@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DUTY_STATIONS } from "@/config/cities";
 import { countryBySlug } from "@/config/countries";
 import { KNOWN_ORGS } from "@/config/organizations";
 import { andList, STATED_DETAIL } from "@/lib/filter-labels";
@@ -62,10 +63,19 @@ const withCount = (name: string, count: number) => `${name} (${count})`;
 const chosenPlaces = (f: JobFilters) => [...(f.region ?? []).map((r) => `region-${r}`), ...(f.country ?? [])];
 
 /** Regions first, then countries, with their counts (the type-ahead picker). Places with no vacancies for this search stay offered (count 0). */
+/** Duty-station cities by country code, so typing "Nairobi" or "Geneva" offers Kenya or Switzerland. */
+const CITIES_BY_COUNTRY = Object.entries(DUTY_STATIONS).reduce<Record<string, string[]>>((m, [city, code]) => ((m[code] ??= []).push(city), m), {});
+
 function placeChoices(facets: FacetData): ComboGroup[] {
   return [
     { label: "Regions", options: facets.regions.map((r) => ({ value: `region-${r.slug}`, name: r.name, count: r.count })) },
-    { label: "Countries", options: facets.countries.map((c) => ({ value: c.slug, name: c.name, count: c.count, keys: countryBySlug(c.slug)?.aliases })) },
+    {
+      label: "Countries",
+      options: facets.countries.map((c) => {
+        const country = countryBySlug(c.slug);
+        return { value: c.slug, name: c.name, count: c.count, keys: [...(country?.aliases ?? []), ...(country ? CITIES_BY_COUNTRY[country.code] ?? [] : [])] };
+      }),
+    },
   ];
 }
 
@@ -242,8 +252,22 @@ function GradeChecks({ facets, filters }: { facets: FacetData; filters: JobFilte
             ) : null}
           </li>
         ))}
-        {other.map((x) => <li key={x.grade}>{box(x.grade, gradeText(x.grade), x.count)}</li>)}
+        {other.length ? (
+          // Grades of other organizations' own scales: folded, so the UN and EU groups stay readable.
+          <li>
+            <details data-fold="levels-other" className="group/levels" open={other.some((x) => selected.has(x.grade))}>
+              <summary className="inline-flex cursor-pointer list-none items-center gap-1 py-1 text-[0.95rem] text-ink max-sm:min-h-9 [&::-webkit-details-marker]:hidden">
+                Other organizations&apos; grades <span className="text-slate">({other.reduce((n, x) => n + x.count, 0)})</span>
+                <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 text-accent transition-transform group-open/levels:rotate-180" aria-hidden="true"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+              </summary>
+              <ul className="ml-6 grid grid-cols-2 gap-x-3">
+                {other.map((x) => <li key={x.grade}>{box(x.grade, gradeText(x.grade), x.count)}</li>)}
+              </ul>
+            </details>
+          </li>
+        ) : null}
       </ul>
+      <p className="mt-1 text-xs"><Link href="/grades" className="text-accent underline underline-offset-2">What grades mean</Link></p>
     </fieldset>
   );
 }

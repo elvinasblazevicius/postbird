@@ -192,7 +192,9 @@ const EU_PAY_TITLE_RE = /\b(AD|AST)[ -]?\d{1,2}\b|\bAST[- ]SC\b|\bcontract agent
  * post whose title names an EU staff category. Null when the family isn't known.
  */
 export function payScaleFor(job: { grade: string | null | undefined; title: string | null | undefined; org_type?: string | null }): { family: "UN" | "EU"; label: string; href: string } | null {
-  if ((job.grade && UN_PAY_GRADE_RE.test(job.grade)) || (!job.grade && titleGradeGroup(job.title))) {
+  // Only UN common-system employers pay on the ICSC scales; an NGO or another organization may use the same letters ("P-1" at IUCN).
+  const unSystem = !job.org_type || job.org_type === "UN system";
+  if (unSystem && ((job.grade && UN_PAY_GRADE_RE.test(job.grade)) || (!job.grade && titleGradeGroup(job.title)))) {
     return { family: "UN", label: "ICSC salary scales", href: PAY_SOURCES.icscSalaryScales };
   }
   const euGrade = Boolean(job.grade && EU_GROUPS.has(gradeGroupOf(job.grade) ?? ""));
