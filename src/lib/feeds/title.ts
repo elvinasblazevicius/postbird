@@ -23,7 +23,7 @@ function titleCaseWord(w: string, first: boolean): string {
 const GENDER_TAG = /\s*[([]\s*[fmhwdx]\s*[/|]\s*[fmhwdx](?:\s*[/|]\s*[fmhwdx])?\s*[)\]]/gi;
 
 /** Words kept in capitals when a run of capitalised words is tidied (organizations and common acronyms). */
-const KEEP_CAPS_LISTED = new Set(["NATO", "OSCE", "OECD", "UNDP", "UNICEF", "UNHCR", "UNFPA", "UNOPS", "UNESCO", "UNIDO", "UNEP", "UNRWA", "UNAIDS", "UNFCCC", "UNCTAD", "UNITAR", "UNMISS", "MONUSCO", "MINUSCA", "IFAD", "IAEA", "INTERPOL", "WASH", "LOGFAS", "ECSAT", "ESCB", "EEAS", "EPSO", "IFRC", "ICRC", "OCHA", "OHCHR", "UNHCHR", "MEAL", "GBV", "PSEA", "AVRR", "HIV", "AIDS", "ICTM", "MPOX", "COVID",
+const KEEP_CAPS_LISTED = new Set(["NATO", "OSCE", "OECD", "UNDP", "UNICEF", "UNHCR", "UNFPA", "UNOPS", "UNESCO", "UNIDO", "UNEP", "UNRWA", "UNAIDS", "UNFCCC", "UNCTAD", "UNITAR", "UNMISS", "MONUSCO", "MINUSCA", "IFAD", "IAEA", "INTERPOL", "WASH", "LOGFAS", "ECSAT", "ESCB", "EEAS", "EPSO", "IFRC", "ICRC", "OCHA", "OHCHR", "UNHCHR", "MEAL", "EMOPS", "GBV", "PSEA", "AVRR", "HIV", "AIDS", "ICTM", "MPOX", "COVID",
   "PAHO", "WHO", "WFP", "FAO", "ILO", "IOM", "ITU", "UPU", "WIPO", "WMO", "IMO", "ICAO", "UNV", "UNU", "UNSSC", "ITC", "IFC", "MIGA", "IMF", "EBRD", "EIB", "ADB", "AFDB", "IDB", "CERN", "ESA", "ECB", "GIZ", "NRC", "IRC", "MSF", "CRS", "IDLO",
   "IITA", "ILRI", "ICRISAT", "CIAT", "CIMMYT", "CIP", "IRRI", "IWMI", "ICARDA", "CIFOR", "ICRAF", "CGIAR", "LACRO", "ESARO", "WCARO", "MENARO", "EAPRO", "ECARO",
   "ECLAC", "ESCAP", "ESCWA", "UNECE", "UNECA", "DPPA", "OIOS", "UNMAS", "UNOCT", "UNODC", "UNOV", "UNON", "UNOG", "ICT", "GIS", "SDG", "NGO", "PMU", "PIU", "MEL", "WASH", "HR", "IT"]);
@@ -44,7 +44,8 @@ const KEEP_CAPS = new Set([
 function tidyCapsRuns(t: string): string {
   return t.replace(/\b\p{Lu}[\p{Lu}&'’.-]*(?:\s+\p{Lu}[\p{Lu}&'’.-]*)+\b/gu, (run) => {
     const words = run.split(/\s+/);
-    if (words.filter((w) => w.replace(/[^\p{Lu}]/gu, "").length >= 4 && !KEEP_CAPS.has(w)).length < 2) return run;
+    // A word with no vowels ("PCHP") is an acronym, not shouting.
+    if (words.filter((w) => w.replace(/[^\p{Lu}]/gu, "").length >= 4 && !KEEP_CAPS.has(w) && /[AEIOUY]/.test(w)).length < 2) return run;
     return words.map((w, i) => (KEEP_CAPS.has(w) ? w : titleCaseWord(w, i === 0))).join(" ");
   });
 }

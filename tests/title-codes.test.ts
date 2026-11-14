@@ -39,3 +39,11 @@ describe("stripOrgFromTitle keeps hyphenated names", () => {
     expect(stripOrgFromTitle("UN - Data Analyst", ["UN"])).toBe("Data Analyst");
   });
 });
+
+describe("cleanTitle keeps unit acronyms", () => {
+  it("does not title-case EMOPS PCHP", () => {
+    const t = "Interagency Consultant, UNICEF Office of Emergency Programmes, EMOPS PCHP, Geneva, Switzerland, 7 months (remote)";
+    expect(cleanTitle(t)).toContain("EMOPS PCHP, Geneva");
+    expect(cleanTitle("Officer – ACCOUNTS CLERK LOCAL AGENT")).toContain("Accounts Clerk");
+  });
+});

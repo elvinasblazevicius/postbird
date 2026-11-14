@@ -129,6 +129,17 @@ async function tidyGrades(out: TidyResult, dryRun: boolean) {
  * country but no town, so an employer's posts in several towns can be told apart.
  */
 async function tidyTowns(out: TidyResult, dryRun: boolean) {
+  // A town the title names ("…, Geneva, Switzerland, 7 months"), when it is in the listing's own country.
+  const titled = await sql<{ id: number; title: string; country_code: string }[]>`
+    select id::int, title, country_code from jobs
+     where status = 'active' and not is_demo and country_code is not null and coalesce(city, '') = ''`;
+  for (const r of titled) {
+    const p = placeFromTitle(r.title);
+    if (!p?.city || p.countryCode !== r.country_code || AMBIGUOUS_CITIES.test(p.city)) continue;
+    out.places++;
+    out.lines.push(`#${r.id}: town "${p.city}" (from the title)`);
+    if (!dryRun) await sql`update jobs set city = ${p.city}, updated_at = now() where id = ${r.id}`;
+  }
   const rows = await sql<{ id: number; apply_url: string; country_code: string }[]>`
     select id::int, apply_url, country_code from jobs
      where status = 'active' and not is_demo and country_code is not null and coalesce(city, '') = ''
