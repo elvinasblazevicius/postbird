@@ -384,7 +384,7 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
       <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
         <label>Leave empty<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label>
       </div>
-      {watch ? <div className="mb-6">{watch}</div> : null}
+      {watch ? <div className="mb-4 sm:mb-6">{watch}</div> : null}
       <PlanChoice dark={dark} compact={compact} plan={plan} setPlan={setPlan} />
       <label htmlFor={id("email")} className={`mb-1.5 block text-sm font-medium ${dark ? "text-white/90" : "text-ink"}`}>Email address</label>
       <input id={id("email")} name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} {...warmup.email} />

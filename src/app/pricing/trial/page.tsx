@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertExample } from "@/components/alert-example";
 import { WatchFields } from "@/components/alert-watch-step";
+import { FollowsLabel } from "@/components/follows-label";
 import { CLOSING_SOON_DAYS } from "@/lib/email-templates";
 import { CoverageLine } from "@/components/coverage-line";
 import { MAX_SAVED_SEARCHES } from "@/lib/saved-searches";
@@ -40,6 +41,8 @@ export default async function TrialPage({ searchParams }: Props) {
   const sp = await searchParams;
   const search = searchFromAlertStep(sp);
   const searchLabel = search ? await describeSearch(search) : null;
+  // "Start over with other keywords" from a carried search: the keyword field opens, and the sign-up still counts as from a search.
+  const restart = sp.restart === "search";
   const remind = typeof sp.remind === "string" ? sp.remind : "";
   const remindId = /^\d{1,12}$/.test(remind) ? Number(remind) : null;
   const remindJob = remindId ? await getJob(remindId) : null;
@@ -90,7 +93,7 @@ export default async function TrialPage({ searchParams }: Props) {
         ) : null}
         <div id="alert-signup" className="scroll-mt-24">
           <PremiumInterestForm
-            source={search ? "search-alert" : remindJob ? "deadline-reminder" : "pricing"}
+            source={search || restart ? "search-alert" : remindJob ? "deadline-reminder" : "pricing"}
             search={search ?? undefined}
             remindJobId={remindJob ? remindJob.id : undefined}
             watch={
@@ -99,13 +102,20 @@ export default async function TrialPage({ searchParams }: Props) {
               searchLabel ? (
                 <p className="rounded-xl border border-sky-rule bg-sky-wash px-4 py-3 text-[0.95rem] text-ink">
                   Your daily alerts will follow your search: <strong>{searchLabel}</strong>. You can add up to {MAX_SAVED_SEARCHES} searches after signing up.{" "}
-                  <a href="/pricing/trial#alert-signup" className="font-medium text-accent underline underline-offset-2">Start over with other keywords</a>
+                  <a href="/pricing/trial?restart=search#alert-signup" className="font-medium text-accent underline underline-offset-2">Start over with other keywords</a>
                 </p>
               ) : (
-                <div className="space-y-1.5">
-                  <WatchFields part="keywords" search={null} searchLabel={null} />
-                  <p className="text-sm text-slate">Leave empty for every new vacancy. Add up to {MAX_SAVED_SEARCHES} searches later.</p>
-                </div>
+                // Folded: the plan, the address and the button come first; keywords are one tap away.
+                <details className="group rounded-xl border border-rule" open={restart}>
+                  <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center justify-between gap-x-3 px-4 py-2 text-[0.95rem] text-ink [&::-webkit-details-marker]:hidden">
+                    <span>Alerts follow: <FollowsLabel initial="all new vacancies" /></span>
+                    <span className="font-medium text-accent underline underline-offset-2 group-open:hidden">Add keywords</span>
+                  </summary>
+                  <div className="space-y-1.5 border-t border-rule px-4 pb-4 pt-3">
+                    <WatchFields part="keywords" search={null} searchLabel={null} />
+                    <p className="text-sm text-slate">Leave empty for every new vacancy. Add up to {MAX_SAVED_SEARCHES} searches later.</p>
+                  </div>
+                </details>
               )
             }
           />
