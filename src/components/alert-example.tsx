@@ -87,8 +87,8 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
     searchJobs({ ...(own ?? {}), posted, sort: own?.q ? "relevance" : "newest", page: undefined, hidelocal: own ? own.hidelocal || undefined : kind === "daily" || undefined, excludeDemo: true }, 30).catch(() => ({ items: [] as JobListItem[], total: 0 }));
   // Closing soon follows the search too (the visitor's, or none): its open matches with the soonest published closing dates.
   const closingFor = (f: typeof own) => f
-    ? searchJobs({ ...f, posted: undefined, closing: "7", sort: f.q ? "relevance" : "deadline", page: undefined, excludeDemo: true }, 12).then((r) => r.items).catch(() => [] as JobListItem[])
-    : closingSoonJobs(12).catch(() => [] as JobListItem[]);
+    ? searchJobs({ ...f, posted: undefined, closing: "7", sort: f.q ? "relevance" : "deadline", page: undefined, excludeDemo: true, topicOnly: true }, 12).then((r) => r.items).catch(() => [] as JobListItem[])
+    : closingSoonJobs(80).catch(() => [] as JobListItem[]);
   const [firstTry, closingFirst] = await Promise.all([pick(kind === "daily" ? "1" : "7"), kind === "daily" ? closingFor(own) : Promise.resolve([] as JobListItem[])]);
   let closing = closingFirst;
   let first = firstTry;
@@ -112,15 +112,22 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
   // Professional posts only (no internships or unpaid roles), so the sample shows the kind of job people come for.
   const showcase = (j: JobListItem) => j.job_type !== "Internship" && j.job_type !== "Volunteer" && !/\b(intern(ship)?|unpaid|trainee)\b/i.test(j.title);
   if (!ownLabel) for (const j of all.items) if (j.category && j.category !== "other" && j.category !== "administration" && showcase(j)) counts.set(j.category, (counts.get(j.category) ?? 0) + 1);
-  const topCategory = ownLabel ? null : [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  // Closing soon: vacancies that close in 1 to 3 days (not today: the reminder comes before the day).
+  const closesSoon = (j: JobListItem) => { const d = daysUntil(j.deadline) ?? 99; return !j.is_demo && d >= 1 && d <= CLOSING_SOON_DAYS && (own ? true : !isLocalOnly(j)) && !looksGarbled(j.title); };
+  // The example search is a field of work with enough new posts, preferring one that also has a vacancy
+  // closing soon, so the example shows the reminder section the daily alert is for.
+  const fullest = Math.max(0, ...counts.values());
+  const enough = Math.min(EXAMPLE_ROWS, fullest);
+  const hasSoon = (c: string) => kind === "daily" && closing.some((j) => j.category === c && showcase(j) && closesSoon(j));
+  const topCategory = ownLabel ? null : [...counts.entries()]
+    .sort((a, b) => Number(b[1] >= enough && hasSoon(b[0])) - Number(a[1] >= enough && hasSoon(a[0])) || b[1] - a[1])[0]?.[0] ?? null;
   // "Your search" only for a search the example really follows: the visitor's own, or the one it shows as an example search.
   const yours = Boolean(ownLabel);
   const inSearch = topCategory ? all.items.filter((j) => j.category === topCategory && showcase(j)) : all.items;
   const found = topCategory ? { items: inSearch, total: inSearch.length } : all;
   const jobs = pickRows(found.items, Boolean(own?.q));
-  // Closing soon: vacancies that close in 1 to 3 days (not today: the reminder comes before the day).
   const soon = closing
-    .filter((j) => { const d = daysUntil(j.deadline) ?? 99; return !j.is_demo && d >= 1 && d <= CLOSING_SOON_DAYS && !jobs.some((x) => x.id === j.id) && (own ? true : !isLocalOnly(j)) && (!topCategory || j.category === topCategory) && !looksGarbled(j.title); })
+    .filter((j) => closesSoon(j) && !jobs.some((x) => x.id === j.id) && (!topCategory || (j.category === topCategory && showcase(j))))
     .slice(0, 2);
   const real = jobs.length > 0;
   const n = real ? Math.max(found.total, jobs.length) : ILLUSTRATIVE.length;
@@ -128,7 +135,7 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
   const label = ownLabel
     ? `Your search: ${ownLabel}`
     : topCategory
-      ? `Example search: ${categoryName(topCategory)}${kind === "daily" ? ", international posts" : ""}`
+      ? `Example search: ${categoryName(topCategory)}${kind === "daily" ? ", local-only posts hidden" : ""}`
       : kind === "daily" ? "All new vacancies, without local-only posts" : "All new vacancies";
   const matchWord = real && yours ? `${n === 1 ? "vacancy matches" : "vacancies match"} your search` : n === 1 ? "vacancy" : "vacancies";
   const subject = kind === "weekly"

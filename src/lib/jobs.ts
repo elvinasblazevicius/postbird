@@ -108,6 +108,8 @@ export type JobFilters = {
   firstSeenAfter?: Date;
   firstSeenUntil?: Date;
   excludeDemo?: boolean;
+  /** Only vacancies with a search word in the title or summary (topicInTitleOrSummary): the closing-soon lists. */
+  topicOnly?: boolean;
 };
 
 type SP = Record<string, string | string[] | undefined>;
@@ -439,6 +441,23 @@ function titleWordHits(q: string): Frag {
 }
 
 /**
+ * For the closing-soon lists: a keyword search's subject in the title or summary of the vacancy,
+ * not only somewhere in its full text ("nutrition" never brings a Budget Officer post that mentions
+ * nutrition once). At least one of the search's words must be there; places, organization names
+ * and abbreviations for a field of work are already matched exactly, so they don't count here.
+ * True for a search without such words.
+ */
+export function topicInTitleOrSummary(q: string | undefined): Frag {
+  if (!q) return sql`true`;
+  const terms = [...new Set(searchWords(interpretQuery(q).text ?? q).map(foldText))]
+    .filter((t) => /^[a-z0-9]+$/.test(t) && !placeVariants(t).length && !orgNamesForTerm(t).length && !ABBREVIATIONS[t])
+    .slice(0, 8);
+  if (!terms.length) return sql`true`;
+  const query = terms.map((t) => { const one = singular(t); return one !== t ? `(${t}:AC | ${one}:AC)` : `${t}:AC`; }).join(" | ");
+  return sql`(j.search_folded @@ to_tsquery('simple', ${query}))`;
+}
+
+/**
  * The other names of the duty stations among these terms (placeVariants: "geneve" → Geneva, Genf…)
  * as a tsquery matched against the location part of the search text only (weight B: location,
  * city, grade, type), so "roma" finds Rome but not "Roma inclusion" in a title. Null when no term
@@ -624,6 +643,7 @@ function baseCondition(f: JobFilters): Frag {
   if (f.firstSeenAfter) w = sql`${w} and j.first_seen_at > ${f.firstSeenAfter}`;
   if (f.firstSeenUntil) w = sql`${w} and j.first_seen_at <= ${f.firstSeenUntil}`;
   if (f.excludeDemo) w = sql`${w} and not j.is_demo`;
+  if (f.topicOnly && f.q) w = sql`${w} and ${topicInTitleOrSummary(f.q)}`;
   return w;
 }
 
@@ -705,7 +725,8 @@ export async function closingSoonForAlert(opts: { searches: string[]; subscriber
   if (!opts.searches.length || opts.limit <= 0) return [];
   const matches = [...new Set(opts.searches)].map((s) => {
     const f = withSearchIntent({ ...filtersFromQuery(s), page: undefined, posted: undefined, sort: undefined });
-    return Object.values(filterConditions(f, "all")).reduce<Frag>((w, c) => sql`${w} and ${c}`, sql`true`);
+    // A reminder is for a vacancy about the search's subject, not one that only mentions it in passing.
+    return Object.values(filterConditions(f, "all")).reduce<Frag>((w, c) => sql`${w} and ${c}`, topicInTitleOrSummary(f.q));
   });
   const anyMatch = matches.reduce((a, b) => sql`${a} or ${b}`);
   const exclude = (opts.excludeIds ?? []).map(Number);
