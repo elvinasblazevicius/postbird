@@ -6,7 +6,6 @@ import { displayGrade, localOnlyLabel } from "@/lib/grades";
 import { titleLanguage } from "@/lib/title-language";
 import { Flag } from "./flag";
 import { SaveButton } from "./job-tools";
-import { LISTING_SETTINGS } from "@/config/import";
 import { daysUntil, formatShortDate, jobPath, locationLabel, NOT_SPECIFIED } from "@/lib/site";
 import { ApplyLink } from "./tracking";
 import { applyLinkKind } from "@/lib/apply-link";
