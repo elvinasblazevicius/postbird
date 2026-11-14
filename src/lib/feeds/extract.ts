@@ -455,6 +455,28 @@ export function withoutTrailingPlace(title: string): string {
  * A known organization named in the title: "UNICEF: WASH Officer", "Officer – UNDP", "IOM – Administrative
  * Assistant", "UNDP Chief, HR Services", "CERN Junior Engineer".
  */
+/**
+ * An employer we don't know yet, named by the title's first word and confirmed by its own link:
+ * "ECMWF Grants Specialist" applying on jobs.ecmwf.int, "CIFF Senior Manager" on apply.workable.com/ciff.
+ * The word must be an address part (a host label or a recruitment-service account) exactly. Null otherwise.
+ */
+export function orgFromTitleAndLink(title: string, applyUrl: string | null | undefined): string | null {
+  const word = title.match(/^([A-Z][A-Za-z]{1,11}|[A-Z]{2,8})(?=\s+[–—:-]?\s*\p{Lu})/u)?.[1];
+  if (!word || !applyUrl || COMMON_TITLE_WORDS.has(word.toLowerCase())) return null;
+  try {
+    const u = new URL(applyUrl);
+    const labels = u.hostname.toLowerCase().replace(/^www\./, "").split(".").flatMap((l) => [l, ...l.split("-")]);
+    const account = /(^|\.)(smartrecruiters\.com|workable\.com|jobvite\.com|greenhouse\.io|lever\.co|bamboohr\.com)$/i.test(u.hostname)
+      ? (u.pathname.split("/")[1] ?? "").toLowerCase() : "";
+    const w = word.toLowerCase();
+    return labels.includes(w) || account === w ? word : null;
+  } catch {
+    return null;
+  }
+}
+/** First words of a title that are roles or kinds of post, never an employer. */
+const COMMON_TITLE_WORDS = new Set(["senior", "junior", "head", "chief", "lead", "project", "programme", "program", "national", "international", "regional", "country", "field", "global", "deputy", "associate", "assistant", "officer", "consultant", "consultancy", "expert", "specialist", "manager", "director", "intern", "internship", "temporary", "short", "call", "roster", "vacancy", "vacancies", "jobs", "careers", "the", "new"]);
+
 export function knownOrgFromTitle(title: string): KnownOrg | undefined {
   const prefix = title.match(/^([^:]{2,60}):\s/);
   let org = prefix ? knownOrgByName(prefix[1]) : undefined;
@@ -565,6 +587,7 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   else if (titleOrg) orgName = titleOrg.name;
   else if (sourceOrg) orgName = sourceOrg.name;
   else if (raw.author && ORGISH.test(raw.author) && raw.author.length <= 120) orgName = raw.author;
+  else orgName = orgFromTitleAndLink(title, applyUrl);
   const organization = orgName ? toOrgRef(orgName) : null;
   if (organization && !organization.website) {
     organization.website = findOrgWebsite(organization.name, organization.short, [applyUrl, ...allLinks(bodyHtml)]);

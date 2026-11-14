@@ -80,10 +80,10 @@ async function main() {
     select id::int, city, country_code, location_text from jobs j where ${open}
        and (coalesce(city,'') ~* '(unavailable|n/a|tbd|tbc|various|multiple|^-$)' or coalesce(location_text,'') ~* '(unavailable|n/a|tbd|tbc|\\(also)')
      order by id limit 40`) console.log(`#${r.id} | ${r.city} | ${r.country_code} | ${r.location_text}`);
-  const [{ nl }] = await sql<{ nl: number }[]>`select count(*)::int as nl from jobs j where ${open} and country_code is null and not is_remote`;
+  const [{ nl }] = await sql<{ nl: number }[]>`select count(*)::int as nl from jobs j where ${open} and country_code is null and coalesce(is_remote, false) = false and coalesce(location_text, '') = ''`;
   console.log(`(no country and not remote: ${nl})`);
   for (const r of await sql<{ id: number; city: string | null; location_text: string | null; title: string }[]>`
-    select id::int, city, location_text, title from jobs j where ${open} and country_code is null and not is_remote order by id desc limit 40`) console.log(`#${r.id} | ${r.city} | ${r.location_text} | ${r.title}`);
+    select id::int, city, location_text, title from jobs j where ${open} and country_code is null and coalesce(is_remote, false) = false and coalesce(location_text, '') = '' order by id desc limit 60`) console.log(`#${r.id} | ${r.city} | ${r.location_text} | ${r.title}`);
 
   section("Titles with codes or sentences");
   for (const r of await sql<{ id: number; title: string }[]>`

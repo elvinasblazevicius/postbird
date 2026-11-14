@@ -1,13 +1,27 @@
 "use client";
 
-import { useEffect, useRef, useTransition } from "react";
+import { useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 /**
  * What to put back when the form is drawn again for the new address: focus on the box just ticked,
  * and the folded sections (data-fold) that were open.
  */
-let restore: { formId: string; field?: { name: string; value: string }; open: string[] } | null = null;
+let restore: { formId: string; field?: { name: string; value: string }; open: string[]; scroll?: boolean } | null = null;
+
+/**
+ * New results in: when their heading (the count) is out of view, above or below (a short list
+ * beside a long filter column leaves the footer in view), bring it back so the change shows; the
+ * filters stay where they are (the sidebar is sticky).
+ */
+function showResults() {
+  const h = document.getElementById("results-heading");
+  if (!h) return;
+  const top = h.getBoundingClientRect().top;
+  if (top >= 80 && top <= window.innerHeight - 120) return;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  window.scrollTo({ top: Math.max(0, top + window.scrollY - 110), behavior: reduce ? "auto" : "smooth" });
+}
 
 /**
  * Applies the filter form without a full page load: the new results are fetched in the background
@@ -21,35 +35,22 @@ export function AutoSubmit({ formId, onChange: submitOnChange = true, keepScroll
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const wasPending = useRef(false);
   useEffect(() => {
     const root = document.documentElement;
     if (pending) root.setAttribute("data-filtering", "");
     else root.removeAttribute("data-filtering");
-    // New results in: when their heading (the count) is scrolled out of view above, bring it back,
-    // so the change shows; the filters stay where they are (the sidebar is sticky).
-    if (wasPending.current && !pending && keepScroll) {
-      const h = document.getElementById("results-heading");
-      const top = h?.getBoundingClientRect().top ?? 0;
-      // Off screen above, or below the visible part (a short list beside a long filter column leaves the footer in view).
-      if (h && (top < 80 || top > window.innerHeight - 120)) {
-        const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        window.scrollTo({ top: Math.max(0, top + window.scrollY - 110), behavior: reduce ? "auto" : "smooth" });
-        h.setAttribute("tabindex", "-1");
-        h.focus({ preventScroll: true });
-      }
-    }
-    wasPending.current = pending;
     return () => root.removeAttribute("data-filtering");
-  }, [pending, keepScroll]);
+  }, [pending]);
 
   useEffect(() => {
     const form = document.getElementById(formId) as HTMLFormElement | null;
     if (!form) return;
 
     if (restore?.formId === formId) {
-      const { field, open } = restore;
+      const { field, open, scroll } = restore;
       restore = null;
+      // The form is drawn afresh for the new address (its key is the address), so the results are in: show them.
+      if (scroll) requestAnimationFrame(() => requestAnimationFrame(showResults));
       for (const d of Array.from(form.querySelectorAll<HTMLDetailsElement>("details[data-fold]"))) if (open.includes(d.dataset.fold!)) d.open = true;
       const match = field && (field.name.startsWith("combobox:")
         ? form.querySelector<HTMLElement>(`input[data-combobox-input="${field.name.slice(9)}"]`) ?? undefined
@@ -75,6 +76,7 @@ export function AutoSubmit({ formId, onChange: submitOnChange = true, keepScroll
       e.preventDefault();
       restore = {
         formId,
+        scroll: keepScroll,
         field: changed,
         open: Array.from(form.querySelectorAll<HTMLDetailsElement>("details[data-fold]")).filter((d) => d.open).map((d) => d.dataset.fold!),
       };

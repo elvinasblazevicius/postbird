@@ -7,7 +7,8 @@
  */
 import { getSql } from "../src/lib/db";
 import { stripBoardText } from "../src/lib/board-text";
-import { isUnitCode, normalizeGrade, knownOrgByAtsPath, knownOrgByHost, knownOrgByName, knownOrgFromTitle, toOrgRef, withoutTrailingPlace } from "../src/lib/feeds/extract";
+import { factsFromPage } from "../src/lib/feeds/vacancy-page";
+import { isUnitCode, normalizeGrade, orgFromTitleAndLink, knownOrgByAtsPath, knownOrgByHost, knownOrgByName, knownOrgFromTitle, toOrgRef, withoutTrailingPlace } from "../src/lib/feeds/extract";
 import { upsertOrganizations } from "../src/lib/feeds/sync";
 import { cleanTitle, stripOrgFromTitle } from "../src/lib/feeds/title";
 import type { NormalizedJob } from "../src/lib/feeds/extract";
@@ -36,7 +37,9 @@ async function main() {
     const found = misfiled ? knownOrgByName(canonical!.name) : j.org_name
       ? undefined
       : knownOrgByHost(j.apply_host ?? "") ?? knownOrgByAtsPath(j.apply_url ?? "") ?? knownOrgFromTitle(j.title);
-    const orgRef = found ? toOrgRef(found.name) : null;
+    // Not a known organization: one the title's first word names and the link confirms (orgFromTitleAndLink).
+    const named = !found && !j.org_name ? orgFromTitleAndLink(j.title, j.apply_url) : null;
+    const orgRef = found ? toOrgRef(found.name) : named ? toOrgRef(named) : null;
     const orgName = j.org_name ?? orgRef?.name ?? null;
     const known = orgName ? knownOrgByName(orgName) : undefined;
     const bracketed = orgName?.match(/\(([A-Z][A-Za-z0-9&-]{1,9})\)\s*$/)?.[1];
@@ -89,8 +92,37 @@ async function tidyGrades() {
   console.log(`${changes.length} grades ${dryRun ? "to normalize (dry run)" : "normalized"}.`);
 }
 
+/**
+ * Listings with no place: the place their own description states ("Duty station: …", "Location: …"),
+ * read with the same rules as an employer's page. Then the AI may look again at listings still
+ * missing a place or an employer (its earlier answer was checked under stricter rules).
+ */
+async function tidyPlaces() {
+  const sql = getSql();
+  const rows = await sql<{ id: number; title: string; apply_url: string | null; description_html: string | null }[]>`
+    select id::int, title, apply_url, description_html from jobs
+     where status = 'active' and country_code is null and coalesce(city, '') = '' and coalesce(location_text, '') = ''
+       and coalesce(is_remote, false) = false and description_html is not null`;
+  let placed = 0;
+  for (const r of rows) {
+    const f = factsFromPage(r.title, r.apply_url ?? "", r.description_html ?? "");
+    if (!f || (!f.countryCode && !f.locationText)) continue;
+    placed++;
+    console.log(`#${r.id}: place "${[f.city, f.countryCode, f.locationText].filter(Boolean).join(" | ")}"`);
+    if (!dryRun) await sql`update jobs set country_code = ${f.countryCode ?? null}, city = ${f.city ?? null}, location_text = ${f.locationText ?? null}, updated_at = now() where id = ${r.id}`;
+  }
+  console.log(`${rows.length} listings without a place, ${placed} ${dryRun ? "to place (dry run)" : "placed"} from their description.`);
+  const again = await sql<{ n: number }[]>`
+    select count(*)::int as n from jobs where status = 'active' and ai_checked_at is not null
+       and (organization_id is null or (country_code is null and coalesce(location_text, '') = '' and coalesce(is_remote, false) = false))`;
+  if (!dryRun) await sql`update jobs set ai_checked_at = null where status = 'active' and ai_checked_at is not null
+       and (organization_id is null or (country_code is null and coalesce(location_text, '') = '' and coalesce(is_remote, false) = false))`;
+  console.log(`${again[0].n} listings still missing a place or employer ${dryRun ? "would be" : "are"} queued for the AI to read again.`);
+}
+
 main()
   .then(() => tidyDescriptions())
+  .then(() => tidyPlaces())
   .then(() => tidyGrades())
   .then(() => getSql().end({ timeout: 2 }))
   .then(() => process.exit(0))

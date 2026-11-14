@@ -6,13 +6,13 @@ import { GRADE_GROUPS } from "@/config/regions";
 
 /**
  * Grades that are usually open only to nationals or legal residents of the
- * duty-station country: National Officers (NO-A to NO-E), General Service
+ * duty-station country: National Officers (NO-A to NO-E, or NO-1 to NO-5 at UNICEF and others), General Service
  * (G / GS), NPSA, LICA and service contracts (SB / SC). IPSA, ICS and Field
  * Service are international contracts and are not included.
  */
-export const LOCAL_ONLY_GRADE_SQL = "^(NO-[A-E]|GS?-[0-9]{1,2}|NPSA-[0-9]{1,2}|LICA-[0-9]{1,2}|SB-[0-9]{1,2}|SC-[0-9]{1,2})$";
+export const LOCAL_ONLY_GRADE_SQL = "^(NO-[A-E1-5]|GS?-[0-9]{1,2}|NPSA-[0-9]{1,2}|LICA-[0-9]{1,2}|SB-[0-9]{1,2}|SC-[0-9]{1,2})$";
 
-const LOCAL_ONLY_RE = /^(NO-?[A-E]|GS?-?\d{1,2}|NPSA-?\d{1,2}|LICA-?\d{1,2}|SB-?\d{1,2}|SC-?\d{1,2})$/i;
+const LOCAL_ONLY_RE = /^(NO-?[A-E1-5]|GS?-?\d{1,2}|NPSA-?\d{1,2}|LICA-?\d{1,2}|SB-?\d{1,2}|SC-?\d{1,2})$/i;
 
 export function isLocalOnlyGrade(grade: string | null | undefined): boolean {
   return Boolean(grade && LOCAL_ONLY_RE.test(grade.trim().replace(/\s+/g, "")));

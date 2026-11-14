@@ -16,7 +16,7 @@ import { purgeStaleSubscribers } from "@/lib/subscribers";
 import { purgeOpsEvents, recordOpsEvent } from "@/lib/ops-events";
 import { reduceOldClickIds } from "@/lib/analytics";
 import { canonicalizeUrl, isAggregatorUrl, LISTING_HOSTS } from "./url";
-import { knownOrgByHost, toOrgRef } from "./extract";
+import { knownOrgByHost, knownOrgByName, toOrgRef } from "./extract";
 import { isArticleLink } from "./employer-link";
 import { KNOWN_ORGS } from "@/config/organizations";
 
@@ -589,14 +589,21 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
       notes.push(`Duplicates were not checked: ${(e as Error).message}`);
     }
     // An organization on one site (KNOWN_ORGS' `site`): its listings that name no place are there.
-    for (const o of KNOWN_ORGS.filter((k) => k.site)) {
-      // By its address or any of its names, however the organization was stored.
-      const names = [o.name, o.short, ...(o.aliases ?? [])].filter((n): n is string => Boolean(n)).map((n) => n.toLowerCase());
-      await sql`
-        update jobs j set country_code = ${o.site!.country}, city = ${o.site!.city}, updated_at = now()
-          from organizations org
-         where org.id = j.organization_id and (org.slug = ${toOrgRef(o.name).slug} or lower(org.name) = any(${names}) or lower(org.short_name) = any(${names}))
-           and j.status = 'active' and j.country_code is null and (j.city is null or j.city = '') and (j.location_text is null or j.location_text = '') and not j.is_remote`;
+    {
+      // Its stored name may carry the short name too ("European Organization for Nuclear Research (CERN)"),
+      // and "remote" may be unknown (null): both are read loosely here.
+      const placeless = await sql<{ id: number; org: string; short: string | null }[]>`
+        select j.id::int, o.name as org, o.short_name as short from jobs j join organizations o on o.id = j.organization_id
+         where j.status = 'active' and j.country_code is null and coalesce(j.city, '') = '' and coalesce(j.location_text, '') = ''
+           and coalesce(j.is_remote, false) = false`;
+      let filled = 0;
+      for (const r of placeless) {
+        const k = knownOrgByName(r.org) ?? knownOrgByName(r.org.replace(/\s*\([^()]*\)\s*$/, "")) ?? knownOrgByName(r.short) ?? KNOWN_ORGS.find((o) => o.short && r.org.includes(`(${o.short})`));
+        if (!k?.site) continue;
+        await sql`update jobs set country_code = ${k.site.country}, city = ${k.site.city}, updated_at = now() where id = ${r.id}`;
+        filled++;
+      }
+      if (filled) notes.push(`${filled} listings without a place placed at their organization's only site.`);
     }
     // An application link that is an article, not the vacancy (a page named by a sentence sharing no word
     // with the title, e.g. "/careers/using-ai-responsibly-undp-recruitment-and-selection"): taken down.

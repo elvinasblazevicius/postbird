@@ -151,19 +151,41 @@ async function withAi(job: DueJob, facts: PageFacts | null, text: string | null,
     }
     if (needType && c.contractType) { out.jobType = c.contractType; r.ai.filled++; }
     if (needGrade && c.grade) { out.grade = c.grade; r.ai.filled++; }
-    // The employer, only when it is one we know (never a new organization made up from the AI's answer).
+    // The employer: one we know, or one the vacancy's own link confirms (its name, run together, is the
+    // link's host or recruitment-service account: "Prosper Global" applying on jobs.jobvite.com/prosperglobal).
+    // Never a new organization made up from the AI's answer alone.
     const known = needOrg && c.organization ? knownOrgByName(c.organization) : undefined;
-    if (known) {
+    const confirmed = needOrg && !known && c.organization && linkNamesOrg(job.apply_url, c.organization) ? c.organization : null;
+    const orgName = known?.name ?? confirmed;
+    if (orgName) {
+      const ref = toOrgRef(orgName);
+      await sql`insert into organizations (slug, name, short_name, org_type, website) values (${ref.slug}, ${ref.name}, ${ref.short}, ${ref.type}, ${ref.website})
+        on conflict (slug) do nothing`;
       const set = await sql`
         update jobs set organization_id = o.id, updated_at = now()
           from organizations o
-         where jobs.id = ${job.id} and jobs.organization_id is null and o.slug = ${toOrgRef(known.name).slug}
+         where jobs.id = ${job.id} and jobs.organization_id is null and o.slug = ${ref.slug}
         returning jobs.id`;
       if (set.length) r.ai.filled++;
     }
     return out;
   } catch {
     return facts; // the AI being down never stops the import
+  }
+}
+
+/** Does the application link name this organization (host label or recruitment-service account, spaces and punctuation dropped)? */
+export function linkNamesOrg(applyUrl: string | null, name: string): boolean {
+  if (!applyUrl) return false;
+  const squash = (x: string) => x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+  const n = squash(name.replace(/\s*\([^()]*\)\s*$/, ""));
+  if (n.length < 4) return false;
+  try {
+    const u = new URL(applyUrl);
+    const parts = [...u.hostname.toLowerCase().split("."), (u.pathname.split("/")[1] ?? "").toLowerCase()].map(squash).filter((x) => x.length >= 4);
+    return parts.some((p) => p === n || p.startsWith(n) || (n.startsWith(p) && p.length >= 6));
+  } catch {
+    return false;
   }
 }
 

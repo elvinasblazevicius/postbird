@@ -814,6 +814,7 @@ const TRANSLATIONS: Record<string, string[]> = {
   monitoreo: ["monitoring"], evaluacion: ["evaluation"], suivi: ["monitoring"], evaluation: ["evaluation"],
   datos: ["data"], donnees: ["data"], informatica: ["it"], clima: ["climate"], climat: ["climate"], medio: ["environment"], ambiente: ["environment"], environnement: ["environment"],
   asistente: ["assistant"], coordinador: ["coordinator"], coordinadora: ["coordinator"], coordonnateur: ["coordinator"], especialista: ["specialist"], specialiste: ["specialist"],
+  sanitario: ["sanitation", "wash"], sanitaria: ["sanitation", "wash"], potable: ["water"],
   publica: ["public"], publico: ["public"], publique: ["public"], alimentaire: ["food"], alimentos: ["food"],
   oficial: ["officer"], responsable: ["manager", "officer"], gerente: ["manager"], director: ["director"], directeur: ["director"],
 };

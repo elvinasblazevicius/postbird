@@ -35,8 +35,11 @@ const EXAMPLE_ROWS = 3;
  * The rows for the example: newest first, listings with a grade first (an international grade, as
  * local-only posts are already left out by the search where that applies), at most EXAMPLE_ROWS.
  */
-function pickRows(jobs: JobListItem[]): JobListItem[] {
-  const clean = jobs.filter((j) => !looksGarbled(j.title));
+function pickRows(jobs: JobListItem[], keepOrder = false): JobListItem[] {
+  // Rows with an employer and a clean title; for a keyword search in its best-match order, otherwise
+  // international graded posts first (a showcase, not every new vacancy).
+  const clean = jobs.filter((j) => !looksGarbled(j.title) && j.org_name);
+  if (keepOrder) return clean.slice(0, EXAMPLE_ROWS);
   const graded = clean.filter((j) => j.grade && !isLocalOnly(j));
   return [...graded, ...clean.filter((j) => !graded.includes(j))].slice(0, EXAMPLE_ROWS);
 }
@@ -84,7 +87,7 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
     searchJobs({ ...(own ?? {}), posted, sort: own?.q ? "relevance" : "newest", page: undefined, hidelocal: own ? own.hidelocal || undefined : kind === "daily" || undefined, excludeDemo: true }, 30).catch(() => ({ items: [] as JobListItem[], total: 0 }));
   // Closing soon follows the search too (the visitor's, or none): its open matches with the soonest published closing dates.
   const closingFor = (f: typeof own) => f
-    ? searchJobs({ ...f, posted: undefined, closing: "7", sort: "deadline", page: undefined, excludeDemo: true }, 12).then((r) => r.items).catch(() => [] as JobListItem[])
+    ? searchJobs({ ...f, posted: undefined, closing: "7", sort: f.q ? "relevance" : "deadline", page: undefined, excludeDemo: true }, 12).then((r) => r.items).catch(() => [] as JobListItem[])
     : closingSoonJobs(12).catch(() => [] as JobListItem[]);
   const [firstTry, closingFirst] = await Promise.all([pick(kind === "daily" ? "1" : "7"), kind === "daily" ? closingFor(own) : Promise.resolve([] as JobListItem[])]);
   let closing = closingFirst;
@@ -106,13 +109,15 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
   // Without the visitor's search: shown as one saved search, as a subscriber would set it up: the
   // field of work most of these new listings are in (a handful of matches, not every new vacancy).
   const counts = new Map<string, number>();
-  if (!ownLabel) for (const j of all.items) if (j.category && j.category !== "other") counts.set(j.category, (counts.get(j.category) ?? 0) + 1);
+  // Professional posts only (no internships or unpaid roles), so the sample shows the kind of job people come for.
+  const showcase = (j: JobListItem) => j.job_type !== "Internship" && j.job_type !== "Volunteer" && !/\b(intern(ship)?|unpaid|trainee)\b/i.test(j.title);
+  if (!ownLabel) for (const j of all.items) if (j.category && j.category !== "other" && j.category !== "administration" && showcase(j)) counts.set(j.category, (counts.get(j.category) ?? 0) + 1);
   const topCategory = ownLabel ? null : [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   // "Your search" only for a search the example really follows: the visitor's own, or the one it shows as an example search.
   const yours = Boolean(ownLabel);
-  const inSearch = topCategory ? all.items.filter((j) => j.category === topCategory) : all.items;
+  const inSearch = topCategory ? all.items.filter((j) => j.category === topCategory && showcase(j)) : all.items;
   const found = topCategory ? { items: inSearch, total: inSearch.length } : all;
-  const jobs = pickRows(found.items);
+  const jobs = pickRows(found.items, Boolean(own?.q));
   // Closing soon: vacancies that close in 1 to 3 days (not today: the reminder comes before the day).
   const soon = closing
     .filter((j) => { const d = daysUntil(j.deadline) ?? 99; return !j.is_demo && d >= 1 && d <= CLOSING_SOON_DAYS && !jobs.some((x) => x.id === j.id) && (own ? true : !isLocalOnly(j)) && (!topCategory || j.category === topCategory) && !looksGarbled(j.title); })
@@ -166,7 +171,7 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
             </p>
             <p className="mt-1 text-sm text-slate">
               {kind === "weekly"
-                ? `New vacancies of the past week${real && yours ? " that match your search" : topCategory ? " for an example search" : ""}. Apply on each employer’s own website.`
+                ? `New on ${siteConfig.name} this week${real && yours ? " that match your search" : topCategory ? " for an example search" : ""}. Apply on each employer’s own website.`
                 : pastWeek && real
                   ? `New on ${siteConfig.name} in the past week. Apply on each employer’s own website.`
                   : `New on ${siteConfig.name} since yesterday’s email. Apply on each employer’s own website.`}
