@@ -200,6 +200,18 @@ export function FreeWeeklyForm({ source = "alerts-page", search, searchLabel, wa
         <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
           <label>Leave empty<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label>
         </div>
+        {watch ? (
+          // What the email will follow, with the fields to change it folded away (closed by default).
+          <details className="group rounded-[10px] border border-sky-rule bg-paper/70 text-sm text-ink">
+            <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-1.5 px-3 py-2 [&::-webkit-details-marker]:hidden">
+              <span>Follows:</span>
+              <strong className="font-semibold">{searchLabel ?? "all new vacancies"}</strong>
+              <span className="ml-auto font-medium text-accent underline underline-offset-2 group-open:hidden">Change</span>
+              <span className="ml-auto hidden font-medium text-accent group-open:inline">Done</span>
+            </summary>
+            <div className="space-y-4 border-t border-sky-rule px-3 pb-3 pt-3">{watch}</div>
+          </details>
+        ) : null}
         <label htmlFor="fw-email" className="sr-only">Email address</label>
         <input id="fw-email" name="email" type="email" required autoComplete="email" placeholder="Your email address" className={field} />
         {state.status === "error" ? <p role="alert" className="text-sm text-[#9b1c1c]">{state.message}</p> : null}

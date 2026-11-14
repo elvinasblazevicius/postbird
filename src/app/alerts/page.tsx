@@ -70,7 +70,15 @@ export default async function AlertsPage({ searchParams }: Props) {
                 weeklyHref="#alert-signup"
                 trialHref={trialHref}
                 source={search ? "alerts-daily-search" : "alerts-daily"}
-                weeklyForm={<FreeWeeklyForm compact source={search ? "search-weekly" : "alerts-page"} search={search ?? undefined} />}
+                weeklyForm={
+                  <FreeWeeklyForm
+                    compact
+                    source={search ? "search-weekly" : "alerts-page"}
+                    search={search ?? undefined}
+                    searchLabel={searchLabel}
+                    watch={<WatchFields fold search={search} searchLabel={searchLabel} hint="Leave empty for all new vacancies." />}
+                  />
+                }
               />
             </div>
           </section>
