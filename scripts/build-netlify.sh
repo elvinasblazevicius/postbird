@@ -59,9 +59,19 @@ if [ "${CONTEXT:-}" = "production" ]; then
   state=unknown
   if [ -n "$repo" ] && [ -n "${COMMIT_REF:-}" ]; then
     waited=0
+    unknowns=0
     while :; do
       state="$(ci_state "$repo" || true)"
       state="${state:-unknown}"
+      # "unknown" is usually GitHub's API refusing an unauthenticated call for a while (shared build
+      # machines hit its hourly limit): ask again a few times before giving up.
+      if [ "$state" = "unknown" ] && [ "$unknowns" -lt 6 ] && [ "$waited" -lt "$CI_WAIT_SECONDS" ]; then
+        unknowns=$((unknowns + 1))
+        echo "Couldn't read CI's result for ${COMMIT_REF:0:7} yet; asking again (${unknowns}/6)..."
+        sleep "$CI_POLL_SECONDS"
+        waited=$((waited + CI_POLL_SECONDS))
+        continue
+      fi
       if [ "$state" != "pending" ] || [ "$waited" -ge "$CI_WAIT_SECONDS" ]; then break; fi
       echo "Waiting for CI on ${COMMIT_REF:0:7} (${waited}s so far)..."
       sleep "$CI_POLL_SECONDS"
