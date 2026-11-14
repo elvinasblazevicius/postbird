@@ -10,7 +10,7 @@ import siteConfig from "@site-config";
  */
 export const revalidate = 3600;
 
-export const metadata: Metadata = { title: "Manage or cancel your subscription", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "Sign in: manage or cancel your alerts", robots: { index: false, follow: false } };
 
 /**
  * "Email me my account link": the account page has no password; its private link is emailed to the
@@ -24,9 +24,9 @@ export default function AccountLoginPage() {
   );
   return (
     <div className="mx-auto max-w-xl px-4 py-20 sm:px-6">
-      <h1 className="text-[2rem] font-semibold text-ink">Manage or cancel your subscription</h1>
+      <h1 className="text-[2rem] font-semibold text-ink">Sign in</h1>
       <p className="mt-3 text-lg text-slate">
-        There&apos;s no password. Enter the address you get emails at and we&apos;ll email you a private link to your account. Each new link replaces the old one.
+        For existing subscribers. There&apos;s no password: enter the address you get our emails at and we&apos;ll email you a private link to your account. Each new link replaces the old one.
       </p>
 
       <section aria-labelledby="manage-h" className="mt-8 rounded-xl border border-rule p-5 sm:p-6">

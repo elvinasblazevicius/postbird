@@ -59,6 +59,8 @@ export async function SiteHeader() {
           ))}
           <SavedCount className="-mx-2 px-2" />
           <span className="h-6 w-px bg-rule max-lg:hidden" aria-hidden="true" />
+          {/* Existing subscribers: no password; the sign-in page emails their private account link. */}
+          <span className="max-lg:hidden"><NavLink href="/account/login">Sign in</NavLink></span>
           {/* The one yellow button in the header: alerts are what a first-time visitor is asked for. */}
           <AlertsButton className="whitespace-nowrap rounded-lg bg-highlight px-3 py-2 text-[0.95rem] font-semibold text-ink shadow-[inset_0_-2px_0_rgb(0_0_0/0.12)] hover:brightness-95 lg:px-4">
             {ALERTS_LABEL}
@@ -76,7 +78,7 @@ export async function SiteHeader() {
             <span className="max-[359.98px]:sr-only">{ALERTS_LABEL}</span>
           </AlertsButton>
           <MobileMenu
-            main={[{ href: "/jobs", label: "Find jobs" }, ...NAV]}
+            main={[{ href: "/jobs", label: "Find jobs" }, ...NAV, { href: "/account/login", label: "Sign in" }]}
             employers={employers}
             more={[
               { href: "/locations", label: "Countries" },

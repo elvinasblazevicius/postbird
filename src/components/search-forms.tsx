@@ -470,7 +470,8 @@ export function WatchFieldset({ facets, filters, hint, hideLegend = false }: { f
       <p className={`${hideLegend ? "" : "-mt-2 "}text-sm text-slate`}>{hint ??`Leave these empty to get every new vacancy.${BILLING_LIVE ? " You can add up to 20 searches later." : ""}`}</p>
       <div>
         <label htmlFor="watch-q" className="mb-1.5 block text-sm font-medium text-ink">Keywords</label>
-        <input id="watch-q" name="watch_q" type="text" defaultValue={filters.q ?? ""} maxLength={120} placeholder="e.g. data analyst, WASH, monitoring" className={fieldCls} autoComplete="off" />
+        {/* type="search" and autoComplete off: browsers otherwise offer (or fill in) the email address here. */}
+        <input id="watch-q" name="watch_q" type="search" defaultValue={filters.q ?? ""} maxLength={120} placeholder="e.g. data analyst, WASH, monitoring" className={fieldCls} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <OrgFields idPrefix="watch" name="watch_org" facets={facets} filters={filters} counts={false} />

@@ -319,12 +319,11 @@ export async function JobsBrowser({
 
         {/* Not for an any-word fallback: alerts match every word, so they would not send these jobs. */}
         {result.total > 0 && result.matchMode === "all" ? (
-          <p className="mb-4 flex items-start gap-2 text-sm text-ink">
-            <svg viewBox="0 0 16 16" className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true"><path d="M8 2a4 4 0 0 0-4 4v2.5L2.5 11h11L12 8.5V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
+          <p className="mb-5 flex items-center gap-2 text-sm text-ink">
             {siteConfig.freeWeeklyEmail ? (
               // One short link: the alerts page offers the free weekly email and daily alerts for this search.
-              <Link href={`/alerts?search=${encodeURIComponent(alertSearch)}`} className="font-medium text-accent underline underline-offset-2 hover:text-brand">
-                Get email alerts for this search
+              <Link href={`/alerts?search=${encodeURIComponent(alertSearch)}`} className="-my-1 inline-flex min-h-10 items-center rounded-lg bg-highlight px-3.5 py-1.5 text-[0.95rem] font-semibold text-ink no-underline shadow-[inset_0_-2px_0_rgb(0_0_0/0.12)] hover:brightness-95">
+                Get alerts for this search
               </Link>
             ) : (
               <TrackedLink

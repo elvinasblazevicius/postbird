@@ -23,7 +23,7 @@ function Check() {
   );
 }
 
-export function AlertsChoice({ weeklyHref, trialHref, source, onBand = false }: { weeklyHref: string; trialHref: string; source: string; onBand?: boolean }) {
+export function AlertsChoice({ weeklyHref, trialHref, source, onBand = false, weeklyForm }: { weeklyHref: string; trialHref: string; source: string; onBand?: boolean; weeklyForm?: React.ReactNode }) {
   const p = siteConfig.premium;
   // plans[0] is monthly, plans[1] the 3-month plan (site.config.ts).
   const [monthly, quarterly] = p.plans;
@@ -34,12 +34,14 @@ export function AlertsChoice({ weeklyHref, trialHref, source, onBand = false }: 
       <ul className="space-y-1.5 text-sm leading-snug text-tint-ink">
         {["Every Monday", "One search", "Free, no card needed"].map((f) => <li key={f} className="flex gap-2"><Check />{f}</li>)}
       </ul>
-      <Link
-        href={weeklyHref}
-        className="mt-auto flex min-h-11 items-center justify-center rounded-[10px] border border-brand px-4 py-2.5 text-center text-[0.95rem] font-bold text-accent no-underline hover:bg-paper/60"
-      >
-        Get the weekly email
-      </Link>
+      {weeklyForm ? <div className="mt-auto pt-1">{weeklyForm}</div> : (
+        <Link
+          href={weeklyHref}
+          className="mt-auto flex min-h-11 items-center justify-center rounded-[10px] border border-brand px-4 py-2.5 text-center text-[0.95rem] font-bold text-accent no-underline hover:bg-paper/60"
+        >
+          Get the weekly email
+        </Link>
+      )}
     </div>
   );
   const daily = (

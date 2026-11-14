@@ -182,13 +182,36 @@ function EarlyAccessForm({ source = "pricing", search, remindJobId, watch }: { s
  * without JavaScript), open when a search was carried over (`search`, summarised as `searchLabel`
  * above the email field).
  */
-export function FreeWeeklyForm({ source = "alerts-page", search, searchLabel, watch }: { source?: string; search?: string; searchLabel?: string | null; watch?: React.ReactNode }) {
+export function FreeWeeklyForm({ source = "alerts-page", search, searchLabel, watch, compact = false }: { source?: string; search?: string; searchLabel?: string | null; watch?: React.ReactNode; compact?: boolean }) {
   const [state, action, pending] = useActionState(alertSignupAction, initial);
   useEffect(() => {
     // Microsoft Ads "subscribe"; Meta "Lead" (no email address or search sent).
     if (state.status === "success") adConversion("subscribe", { event_category: "alerts", event_label: source });
   }, [state.status, source]);
   if (state.status === "success") return <Result state={state} />;
+  if (compact) {
+    // Inside the Weekly card on /alerts: just the address and the button (the search, if any, is carried over).
+    return (
+      <form action={action} className="space-y-2.5">
+        <input type="hidden" name="kind" value="alerts" />
+        <input type="hidden" name="source" value={source} />
+        {search ? <input type="hidden" name="search" value={search} /> : null}
+        <AttributionField />
+        <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
+          <label>Leave empty<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label>
+        </div>
+        <label htmlFor="fw-email" className="sr-only">Email address</label>
+        <input id="fw-email" name="email" type="email" required autoComplete="email" placeholder="Your email address" className={field} />
+        {state.status === "error" ? <p role="alert" className="text-sm text-[#9b1c1c]">{state.message}</p> : null}
+        <button disabled={pending} className="flex min-h-11 w-full items-center justify-center rounded-[10px] border border-brand bg-paper px-4 py-2.5 text-[0.95rem] font-bold text-accent hover:bg-paper/60 disabled:opacity-60">
+          {pending ? "Saving…" : "Get the weekly email"}
+        </button>
+        <p className="text-[0.8125rem] leading-snug text-slate">
+          We email once to confirm. Unsubscribe in one click. <Link href="/privacy" className="underline underline-offset-2 hover:text-accent">Privacy</Link>
+        </p>
+      </form>
+    );
+  }
   return (
     <form action={action} className="space-y-4">
       <input type="hidden" name="kind" value="alerts" />

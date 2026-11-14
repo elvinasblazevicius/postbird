@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertExample } from "@/components/alert-example";
 import { CoverageLine } from "@/components/coverage-line";
-import { WatchFields } from "@/components/alert-watch-step";
+import { MAX_SAVED_SEARCHES } from "@/lib/saved-searches";
 import { PageHeader } from "@/components/page-header";
 import { PremiumInterestForm } from "@/components/token-forms";
 import { BILLING_LIVE } from "@/lib/billing/live";
@@ -84,7 +84,17 @@ export default async function TrialPage({ searchParams }: Props) {
             source={search ? "search-alert" : remindJob ? "deadline-reminder" : "pricing"}
             search={search ?? undefined}
             remindJobId={remindJob ? remindJob.id : undefined}
-            watch={<WatchFields search={search} searchLabel={searchLabel} resetHref={`/pricing/trial${remindJob ? `?remind=${remindJob.id}` : ""}#alert-signup`} />}
+            watch={
+              // No search fields here (fewer steps before the trial): the search the visitor came from is kept,
+              // and searches are added on the account page after sign-up.
+              <p className="rounded-xl border border-sky-rule bg-sky-wash px-4 py-3 text-[0.95rem] text-ink">
+                {searchLabel ? (
+                  <>Your daily alerts will follow your search: <strong>{searchLabel}</strong>. You can add up to {MAX_SAVED_SEARCHES} searches after signing up.</>
+                ) : (
+                  <>You choose what to watch after signing up: up to {MAX_SAVED_SEARCHES} searches. Until then, you get every new vacancy.</>
+                )}
+              </p>
+            }
           />
         </div>
         {siteConfig.freeWeeklyEmail ? (

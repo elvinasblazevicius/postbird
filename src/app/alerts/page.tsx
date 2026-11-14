@@ -7,7 +7,6 @@ import { AlertsChoice } from "@/components/alerts-choice";
 import { WatchFields } from "@/components/alert-watch-step";
 import { PageHeader } from "@/components/page-header";
 import { FreeWeeklyForm, PremiumInterestForm } from "@/components/token-forms";
-import { earlyAccessLine } from "@/lib/early-access-copy";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { isMetaVisit, META_VISIT_QUERY } from "@/lib/ad-visit";
 import { describeSearch, searchFromAlertStep } from "@/lib/saved-searches";
@@ -67,10 +66,24 @@ export default async function AlertsPage({ searchParams }: Props) {
               </p>
             ) : null}
             <div>
-              <AlertsChoice weeklyHref="#alert-signup" trialHref={trialHref} source={search ? "alerts-daily-search" : "alerts-daily"} />
+              <AlertsChoice
+                weeklyHref="#alert-signup"
+                trialHref={trialHref}
+                source={search ? "alerts-daily-search" : "alerts-daily"}
+                weeklyForm={<FreeWeeklyForm compact source={search ? "search-weekly" : "alerts-page"} search={search ?? undefined} />}
+              />
             </div>
           </section>
         )}
+        {fromMeta ? null : (
+          // One sign-up per plan, in its card above: here only what the emails look like.
+          <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+            <div className="max-w-xl">
+              <AlertExample heading="What the weekly email looks like" kind="weekly" />
+            </div>
+          </div>
+        )}
+        {fromMeta ? (
         <div className="mx-auto grid max-w-6xl gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[1.2fr_1fr] lg:gap-12">
           <section className="max-w-xl" aria-labelledby="free-h">
             <h2 id="free-h" className={fromMeta ? "sr-only" : "mb-4 text-xl font-semibold text-ink"}>{fromMeta ? "Sign up for the free weekly email" : "Weekly email: free, every Monday"}</h2>
@@ -85,16 +98,9 @@ export default async function AlertsPage({ searchParams }: Props) {
           </section>
           <div className="space-y-6">
             <AlertExample heading="What the weekly email looks like" kind="weekly" />
-            {fromMeta ? null : (
-              <p className="text-sm leading-relaxed text-slate">
-                Searching and the weekly email are free. Applying for any job is always free and happens on the employer&apos;s own website.{" "}
-                Daily alerts are the paid plan: {p.priceSummary}{BILLING_LIVE ? `, with a ${p.trialDays}-day free trial (card required; cancel before it ends and you pay nothing)` : ", launching soon"}.{" "}
-                {BILLING_LIVE ? null : `${earlyAccessLine()} `}
-                <Link href="/pricing" className="font-medium text-accent hover:underline">Compare free and paid</Link>
-              </p>
-            )}
           </div>
         </div>
+        ) : null}
       </>
     );
   }
