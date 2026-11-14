@@ -263,11 +263,13 @@ export function taleoText(html: string): string | null {
   const closing = dates.length >= 2 ? dates[dates.length - 1] : null;
   const grade = parts.find((p) => /^(?:P|D|G|GS|NO[A-D]?|FS|NPSA|IPSA|ICS|SB|LICA|IICA|A|B|C)-?\d{1,2}$/.test(p) && /\d/.test(p));
   const place = parts.find((p) => /^[A-Z][\p{L} .'(),]{2,40}-[A-Z][\p{L} .'-]{1,40}$/u.test(p));
+  // No "Country-City" ("Various Locations"): the office the post belongs to names the country ("FAO Representation in Georgia").
+  const office = place ? null : parts.map((p) => p.match(/(?:Representation|Country Office|Office) (?:in|for) (?:the )?([A-Z][\p{L} .'-]{2,40})$/u)?.[1]).find(Boolean);
   const description = parts.filter((p) => p.length > 200 && /<[a-z]/i.test(p)).sort((a, b) => b.length - a.length)[0] ?? "";
   const facts = [
     closing ? `<p>Closing date: ${closing}</p>` : "",
     grade ? `<p>Grade: ${grade}</p>` : "",
-    place ? `<p>Duty station: ${place.replace(/^(.+?)-(.+)$/, "$2, $1")}</p>` : "",
+    place ? `<p>Duty station: ${place.replace(/^(.+?)-(.+)$/, "$2, $1")}</p>` : office ? `<p>Country: ${office}</p>` : "",
   ].join("");
   return facts || description ? `${facts}${description}` : null;
 }

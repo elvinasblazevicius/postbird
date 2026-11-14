@@ -178,3 +178,13 @@ describe("Taleo vacancy pages (hidden initialHistory fields)", () => {
     if (today < new Date("2027-11-01")) expect(f?.deadline).toBe("2026-12-04");
   });
 });
+
+describe("Taleo pages without a duty station", () => {
+  it("takes the country from the office the post belongs to", async () => {
+    const { factsFromPage } = await import("@/lib/feeds/vacancy-page");
+    const fields = ["ftlx0", "2602334", "Agronomist", "13/Nov/2026", "27/Nov/2026, 11\\:59\\:00 PM", "FEGEO - FAO Representation in Georgia", "Non-staff opportunities", "N/A", "Various Locations"];
+    const html = `<input type="hidden" id="initialHistory" value="${encodeURIComponent(fields.join("!|!"))}">`;
+    const f = factsFromPage("Agronomist", "https://jobs.fao.org/careersection/fao_external/jobdetail.ftl?job=2602334", html);
+    expect(f?.countryCode).toBe("GE");
+  });
+});
