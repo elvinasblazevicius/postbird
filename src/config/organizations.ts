@@ -127,7 +127,7 @@ export const KNOWN_ORGS: KnownOrg[] = [
   { name: "Agence Française de Développement", short: "AFD", type: "International financial institution", aliases: ["AFD", "French Development Agency"], domains: ["afd.fr", "afd.csod.com"] },
   { name: "ICMPD", short: "ICMPD", type: "International organization", aliases: ["International Centre for Migration Policy Development"], domains: ["icmpd.org"] },
   { name: "EUROCONTROL", short: "EUROCONTROL", badge: "ECTL", type: "International organization", domains: ["eurocontrol.int"] },
-  { name: "Frontex", short: "Frontex", type: "EU institution", aliases: ["European Border and Coast Guard Agency", "European Border and Coast Guard", "EBCG"], domains: ["frontex.europa.eu"] },
+  { name: "Frontex", short: "Frontex", type: "EU institution", aliases: ["European Border and Coast Guard Agency"], domains: ["frontex.europa.eu"] },
   { name: "EUMETSAT", short: "EUMETSAT", badge: "EUMSAT", site: { country: "DE", city: "Darmstadt" }, type: "International organization", domains: ["eumetsat.int", "eumetsat.jobbase.io"] },
   { name: "Action Against Hunger", type: "NGO", badge: "ACF", aliases: ["Action contre la Faim", "Accion contra el Hambre", "ACF"], domains: ["actionagainsthunger.org", "actioncontrelafaim.org", "acf-e.org"] },
   { name: "Solidarités International", type: "NGO", badge: "SI", aliases: ["Solidarites International", "Solidarités"], domains: ["solidarites.org"] },

@@ -154,5 +154,7 @@ export function stripOrgFromTitle(title: string, names: (string | null | undefin
   t = t.replace(/\s{2,}/g, " ").trim();
   // A part of the organization's name that names a separate entity ("IDB Invest", "UNDP-IC") is not a prefix to drop.
   if (/^(invest\b|ic\b|-)/i.test(t)) return title;
+  // Nothing but a generic word left ("Vacancies – European Defence Agency"): the title as it was.
+  if (/^(vacanc(y|ies)|jobs?|careers?|opportunit(y|ies)|positions?)$/i.test(t)) return title;
   return t.length >= 3 ? t : title;
 }
