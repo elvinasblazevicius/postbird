@@ -8,12 +8,11 @@ import { absoluteUrl, formatDate, jobPath, locationLabel, NOT_SPECIFIED } from "
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 function layout(title: string, bodyHtml: string, footerHtml: string): string {
-  const brand = siteConfig.colors.brand;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${esc(title)}</title></head>
 <body style="margin:0;background:#f4f6f9;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#0e1b2c">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border:1px solid #dde3ea;border-radius:12px">
-<tr><td style="padding:22px 28px;border-bottom:1px solid #dde3ea;font-family:Georgia,serif;font-size:20px;font-weight:600;color:${brand}">${esc(siteConfig.name)}</td></tr>
+<tr><td style="padding:20px 28px;background:#ddf1ff;border-bottom:1px solid #bfe0fa;border-radius:12px 12px 0 0;font-size:21px;font-weight:700;letter-spacing:-0.2px;color:#0b1f3a">${esc(siteConfig.name)}</td></tr>
 <tr><td style="padding:28px">${bodyHtml}</td></tr>
 <tr><td style="padding:18px 28px;border-top:1px solid #dde3ea;font-size:12px;line-height:1.6;color:#566476">${footerHtml}<br>${esc(postal())}</td></tr>
 </table></td></tr></table></body></html>`;
