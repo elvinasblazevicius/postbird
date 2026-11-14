@@ -318,12 +318,7 @@ export async function JobsBrowser({
               ? `No exact matches · ${result.total.toLocaleString("en-US")} similar ${result.total === 1 ? "vacancy" : "vacancies"}`
               : resultsHeading({ total: result.total, from, to, pages: result.pages, sort: result.sort, showTotal })}
           </h2>
-          {/* Phones: the full alert box comes after the first cards; a short way to it right by the count. */}
-          {alertRow && siteConfig.freeWeeklyEmail ? (
-            <Link href={`/alerts?search=${encodeURIComponent(alertSearch)}`} className="inline-flex min-h-10 items-center rounded-lg bg-highlight px-3 text-sm font-semibold text-ink no-underline sm:hidden">
-              Get alerts
-            </Link>
-          ) : null}
+          {/* Phones: the header's "Get job alerts" (which carries this search) is the way to alerts here; the full alert box comes after the first cards. */}
           {result.total > 0 ? (
             <div className="flex items-center gap-1 text-sm" aria-label="Sort">
               <span className="mr-1 text-slate">Sort:</span>
