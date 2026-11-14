@@ -37,7 +37,7 @@ export function StoryForm({ page }: { page: string | null }) {
       </div>
       <label className="flex items-start gap-2.5 text-ink">
         <input type="checkbox" name="quote_ok" value="1" defaultChecked={state.values?.quote_ok === "1"} className="mt-1 h-4 w-4 shrink-0 accent-[var(--brand)]" />
-        <span>You may quote these words on the site with the name above. <span className="text-slate">We don&apos;t edit them, and you can withdraw this at any time.</span></span>
+        <span>You may quote these words on the site with the name above (a name is needed for this). <span className="text-slate">We read every story before anything is shown, we don&apos;t edit the words, and you can withdraw this at any time.</span></span>
       </label>
       <div>
         <label htmlFor="st-email" className="mb-1.5 block text-sm font-medium text-ink">

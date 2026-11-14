@@ -24,7 +24,7 @@ export default async function SharePage({ searchParams }: Props) {
       <div className="mx-auto max-w-xl px-4 py-10 sm:px-6">
         <StoryForm page={from} />
         <p className="mt-6 text-sm text-slate">
-          Only words people send us here, with their permission, are ever shown on the site. <Link href="/privacy" className="underline underline-offset-2 hover:text-accent">Privacy policy</Link>
+          Only words people send us here, with their permission, are ever shown on the site, and only after we have read them. <Link href="/privacy" className="underline underline-offset-2 hover:text-accent">Privacy policy</Link>
         </p>
       </div>
     </>
