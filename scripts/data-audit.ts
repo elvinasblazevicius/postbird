@@ -5,6 +5,7 @@
  * Usage: npm run data-audit   (or the "data-audit" option of the GitHub workflow)
  */
 import { getSql } from "../src/lib/db";
+import { findDuplicates, type DedupeRow } from "../src/lib/feeds/dedupe";
 
 async function main() {
   const sql = getSql();
@@ -77,6 +78,23 @@ async function main() {
      group by lower(regexp_replace(j.title, '[^a-zA-Z]+', ' ', 'g')) having count(*) > 1 order by 1 limit 50`) {
     console.log(`-- ${r.t}`);
     for (const x of r.rows) console.log(`   #${x}`);
+  }
+
+  section("Duplicate check now (what the next import would take down, and why not for same-title pairs)");
+  {
+    const rows = await sql<(DedupeRow & { status: string })[]>`
+      select id::int, organization_id::int, title, country_code, deadline::text, apply_url, source_host, reference, status
+        from jobs
+       where not is_demo and organization_id is not null
+         and (status = 'active' or (status = 'removed' and removed_reason like 'Same vacancy as #%'
+              and (deadline is null or deadline >= (now() at time zone 'utc')::date)))`;
+    const dups = findDuplicates(rows);
+    const active = [...dups].filter(([id]) => rows.find((r) => r.id === id)?.status === "active");
+    console.log(`${rows.length} rows checked, ${dups.size} duplicates, ${active.length} of them still listed: ${active.slice(0, 40).map(([a, b]) => `#${a}→#${b}`).join(" ")}`);
+    for (const id of [227, 386, 937, 938, 795, 796, 1131, 1243]) {
+      const r = rows.find((x) => x.id === id);
+      console.log(`#${id}: ${r ? `${r.status} | ref ${r.reference ?? "-"} | ${r.apply_url}` : "not in rows"} | ${dups.has(id) ? `dup of #${dups.get(id)}` : "kept"}`);
+    }
   }
 
   section("Grades (value, count)");
