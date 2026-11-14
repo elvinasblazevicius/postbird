@@ -138,8 +138,13 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
     <section aria-labelledby="sample-heading">
       <h2 id="sample-heading" className="text-xl font-semibold text-ink">{heading}</h2>
       <p className="mt-1 text-sm text-slate">{intro}</p>
-      {/* Shown by FollowsLabel (src/components/follows-label.tsx) once the visitor changes the search above. */}
-      <p data-example-stale="" hidden className="mt-1 text-sm text-ink">This example was built for the search you arrived with. Your emails will follow the search you set above.</p>
+      {/* Shown by FollowsLabel (src/components/follows-label.tsx) once the visitor changes the search above; not
+          when the example already says it isn't built from their search. */}
+      {ownEmpty ? null : (
+        <p data-example-stale="" hidden className="mt-1 text-sm text-ink">
+          {search ? "This example was built for the search you arrived with. Your emails will follow the search you set above." : "This example shows all new vacancies. Your emails will follow the search you set above."}
+        </p>
+      )}
       <figure className="mt-3 rounded-xl border border-rule bg-mist p-2 sm:p-3">
         <figcaption className="px-2 pb-2 pt-1 text-[0.8125rem] leading-relaxed text-slate">
           <span className="block"><span className="text-ink">From:</span> {siteConfig.name}</span>
@@ -153,7 +158,7 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
             </p>
             <p className="mt-1 text-sm text-slate">
               {kind === "weekly"
-                ? "New vacancies of the past week that match your search. Apply on each employer’s own website."
+                ? `New vacancies of the past week${real && yours ? " that match your search" : ""}. Apply on each employer’s own website.`
                 : pastWeek && real
                   ? `New on ${siteConfig.name} in the past week. Apply on each employer’s own website.`
                   : `New on ${siteConfig.name} since yesterday’s email. Apply on each employer’s own website.`}

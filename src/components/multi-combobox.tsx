@@ -31,7 +31,9 @@ function useHydrated() {
  * chip has its own remove button. Additions and removals are announced in a polite live region.
  * In a form with AutoSubmit (the desktop filter panel), a change applies at once (data-autosubmit).
  */
-export function MultiCombobox({ name, label, idPrefix, groups, chosen: initial, max, placeholder, itemNoun, itemsNoun, anyHint, children }: {
+export function MultiCombobox({ name, label, idPrefix, groups, chosen: initial, max, placeholder, itemNoun, itemsNoun, anyHint, noMatchHint, children }: {
+  /** Under "No … match": what to do instead (the alert sign-up: try the name as a keyword). */
+  noMatchHint?: string;
   name: string;
   label: string;
   idPrefix: string;
@@ -293,7 +295,7 @@ export function MultiCombobox({ name, label, idPrefix, groups, chosen: initial, 
               </ul>
             </li>
           ))}
-          {!flat.length ? <li role="presentation" className="px-3 py-2 text-slate">No {itemsNoun} match &ldquo;{query}&rdquo;</li> : null}
+          {!flat.length ? <li role="presentation" className="px-3 py-2 text-slate">No {itemsNoun} match &ldquo;{query}&rdquo;{noMatchHint ? <span className="mt-0.5 block text-sm">{noMatchHint}</span> : null}</li> : null}
           {hidden > 0 ? <li role="presentation" className="px-3 py-2 text-xs text-slate">{hidden} more: keep typing to narrow the list</li> : null}
         </ul>
       </div>

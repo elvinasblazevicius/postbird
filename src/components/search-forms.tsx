@@ -188,7 +188,7 @@ export function OrgFields({ facets, filters, idPrefix, name = "org", counts = tr
   const orgs = [...facets.orgs.filter((o) => o.count > 0 || chosen.includes(o.slug)), ...facets.orgs.filter((o) => o.count === 0 && !chosen.includes(o.slug))];
   const options = orgs.map((o) => ({ value: o.slug, label: counts ? withCount(o.name, o.count) : o.name }));
   return (
-    <MultiCombobox name={name} label="Organization" idPrefix={idPrefix} groups={[{ label: "", options: orgs.map((o) => ({ value: o.slug, name: o.name, count: counts ? o.count : undefined, keys: orgKeys(o.name) })) }]}
+    <MultiCombobox name={name} label="Organization" idPrefix={idPrefix} noMatchHint={counts ? undefined : "We don’t receive its vacancies yet. Try its name as a keyword."} groups={[{ label: "", options: orgs.map((o) => ({ value: o.slug, name: o.name, count: counts ? o.count : undefined, keys: orgKeys(o.name) })) }]}
       chosen={chosen} max={MAX_ORGS} placeholder="Any organization: type a name" itemNoun="organization" itemsNoun="organizations" anyHint="Jobs at any of the organizations you choose">
       <RepeatSelect name={name} label="Organization" idPrefix={idPrefix} chosen={chosen} groups={[{ label: "", options }]} max={MAX_ORGS}
         anyLabel="Any organization" chooseLabel="Choose an organization" addLabel="Add another organization" addHint="Jobs at any of the organizations you choose" removeLabel="Remove this organization" itemNoun="organization" />

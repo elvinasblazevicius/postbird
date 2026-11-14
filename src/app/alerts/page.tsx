@@ -81,6 +81,7 @@ export default async function AlertsPage({ searchParams }: Props) {
             <section className="max-w-xl" aria-labelledby="free-h">
               <h2 id="free-h" className="sr-only">Sign up for the free weekly email</h2>
               <div id="alert-signup" className="scroll-mt-24 rounded-[14px] border-[3px] border-sky-wash bg-sky-wash p-4 sm:p-5">{weeklyForm}</div>
+              <p className="mt-3 text-sm text-slate">No email in a week with nothing new.<span className="sm:hidden"> {siteConfig.name} is independent and not affiliated with the UN or any employer listed.</span></p>
             </section>
             <div className="max-w-xl">
               <AlertExample heading="What the weekly email looks like" kind="weekly" search={search} />
