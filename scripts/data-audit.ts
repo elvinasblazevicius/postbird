@@ -70,6 +70,15 @@ async function main() {
      group by coalesce(organization_id, -1), lower(regexp_replace(title, '[^a-zA-Z0-9]+', ' ', 'g')), coalesce(country_code,'')
     having count(*) > 1 order by count(*) desc limit 60`) console.log(`${r.ids.map((i) => `#${i}`).join(",")} | ${r.deadlines.join(",")} | ${r.title}`);
 
+  section("Same title open more than once (id | org id/slug | country | closing | source → apply link)");
+  for (const r of await sql<{ t: string; rows: string[] }[]>`
+    select min(j.title) as t, array_agg(j.id || ' | ' || coalesce(j.organization_id::text, '-') || '/' || coalesce(o.slug, '-') || ' | ' || coalesce(j.country_code, '-') || ' | ' || coalesce(j.deadline::text, '-') || ' | ' || coalesce(j.source_host, '-') || ' → ' || left(coalesce(j.apply_url, '-'), 110) order by j.id) as rows
+      from jobs j left join organizations o on o.id = j.organization_id where ${open}
+     group by lower(regexp_replace(j.title, '[^a-zA-Z]+', ' ', 'g')) having count(*) > 1 order by 1 limit 50`) {
+    console.log(`-- ${r.t}`);
+    for (const x of r.rows) console.log(`   #${x}`);
+  }
+
   section("Grades (value, count)");
   for (const r of await sql<{ grade: string; n: number }[]>`select grade, count(*)::int as n from jobs j where ${open} and grade is not null group by 1 order by 2 desc`) console.log(`${r.n}\t${r.grade}`);
   const [{ g }] = await sql<{ g: number }[]>`select count(*)::int as g from jobs j where ${open} and grade is null`;
