@@ -11,6 +11,12 @@ describe("findDuplicates", () => {
   it("matches copies with the same link", () => {
     expect([...findDuplicates([row(1, { apply_url: "https://x.org/a" }), row(2, { apply_url: "https://www.x.org/a/" })])]).toEqual([[2, 1]]);
   });
+  it("tells links apart by their query", () => {
+    expect(findDuplicates([row(1, { apply_url: "https://jobs.fao.org/x?job=1" }), row(2, { apply_url: "https://jobs.fao.org/x?job=2" })]).size).toBe(0);
+  });
+  it("doesn't match a board's copy when the employer lists several of that title", () => {
+    expect(findDuplicates([row(1, { source_host: "untalent.org", apply_url: "https://worldbank.org" }), row(2), row(3)]).size).toBe(0);
+  });
   it("leaves separate posts of the employer alone", () => {
     expect(findDuplicates([row(1), row(2), row(3)]).size).toBe(0);
   });

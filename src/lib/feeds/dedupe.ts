@@ -25,7 +25,17 @@ export type DedupeRow = {
 };
 
 const norm = (t: string) => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
-const linkKey = (u: string | null) => (u ? u.toLowerCase().replace(/^https?:\/\/(www\.)?/, "").replace(/[?#].*$/, "").replace(/\/+$/, "") : null);
+/** An application link without scheme, "www.", fragment, tracking parameters or trailing slash (its query kept: "?job=123" tells vacancies apart). */
+const linkKey = (u: string | null) => {
+  if (!u) return null;
+  try {
+    const x = new URL(u);
+    for (const k of [...x.searchParams.keys()]) if (/^(utm_|gclid|fbclid|source|src|promotion)/i.test(k)) x.searchParams.delete(k);
+    return `${x.hostname.replace(/^www\./, "")}${x.pathname.replace(/\/+$/, "")}${x.search}`.toLowerCase();
+  } catch {
+    return u.toLowerCase();
+  }
+};
 const fits = <T,>(a: T | null, b: T | null) => a === null || b === null || a === b;
 
 /** For each duplicate, the listing it repeats (exported for the tests). */
@@ -49,11 +59,14 @@ export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
   const out = new Map<number, number>();
   for (const g of groups.values()) {
     if (g.length < 2) continue;
+    // A job board's copy is matched to the employer's own listing by title only when the employer
+    // lists one vacancy of that title; when it lists several ("E T Consultant"), only the same link counts.
+    const ownCopies = g.filter((r) => !fromBoard(r)).length;
     const kept: DedupeRow[] = [];
     for (const r of [...g].sort(before)) {
       const same = kept.find((k) =>
         fits(k.country_code, r.country_code) && fits(k.deadline, r.deadline) &&
-        ((linkKey(k.apply_url) !== null && linkKey(k.apply_url) === linkKey(r.apply_url)) || fromBoard(k) !== fromBoard(r)));
+        ((linkKey(k.apply_url) !== null && linkKey(k.apply_url) === linkKey(r.apply_url)) || (ownCopies === 1 && fromBoard(k) !== fromBoard(r))));
       if (same) {
         out.set(r.id, same.id);
         // The kept copy takes the closing date the other one had (it is checked against the next copies too).
@@ -64,15 +77,30 @@ export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
   return out;
 }
 
-/** Takes down the duplicates among open listings; returns how many. */
+/**
+ * Takes down the duplicates among open listings; returns how many. Listings taken down as
+ * duplicates before are checked again with them, and listed again when they no longer count as
+ * one (a rule made stricter, the other copy closed).
+ */
 export async function removeDuplicateListings(): Promise<number> {
-  const rows = await sql<DedupeRow[]>`
-    select id::int, organization_id::int, title, country_code, deadline::text, apply_url, source_host
-      from jobs where status = 'active' and not is_demo and organization_id is not null`;
+  const rows = await sql<(DedupeRow & { status: string })[]>`
+    select id::int, organization_id::int, title, country_code, deadline::text, apply_url, source_host, status
+      from jobs
+     where not is_demo and organization_id is not null
+       and (status = 'active' or (status = 'removed' and removed_reason like 'Same vacancy as #%'
+            and (deadline is null or deadline >= (now() at time zone 'utc')::date)))`;
   const dups = findDuplicates(rows);
+  const back = rows.filter((r) => r.status === "removed" && !dups.has(r.id)).map((r) => r.id);
+  if (back.length) await sql`update jobs set status = 'active', removed_reason = null, updated_at = now() where id = any(${back})`;
+  let taken = 0;
   for (const [id, of] of dups) {
+    if (rows.find((r) => r.id === id)?.status !== "active") {
+      await sql`update jobs set removed_reason = ${`Same vacancy as #${of}`} where id = ${id}`;
+      continue;
+    }
+    taken++;
     await sql`update jobs set deadline = coalesce(deadline, (select d.deadline from jobs d where d.id = ${id})), updated_at = now() where id = ${of}`;
     await sql`update jobs set status = 'removed', removed_reason = ${`Same vacancy as #${of}`}, updated_at = now() where id = ${id} and status = 'active'`;
   }
-  return dups.size;
+  return taken;
 }
