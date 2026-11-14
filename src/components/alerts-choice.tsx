@@ -8,9 +8,10 @@ import { TrackedLink } from "./tracking";
 
 /**
  * The one choice every "Get job alerts" button leads to: the free weekly email or paid daily
- * alerts. Daily is the highlighted card (white, yellow outline and button) and leads with the
- * closing-date reminder, the thing only it does; Weekly is quieter (light blue, outlined button)
- * so the two don't compete. Weekly sits on the left on wide screens; on phones Daily comes first.
+ * alerts. Daily is the highlighted card (white, yellow outline and button), comes first and leads
+ * with the closing-date reminder, the thing only it does; Weekly is the light-blue card next to it
+ * (below it on phones, with a link at the top straight to it, so the free option is never missed).
+ * `searchLabel`: the search both would follow, named in the Daily card too.
  *
  * `onBand` is for the blue band on the home page; without it the cards sit on a light page.
  */
@@ -23,13 +24,13 @@ function Check() {
   );
 }
 
-export function AlertsChoice({ weeklyHref, trialHref, source, onBand = false, weeklyForm }: { weeklyHref: string; trialHref: string; source: string; onBand?: boolean; weeklyForm?: React.ReactNode }) {
+export function AlertsChoice({ weeklyHref, trialHref, source, onBand = false, weeklyForm, searchLabel }: { weeklyHref: string; trialHref: string; source: string; onBand?: boolean; weeklyForm?: React.ReactNode; searchLabel?: string | null }) {
   const p = siteConfig.premium;
   // plans[0] is monthly, plans[1] the 3-month plan (site.config.ts).
   const [monthly, quarterly] = p.plans;
   const fromPrice = "perMonth" in quarterly && quarterly.perMonth ? quarterly.perMonth : monthly.price;
   const weekly = (
-    <div className={`on-light flex flex-col gap-2 rounded-[14px] border-[3px] p-4 ${onBand ? "border-[#cbe3fa] bg-[#cbe3fa]" : "border-sky-wash bg-sky-wash sm:p-5"}`}>
+    <div id={weeklyForm ? "alert-signup" : undefined} className={`on-light flex scroll-mt-24 flex-col gap-2 rounded-[14px] border-[3px] p-4 ${onBand ? "border-[#cbe3fa] bg-[#cbe3fa]" : "border-sky-wash bg-sky-wash sm:p-5"}`}>
       <strong className="text-lg text-ink">Weekly email</strong>
       <ul className="space-y-1.5 text-sm leading-snug text-tint-ink">
         {["Every Monday", "One search", "Free, no card needed"].map((f) => <li key={f} className="flex gap-2"><Check />{f}</li>)}
@@ -45,7 +46,7 @@ export function AlertsChoice({ weeklyHref, trialHref, source, onBand = false, we
     </div>
   );
   const daily = (
-    <div className={`flex flex-col gap-2 rounded-[14px] border-[3px] border-highlight bg-paper p-4 max-sm:order-first ${onBand ? "" : "sm:p-5"}`}>
+    <div className={`flex flex-col gap-2 rounded-[14px] border-[3px] border-highlight bg-paper p-4 ${onBand ? "" : "sm:p-5"}`}>
       <div className="flex flex-wrap items-center gap-2">
         <strong className="text-lg text-ink">{p.name}</strong>
         <span className="rounded-md bg-[#ffe680] px-2 py-0.5 text-[0.8125rem] font-bold text-ink">
@@ -53,8 +54,8 @@ export function AlertsChoice({ weeklyHref, trialHref, source, onBand = false, we
         </span>
       </div>
       <ul className="space-y-1.5 text-sm leading-snug text-tint-ink">
-        <li className="flex gap-2"><Check />New matches every day</li>
-        <li className="flex gap-2"><Check /><span><strong className="text-ink">Closing-date reminders:</strong> your matching vacancies that close in the next {CLOSING_SOON_DAYS} days</span></li>
+        <li className="flex gap-2"><Check />{searchLabel ? <span>New matches every day for <strong className="text-ink">{searchLabel}</strong></span> : "New matches every day"}</li>
+        <li className="flex gap-2"><Check /><span><strong className="text-ink">Closing-date reminders:</strong> each matching vacancy {CLOSING_SOON_DAYS} days before its published closing date</span></li>
         <li className="flex gap-2"><Check />Up to {MAX_SAVED_SEARCHES} searches</li>
       </ul>
       <p className="text-[0.8125rem] leading-snug text-slate">
@@ -72,11 +73,17 @@ export function AlertsChoice({ weeklyHref, trialHref, source, onBand = false, we
       </TrackedLink>
     </div>
   );
-  // Weekly comes first in the page (and for the Tab key), as it is seen on wide screens; on phones Daily is shown first.
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {weekly}
-      {daily}
+    <div>
+      {/* Phones: the free option is a screen further down, so say at once that it exists. */}
+      <p className={`mb-3 text-sm sm:hidden ${onBand ? "text-white/90" : "text-slate"}`}>
+        Prefer free?{" "}
+        <a href={weeklyForm ? "#alert-signup" : weeklyHref} className={`font-semibold underline underline-offset-2 ${onBand ? "text-white" : "text-accent"}`}>Get the weekly email, no card needed</a>
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2 sm:items-start">
+        {daily}
+        {weekly}
+      </div>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { adConversion, AttributionField } from "./ads";
 import { EarlyAccessDone } from "./early-access";
 import { EARLY_ACCESS_BUTTON, earlyAccessLine } from "@/lib/early-access-copy";
 import { BILLING_LIVE } from "@/lib/billing/live";
+import { FollowsLabel } from "./follows-label";
 
 // Paddle's checkout code loads only where the checkout form is shown (billing live), not with every page that has this form.
 const TrialCheckoutForm = dynamic(() => import("./paddle-checkout").then((m) => m.TrialCheckoutForm));
@@ -182,7 +183,7 @@ function EarlyAccessForm({ source = "pricing", search, remindJobId, watch }: { s
  * without JavaScript), open when a search was carried over (`search`, summarised as `searchLabel`
  * above the email field).
  */
-export function FreeWeeklyForm({ source = "alerts-page", search, searchLabel, watch, compact = false }: { source?: string; search?: string; searchLabel?: string | null; watch?: React.ReactNode; compact?: boolean }) {
+export function FreeWeeklyForm({ source = "alerts-page", search, searchLabel, watch, keywords, kept, compact = false }: { source?: string; search?: string; searchLabel?: string | null; watch?: React.ReactNode; keywords?: React.ReactNode; kept?: string | null; compact?: boolean }) {
   const [state, action, pending] = useActionState(alertSignupAction, initial);
   useEffect(() => {
     // Microsoft Ads "subscribe"; Meta "Lead" (no email address or search sent).
@@ -190,7 +191,8 @@ export function FreeWeeklyForm({ source = "alerts-page", search, searchLabel, wa
   }, [state.status, source]);
   if (state.status === "success") return <Result state={state} />;
   if (compact) {
-    // Inside the Weekly card on /alerts: just the address and the button (the search, if any, is carried over).
+    // Inside the Weekly card on /alerts: the keywords (shown), the organization and location (folded
+    // under "Change"), the address and the button. A search carried over from /jobs fills them in.
     return (
       <form action={action} className="space-y-2.5">
         <input type="hidden" name="kind" value="alerts" />
@@ -200,23 +202,26 @@ export function FreeWeeklyForm({ source = "alerts-page", search, searchLabel, wa
         <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
           <label>Leave empty<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label>
         </div>
+        {keywords}
         {watch ? (
-          // What the email will follow, with the fields to change it folded away (closed by default).
+          // What the email will follow (updated while the fields change), with the organization and location folded away.
           <details className="group rounded-[10px] border border-sky-rule bg-paper/70 text-sm text-ink">
             <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-1.5 px-3 py-2 [&::-webkit-details-marker]:hidden">
               <span>Follows:</span>
-              <strong className="font-semibold">{searchLabel ?? "all new vacancies"}</strong>
-              <span className="ml-auto font-medium text-accent underline underline-offset-2 group-open:hidden">Change</span>
+              <FollowsLabel initial={searchLabel ?? "all new vacancies"} kept={kept} />
+              <span className="ml-auto font-medium text-accent underline underline-offset-2 group-open:hidden">{keywords ? "Organization, location" : "Change"}</span>
               <span className="ml-auto hidden font-medium text-accent group-open:inline">Done</span>
             </summary>
             <div className="space-y-4 border-t border-sky-rule px-3 pb-3 pt-3">{watch}</div>
           </details>
         ) : null}
-        <label htmlFor="fw-email" className="sr-only">Email address</label>
-        <input id="fw-email" name="email" type="email" required autoComplete="email" placeholder="Your email address" className={field} />
+        <div>
+          <label htmlFor="fw-email" className="mb-1 block text-sm font-medium text-ink">Email address</label>
+          <input id="fw-email" name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} />
+        </div>
         {state.status === "error" ? <p role="alert" className="text-sm text-[#9b1c1c]">{state.message}</p> : null}
-        <button disabled={pending} className="flex min-h-11 w-full items-center justify-center rounded-[10px] border border-brand bg-paper px-4 py-2.5 text-[0.95rem] font-bold text-accent hover:bg-paper/60 disabled:opacity-60">
-          {pending ? "Saving…" : "Get the weekly email"}
+        <button disabled={pending} className="flex min-h-11 w-full items-center justify-center rounded-[10px] bg-brand px-4 py-2.5 text-[0.95rem] font-bold text-white hover:bg-accent disabled:opacity-60">
+          {pending ? "Saving…" : "Get the free weekly email"}
         </button>
         <p className="text-[0.8125rem] leading-snug text-slate">
           We email once to confirm. Unsubscribe in one click. <Link href="/privacy" className="underline underline-offset-2 hover:text-accent">Privacy</Link>

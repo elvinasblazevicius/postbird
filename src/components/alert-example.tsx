@@ -1,8 +1,9 @@
 import Link from "next/link";
 import siteConfig from "@site-config";
-import { closingSoonJobs, searchJobs, type JobListItem } from "@/lib/jobs";
+import { closingSoonJobs, filtersFromQuery, searchJobs, type JobListItem } from "@/lib/jobs";
+import { describeSearch } from "@/lib/saved-searches";
 import { displayGrade, isLocalOnly, localOnlyShort } from "@/lib/grades";
-import { daysUntil, formatDate, jobPath, locationLabel, NOT_SPECIFIED } from "@/lib/site";
+import { categoryName, daysUntil, formatDate, jobPath, locationLabel, NOT_SPECIFIED } from "@/lib/site";
 
 /** Paid alerts' "Closing in the next 3 days" (CLOSING_SOON_DAYS in src/lib/email-templates.ts, not imported here: that module is server-email code). */
 const CLOSING_SOON_DAYS = 3;
@@ -17,7 +18,7 @@ const ILLUSTRATIVE = [
 /** "UNICEF · Nairobi, Kenya · P-3 · Closes 30 Nov 2026": the same compact line as the emails (jobMeta in src/lib/email-templates.ts). */
 function jobMeta(j: JobListItem): string {
   const where = locationLabel(j);
-  return [j.org_name ?? "Organization not in our source", where === NOT_SPECIFIED ? null : where, displayGrade(j), localOnlyShort(j), j.deadline ? `Closes ${formatDate(j.deadline)}` : null]
+  return [j.org_name, where === NOT_SPECIFIED ? null : where, displayGrade(j), localOnlyShort(j), j.deadline ? `Closes ${formatDate(j.deadline)}` : null]
     .filter(Boolean)
     .join(" · ");
 }
@@ -35,8 +36,19 @@ const EXAMPLE_ROWS = 3;
  * local-only posts are already left out by the search where that applies), at most EXAMPLE_ROWS.
  */
 function pickRows(jobs: JobListItem[]): JobListItem[] {
-  const graded = jobs.filter((j) => j.grade && !isLocalOnly(j));
-  return [...graded, ...jobs.filter((j) => !graded.includes(j))].slice(0, EXAMPLE_ROWS);
+  const clean = jobs.filter((j) => !looksGarbled(j.title));
+  const graded = clean.filter((j) => j.grade && !isLocalOnly(j));
+  return [...graded, ...clean.filter((j) => !graded.includes(j))].slice(0, EXAMPLE_ROWS);
+}
+
+/** Titles whose source left placeholders empty ("(NO-)", "( days)", a lone "#"): not shown in the example. */
+export function looksGarbled(title: string): boolean {
+  return /\(\s*\)|\([A-Z]{1,4}-\)|\(\s*days?\)|(^|[\s,])#(?=[\s,]|$)|,\s*,/.test(title);
+}
+
+/** "+12 more", "999+ more". */
+export function moreLabel(n: number): string {
+  return n > 999 ? "999+ more" : `+${n.toLocaleString("en-US")} more`;
 }
 
 function Rows({ rows }: { rows: { key: string | number; title: string; meta: string; href?: string }[] }) {
@@ -62,29 +74,43 @@ function Rows({ rows }: { rows: { key: string | number; title: string; meta: str
  * "Closing in the next 3 days" section), filled with current listings. `kind` "weekly" shows the
  * free weekly email instead (no closing-soon section).
  */
-export async function AlertExample({ heading = "What an alert looks like", kind = "daily" }: { heading?: string; kind?: "daily" | "weekly" }) {
+export async function AlertExample({ heading = "What an alert looks like", kind = "daily", search }: { heading?: string; kind?: "daily" | "weekly"; search?: string | null }) {
   // Weekly: the open listings posted in the past 7 days (as the weekly email). Daily: a search that leaves out local-only
   // posts (the hidelocal filter, the SQL rule), with what was posted in the past day, or the past week on a quiet day.
-  // Demo listings never count.
+  // Demo listings never count. With `search` (the visitor's own), the example follows it.
+  const own = search ? filtersFromQuery(search) : null;
   const pick = (posted: "1" | "7") =>
-    searchJobs({ posted, sort: "newest", hidelocal: kind === "daily" || undefined, excludeDemo: true }, 30).catch(() => ({ items: [] as JobListItem[], total: 0 }));
+    searchJobs({ ...(own ?? {}), posted, sort: "newest", page: undefined, hidelocal: kind === "daily" || own?.hidelocal || undefined, excludeDemo: true }, 30).catch(() => ({ items: [] as JobListItem[], total: 0 }));
   const [first, closing] = await Promise.all([pick(kind === "daily" ? "1" : "7"), kind === "daily" ? closingSoonJobs(12).catch(() => []) : Promise.resolve([])]);
   // A quiet day: the daily example is built from the past week instead, and says so.
   const pastWeek = kind === "daily" && first.total < EXAMPLE_ROWS;
-  const found = pastWeek ? await pick("7") : first;
+  const all = pastWeek ? await pick("7") : first;
+  const ownLabel = own && all.items.length ? await describeSearch(search!).catch(() => null) : null;
+  // Without the visitor's search: shown as one saved search, as a subscriber would set it up: the
+  // field of work most of these new listings are in (a handful of matches, not every new vacancy).
+  const counts = new Map<string, number>();
+  if (!ownLabel) for (const j of all.items) if (j.category && j.category !== "other") counts.set(j.category, (counts.get(j.category) ?? 0) + 1);
+  const topCategory = ownLabel ? null : [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const inSearch = topCategory ? all.items.filter((j) => j.category === topCategory) : all.items;
+  const found = topCategory ? { items: inSearch, total: inSearch.length } : all;
   const jobs = pickRows(found.items);
+  // Closing soon: vacancies that close in 1 to 3 days (not today: the reminder comes before the day).
   const soon = closing
-    .filter((j) => !j.is_demo && (daysUntil(j.deadline) ?? 99) <= CLOSING_SOON_DAYS && !jobs.some((x) => x.id === j.id) && !isLocalOnly(j))
+    .filter((j) => { const d = daysUntil(j.deadline) ?? 99; return !j.is_demo && d >= 1 && d <= CLOSING_SOON_DAYS && !jobs.some((x) => x.id === j.id) && !isLocalOnly(j) && !looksGarbled(j.title); })
     .slice(0, 2);
   const real = jobs.length > 0;
   const n = real ? Math.max(found.total, jobs.length) : ILLUSTRATIVE.length;
   const moreCount = real ? n - jobs.length : 0;
-  const label = kind === "daily" ? "All new vacancies, without local-only posts" : "All new vacancies";
+  const label = ownLabel
+    ? `Your search: ${ownLabel}`
+    : topCategory
+      ? `Your search: ${categoryName(topCategory)}${kind === "daily" ? ", international posts" : ""}`
+      : kind === "daily" ? "All new vacancies, without local-only posts" : "All new vacancies";
   const subject = kind === "weekly"
-    ? `${cappedCount(n)} new international ${n === 1 ? "vacancy" : "vacancies"} this week`
+    ? `${cappedCount(n)} new ${n === 1 ? "vacancy matches" : "vacancies match"} your search this week`
     : pastWeek && real
       ? `Example: ${cappedCount(n)} new ${n === 1 ? "vacancy" : "vacancies"} this week`
-      : `${cappedCount(n)} new ${n === 1 ? "vacancy matches" : "vacancies match"} your search`;
+      : `${cappedCount(n)} new ${n === 1 ? "vacancy matches" : "vacancies match"} your search${soon.length ? `, ${soon.length} closing soon` : ""}`;
   const intro = !real
     ? "Illustrative example"
     : pastWeek
@@ -111,18 +137,18 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
             </p>
             <p className="mt-1 text-sm text-slate">
               {kind === "weekly"
-                ? "The newest vacancies of the past week. Apply on each employer’s own website."
+                ? "New vacancies of the past week that match your search. Apply on each employer’s own website."
                 : pastWeek && real
                   ? `New on ${siteConfig.name} in the past week. Apply on each employer’s own website.`
                   : `New on ${siteConfig.name} since yesterday’s email. Apply on each employer’s own website.`}
             </p>
-            {kind === "daily" ? (
+            {real ? (
               <p className="mt-4 text-[0.95rem] font-semibold text-ink">
                 {label} <span className="font-normal text-slate">({cappedCount(n)} new)</span>
               </p>
             ) : null}
-            <div className={kind === "daily" ? "mt-1" : "mt-3"}><Rows rows={rows} /></div>
-            {moreCount > 0 ? <p className="mt-2 text-[0.8125rem] font-medium text-slate">+{cappedCount(moreCount)} more</p> : null}
+            <div className={real ? "mt-1" : "mt-3"}><Rows rows={rows} /></div>
+            {moreCount > 0 ? <p className="mt-2 text-[0.8125rem] font-medium text-slate">{moreLabel(moreCount)}</p> : null}
             {kind === "daily" ? (
               soon.length ? (
                 <>

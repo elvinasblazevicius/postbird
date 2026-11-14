@@ -9,19 +9,21 @@ import { WatchFieldset, type FacetData } from "./search-forms";
  * search) to start from scratch instead. `fold`: just the fields, for the free weekly form, which
  * folds them under "Narrow it down (optional)" and shows the carried-over search above its email field.
  */
-export async function WatchFields({ search, searchLabel, hint, resetHref, fold = false }: { search: string | null; searchLabel: string | null; hint?: string; resetHref?: string; fold?: boolean }) {
+export async function WatchFields({ search, searchLabel, hint, resetHref, fold = false, part = "all" }: { search: string | null; searchLabel: string | null; hint?: string; resetHref?: string; fold?: boolean; part?: "all" | "keywords" | "places" }) {
+  const filters = search ? filtersFromQuery(search) : {};
+  if (part === "keywords") return <WatchFieldset facets={{ orgs: [], countries: [], regions: [], categories: [], grades: [] }} filters={filters} part="keywords" />;
   const [orgs, countries, regions] = await Promise.all([
     organizationFacets(500, false).catch(() => []),
     countryFacets(false).catch(() => []),
     regionFacets(false).catch(() => []),
   ]);
   const facets: FacetData = { orgs: orgs.map((o) => ({ slug: o.slug, name: o.name, count: o.count })), countries, regions, categories: [], grades: [] };
-  const filters = search ? filtersFromQuery(search) : {};
   const fieldset = (
     <WatchFieldset
       facets={facets}
       filters={filters}
       hideLegend={fold}
+      part={part}
       hint={
         search && resetHref ? (
           <>

@@ -68,8 +68,15 @@ export function MultiCombobox({ name, label, idPrefix, groups, chosen: initial, 
     for (const g of groups) {
       const matches = g.options.filter((o) => !chosen.includes(o.value) && (!q || fold(o.name).includes(q) || Boolean(o.keys?.some((k) => fold(k).startsWith(q)))));
       if (q) {
-        const starts = (o: ComboOption) => fold(o.name).split(/[^a-z0-9]+/).some((w) => w.startsWith(q)) || Boolean(o.keys?.some((k) => fold(k) === q));
-        matches.sort((a, b) => Number(starts(b)) - Number(starts(a)));
+        // An acronym or short name that starts with the text first ("uni": UNICEF), then a name that
+        // does, then any word that does, then the rest; the list's own order within each.
+        const rank = (o: ComboOption) => {
+          const name = fold(o.name);
+          if (o.keys?.some((k) => fold(k).startsWith(q)) || (/^[A-Z0-9-]{2,10}$/.test(o.name) && name.startsWith(q))) return 0;
+          if (name.startsWith(q)) return 1;
+          return name.split(/[^a-z0-9]+/).some((w) => w.startsWith(q)) ? 2 : 3;
+        };
+        matches.sort((a, b) => rank(a) - rank(b));
       }
       const room = Math.max(0, SHOWN - total);
       if (matches.length && room) out.push({ label: g.label, options: matches.slice(0, room) });

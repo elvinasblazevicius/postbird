@@ -97,41 +97,26 @@ export default async function PricingPage() {
     <>
       <PageHeader
         width="max-w-4xl"
-        title={siteConfig.freeWeeklyEmail ? "Never miss a closing date" : "Plans and pricing"}
+        title={siteConfig.freeWeeklyEmail ? "Get reminded before vacancies close" : "Plans and pricing"}
         crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Pricing" }]}
         intro={
           siteConfig.freeWeeklyEmail
-            ? `Daily alerts${BILLING_LIVE ? "" : ", launching soon,"} email you the matching vacancies that close in the next 3 days, before it's too late, with new matches every day and up to 20 searches. Every vacancy, search and filter stays free, and so does a weekly email for one search.`
+            ? `Daily alerts${BILLING_LIVE ? "" : ", launching soon,"} email you new matches every day for up to 20 searches, and remind you of each matching vacancy 3 days before its published closing date. Every vacancy, search and filter stays free, and so does a weekly email for one search.`
             : `Every vacancy, search and filter is free. Paid email alerts${BILLING_LIVE ? "" : ", launching soon,"} bring new matches to your inbox so you don't have to keep checking.`
         }
       />
-      <div className="mx-auto max-w-4xl px-4 pt-8 sm:px-6">
+      <div className="mx-auto max-w-4xl px-4 pt-8 max-sm:hidden sm:px-6">
         <CoverageLine />
       </div>
+      {/* Daily alerts first (on the left on wide screens), the free plan beside or below it. */}
       <div className="mx-auto grid max-w-4xl gap-6 px-4 py-12 sm:px-6 md:grid-cols-2">
-        <section className="flex flex-col self-start rounded-2xl border border-rule p-7" aria-labelledby="plan-free">
-          <h2 id="plan-free" className="text-2xl font-semibold leading-tight text-ink">Free</h2>
-          <p className="mt-2"><span className="font-display text-4xl font-semibold text-ink">$0</span></p>
-          <ul className="mt-6 space-y-3 text-ink">
-            {[
-              "Browse and search every vacancy",
-              "Filter by organization, country, grade, contract type and deadline",
-              "Closing date shown whenever the employer publishes one",
-              "Add closing dates to your calendar",
-              ...(siteConfig.freeWeeklyEmail ? ["Weekly email with new matches for one search, with the same filters"] : []),
-            ].map((f) => (
-              <li key={f} className="flex gap-2.5"><Check />{f}</li>
-            ))}
-          </ul>
-          <Link href={siteConfig.freeWeeklyEmail ? "/alerts#alert-signup" : "/jobs"} className="mt-8 rounded-lg border border-rule px-5 py-3 text-center font-semibold text-ink hover:bg-mist">
-            {siteConfig.freeWeeklyEmail ? "Get the free weekly email" : "Browse jobs"}
-          </Link>
-        </section>
 
         <section className="flex flex-col rounded-2xl border-2 border-brand bg-candy-soft p-7" aria-labelledby="plan-premium">
           <div className="flex items-center justify-between gap-3">
             <h2 id="plan-premium" className="text-2xl font-semibold leading-tight text-ink">{siteConfig.freeWeeklyEmail ? "Daily alerts" : p.name}</h2>
-            {BILLING_LIVE ? null : <span className="rounded-full bg-paper px-2.5 py-0.5 text-xs font-semibold text-ink">Launching soon</span>}
+            {BILLING_LIVE
+              ? <span className="rounded-md bg-[#ffe680] px-2 py-0.5 text-[0.8125rem] font-bold text-ink">{p.trialDays} days free</span>
+              : <span className="rounded-full bg-paper px-2.5 py-0.5 text-xs font-semibold text-ink">Launching soon</span>}
           </div>
           {/* What only the paid plan does comes first; the prices follow. */}
           <ul className="mt-4 space-y-3 text-ink">
@@ -162,6 +147,24 @@ export default async function PricingPage() {
             {BILLING_LIVE ? `Start ${p.trialDays}-day free trial` : EARLY_ACCESS_BUTTON}
           </TrackedLink>
           <p className="mt-3 text-sm text-slate">{BILLING_LIVE ? trialLine : earlyAccessLine()}</p>
+        </section>
+        <section className="flex flex-col self-start rounded-2xl border border-rule p-7" aria-labelledby="plan-free">
+          <h2 id="plan-free" className="text-2xl font-semibold leading-tight text-ink">Free</h2>
+          <p className="mt-2"><span className="font-display text-4xl font-semibold text-ink">$0</span></p>
+          <ul className="mt-6 space-y-3 text-ink">
+            {[
+              "Browse and search every vacancy",
+              "Filter by organization, country, grade, contract type and deadline",
+              "Closing date shown whenever the employer publishes one",
+              "Add closing dates to your calendar",
+              ...(siteConfig.freeWeeklyEmail ? ["Weekly email with new matches for one search, with the same filters"] : []),
+            ].map((f) => (
+              <li key={f} className="flex gap-2.5"><Check />{f}</li>
+            ))}
+          </ul>
+          <Link href={siteConfig.freeWeeklyEmail ? "/alerts#alert-signup" : "/jobs"} className="mt-8 rounded-lg border border-rule px-5 py-3 text-center font-semibold text-ink hover:bg-mist">
+            {siteConfig.freeWeeklyEmail ? "Get the free weekly email" : "Browse jobs"}
+          </Link>
         </section>
       </div>
 

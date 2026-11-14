@@ -146,8 +146,8 @@ describe("paid-alert copy", () => {
 
   it("builds the trial button, summary line and terms from site.config.ts", () => {
     expect(trialButton).toBe(`Start ${siteConfig.premium.trialDays}-day free trial`);
-    expect(trialSummary()).toBe(`$0 today · ${siteConfig.premium.trialDays}-day free trial · then ${q.price} every ${q.per} until you cancel`);
-    expect(trialSummary("monthly", "23 November 2026")).toBe(`$0 today · trial ends 23 November 2026 · then ${m.price} every month until you cancel`);
+    expect(trialSummary()).toBe(`$0 today · ${siteConfig.premium.trialDays}-day free trial · then ${q.price} every ${q.per} (tax may apply) until you cancel`);
+    expect(trialSummary("monthly", "23 November 2026")).toBe(`$0 today · trial ends 23 November 2026 · then ${m.price} every month (tax may apply) until you cancel`);
     expect(trialSummary()).not.toMatch(/\$\d+\.\d\d\/3 months/);
     // The renewal, the card and how not to pay stay in view (never folded into "Details").
     expect(TRIAL_TERMS).toBe("Card required. Your plan renews automatically until you cancel. Cancel any time before the trial ends and you pay nothing.");

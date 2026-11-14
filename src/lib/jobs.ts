@@ -669,6 +669,13 @@ export async function countJobs(input: JobFilters, mode: MatchMode = "all"): Pro
   return r.n;
 }
 
+/** How many of a search's results have a published closing date (for "8 of these 36 have a closing date"). */
+export async function countDated(input: JobFilters, mode: MatchMode = "all"): Promise<number> {
+  const where = whereFor(withSearchIntent(input), mode);
+  const [r] = await transaction(async (tx) => await tx<{ n: number }[]>`select count(*)::int as n from jobs j left join organizations o on o.id = j.organization_id where ${where} and j.deadline is not null`);
+  return r.n;
+}
+
 /**
  * The "Closing in the next N days" section of a paid alert: open listings (never demo ones) that
  * match ANY of the subscriber's saved searches, with the alerts' own matching (each search as

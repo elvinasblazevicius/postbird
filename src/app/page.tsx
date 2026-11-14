@@ -137,8 +137,8 @@ export default async function HomePage() {
                 <path d="M10 7v3.7l2.4 1.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <span>
-                <strong className="font-semibold">Closing-date reminders:</strong> daily alerts email you the vacancies you&apos;d want that close in the next 3 days.{" "}
-                <Link href="/pricing" className="font-medium text-accent underline underline-offset-2">{BILLING_LIVE ? `Try ${siteConfig.premium.trialDays} days free` : "See how"}</Link>
+                <strong className="font-semibold">Closing-date reminders:</strong> daily alerts email you each matching vacancy 3 days before its published closing date.{" "}
+                <Link href={BILLING_LIVE ? "/pricing/trial" : "/pricing"} className="font-medium text-accent underline underline-offset-2">{BILLING_LIVE ? `Start a ${siteConfig.premium.trialDays}-day free trial` : "See how"}</Link>
               </span>
             </p>
             {/* Said once, where a first-time visitor decides whether to trust the site. */}

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertExample } from "@/components/alert-example";
+import { WatchFields } from "@/components/alert-watch-step";
+import { CLOSING_SOON_DAYS } from "@/lib/email-templates";
 import { CoverageLine } from "@/components/coverage-line";
 import { MAX_SAVED_SEARCHES } from "@/lib/saved-searches";
 import { PageHeader } from "@/components/page-header";
@@ -9,7 +11,7 @@ import { BILLING_LIVE } from "@/lib/billing/live";
 import { employersPhrase, euListingsOpen } from "@/lib/eu-claim";
 import { getJob } from "@/lib/jobs";
 import { describeSearch, searchFromAlertStep } from "@/lib/saved-searches";
-import { siteConfig } from "@/lib/site";
+import { INDEPENDENCE_NOTE, siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
@@ -50,9 +52,8 @@ export default async function TrialPage({ searchParams }: Props) {
         intro={
           BILLING_LIVE ? (
             <>
-              A list of matching vacancies that close in the next 3 days, up to 20 searches, and new matches by email every day. {p.trialDays} days free, then {p.priceSummary}.
-              Cancel any time before the trial ends and you pay nothing.
-              <span className="mt-2 block text-sm">{siteConfig.name} is independent and not affiliated with the UN, the EU or any employer listed. Applying for jobs is always free.</span>
+              New matching vacancies by email every day, and a reminder {CLOSING_SOON_DAYS} days before each published closing date. {p.trialDays} days free,
+              then {p.priceSummary}. Cancel before the trial ends and you pay nothing.
             </>
           ) : (
           <>
@@ -62,9 +63,10 @@ export default async function TrialPage({ searchParams }: Props) {
           </>
           )
         }
+        note={BILLING_LIVE ? INDEPENDENCE_NOTE : undefined}
       />
       <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
-        <CoverageLine className="mb-6" />
+        <CoverageLine className="mb-6 max-sm:hidden" />
         {remindJob ? (
           <div className="mb-6 rounded-xl border border-rule bg-candy-soft p-4 text-ink">
             <p>
@@ -85,15 +87,18 @@ export default async function TrialPage({ searchParams }: Props) {
             search={search ?? undefined}
             remindJobId={remindJob ? remindJob.id : undefined}
             watch={
-              // No search fields here (fewer steps before the trial): the search the visitor came from is kept,
-              // and searches are added on the account page after sign-up.
-              <p className="rounded-xl border border-sky-rule bg-sky-wash px-4 py-3 text-[0.95rem] text-ink">
-                {searchLabel ? (
-                  <>Your daily alerts will follow your search: <strong>{searchLabel}</strong>. You can add up to {MAX_SAVED_SEARCHES} searches after signing up.</>
-                ) : (
-                  <>You choose what to watch after signing up: up to {MAX_SAVED_SEARCHES} searches. Until then, you get every new vacancy.</>
-                )}
-              </p>
+              // Only the keywords here (fewer steps before the trial): a search the visitor came from is kept
+              // instead, and more searches (organization, place, grade) are added on the account page.
+              searchLabel ? (
+                <p className="rounded-xl border border-sky-rule bg-sky-wash px-4 py-3 text-[0.95rem] text-ink">
+                  Your daily alerts will follow your search: <strong>{searchLabel}</strong>. You can add up to {MAX_SAVED_SEARCHES} searches after signing up.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  <WatchFields part="keywords" search={null} searchLabel={null} />
+                  <p className="text-sm text-slate">Leave empty for every new vacancy. After signing up you can add up to {MAX_SAVED_SEARCHES} searches, with organization and place.</p>
+                </div>
+              )
             }
           />
         </div>
@@ -107,7 +112,7 @@ export default async function TrialPage({ searchParams }: Props) {
           </p>
         ) : null}
         <div className="mt-12">
-          <AlertExample />
+          <AlertExample search={search} />
         </div>
       </div>
     </>

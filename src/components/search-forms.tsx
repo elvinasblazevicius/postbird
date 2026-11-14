@@ -461,22 +461,34 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
  * for screen readers only, where a visible heading already names the fields (the folded fields of
  * the free weekly form).
  */
-export function WatchFieldset({ facets, filters, hint, hideLegend = false }: { facets: FacetData; filters: JobFilters; hint?: React.ReactNode; hideLegend?: boolean }) {
+/**
+ * `part`: "keywords" is only the keywords field (shown openly in the free weekly card); "places"
+ * only the organization and location fields (folded under "Change" there); "all" both.
+ */
+export function WatchFieldset({ facets, filters, hint, hideLegend = false, part = "all" }: { facets: FacetData; filters: JobFilters; hint?: React.ReactNode; hideLegend?: boolean; part?: "all" | "keywords" | "places" }) {
+  const keywords = (
+    <div>
+      <label htmlFor="watch-q" className="mb-1.5 block text-sm font-medium text-ink">Keywords{part === "keywords" ? <span className="font-normal text-slate"> (optional)</span> : null}</label>
+      {/* type="search" and autoComplete off: browsers otherwise offer (or fill in) the email address here. */}
+      <input id="watch-q" name="watch_q" type="search" defaultValue={filters.q ?? ""} maxLength={120} placeholder="e.g. data analyst, WASH, monitoring" className={fieldCls} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
+    </div>
+  );
+  if (part === "keywords") return keywords;
+  const places = (
+    <div className={part === "places" ? "grid gap-4" : "grid gap-4 sm:grid-cols-2"}>
+      <OrgFields idPrefix="watch" name="watch_org" facets={facets} filters={filters} counts={false} />
+      <WhereFields idPrefix="watch" name="watch_where" facets={facets} filters={filters} label="Location" />
+    </div>
+  );
+  if (part === "places") return <div className="space-y-3">{hint ? <p className="text-sm text-slate">{hint}</p> : null}{places}</div>;
   return (
     <fieldset className="space-y-4">
       <legend className={hideLegend ? "sr-only" : "text-lg font-semibold text-ink"}>
         What should we watch for? <span className="text-sm font-normal text-slate">(optional)</span>
       </legend>
       <p className={`${hideLegend ? "" : "-mt-2 "}text-sm text-slate`}>{hint ??`Leave these empty to get every new vacancy.${BILLING_LIVE ? " You can add up to 20 searches later." : ""}`}</p>
-      <div>
-        <label htmlFor="watch-q" className="mb-1.5 block text-sm font-medium text-ink">Keywords</label>
-        {/* type="search" and autoComplete off: browsers otherwise offer (or fill in) the email address here. */}
-        <input id="watch-q" name="watch_q" type="search" defaultValue={filters.q ?? ""} maxLength={120} placeholder="e.g. data analyst, WASH, monitoring" className={fieldCls} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <OrgFields idPrefix="watch" name="watch_org" facets={facets} filters={filters} counts={false} />
-        <WhereFields idPrefix="watch" name="watch_where" facets={facets} filters={filters} label="Location" />
-      </div>
+      {keywords}
+      {places}
     </fieldset>
   );
 }

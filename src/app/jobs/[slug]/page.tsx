@@ -372,7 +372,7 @@ export default async function JobPage({ params }: Props) {
               <div className="min-w-0">
                 <h1 lang={lang?.code} className="text-[1.75rem] font-semibold leading-tight text-ink sm:text-[2.3rem]">{job.title}</h1>
                 <p className="mt-2 text-lg text-ink">
-                  {job.org_slug ? <Link href={`/organizations/${job.org_slug}`} className="text-accent hover:underline">{job.org_name}</Link> : <span className="text-slate">Organization not in our source</span>}
+                  {job.org_slug ? <Link href={`/organizations/${job.org_slug}`} className="text-accent hover:underline">{job.org_name}</Link> : job.org_name ?? null}
                   {typePage ? (
                     <span className="text-[0.95rem] text-slate">
                       <span aria-hidden="true">{" · "}</span>
@@ -488,7 +488,7 @@ export default async function JobPage({ params }: Props) {
             <div className="min-w-0">
               <h1 lang={lang?.code} className="text-[1.75rem] font-semibold leading-tight text-ink sm:text-[2.3rem]">{job.title}</h1>
               <p className="mt-2 text-lg text-ink">
-                {job.org_slug ? <Link href={`/organizations/${job.org_slug}`} className="text-accent hover:underline">{job.org_name}</Link> : <span className="text-slate">Organization not in our source</span>}
+                {job.org_slug ? <Link href={`/organizations/${job.org_slug}`} className="text-accent hover:underline">{job.org_name}</Link> : job.org_name ?? null}
               </p>
               {place ? <p className="mt-1 text-slate">{place}</p> : null}
               {tags}

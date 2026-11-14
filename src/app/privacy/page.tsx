@@ -52,9 +52,8 @@ export default function PrivacyPage() {
 
         <H2>Browsing the site</H2>
         <p>
-          To learn which listings and pages are useful, we count page views, vacancy views, searches, clicks on Apply links, clicks on the email-alert (free trial or
-          early access) buttons and clicks on the book link described below, as well as sign-ups and the answer to the optional &quot;which plan would you choose?&quot;
-          question. We don&apos;t set cookies for this. Our own visit counts never store your IP address (our host, Netlify, processes it to serve the site and keeps it briefly in its logs). Each visit is counted with a pseudonymous code made from your IP address and
+          To learn which listings and pages are useful, we count page views, vacancy views, searches, clicks on Apply links, clicks on the email-alert {BILLING_LIVE ? "(free trial)" : "(free trial or early access)"}{" "}
+          buttons and clicks on the book link described below, as well as sign-ups{BILLING_LIVE ? "" : <> and the answer to the optional &quot;which plan would you choose?&quot; question</>}. We don&apos;t set cookies for this. Our own visit counts never store your IP address (our host, Netlify, processes it to serve the site and keeps it briefly in its logs). Each visit is counted with a pseudonymous code made from your IP address and
           browser type, combined with the date and a secret key, so visits on different days can&apos;t be linked together. Search terms, the page address (without
           personal links), the campaign tags of the link you arrived from and the name of the website that linked to us (only its domain, never the full address)
           are recorded with the count. If you sign up, that day&apos;s pseudonymous code is kept with the sign-up count for up to 13
@@ -88,7 +87,7 @@ export default function PrivacyPage() {
             load Microsoft&apos;s Universal Event Tracking (UET) tag, which sets the cookies <code>_uetsid</code>, <code>_uetvid</code>, <code>_uetmsclkid</code> and <code>MUID</code>, with matching entries in
             local storage, and sends
             Microsoft these events: the pages you view here (<code>page_view</code>), clicks on Apply (<code>apply_click</code>), clicks on an email-alert button
-            (<code>trial_cta_click</code>), joining early access or the email list (<code>trial_signup</code>, <code>subscribe</code>) and a completed checkout
+            (<code>trial_cta_click</code>), {BILLING_LIVE ? "joining the email list" : "joining early access or the email list"} (<code>trial_signup</code>, <code>subscribe</code>) and a completed checkout
             (<code>begin_trial</code> for a free trial, <code>purchase</code> for a plan that starts straight away). Microsoft processes this under its own{" "}
             <a className="text-accent underline" href="https://privacy.microsoft.com/privacystatement" rel="noopener">privacy statement</a>.
           </li>
@@ -130,10 +129,9 @@ export default function PrivacyPage() {
           laws; opt out with &quot;Your privacy choices&quot; at the bottom of every page or with Global Privacy Control.
         </p>
 
-        <H2>{siteConfig.freeWeeklyEmail ? "Weekly email, daily alerts and early access" : "Email alerts and early access"}</H2>
+        <H2>{siteConfig.freeWeeklyEmail ? `Weekly email${BILLING_LIVE ? " and daily alerts" : ", daily alerts and early access"}` : BILLING_LIVE ? "Email alerts" : "Email alerts and early access"}</H2>
         <p>
-          If you sign up, we store your email address, what you signed up for, the search or vacancy you were looking at, any note you type in the optional
-          &quot;Anything else&quot; box, the campaign tags of the ad or link that brought you here (the click id only if allowed, see above), and when you confirmed. We use this only to send the emails you asked
+          If you sign up, we store your email address, what you signed up for, the search or vacancy you were looking at,{BILLING_LIVE ? "" : <> any note you type in the optional &quot;Anything else&quot; box,</>} the campaign tags of the ad or link that brought you here (the click id only if allowed, see above), and when you confirmed. We use this only to send the emails you asked
           for and to measure interest in daily alerts. Every email has a one-click unsubscribe link. We never sell your address, and share it only with the providers listed below to run the service.
           {mail ? <> If you reply to one of our emails, your reply goes to {mailLink}.</> : null}
         </p>

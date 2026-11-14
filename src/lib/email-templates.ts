@@ -108,7 +108,7 @@ export function newVacancyCount(groups: AlertGroup[]): number {
 function jobMeta(j: JobListItem): string {
   const where = locationLabel(j);
   return [
-    j.org_name ?? "Organization not in our source",
+    j.org_name,
     where === NOT_SPECIFIED ? null : where,
     displayGrade(j),
     // "Nationals only" or "Local post", as the badge in the site's lists says.

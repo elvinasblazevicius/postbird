@@ -139,9 +139,8 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         {/* Narrow card: room on the right for the bookmark in the card's corner. */}
         <p className="flex min-h-[2.25rem] flex-wrap content-center items-center gap-x-2 gap-y-1 pr-12 text-sm leading-snug @min-[44rem]:min-h-0 @min-[44rem]:pr-0">
-          {job.org_name
-            ? <span className="font-bold text-ink">{orgDisplayName(job.org_name, job.org_short)}</span>
-            : <span className="italic text-slate">Organization not in our source</span>}
+          {/* No employer name when the source gives none (the listing on the employer's site has it): nothing guessed here. */}
+          {job.org_name ? <span className="font-bold text-ink">{orgDisplayName(job.org_name, job.org_short)}</span> : null}
           {/* The employer type only in wider cards: on a phone it would wrap onto a line of its own. */}
           {typeLabel ? <span className="hidden text-[0.8125rem] font-medium text-slate @min-[34rem]:inline">· {typeLabel}</span> : null}
           {posted?.fresh ? <span className="rounded-md bg-[#ffe680] px-2 py-0.5 text-[0.8125rem] font-bold text-ink">New</span> : null}

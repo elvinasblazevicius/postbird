@@ -306,14 +306,14 @@ function usePaddleWarmup() {
   };
 }
 
-function useTrialEnds() {
-  // The trial end date is worked out in the browser (the visitor's own date and time zone).
+/** The trial's last day (or `daysBefore` it: the reminder email), worked out in the browser (the visitor's own date and time zone). */
+function useTrialEnds(daysBefore = 0) {
   const [trialEnds, setTrialEnds] = useState<string | null>(null);
   useEffect(() => {
-    const d = new Date(Date.now() + siteConfig.premium.trialDays * 86_400_000);
+    const d = new Date(Date.now() + (siteConfig.premium.trialDays - daysBefore) * 86_400_000);
     const t = setTimeout(() => setTrialEnds(d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })), 0);
     return () => clearTimeout(t);
-  }, []);
+  }, [daysBefore]);
   return trialEnds;
 }
 
@@ -332,6 +332,7 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
   const dark = tone === "dark";
   const [plan, setPlan] = useState<"monthly" | "quarterly">("quarterly");
   const trialEnds = useTrialEnds();
+  const reminder = useTrialEnds(3);
   const warmup = usePaddleWarmup();
 
   // Once the server has prepared the checkout, open Paddle's overlay with that reference.
@@ -388,18 +389,18 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
       <input id={id("email")} name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} {...warmup.email} />
       <TermsAndButton dark={dark} trial confirmNote plan={plan} trialEnds={trialEnds} busy={busy} label={pending ? "Preparing…" : phase.step === "checkout" ? "Checkout open…" : trialButton} />
       {error ? <p role="alert" className={`mt-2 text-sm ${dark ? "text-[#ffd7d7]" : "text-[#9b1c1c]"}`}>{error}</p> : null}
-      <ul className={`mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs ${dark ? "text-white/90" : "text-slate"}`}>
-        <li className="flex items-center gap-1.5">
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true"><path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2M3.5 7h9v6.5h-9z" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
-          Secure checkout by Paddle
+      <ul className={`mt-3 space-y-1 text-[0.8125rem] ${dark ? "text-white/90" : "text-slate"}`}>
+        <li className="flex items-start gap-1.5">
+          <svg viewBox="0 0 16 16" className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true"><path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2M3.5 7h9v6.5h-9z" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
+          Next: your card in Paddle&apos;s secure checkout. Nothing is charged today.
         </li>
-        <li className="flex items-center gap-1.5">
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
-          $0 today, nothing charged if you cancel during the trial
+        <li className="flex items-start gap-1.5">
+          <svg viewBox="0 0 16 16" className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+          {reminder ? `We email you on ${reminder}, 3 days before your trial ends.` : "We email you 3 days before your trial ends."}
         </li>
-        <li className="flex items-center gap-1.5">
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
-          Cancel any time from your account
+        <li className="flex items-start gap-1.5">
+          <svg viewBox="0 0 16 16" className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+          Full refund if you ask within 14 days of any charge, no questions asked.
         </li>
       </ul>
     </form>

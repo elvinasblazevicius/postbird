@@ -8,7 +8,7 @@ import { WatchFields } from "@/components/alert-watch-step";
 import { PageHeader } from "@/components/page-header";
 import { FreeWeeklyForm, PremiumInterestForm } from "@/components/token-forms";
 import { BILLING_LIVE } from "@/lib/billing/live";
-import { isMetaVisit, META_VISIT_QUERY } from "@/lib/ad-visit";
+import { isMetaVisit } from "@/lib/ad-visit";
 import { describeSearch, searchFromAlertStep } from "@/lib/saved-searches";
 import { INDEPENDENCE_NOTE, siteConfig } from "@/lib/site";
 
@@ -46,69 +46,68 @@ export default async function AlertsPage({ searchParams }: Props) {
   const searchLabel = search ? await describeSearch(search) : null;
   if (free) {
     const trialHref = `/pricing/trial${search ? `?search=${encodeURIComponent(search)}` : ""}`;
+    // The parts of a carried-over search the weekly card's fields don't show (kept by the sign-up), for its live "Follows:" line.
+    const keptSearch = search ? new URLSearchParams(search) : null;
+    for (const k of ["q", "org", "where", "country", "region"]) keptSearch?.delete(k);
+    const kept = keptSearch?.size ? await describeSearch(keptSearch.toString()) : null;
+    const weeklyForm = (
+      <FreeWeeklyForm
+        compact
+        source={fromMeta ? (search ? "search-weekly" : "alerts-page") : search ? "search-weekly" : "alerts-page"}
+        search={search ?? undefined}
+        searchLabel={searchLabel}
+        kept={kept}
+        keywords={<WatchFields part="keywords" search={search} searchLabel={searchLabel} />}
+        watch={<WatchFields fold part="places" search={search} searchLabel={searchLabel} hint="Leave empty for every organization and place." />}
+      />
+    );
     return (
       <>
         <PageHeader
           title={fromMeta ? "Free weekly job email" : "Get job alerts"}
           crumbs={[{ href: "/", label: "Home" }, { href: "/alerts", label: fromMeta ? "Weekly email" : "Job alerts" }]}
           intro={fromMeta
-            ? "Every Monday, the past week's new vacancies at UN agencies, NGOs and other international organizations that match your search. Free, with no card and no account. If nothing new matches, we don't send anything that week."
-            : "Pick a search once. We send you the new vacancies at UN agencies, NGOs and other international organizations that match it: every Monday for free, or once a day with daily alerts. When there is nothing to tell you, we don't email."}
+            ? "Every Monday, the past week's new vacancies at UN agencies, NGOs and other international organizations: all of them, or only those with your keywords. Free, with no card and no account. If nothing new matches, we don't send anything that week."
+            : "New vacancies at UN agencies, NGOs and other international organizations that match your search, by email: daily with closing-date reminders, or every Monday for free."}
           note={INDEPENDENCE_NOTE}
         />
-        {fromMeta ? null : (
-          <section className="mx-auto max-w-6xl px-4 pt-10 sm:px-6" aria-labelledby="choice-h">
-            <h2 id="choice-h" className="sr-only">Weekly email or daily alerts</h2>
-            {searchLabel ? (
-              <p className="mb-4 rounded-xl border border-sky-rule bg-sky-wash px-4 py-3 text-[0.95rem] text-ink">
-                Your alerts will follow the search you just made: <strong>{searchLabel}</strong>. Nothing to search again.{" "}
-                <Link href="/alerts" className="font-medium text-accent underline underline-offset-2">Start from scratch</Link>
-              </p>
-            ) : null}
-            <div>
+        {fromMeta ? (
+          // Visitors from Meta ads: only the free weekly email (see above), in the same card as on the plain page.
+          <div className="mx-auto grid max-w-6xl gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_1fr] lg:gap-12">
+            <section className="max-w-xl" aria-labelledby="free-h">
+              <h2 id="free-h" className="sr-only">Sign up for the free weekly email</h2>
+              <div id="alert-signup" className="scroll-mt-24 rounded-[14px] border-[3px] border-sky-wash bg-sky-wash p-4 sm:p-5">{weeklyForm}</div>
+            </section>
+            <div className="max-w-xl">
+              <AlertExample heading="What the weekly email looks like" kind="weekly" search={search} />
+            </div>
+          </div>
+        ) : (
+          <>
+            <section className="mx-auto max-w-6xl px-4 pt-10 sm:px-6" aria-labelledby="choice-h">
+              <h2 id="choice-h" className="sr-only">Daily alerts or weekly email</h2>
+              {searchLabel ? (
+                <p data-carried-search="" className="mb-4 rounded-xl border border-sky-rule bg-sky-wash px-4 py-3 text-[0.95rem] text-ink">
+                  Your alerts will follow the search you just made: <strong>{searchLabel}</strong>. Nothing to search again.{" "}
+                  <Link href="/alerts" className="font-medium text-accent underline underline-offset-2">Start from scratch</Link>
+                </p>
+              ) : null}
               <AlertsChoice
                 weeklyHref="#alert-signup"
                 trialHref={trialHref}
                 source={search ? "alerts-daily-search" : "alerts-daily"}
-                weeklyForm={
-                  <FreeWeeklyForm
-                    compact
-                    source={search ? "search-weekly" : "alerts-page"}
-                    search={search ?? undefined}
-                    searchLabel={searchLabel}
-                    watch={<WatchFields fold search={search} searchLabel={searchLabel} hint="Leave empty for all new vacancies." />}
-                  />
-                }
-              />
-            </div>
-          </section>
-        )}
-        {fromMeta ? null : (
-          // One sign-up per plan, in its card above: here only what the emails look like.
-          <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-            <div className="max-w-xl">
-              <AlertExample heading="What the weekly email looks like" kind="weekly" />
-            </div>
-          </div>
-        )}
-        {fromMeta ? (
-        <div className="mx-auto grid max-w-6xl gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[1.2fr_1fr] lg:gap-12">
-          <section className="max-w-xl" aria-labelledby="free-h">
-            <h2 id="free-h" className={fromMeta ? "sr-only" : "mb-4 text-xl font-semibold text-ink"}>{fromMeta ? "Sign up for the free weekly email" : "Weekly email: free, every Monday"}</h2>
-            <div id="alert-signup" className="scroll-mt-24">
-              <FreeWeeklyForm
-                source={search ? "search-weekly" : "alerts-page"}
-                search={search ?? undefined}
                 searchLabel={searchLabel}
-                watch={<WatchFields fold search={search} searchLabel={searchLabel} resetHref={fromMeta ? `/alerts?${META_VISIT_QUERY}#alert-signup` : "/alerts#alert-signup"} hint="Leave these empty to get the week's newest vacancies. The weekly email follows one search; you can change it later." />}
+                weeklyForm={weeklyForm}
               />
+            </section>
+            {/* One sign-up per plan, in its card above: here only what the emails look like. */}
+            <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+              <div className="max-w-xl">
+                <AlertExample heading="What the weekly email looks like" kind="weekly" search={search} />
+              </div>
             </div>
-          </section>
-          <div className="space-y-6">
-            <AlertExample heading="What the weekly email looks like" kind="weekly" />
-          </div>
-        </div>
-        ) : null}
+          </>
+        )}
       </>
     );
   }

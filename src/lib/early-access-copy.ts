@@ -44,7 +44,7 @@ export function trialSummary(plan: "monthly" | "quarterly" = "quarterly", trialE
   const [m, q] = plans();
   const price = plan === "monthly" ? `${m.price} every ${m.per}` : `${q.price} every ${q.per}`;
   const when = trialEnds ? `trial ends ${trialEnds}` : `${siteConfig.premium.trialDays}-day free trial`;
-  return `$0 today · ${when} · then ${price} until you cancel`;
+  return `$0 today · ${when} · then ${price} (tax may apply) until you cancel`;
 }
 
 /**
