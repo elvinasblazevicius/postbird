@@ -11,6 +11,7 @@
  * A listing's address (slug) never changes, so shared links keep working. `dryRun` reports only.
  */
 import { sql } from "@/lib/db";
+import { countryByCode } from "@/config/countries";
 import { stripBoardText } from "@/lib/board-text";
 import { factsFromPage } from "./vacancy-page";
 import { isUnitCode, placeFromTitle, knownOrgByAtsPath, knownOrgByHost, knownOrgByName, knownOrgFromTitle, normalizeGrade, orgFromTitleAndLink, toOrgRef, withoutTrailingPlace } from "./extract";
@@ -45,7 +46,7 @@ export async function tidyListings({ dryRun = false }: { dryRun?: boolean } = {}
 }
 
 /** Employers named at the start of their own titles, whatever site the listing came from. */
-const TITLE_EMPLOYERS = [{ re: /^UN Women\s*[:–—-]/, name: "UN Women" }];
+const TITLE_EMPLOYERS = [{ re: /^UN Women\b/, name: "UN Women" }];
 
 async function tidyTitlesAndEmployers(out: TidyResult, dryRun: boolean) {
   const jobs = await sql<{ id: number; title: string; apply_url: string | null; apply_host: string | null; org_name: string | null; org_short: string | null; org_slug: string | null }[]>`
@@ -133,6 +134,9 @@ async function tidyDeadlines(out: TidyResult, dryRun: boolean) {
   }
 }
 
+/** Duty-station names shared by places in different countries. */
+const AMBIGUOUS_CITIES = /^(valencia|san jos[eé]|santiago|c[oó]rdoba|m[eé]rida|le[oó]n|san juan|victoria|kingston|georgetown|hamilton|tripoli|santa cruz|la paz|barcelona|cartagena|granada|toledo|alexandria|san fernando|trinidad|concepci[oó]n|salamanca)\b/i;
+
 async function tidyPlaces(out: TidyResult, dryRun: boolean) {
   const rows = await sql<{ id: number; title: string; apply_url: string | null; description_html: string | null }[]>`
     select id::int, title, apply_url, description_html from jobs
@@ -143,6 +147,11 @@ async function tidyPlaces(out: TidyResult, dryRun: boolean) {
     const fromText = r.description_html ? factsFromPage(r.title, r.apply_url ?? "", r.description_html) : null;
     const f = fromText && (fromText.countryCode || fromText.locationText) ? fromText : placeFromTitle(r.title);
     if (!f || (!f.countryCode && !f.locationText)) continue;
+    // A city name found in several countries ("Valencia", Spain or Venezuela) counts only when the text names that country too.
+    if (f.city && AMBIGUOUS_CITIES.test(f.city) && f.countryCode) {
+      const name = countryByCode(f.countryCode)?.name ?? "";
+      if (!name || !new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(`${r.title} ${r.description_html ?? ""}`)) continue;
+    }
     out.places++;
     out.lines.push(`#${r.id}: place "${[f.city, f.countryCode, f.locationText].filter(Boolean).join(" | ")}"`);
     if (!dryRun) await sql`update jobs set country_code = ${f.countryCode ?? null}, city = ${f.city ?? null}, location_text = ${f.locationText ?? null}, updated_at = now() where id = ${r.id}`;
