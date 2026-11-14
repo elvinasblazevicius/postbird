@@ -22,13 +22,12 @@ export function orgDisplayName(name: string, short?: string | null): string {
 }
 
 /**
- * The name on a vacancy card, where one line is all there is room for: the full name with its
- * abbreviation when that fits ("Inter-American Development Bank (IDB)"), else the abbreviation
- * people know it by ("UNICEF", "IFRC"), else the full name (cut short by the card).
+ * The name on a vacancy card, where one line is all there is room for: the abbreviation people
+ * know the employer by ("UNICEF", "IFRC", "IDB"), the same on every card; the full name (cut short
+ * by the card when long) for employers without one. The full name is in the tooltip.
  */
-export function orgCardName(name: string, short?: string | null, max = 38): string {
+export function orgCardName(name: string, short?: string | null): string {
   const full = orgDisplayName(name, short);
-  if (full.length <= max) return full;
   const abbr = full.match(/\(([^()]+)\)$/)?.[1];
   return abbr && isAcronym(abbr) ? abbr : full;
 }

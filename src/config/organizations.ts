@@ -93,7 +93,7 @@ export const KNOWN_ORGS: KnownOrg[] = [
   { name: "Danish Refugee Council", short: "DRC", type: "NGO", domains: ["drc.ngo"] },
   // Mercy Corps took the name Prosper Global in September 2026.
   { name: "Prosper Global", type: "NGO", aliases: ["Mercy Corps"], domains: ["prosperglobal.org", "mercycorps.org"] },
-  { name: "World Vision", short: "WVI", type: "NGO", aliases: ["World Vision International"], domains: ["wvi.org", "worldvision.org"] },
+  { name: "World Vision", type: "NGO", aliases: ["World Vision International", "WVI"], domains: ["wvi.org", "worldvision.org"] },
   { name: "ACTED", short: "ACTED", type: "NGO", aliases: ["Agency for Technical Cooperation and Development"], domains: ["acted.org"] },
   { name: "IMPACT Initiatives", short: "IMPACT", type: "NGO", aliases: ["IMPACT"], domains: ["impact-initiatives.org"] },
   { name: "CERN", short: "CERN", site: { country: "CH", city: "Geneva" }, type: "International organization", aliases: ["European Organization for Nuclear Research"], domains: ["cern.ch", "careers.cern"] },

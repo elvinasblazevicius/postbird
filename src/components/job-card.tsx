@@ -33,37 +33,33 @@ export function deadlineTone(daysLeft: number): string {
 }
 
 /**
- * The closing date on a card: how long is left, then the day ("Closes in 7 days", "Thu 19 Nov").
- * Its colour says how soon: red within 3 days, amber within two
- * weeks, light blue after that, grey when the employer publishes no date. The words carry the same
- * information, so the colour is never the only signal. On wide screens a small calendar link adds
- * the date to the visitor's calendar.
+ * The closing date in a card's footer: how long is left and the day, in one tinted pill ("Closes in
+ * 2 days  Mon 16 Nov"): red within 3 days, amber within two weeks, light blue after; plain grey text
+ * when the employer publishes no date. The words carry the same information as the colour. On wide
+ * screens a small calendar link adds the date to the visitor's calendar.
  */
-function DeadlineBox({ deadline, jobId }: { deadline: string | null; jobId: number }) {
+function DeadlinePill({ deadline, jobId }: { deadline: string | null; jobId: number }) {
   const n = daysUntil(deadline);
   if (deadline === null || n === null) {
     // Quiet on purpose: the dated vacancies' closing dates are what should stand out.
-    return <p className="flex min-h-11 items-center px-3 py-2 text-sm leading-snug text-slate">No closing date given</p>;
+    return <p className="text-sm text-slate">No closing date given</p>;
   }
-  if (n < 0) {
-    return <p className="flex min-h-11 items-center rounded-[10px] bg-due-none-bg px-3 py-2 text-[0.95rem] font-semibold leading-snug text-slate">Closed {formatShortDate(deadline)}</p>;
-  }
-  const tone = deadlineTone(n);
+  if (n < 0) return <p className="inline-flex rounded-full bg-due-none-bg px-3 py-1 text-sm font-semibold text-slate">Closed {formatShortDate(deadline)}</p>;
   const lead = n === 0 ? "Closes today" : n === 1 ? "Closes tomorrow" : n <= 60 ? `Closes in ${n} days` : "Closes";
   const day = `${WEEKDAY.format(new Date(`${deadline}T00:00:00Z`))} ${formatShortDate(deadline)}`;
   return (
-    <p className={`flex min-h-11 flex-wrap items-center justify-between gap-x-2.5 gap-y-0.5 rounded-[10px] px-3 py-2 leading-snug ${tone}`}>
-      <span className="text-[0.95rem] font-semibold">{lead}</span>
-      <span className="inline-flex items-center gap-1.5 text-sm">
+    <p className={`inline-flex max-w-full flex-wrap items-center gap-x-2 rounded-2xl px-3 py-1 text-sm leading-snug ${deadlineTone(n)}`}>
+      <span className="font-semibold">{lead}</span>
+      <span className="inline-flex items-center gap-1 opacity-90">
         {day}
         <a
           href={`/api/calendar/${jobId}`}
           rel="nofollow"
           title="Add the closing date to your calendar"
-          className="relative z-10 -my-1 -mr-1.5 hidden rounded-md p-1 opacity-70 hover:bg-paper/60 hover:opacity-100 sm:inline-flex"
+          className="relative z-10 -my-1 hidden rounded-md p-1 opacity-70 hover:bg-paper/60 hover:opacity-100 sm:inline-flex"
         >
           <span className="sr-only">Add the closing date to your calendar</span>
-          <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M3 8.5h14M7 3v3M13 3v3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+          <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M3 8.5h14M7 3v3M13 3v3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
         </a>
       </span>
     </p>
@@ -102,13 +98,21 @@ export function foldSameVacancies<T extends Parameters<typeof sameVacancyKey>[0]
   return [...out.values()];
 }
 
+/** "Data Analyst (P-3)" when the grade is shown beside it: "Data Analyst". */
+function titleWithoutGrade(title: string, grade: string | null): string {
+  if (!grade) return title;
+  const t = title.replace(/\s*\((?:P|D|G|GS|NO|NOA|NOB|NOC|NOD|FS|NPSA|IPSA|SB|ICS|LICA|IICA)(?:-?[0-9A-E]{1,2})?\)\s*$/i, "");
+  return t.length >= 3 ? t : title;
+}
+
 /**
- * One vacancy as a card. Left: the organization in full with its type, the title, then the details
- * as chips (place, grade, contract, experience, languages). Right: the closing date and the Apply
- * button, one above the other at the same width, with the bookmark in the card's top-right corner
- * (on phones the date and Apply run the card's full width). The whole card is the link to the
- * vacancy's page (its accessible name is the title); the bookmark, the calendar link and Apply
- * (straight to the employer's vacancy) sit above it.
+ * One vacancy as a card, in one column: the employer (its abbreviation when it has one) and "New";
+ * the title; the facts applicants check first as pills (place, grade, who may apply) with required
+ * languages as their own kind of pill; the other details as plain text; then a footer with the
+ * closing date and Apply. The bookmark sits in the top-right corner. The whole card is the link to
+ * the vacancy's page (its accessible name is the title); the bookmark, the calendar link and Apply
+ * (straight to the employer's vacancy) sit above it. Chosen by a three-user panel over three other
+ * layouts (calmer, quicker to scan for eligibility).
  */
 export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem; headingLevel?: 2 | 3; posts?: number }) {
   const H = `h${headingLevel}` as "h2" | "h3";
@@ -117,70 +121,65 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
   const grade = displayGrade(job);
   const where = locationLabel(job);
   // "Nationals of Kenya only" for National Officer posts, "Local post · Kenya" for other local posts (localOnlyLabel).
-  const countryName = countryByCode(job.country_code)?.name;
-  // The country is already on the place pill: "Local post", not "Local post · Colombia" beside "Colombia".
-  const localLabel = localOnlyLabel(job, countryName)?.replace(countryName ? ` · ${countryName}` : "\u0000", "") ?? null;
+  const localLabel = localOnlyLabel(job, countryByCode(job.country_code)?.name);
   const posted = postedMarker(job);
-  // The facts as small outlined pills, one look for all; the grade and who may apply are filled, as the facts applicants check first.
+  const title = titleWithoutGrade(job.title, grade);
   const pill = "inline-flex items-center gap-1.5 rounded-full border border-rule px-2.5 py-0.5 text-[0.8125rem] leading-5 text-ink";
   const filled = "inline-flex items-center rounded-full px-2.5 py-0.5 text-[0.8125rem] leading-5";
+  // Required languages besides English (two at most): their own kind of pill, easy to spot.
+  const languages = (job.languages ?? []).slice(0, 2);
   const details = [
     job.job_type,
     job.is_remote && where !== "Remote" ? "Remote" : null,
     lang ? `In ${lang.name}` : null,
     job.min_experience_years ? `${job.min_experience_years}+ years experience` : null,
-    // Required languages besides English (two at most): a quick yes/no for the reader.
-    ...(job.languages ?? []).slice(0, 2).map((l) => `${l} required`),
     posts > 1 ? `${posts} posts` : null,
+    posted && !posted.fresh ? posted.text : null,
   ].filter((x): x is string => Boolean(x));
   return (
-    <article className="group @container relative rounded-xl border border-[#bccfe5] bg-paper px-4 py-3.5 shadow-[0_1px_3px_rgba(11,31,58,0.08)] transition-[border-color,box-shadow] duration-150 hover:border-sky-rule hover:shadow-[0_4px_14px_rgba(11,99,206,0.10)]">
-      {/* The layout follows the card's own width: side by side in a wide card, stacked in a narrow one (a phone, or a list beside the filters). */}
-      <div className="flex flex-col gap-2.5 @min-[44rem]:flex-row @min-[44rem]:items-start @min-[44rem]:gap-5">
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        {/* Narrow card: room on the right for the bookmark in the card's corner. */}
-        <p className="flex min-h-[2.25rem] items-center gap-x-2 pr-12 text-sm leading-snug @min-[44rem]:min-h-0 @min-[44rem]:pr-0 [&>*:not(:first-child)]:shrink-0">
+    <article className="group relative rounded-xl border border-[#bccfe5] bg-paper px-4 py-3.5 shadow-[0_1px_3px_rgba(11,31,58,0.08)] transition-[border-color,box-shadow] duration-150 hover:border-sky-rule hover:shadow-[0_4px_14px_rgba(11,99,206,0.10)]">
+      <span className="absolute right-2.5 top-2.5">
+        <SaveButton compact job={{ id: job.id, path: href, title: job.title, org: job.org_name }} />
+      </span>
+      <div className="flex min-w-0 flex-col gap-1.5 pr-12">
+        <p className="flex min-h-[1.5rem] items-center gap-x-2 text-sm leading-snug [&>*:not(:first-child)]:shrink-0">
           {/* No employer name when the source gives none (the listing on the employer's site has it): nothing guessed here. */}
           {job.org_name ? <span className="min-w-0 truncate font-semibold text-slate" title={orgDisplayName(job.org_name, job.org_short)}>{orgCardName(job.org_name, job.org_short)}</span> : null}
-          {posted?.fresh ? <span className="rounded-full bg-[#ffe680] px-2.5 py-0.5 text-[0.75rem] font-bold leading-5 text-ink">New</span> : null}
+          {posted?.fresh ? <span className="rounded-full bg-remote-bg px-2.5 py-0.5 text-[0.75rem] font-bold leading-5 text-remote">New</span> : null}
           {job.is_demo ? <Tag tone="demo">Demo data</Tag> : null}
         </p>
         <H className="font-sans text-[1.1rem] font-bold leading-snug tracking-normal text-ink">
           {/* At most two lines in a list; the full title is on the job page (and in the tooltip). */}
           <Link href={href} lang={lang?.code} title={job.title} className="line-clamp-2 transition-colors duration-150 after:absolute after:inset-0 after:rounded-xl group-hover:text-accent focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-accent">
-            {job.title}
+            {title}
           </Link>
         </H>
-        <ul className="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm">
-          {where !== NOT_SPECIFIED ? <li className={pill}><Flag code={job.country_code} />{where}</li> : job.is_remote ? null : <li className="px-1 text-[0.8125rem] text-slate">Duty station not stated</li>}
-          {/* The grade is the first thing most applicants check, so it stands out from the other details. */}
-          {grade ? <li className={`${filled} bg-tint font-semibold text-ink`}>{grade}</li> : null}
-          {/* Who may apply: local posts (usually nationals only) or internationally recruited grades (Professional, Director, Field Service). */}
-          {localLabel ? <li className={`${filled} bg-due-mid-bg font-medium text-due-mid-ink`}>{localLabel}</li>
-            : job.grade && /^(P|D|FS)-/.test(job.grade) ? <li className={`${filled} bg-sky-wash font-medium text-accent`}>International post</li> : null}
-          {details.map((d) => <li key={d} className={pill}>{d}</li>)}
-          {posted && !posted.fresh ? <li className="px-1 text-[0.8125rem] text-slate"><span className="sr-only">Posted </span>{posted.text}</li> : null}
-        </ul>
       </div>
-      {/* Narrow card: date and Apply side by side (stacked on a phone). Wide card: one above the other at the same width, bookmark beside the date. */}
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch gap-2 @min-[44rem]:w-[20rem] @min-[44rem]:shrink-0 @min-[44rem]:grid-cols-[minmax(0,1fr)_2.75rem] @min-[44rem]:gap-x-2.5">
-        <div className="grid @min-[44rem]:col-start-1 @min-[44rem]:row-start-1"><DeadlineBox deadline={job.deadline} jobId={job.id} /></div>
-        <span className="absolute right-2.5 top-2.5 @min-[44rem]:static @min-[44rem]:col-start-2 @min-[44rem]:row-start-1 @min-[44rem]:self-start">
-          <SaveButton compact job={{ id: job.id, path: href, title: job.title, org: job.org_name }} />
-        </span>
+      <ul className="mt-2 flex flex-wrap items-center gap-1.5 text-sm">
+        {where !== NOT_SPECIFIED ? <li className={pill}><Flag code={job.country_code} />{where}</li> : job.is_remote ? null : <li className="px-1 text-[0.8125rem] text-slate">Duty station not stated</li>}
+        {/* The grade is the first thing most applicants check, so it stands out from the other details. */}
+        {grade ? <li className={`${filled} bg-tint font-semibold text-ink`}>{grade}</li> : null}
+        {/* Who may apply: local posts (usually nationals only) or internationally recruited grades (Professional, Director, Field Service). */}
+        {localLabel ? <li className={`${filled} bg-due-mid-bg font-medium text-due-mid-ink`}>{localLabel}</li>
+          : job.grade && /^(P|D|FS)-/.test(job.grade) ? <li className={`${filled} bg-sky-wash font-medium text-accent`}>International post</li> : null}
+        {languages.map((l) => <li key={l} className={`${filled} bg-[#f1edfb] font-medium text-[#4a3b8f]`}>{l} required</li>)}
+      </ul>
+      {details.length ? <p className="mt-1.5 text-[0.8125rem] leading-snug text-slate">{details.join(" · ")}</p> : null}
+      {/* Date and Apply share one row on every width: the date's day moves under "Closes in…" when space is short. */}
+      <div className="mt-3 flex items-center justify-between gap-3 border-t border-rule pt-2.5 [&>p]:min-w-0">
+        <DeadlinePill deadline={job.deadline} jobId={job.id} />
         {/* Straight to the employer's vacancy, above the card's link (relative z-10). A careers home page says so. */}
         {job.apply_url ? (
           <ApplyLink
             href={job.apply_url}
             jobId={job.id}
-            className="group/apply relative z-10 inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] bg-brand px-5 text-[0.95rem] font-bold text-white hover:bg-accent active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent @min-[44rem]:col-start-1 @min-[44rem]:row-start-2"
+            className="group/apply relative z-10 ml-auto inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] bg-brand px-4 text-[0.95rem] font-bold text-white hover:bg-accent active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             {applyLinkKind(job.apply_url, job.title) === "homepage" ? "Careers site" : "Apply"}
             <span className="sr-only">: {job.title}{job.org_name ? `, ${job.org_name}` : ""} (opens the employer&apos;s site in a new tab)</span>
             <svg viewBox="0 0 16 16" className="h-3 w-3 transition-transform duration-150 motion-safe:group-hover/apply:-translate-y-px motion-safe:group-hover/apply:translate-x-px" aria-hidden="true"><path d="M6 3h7v7M13 3 4 12" fill="none" stroke="currentColor" strokeWidth="1.8" /></svg>
           </ApplyLink>
         ) : null}
-      </div>
       </div>
     </article>
   );
