@@ -11,6 +11,9 @@ describe("findDuplicates", () => {
   it("matches copies with the same link", () => {
     expect([...findDuplicates([row(1, { apply_url: "https://x.org/a" }), row(2, { apply_url: "https://www.x.org/a/" })])]).toEqual([[2, 1]]);
   });
+  it("doesn't take a shared home or careers page for the same post", () => {
+    expect(findDuplicates([row(1, { source_host: "untalent.org", apply_url: "https://worldbank.org" }), row(2, { source_host: "unjobnet.org", apply_url: "https://www.worldbank.org/" })]).size).toBe(0);
+  });
   it("tells links apart by their query", () => {
     expect(findDuplicates([row(1, { apply_url: "https://jobs.fao.org/x?job=1" }), row(2, { apply_url: "https://jobs.fao.org/x?job=2" })]).size).toBe(0);
   });

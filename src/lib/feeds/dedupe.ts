@@ -12,6 +12,7 @@
  * title ("E T Consultant" at the World Bank, each with its own link) are left alone.
  */
 import { sql } from "@/lib/db";
+import { isGeneralCareersPage } from "@/lib/apply-link";
 import { isListingSite } from "./url";
 
 export type DedupeRow = {
@@ -30,6 +31,8 @@ const linkKey = (u: string | null) => {
   if (!u) return null;
   try {
     const x = new URL(u);
+    // A site's home or general careers page names no vacancy: two copies sharing it are not the same post.
+    if (x.pathname.replace(/\/+$/, "") === "" || isGeneralCareersPage(u)) return null;
     for (const k of [...x.searchParams.keys()]) if (/^(utm_|gclid|fbclid|source|src|promotion)/i.test(k)) x.searchParams.delete(k);
     return `${x.hostname.replace(/^www\./, "")}${x.pathname.replace(/\/+$/, "")}${x.search}`.toLowerCase();
   } catch {
