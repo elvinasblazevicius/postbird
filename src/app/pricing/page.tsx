@@ -97,11 +97,11 @@ export default async function PricingPage() {
     <>
       <PageHeader
         width="max-w-4xl"
-        title="Plans and pricing"
+        title={siteConfig.freeWeeklyEmail ? "Never miss a closing date" : "Plans and pricing"}
         crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Pricing" }]}
         intro={
           siteConfig.freeWeeklyEmail
-            ? `Every vacancy, search and filter is free, and so is a weekly email for one search. Paid daily alerts${BILLING_LIVE ? "" : ", launching soon,"} add a list of matching vacancies that close in the next 3 days, up to 20 searches, and new matches every day.`
+            ? `Daily alerts${BILLING_LIVE ? "" : ", launching soon,"} email you the matching vacancies that close in the next 3 days, before it's too late, with new matches every day and up to 20 searches. Every vacancy, search and filter stays free, and so does a weekly email for one search.`
             : `Every vacancy, search and filter is free. Paid email alerts${BILLING_LIVE ? "" : ", launching soon,"} bring new matches to your inbox so you don't have to keep checking.`
         }
       />

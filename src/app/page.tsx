@@ -13,6 +13,7 @@ import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
 import { euListingsOpen, homeCopy } from "@/lib/eu-claim";
 import { shareMetadata } from "@/lib/share-metadata";
 import { absoluteUrl, formatShortDate, jsonLd, siteConfig } from "@/lib/site";
+import { BILLING_LIVE } from "@/lib/billing/live";
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +130,17 @@ export default async function HomePage() {
             <div className="mt-5 rounded-2xl bg-paper p-3 shadow-[0_10px_30px_rgba(11,99,206,0.14)] sm:mt-7 sm:p-4">
               <HeroSearch facets={{ orgs, countries, regions, categories, types, grades, langs, exps, orgTypes }} />
             </div>
+            {/* The one thing only the paid plan does, said once under the search. */}
+            <p className="mt-4 flex items-start gap-2 text-[0.95rem] leading-relaxed text-ink">
+              <svg viewBox="0 0 20 20" className="mt-0.5 h-[1.125rem] w-[1.125rem] shrink-0 text-brand" aria-hidden="true">
+                <circle cx="10" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                <path d="M10 7v3.7l2.4 1.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>
+                <strong className="font-semibold">Closing-date reminders:</strong> daily alerts email you the vacancies you&apos;d want that close in the next 3 days.{" "}
+                <Link href="/pricing" className="font-medium text-accent underline underline-offset-2">{BILLING_LIVE ? `Try ${siteConfig.premium.trialDays} days free` : "See how"}</Link>
+              </span>
+            </p>
             {/* Said once, where a first-time visitor decides whether to trust the site. */}
             <p className="mt-4 flex items-start gap-2 text-sm leading-relaxed text-tint-ink">
               <svg viewBox="0 0 20 20" className="mt-0.5 h-[1.125rem] w-[1.125rem] shrink-0 text-brand" aria-hidden="true">
