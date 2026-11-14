@@ -142,6 +142,12 @@ export default function PrivacyPage() {
           </p>
         ) : null}
 
+        <H2>Feature suggestions</H2>
+        <p>
+          When you send a message from the &ldquo;Suggest a feature&rdquo; page, we keep the message, the email address you give (if any) and the page you came
+          from, and forward them to our own inbox, so we can read it and, if you asked, reply. We delete them when you ask us to.
+        </p>
+
         <H2>Our book link</H2>
         <p>
           Pages about EU institution vacancies show a test-preparation book published by {op.name}, which runs {siteConfig.name}. Its link goes to the book&apos;s

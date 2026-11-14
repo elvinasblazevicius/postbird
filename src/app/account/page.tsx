@@ -183,6 +183,9 @@ export default async function AccountPage({ searchParams }: Props) {
         </div>
       </section>
 
+      <p className="mt-6 text-[0.95rem] text-ink">
+        Missing something? <Link href="/feedback" className="font-medium text-accent underline underline-offset-2">Suggest a feature</Link>
+      </p>
       <p className="mt-8 text-sm text-slate">Keep this page&apos;s address private: anyone with it can change your alerts.</p>
     </div>
   );
