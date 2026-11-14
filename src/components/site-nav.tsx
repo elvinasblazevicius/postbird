@@ -129,7 +129,9 @@ export function AlertsButton({ className, children }: { className: string; child
     // Marked like the other header links: the brand underline at the header's bottom edge (inside it), not a ring.
     // The wrapper is as tall as the header, so the underline never hangs below the sticky header.
     <span className={`relative flex h-[72px] items-center ${here ? "after:absolute after:inset-x-1 after:bottom-0 after:h-[2px] after:bg-brand" : ""}`}>
-      <Link href="/alerts" onClick={keepAdTag} aria-current={here ? "page" : undefined} className={className}>
+      {/* On the trial page the yellow is the trial's own button: the header's link steps back so it doesn't compete. */}
+      <Link href="/alerts" onClick={keepAdTag} aria-current={here ? "page" : undefined}
+        className={pathname.startsWith("/pricing/trial") ? className.replace("bg-highlight", "border border-rule bg-paper").replace(/shadow-\[[^\]]*\]/, "") : className}>
         {children}
       </Link>
     </span>
