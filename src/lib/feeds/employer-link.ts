@@ -90,6 +90,17 @@ function usable(url: string): boolean {
 }
 
 /**
+ * A link to an article rather than a vacancy: its last path part is a phrase of five words or more
+ * and no word of the title is in the address ("/careers/using-ai-responsibly-undp-recruitment-and-selection").
+ */
+export function isArticleLink(url: string, title: string): boolean {
+  let last = "";
+  try { last = new URL(url).pathname.replace(/\/+$/, "").split("/").pop() ?? ""; } catch { return false; }
+  if (/\d/.test(last) || last.split(/[-_]+/).filter((w) => /^[a-z]+$/i.test(w)).length < 5) return false;
+  return isGeneralCareersPage(url, title);
+}
+
+/**
  * The employer's application link from a job-board posting: the first job-like
  * link after "How to apply" (or anywhere, if the section has none), preferring the
  * vacancy's own page over a general careers page when the posting has both. Returns

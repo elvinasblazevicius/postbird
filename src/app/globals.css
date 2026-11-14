@@ -152,6 +152,7 @@ a {
   line-height: 1.7;
   color: var(--ink);
   max-width: 68ch;
+  overflow-wrap: anywhere;
 }
 .prose-job p { margin: 0 0 1em; }
 .prose-job h2, .prose-job h3, .prose-job h4 {

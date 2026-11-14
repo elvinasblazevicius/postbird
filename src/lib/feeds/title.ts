@@ -78,6 +78,10 @@ export function cleanTitle(raw: string): string {
     .replace(/,\s*(?:NO|GS|P|G|D)-(?=\s*(?:,|$))/g, "")
     .replace(/,\s*\.?\s*(?:days|months)\b(?=\s*(?:[,(]|$))/gi, "")
     .replace(/(^|[\s,])#(?=[\s,]|$)/g, "$1")
+    // A duration whose number a feed dropped ("Perú-Lima, 11 meses" arriving as "…Lima, meses").
+    .replace(/(^|[^\d\s])\s+(?:años|meses|mois|jours|días|dias|semanas)\b/giu, "$1")
+    // A name written twice ("PAHO PAHO Consultant").
+    .replace(/^(\p{L}{2,12})\s+\1\b/iu, "$1")
     .replace(/\s*,(?:\s*,)+/g, ",")
     .replace(/[\s,]+$/, "");
   // "Field Documentation Officer || موثق/ـة ميداني/ـة": keep the Latin-script part.

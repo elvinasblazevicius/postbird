@@ -364,6 +364,8 @@ function wordCondition(t: string): Frag {
   const abbr = ABBREVIATIONS[folded];
   if (abbr) return sql`(j.category = any(${abbr.categories}) or pb_fold(j.title) ~ ${abbr.title} or pb_fold(o.short_name) ~ ${abbr.title})`;
   const p = wordPattern(folded);
+  // A duty station's name ("geneva") is never looked for in the full text: "meetings in Geneva" in a Vienna post isn't a Geneva job.
+  const placeName = placeVariants(t).length > 0;
   let c = sql`(pb_fold(j.title) ~ ${p} or pb_fold(o.name) ~ ${p} or pb_fold(o.short_name) ~ ${p}`;
   const orgNames = orgNamesForTerm(t);
   if (orgNames.length) c = sql`${c} or pb_fold(o.name) = any(${orgNames}) or pb_fold(o.short_name) = any(${orgNames})`;
@@ -387,7 +389,7 @@ function wordCondition(t: string): Frag {
   // words that are rare in vacancy texts: skills, tools, languages ("russian", "stata", "gis").
   // A word found in more than FULL_TEXT_MAX_SHARE of open vacancies ("health", "who") is too common
   // there to mean the vacancy is about it.
-  if (plain && folded.length >= 3) {
+  if (plain && folded.length >= 3 && !placeName) {
     c = sql`${c} or (j.search_full @@ plainto_tsquery('simple', ${folded})
       and (select count(*) from jobs x where x.status = 'active' and x.search_full @@ plainto_tsquery('simple', ${folded}))
           <= ${FULL_TEXT_MAX_SHARE}::float8 * (select count(*) from jobs x where x.status = 'active'))`;
@@ -825,13 +827,15 @@ export async function searchSuggestion(q: string | undefined): Promise<{ q: stri
   let out = q;
   const words: string[] = [];
   let translated = false;
+  // When a word is translated, the others are left as typed (or dropped below), never "corrected" into a mix ("engineer sanitaria").
+  const translating = (await Promise.all(terms.map(async (t) => Boolean(TRANSLATIONS[t]) && !(await anyJobHas(t))))).some(Boolean);
   for (const term of terms) {
     // A place's name is never "corrected" ("geneva" is not a typo of "genes").
     if (placeVariants(term).length) continue;
     // A Spanish or French word with no vacancy holding it: the English word the vacancies use ("saneamiento" → "sanitation").
     // Checked before the known words, which hold the category vocabulary in several languages.
     const english = TRANSLATIONS[term] && !(await anyJobHas(term)) ? TRANSLATIONS[term].find((w) => vocab.words.has(w)) : undefined;
-    if (!english && vocab.words.has(term)) continue;
+    if (!english && (vocab.words.has(term) || translating)) continue;
     const grams = wordTrigrams(term);
     let best: string | null = english ?? null;
     let bestScore = 0;

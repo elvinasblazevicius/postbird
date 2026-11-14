@@ -30,9 +30,13 @@ export function AutoSubmit({ formId, onChange: submitOnChange = true, keepScroll
     // so the change shows; the filters stay where they are (the sidebar is sticky).
     if (wasPending.current && !pending && keepScroll) {
       const h = document.getElementById("results-heading");
-      if (h && h.getBoundingClientRect().top < 0) {
+      const top = h?.getBoundingClientRect().top ?? 0;
+      // Off screen above, or below the visible part (a short list beside a long filter column leaves the footer in view).
+      if (h && (top < 80 || top > window.innerHeight - 120)) {
         const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        window.scrollTo({ top: h.getBoundingClientRect().top + window.scrollY - 110, behavior: reduce ? "auto" : "smooth" });
+        window.scrollTo({ top: Math.max(0, top + window.scrollY - 110), behavior: reduce ? "auto" : "smooth" });
+        h.setAttribute("tabindex", "-1");
+        h.focus({ preventScroll: true });
       }
     }
     wasPending.current = pending;

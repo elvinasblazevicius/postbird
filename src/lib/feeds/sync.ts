@@ -17,6 +17,7 @@ import { purgeOpsEvents, recordOpsEvent } from "@/lib/ops-events";
 import { reduceOldClickIds } from "@/lib/analytics";
 import { canonicalizeUrl, isAggregatorUrl, LISTING_HOSTS } from "./url";
 import { knownOrgByHost, toOrgRef } from "./extract";
+import { isArticleLink } from "./employer-link";
 import { KNOWN_ORGS } from "@/config/organizations";
 
 export type SyncTrigger = "cron" | "manual" | "cli";
@@ -589,12 +590,23 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
     }
     // An organization on one site (KNOWN_ORGS' `site`): its listings that name no place are there.
     for (const o of KNOWN_ORGS.filter((k) => k.site)) {
-      const ref = toOrgRef(o.name);
+      // By its address or any of its names, however the organization was stored.
+      const names = [o.name, o.short, ...(o.aliases ?? [])].filter((n): n is string => Boolean(n)).map((n) => n.toLowerCase());
       await sql`
         update jobs j set country_code = ${o.site!.country}, city = ${o.site!.city}, updated_at = now()
           from organizations org
-         where org.id = j.organization_id and org.slug = ${ref.slug} and j.status = 'active'
-           and j.country_code is null and j.city is null and j.location_text is null and not j.is_remote`;
+         where org.id = j.organization_id and (org.slug = ${toOrgRef(o.name).slug} or lower(org.name) = any(${names}) or lower(org.short_name) = any(${names}))
+           and j.status = 'active' and j.country_code is null and (j.city is null or j.city = '') and (j.location_text is null or j.location_text = '') and not j.is_remote`;
+    }
+    // An application link that is an article, not the vacancy (a page named by a sentence sharing no word
+    // with the title, e.g. "/careers/using-ai-responsibly-undp-recruitment-and-selection"): taken down.
+    {
+      const rows = await sql<{ id: number; title: string; apply_url: string }[]>`select id::int, title, apply_url from jobs where status = 'active' and apply_url is not null`;
+      const bad = rows.filter((r) => isArticleLink(r.apply_url, r.title)).map((r) => r.id);
+      if (bad.length) {
+        await sql`update jobs set status = 'removed', removed_reason = 'Apply link is an article, not the vacancy', updated_at = now() where id = any(${bad})`;
+        notes.push(`${bad.length} listings whose apply link was an article, not the vacancy, taken down.`);
+      }
     }
     // Placeholders a source puts where the place should be ("UNAVAILABLE, India"): no city rather than a wrong one.
     await sql`

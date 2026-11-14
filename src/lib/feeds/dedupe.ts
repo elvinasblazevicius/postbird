@@ -27,7 +27,8 @@ export type DedupeRow = {
   reference?: string | null;
 };
 
-const norm = (t: string) => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+/** Title words only: no accents, punctuation or years ("Short Term Internship 2027 – Legal" is "short term internship legal"). */
+const norm = (t: string) => t.replace(/\b(?:19|20)\d\d\b/g, " ").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 /** An application link without scheme, "www.", fragment, tracking parameters or trailing slash (its query kept: "?job=123" tells vacancies apart). */
 const linkKey = (u: string | null) => {
   if (!u) return null;
@@ -42,6 +43,11 @@ const linkKey = (u: string | null) => {
   }
 };
 const fits = <T,>(a: T | null, b: T | null) => a === null || b === null || a === b;
+/** Closing dates that agree: the same, one missing, or a day apart (the same date read in two time zones). */
+const datesFit = (a: string | null, b: string | null) => a === null || b === null || Math.abs(Date.parse(a) - Date.parse(b)) <= 86_400_000;
+/** The employer's vacancy number: the listing's own, or the requisition id in a recruitment-system link ("…_JR128362"). */
+const refOf = (r: DedupeRow) =>
+  (r.reference ?? r.apply_url?.match(/[/_-](JR-?\d{4,}|REQ-?\d{4,}|R-?\d{5,})(?=[/?#_-]|$)/i)?.[1] ?? "").replace(/[^a-z0-9]/gi, "").toUpperCase();
 
 /** For each duplicate, the listing it repeats (exported for the tests). */
 export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
@@ -54,8 +60,9 @@ export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
     else groups.set(k, [r]);
   }
   const fromBoard = (r: DedupeRow) => isListingSite(r.source_host);
-  // Employer's own copy first, then dated, then oldest.
-  const rank = (r: DedupeRow) => [fromBoard(r) ? 1 : 0, r.deadline ? 0 : 1, r.id];
+  // Employer's own copy first, then one whose link opens the posting (not a careers home page), then dated, then oldest.
+  const generic = (r: DedupeRow) => (!r.apply_url || isGeneralCareersPage(r.apply_url, r.title) ? 1 : 0);
+  const rank = (r: DedupeRow) => [fromBoard(r) ? 1 : 0, generic(r), r.deadline ? 0 : 1, r.id];
   const before = (a: DedupeRow, b: DedupeRow) => {
     const [x, y] = [rank(a), rank(b)];
     for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i];
@@ -66,11 +73,12 @@ export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
   // ("UNITAID Team Lead (Communications)" and "Team Lead (Communications)", reference 2601234).
   const byRef = new Map<string, DedupeRow>();
   for (const r of [...rows].sort(before)) {
-    const ref = (r.reference ?? "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+    const ref = refOf(r);
     if (r.organization_id === null || ref.length < 4 || !/\d/.test(ref)) continue;
     const k = `${r.organization_id}|${ref}`;
     const kept = byRef.get(k);
-    if (kept && fits(kept.country_code, r.country_code) && fits(kept.deadline, r.deadline)) {
+    // The same number: the same vacancy even when the copies' closing dates differ (the employer's copy's date is kept).
+    if (kept && fits(kept.country_code, r.country_code)) {
       out.set(r.id, kept.id);
       if (!kept.deadline && r.deadline) kept.deadline = r.deadline;
     } else if (!kept) byRef.set(k, { ...r });
@@ -84,7 +92,7 @@ export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
     for (const r of [...g].sort(before)) {
       if (out.has(r.id)) continue;
       const same = kept.find((k) =>
-        fits(k.country_code, r.country_code) && fits(k.deadline, r.deadline) &&
+        fits(k.country_code, r.country_code) && datesFit(k.deadline, r.deadline) &&
         ((linkKey(k.apply_url) !== null && linkKey(k.apply_url) === linkKey(r.apply_url)) || (ownCopies === 1 && fromBoard(k) !== fromBoard(r))));
       if (same) {
         out.set(r.id, same.id);
