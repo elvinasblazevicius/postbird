@@ -25,14 +25,17 @@ export function Tag({ children, tone = "plain" }: { children: React.ReactNode; t
 
 const WEEKDAY = new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" });
 
-/** A closing date's colours by how many days are left: red within a week, amber within two, light blue after. */
+/** Days before a closing date when a card turns red: the daily alerts' reminder comes then (CLOSING_SOON_DAYS in email-templates). */
+const URGENT_DAYS = 3;
+
+/** A closing date's colours by how many days are left: red within 3 days, amber within two weeks, light blue after. */
 export function deadlineTone(daysLeft: number): string {
-  return daysLeft <= LISTING_SETTINGS.closingSoonDays ? "bg-due-soon-bg text-due-soon-ink" : daysLeft <= 14 ? "bg-due-mid-bg text-due-mid-ink" : "bg-due-later-bg text-ink";
+  return daysLeft <= URGENT_DAYS ? "bg-due-soon-bg text-due-soon-ink" : daysLeft <= 14 ? "bg-due-mid-bg text-due-mid-ink" : "bg-due-later-bg text-ink";
 }
 
 /**
  * The closing date on a card: how long is left, then the day ("Closes in 7 days", "Thu 19 Nov").
- * Its colour says how soon: red within LISTING_SETTINGS.closingSoonDays (a week), amber within two
+ * Its colour says how soon: red within 3 days, amber within two
  * weeks, light blue after that, grey when the employer publishes no date. The words carry the same
  * information, so the colour is never the only signal. On wide screens a small calendar link adds
  * the date to the visitor's calendar.
@@ -51,7 +54,7 @@ function DeadlineBox({ deadline, jobId }: { deadline: string | null; jobId: numb
   const day = `${WEEKDAY.format(new Date(`${deadline}T00:00:00Z`))} ${formatShortDate(deadline)}`;
   return (
     <p className={`flex min-h-11 flex-wrap items-center justify-between gap-x-2.5 gap-y-0.5 rounded-[10px] px-3 py-2 leading-snug ${tone}`}>
-      <span className="font-bold">{lead}</span>
+      <span className="text-[0.95rem] font-semibold">{lead}</span>
       <span className="inline-flex items-center gap-1.5 text-sm">
         {day}
         <a
