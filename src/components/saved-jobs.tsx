@@ -7,8 +7,31 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { JobListItem } from "@/lib/jobs";
-import { JobList } from "./job-card";
-import { useSavedJobs, write } from "./job-tools";
+import { JobCard } from "./job-card";
+import { STAGES, useSavedJobs, write, type SavedJob, type Stage } from "./job-tools";
+
+/** "Where are you with this one?": a select under each saved vacancy, kept with the saved list on this device. */
+function StagePicker({ job, list }: { job: SavedJob; list: SavedJob[] }) {
+  const id = `stage-${job.id}`;
+  const set = (stage: Stage) =>
+    write(list.map((j) => (j.id === job.id ? { ...j, stage, stageAt: new Date().toISOString() } : j)));
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 pt-2 text-sm">
+      <label htmlFor={id} className="text-slate">Your progress</label>
+      <select
+        id={id}
+        value={job.stage ?? "saved"}
+        onChange={(e) => set(e.target.value as Stage)}
+        className="min-h-10 rounded-lg border border-rule bg-paper px-2.5 py-1.5 text-ink"
+      >
+        {STAGES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+      </select>
+      {job.stageAt && job.stage && job.stage !== "saved" ? (
+        <span className="text-slate">since {new Date(job.stageAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+      ) : null}
+    </div>
+  );
+}
 
 /** The /saved page: saved vacancies that are still open, newest saved first. */
 export function SavedJobs() {
@@ -42,16 +65,51 @@ export function SavedJobs() {
   if ("error" in result) return <p role="alert" className="text-ink">We couldn&apos;t check your saved vacancies just now. Please reload the page.</p>;
   const order = new Map(ids.map((id, i) => [id, i]));
   const open = [...result.jobs].sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  const byId = new Map(list.map((j) => [j.id, j]));
   const closed = list.filter((j) => !open.some((o) => o.id === j.id));
+  // Closed vacancies you applied to stay, with their progress; the others can be cleared.
+  const tracked = closed.filter((j) => j.stage && j.stage !== "saved");
+  const untracked = closed.filter((j) => !j.stage || j.stage === "saved");
+  const counts = STAGES.filter((s) => s.value !== "saved").map((s) => ({ ...s, n: list.filter((j) => j.stage === s.value).length })).filter((s) => s.n);
   return (
     <div>
-      {open.length ? <JobList jobs={open} /> : <p className="text-ink">None of your saved vacancies is open any more.</p>}
-      {closed.length ? (
+      {counts.length ? (
+        <p className="mb-4 text-[0.95rem] text-ink">
+          {counts.map((c, i) => <span key={c.value}>{i ? " · " : ""}{c.label}: <strong>{c.n}</strong></span>)}
+        </p>
+      ) : (
+        <p className="mb-4 text-sm text-slate">Track your applications: set &ldquo;Your progress&rdquo; under each vacancy.</p>
+      )}
+      {open.length ? (
+        <ul className="grid gap-4">
+          {open.map((j) => (
+            <li key={j.id}>
+              <JobCard job={j} />
+              {byId.get(j.id) ? <StagePicker job={byId.get(j.id)!} list={list} /> : null}
+            </li>
+          ))}
+        </ul>
+      ) : <p className="text-ink">None of your saved vacancies is open any more.</p>}
+      {tracked.length ? (
+        <section className="mt-8" aria-labelledby="tracked-closed-h">
+          <h2 id="tracked-closed-h" className="text-lg font-semibold text-ink">Closed vacancies you applied to</h2>
+          <ul className="mt-3 grid gap-3">
+            {tracked.map((j) => (
+              <li key={j.id} className="rounded-xl border border-rule p-4">
+                <p className="font-semibold text-ink">{j.title}</p>
+                {j.org ? <p className="text-sm text-slate">{j.org}</p> : null}
+                <StagePicker job={j} list={list} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {untracked.length ? (
         <div className="mt-6 text-sm text-slate">
           <p>
-            {closed.length === 1 ? "1 saved vacancy has closed or is no longer listed." : `${closed.length} saved vacancies have closed or are no longer listed.`}{" "}
-            <button type="button" onClick={() => write(list.filter((j) => open.some((o) => o.id === j.id)))} className="font-medium text-accent underline">
-              Remove {closed.length === 1 ? "it" : "them"} from this list
+            {untracked.length === 1 ? "1 saved vacancy has closed or is no longer listed." : `${untracked.length} saved vacancies have closed or are no longer listed.`}{" "}
+            <button type="button" onClick={() => write(list.filter((j) => !untracked.some((u) => u.id === j.id)))} className="font-medium text-accent underline">
+              Remove {untracked.length === 1 ? "it" : "them"} from this list
             </button>
           </p>
         </div>

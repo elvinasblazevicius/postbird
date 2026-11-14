@@ -13,7 +13,16 @@ const KEY = "pb_saved_jobs";
 const CHANGED = "postbird:saved-changed";
 const MAX_SAVED = 100;
 
-export type SavedJob = { id: number; path: string; title: string; org: string | null; savedAt: string };
+/** Where the visitor is with a saved vacancy (the tracker on /saved). Missing means "saved". */
+export type Stage = "saved" | "applied" | "interview" | "offer" | "closed";
+export const STAGES: { value: Stage; label: string }[] = [
+  { value: "saved", label: "Not applied yet" },
+  { value: "applied", label: "Applied" },
+  { value: "interview", label: "Test or interview" },
+  { value: "offer", label: "Offer" },
+  { value: "closed", label: "Not selected or withdrew" },
+];
+export type SavedJob = { id: number; path: string; title: string; org: string | null; savedAt: string; stage?: Stage; stageAt?: string };
 
 function readRaw(): string {
   try {
