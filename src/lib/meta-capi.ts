@@ -13,6 +13,7 @@
 import { createHash } from "node:crypto";
 import { META_PIXEL_ID } from "@/lib/meta-pixel";
 import { absoluteUrl } from "@/lib/site";
+import { sql } from "@/lib/db";
 
 export type MetaMatch = { eventId: string; fbc?: string; fbp?: string; url?: string };
 export type CapiEvent = "PageView" | "Lead" | "StartTrial" | "Purchase";
@@ -62,12 +63,12 @@ export function capiBody(o: { event: CapiEvent; match: MetaMatch; email?: string
   };
 }
 
-/** Sends one event; never throws and never delays the visitor for long (4 s timeout). */
+/** Sends one event; never throws and never delays the visitor for long (3 s timeout). */
 export async function sendCapiEvent(o: Parameters<typeof capiBody>[0]): Promise<boolean> {
   const token = process.env.META_CAPI_TOKEN?.trim();
   if (!token || !META_PIXEL_ID || process.env.VITEST) return false;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 4000);
+  const timer = setTimeout(() => ctrl.abort(), 3000);
   try {
     const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(token)}`, {
       method: "POST",
@@ -76,14 +77,34 @@ export async function sendCapiEvent(o: Parameters<typeof capiBody>[0]): Promise<
       body: JSON.stringify({ ...capiBody(o), ...(process.env.META_CAPI_TEST_CODE?.trim() ? { test_event_code: process.env.META_CAPI_TEST_CODE.trim() } : {}) }),
       signal: ctrl.signal,
     });
-    if (!res.ok) console.error("meta capi: event not accepted", res.status, (await res.text().catch(() => "")).slice(0, 200));
+    const answer = (await res.text().catch(() => "")).slice(0, 300);
+    if (!res.ok) console.error("meta capi: event not accepted", res.status, answer);
+    await logCapi(o.event, res.ok, res.ok ? null : `${res.status}: ${answer}`);
     return res.ok;
   } catch (e) {
     console.error("meta capi: send failed", (e as Error).message);
+    await logCapi(o.event, false, `not sent: ${(e as Error).message}`.slice(0, 300));
     return false;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Keeps a short record of what was sent and whether Meta accepted it (Admin → Overview). Never throws. */
+async function logCapi(event: string, ok: boolean, detail: string | null): Promise<void> {
+  try {
+    await sql`insert into meta_capi_log (event, ok, detail) values (${event}, ${ok}, ${detail})`;
+    if (Math.random() < 0.05) await sql`delete from meta_capi_log where id < (select max(id) - 200 from meta_capi_log)`;
+  } catch {
+    // The table may not exist yet (migration 033); the event itself was already sent.
+  }
+}
+
+export type CapiLogRow = { event: string; ok: boolean; detail: string | null; at: Date };
+
+/** The newest server events sent to Meta, newest first (Admin → Overview). */
+export async function recentCapiEvents(limit = 8): Promise<CapiLogRow[]> {
+  return sql<CapiLogRow[]>`select event, ok, detail, at from meta_capi_log order by id desc limit ${limit}`.catch(() => [] as CapiLogRow[]);
 }
 
 /**

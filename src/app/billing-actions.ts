@@ -138,9 +138,9 @@ export async function metaCheckoutAction(ref: string, trial: boolean, meta: stri
   if (!row) return;
   const ip = clientIp(h);
   const ua = h.get("user-agent");
-  after(() => sendCapiEvent(trial
+  await sendCapiEvent(trial
     ? { event: "StartTrial", match, email: row.email, ip, ua }
-    : { event: "Purchase", match, email: row.email, ip, ua, value: planPriceNumber(row.plan === "quarterly" ? "quarter" : "month"), currency: "USD" }));
+    : { event: "Purchase", match, email: row.email, ip, ua, value: planPriceNumber(row.plan === "quarterly" ? "quarter" : "month"), currency: "USD" });
 }
 
 // ── Account page ─────────────────────────────────────────────

@@ -12,6 +12,7 @@ import { DAILY_JOB_STALE_HOURS, dailyJobFresh, readDailyJob, type DailyJobStatus
 import { resolveBillingFlagAction, resolveOpsEventAction, sendTestEmailAction, syncNowAction } from "./actions";
 import { BillingSelfCheck } from "./billing-check";
 import { MetaCheck } from "./meta-check";
+import { recentCapiEvents } from "@/lib/meta-capi";
 import { requireAdmin } from "./guard";
 import { AdminShell, Card, fmtDateTime, olderThanHours, Stat, StatusPill, Table } from "./ui";
 
@@ -264,6 +265,7 @@ export default async function AdminHome({ searchParams }: Props) {
       <Card className="mt-4">
         <div className="mb-2 text-sm font-medium text-ink">Meta (Facebook and Instagram ads) check</div>
         <MetaCheck />
+        <MetaRecent />
       </Card>
       {flags.length ? (
         <div className="mt-4">
@@ -463,4 +465,26 @@ async function campaignStats(days: number): Promise<CampaignRow[]> {
     map.set(key(s), row);
   }
   return [...map.values()].sort((a, b) => b.visitors - a.visitors || b.alerts - a.alerts).slice(0, 30);
+}
+
+/** The newest events the server sent to Meta and whether Meta accepted them (meta_capi_log). */
+async function MetaRecent() {
+  const rows = await recentCapiEvents(8);
+  return (
+    <div className="mt-4 border-t border-rule pt-3 text-sm">
+      <div className="mb-1 font-medium text-ink">Latest events sent from the server</div>
+      {rows.length ? (
+        <ul className="space-y-1">
+          {rows.map((r, i) => (
+            <li key={i} className="text-slate">
+              {fmtDateTime(r.at)} · <span className="text-ink">{r.event}</span> ·{" "}
+              {r.ok ? <span className="text-remote">accepted</span> : <span className="text-[#9b1c1c]">refused: {r.detail}</span>}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-slate">None recorded yet. Visits from people who allowed advertising cookies, sign-ups and trials appear here.</p>
+      )}
+    </div>
+  );
 }

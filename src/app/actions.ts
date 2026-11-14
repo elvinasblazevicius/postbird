@@ -81,7 +81,9 @@ export async function signupAction(_prev: FormState, form: FormData): Promise<Fo
       const email = String(form.get("email") ?? "");
       const ip = clientIp(h);
       const ua = h.get("user-agent");
-      after(() => sendCapiEvent({ event: "Lead", match, email, ip, ua }));
+      // Awaited (sendCapiEvent never throws and gives up after a few seconds): work scheduled after the
+      // response isn't guaranteed to run on every host, and the sign-up is the conversion that counts.
+      await sendCapiEvent({ event: "Lead", match, email, ip, ua });
     }
     return { status: "success", message: isWaitlist ? WAITLIST_MESSAGES[res.state]() : MESSAGES[res.state] };
   } catch (e) {

@@ -1,4 +1,3 @@
-import { after } from "next/server";
 import { isBot } from "@/lib/analytics";
 import { parseMetaMatch, sendCapiEvent } from "@/lib/meta-capi";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
@@ -11,7 +10,7 @@ export const dynamic = "force-dynamic";
  * A page view sent on to Meta's Conversions API, so it is counted when a browser or network blocks
  * Meta's script (src/components/ads.tsx sends it, with the pixel's own event id, only when
  * advertising measurement is allowed). Only "PageView"; conversions are sent where they happen.
- * Never a private page (account, admin, alert links). Answers at once; the call to Meta runs after.
+ * Never a private page (account, admin, alert links). Answers once Meta has (at most a few seconds).
  */
 export async function POST(req: Request) {
   const ua = req.headers.get("user-agent");
@@ -37,6 +36,8 @@ export async function POST(req: Request) {
   const ip = clientIp(req.headers);
   const allowed = await rateLimit(`meta|${ip}`, 60, 600).catch(() => true);
   if (!allowed) return new Response(null, { status: 429 });
-  after(() => sendCapiEvent({ event: "PageView", match, ip, ua }).then(() => undefined));
+  // Sent before answering (a beacon doesn't wait for the answer): work scheduled after the response
+  // isn't guaranteed to run on every host.
+  await sendCapiEvent({ event: "PageView", match, ip, ua });
   return new Response(null, { status: 204 });
 }
