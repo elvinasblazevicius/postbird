@@ -265,6 +265,7 @@ export function withSearchIntent(f: JobFilters): JobFilters {
     type: f.type?.length ? f.type : i.type ? [i.type] : undefined,
     grade: f.grade?.length ? f.grade : i.grade ? [i.grade] : undefined,
     lang: f.lang?.length ? f.lang : i.lang ? [i.lang] : undefined,
+    exp: f.exp?.length ? f.exp : i.exp ? [i.exp] : undefined,
     country: f.country?.length ? f.country : f.region?.length || !i.country ? undefined : [i.country],
     // A region read from the words ("africa"), unless a place is already chosen in the filter.
     region: f.region?.length ? f.region : f.country?.length || !i.region ? undefined : [i.region],
@@ -420,6 +421,13 @@ function titleBoost(q: string): Frag {
   const org = orgNames.length ? sql`when pb_fold(o.name) = any(${orgNames}) or pb_fold(o.short_name) = any(${orgNames}) then 3` : sql``;
   if (!/[a-z0-9]/.test(folded)) return sql`0`;
   return sql`(case ${org} when pb_fold(j.title) = ${folded} then 2 when pb_fold(j.title) ~ ${phrasePattern(folded)} then 1 else 0 end)`;
+}
+
+/** How many of the search's words the title holds: a title naming the job ranks above a text that only mentions it. */
+function titleWordHits(q: string): Frag {
+  const terms = [...new Set(searchWords(interpretQuery(q).text ?? q).map(foldText).filter((t) => /[a-z0-9]/.test(t)))].slice(0, 8);
+  if (!terms.length) return sql`0`;
+  return terms.map((t) => sql`(case when pb_fold(j.title) ~ ${wordPattern(t)} then 1 else 0 end)`).reduce((a, b) => sql`${a} + ${b}`);
 }
 
 /**
@@ -633,7 +641,7 @@ export async function searchJobs(input: JobFilters, pageSize: number = LISTING_S
       sort === "deadline" ? sql`j.deadline asc nulls last, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
       looseOrder && f.q
         ? sql`(${looseRank(terms, weights)}) desc, ts_rank(j.search_folded, ${rankQuery(f.q)}) desc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
-      sort === "relevance" && f.q ? sql`${titleBoost(f.q)} desc, ts_rank(j.search_folded, ${rankQuery(f.q)}) desc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
+      sort === "relevance" && f.q ? sql`${titleBoost(f.q)} desc, ${titleWordHits(f.q)} desc, ts_rank(j.search_folded, ${rankQuery(f.q)}) desc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
       sql`coalesce(j.published_at, j.first_seen_at) desc, j.id desc`;
     // Each in its own short transaction, which carries the statement time limit (see
     // transaction() in src/lib/db.ts); two of them, so the queries still run side by side.
@@ -773,6 +781,12 @@ export function resetSuggestionVocabulary(): void {
  * over the cached vocabulary; ties go to the alphabetically first word). Returns the corrected
  * search, or null when nothing close was found.
  */
+/** Does any open vacancy's title or text hold this word? */
+async function anyJobHas(term: string): Promise<boolean> {
+  const [r] = await sql<{ n: number }[]>`select count(*)::int as n from (select 1 from jobs j where ${isListed()} and j.search_full @@ plainto_tsquery('simple', ${term}) limit 1) x`;
+  return r.n > 0;
+}
+
 /**
  * Spanish and French words for fields of work, with the English words vacancies use (folded, no
  * accents). Only for "Did you mean": a search never matches a vacancy that doesn't hold its word.
@@ -804,9 +818,12 @@ export async function searchSuggestion(q: string | undefined): Promise<{ q: stri
   let out = q;
   const words: string[] = [];
   for (const term of terms) {
-    if (vocab.words.has(term)) continue;
-    // A Spanish or French word no vacancy holds: the English word the vacancies use, when one does ("saneamiento" → "sanitation").
-    const english = TRANSLATIONS[term]?.find((w) => vocab.words.has(w));
+    // A place's name is never "corrected" ("geneva" is not a typo of "genes").
+    if (placeVariants(term).length) continue;
+    // A Spanish or French word with no vacancy holding it: the English word the vacancies use ("saneamiento" → "sanitation").
+    // Checked before the known words, which hold the category vocabulary in several languages.
+    const english = TRANSLATIONS[term] && !(await anyJobHas(term)) ? TRANSLATIONS[term].find((w) => vocab.words.has(w)) : undefined;
+    if (!english && vocab.words.has(term)) continue;
     const grams = wordTrigrams(term);
     let best: string | null = english ?? null;
     let bestScore = 0;

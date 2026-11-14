@@ -27,6 +27,11 @@ export type KnownOrg = {
   aliases?: string[];
   /** Hostnames of the organization's own career sites (subdomains match too). */
   domains?: string[];
+  /**
+   * Where every one of its posts is (an organization on one site): used only for a listing that
+   * names no place at all. Never for an organization with offices elsewhere.
+   */
+  site?: { country: string; city: string };
 };
 
 export const KNOWN_ORGS: KnownOrg[] = [
@@ -72,7 +77,7 @@ export const KNOWN_ORGS: KnownOrg[] = [
   { name: "OSCE", short: "OSCE", type: "International organization", aliases: ["Organization for Security and Co-operation in Europe"], domains: ["osce.org"] },
   { name: "Council of Europe", badge: "CoE", type: "International organization", domains: ["coe.int"] },
   { name: "European Commission", type: "EU institution", aliases: ["EC"], domains: ["commission.europa.eu"] },
-  { name: "European Central Bank", short: "ECB", type: "EU institution", aliases: ["ECB"], domains: ["ecb.europa.eu"] },
+  { name: "European Central Bank", short: "ECB", site: { country: "DE", city: "Frankfurt am Main" }, type: "EU institution", aliases: ["ECB"], domains: ["ecb.europa.eu"] },
   { name: "European External Action Service", short: "EEAS", type: "EU institution", aliases: ["EEAS"], domains: ["eeas.europa.eu"] },
   { name: "EPSO (EU institutions)", short: "EPSO", type: "EU institution", aliases: ["EPSO", "European Personnel Selection Office"], domains: ["epso.europa.eu", "eu-careers.europa.eu"] },
   // Red Cross and Red Crescent: their emblem is protected (Geneva Conventions), so no logo is ever
@@ -90,7 +95,7 @@ export const KNOWN_ORGS: KnownOrg[] = [
   { name: "World Vision", type: "NGO", aliases: ["World Vision International"], domains: ["wvi.org", "worldvision.org"] },
   { name: "ACTED", short: "ACTED", type: "NGO", aliases: ["Agency for Technical Cooperation and Development"], domains: ["acted.org"] },
   { name: "IMPACT Initiatives", short: "IMPACT", type: "NGO", aliases: ["IMPACT"], domains: ["impact-initiatives.org"] },
-  { name: "CERN", short: "CERN", type: "International organization", aliases: ["European Organization for Nuclear Research"], domains: ["cern.ch", "careers.cern"] },
+  { name: "CERN", short: "CERN", site: { country: "CH", city: "Geneva" }, type: "International organization", aliases: ["European Organization for Nuclear Research"], domains: ["cern.ch", "careers.cern"] },
   { name: "International Livestock Research Institute", short: "ILRI", type: "International organization", aliases: ["ILRI"], domains: ["ilri.org"] },
   { name: "FHI 360", short: "FHI 360", type: "NGO", aliases: ["FHI360", "Family Health International"], domains: ["fhi360.org"] },
   { name: "Jhpiego", short: "Jhpiego", type: "NGO", domains: ["jhpiego.org"] },
@@ -122,7 +127,7 @@ export const KNOWN_ORGS: KnownOrg[] = [
   { name: "ICMPD", short: "ICMPD", type: "International organization", aliases: ["International Centre for Migration Policy Development"], domains: ["icmpd.org"] },
   { name: "EUROCONTROL", short: "EUROCONTROL", badge: "ECTL", type: "International organization", domains: ["eurocontrol.int"] },
   { name: "Frontex", short: "Frontex", type: "EU institution", aliases: ["European Border and Coast Guard Agency"], domains: ["frontex.europa.eu"] },
-  { name: "EUMETSAT", short: "EUMETSAT", badge: "EUMSAT", type: "International organization", domains: ["eumetsat.int", "eumetsat.jobbase.io"] },
+  { name: "EUMETSAT", short: "EUMETSAT", badge: "EUMSAT", site: { country: "DE", city: "Darmstadt" }, type: "International organization", domains: ["eumetsat.int", "eumetsat.jobbase.io"] },
   { name: "Action Against Hunger", type: "NGO", badge: "ACF", aliases: ["Action contre la Faim", "Accion contra el Hambre", "ACF"], domains: ["actionagainsthunger.org", "actioncontrelafaim.org", "acf-e.org"] },
   { name: "Solidarités International", type: "NGO", badge: "SI", aliases: ["Solidarites International", "Solidarités"], domains: ["solidarites.org"] },
   { name: "RTI International", short: "RTI", type: "NGO", aliases: ["RTI"], domains: ["rti.org"] },

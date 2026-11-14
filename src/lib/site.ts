@@ -107,7 +107,8 @@ export function locationLabel(j: { city: string | null; country_code: string | n
     // avoid "Geneva, Switzerland" turning into "Switzerland, Switzerland"
     return [...new Set(parts)].join(", ");
   }
-  if (j.location_text) return j.location_text;
+  // A long place line with an explanation in brackets ("Nairobi (Kenya or Lagos, Nigeria. Candidates must …)"): the place only.
+  if (j.location_text) return j.location_text.length > 40 ? j.location_text.replace(/\s*[(.].*$/, "").trim() || j.location_text : j.location_text;
   if (j.is_remote) return "Remote";
   return NOT_SPECIFIED;
 }

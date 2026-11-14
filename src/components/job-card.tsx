@@ -73,6 +73,8 @@ export function postedMarker(job: { published_at: Date | null; first_seen_at: Da
   // Without the employer's posting date, a vacancy that closes within a week was most likely posted
   // long before we found it: no "New" (or "2d ago") that would suggest otherwise.
   if (!job.published_at && job.deadline && new Date(job.deadline).getTime() - now < 7 * 86_400_000) return null;
+  // Closing within 3 days: the closing date is the news, not "New".
+  if (job.deadline && new Date(job.deadline).getTime() - now < 3 * 86_400_000) return null;
   const posted = new Date(job.published_at ?? job.first_seen_at).getTime();
   if (Number.isNaN(posted)) return null;
   const hours = (now - posted) / 3_600_000;
@@ -85,7 +87,7 @@ export function postedMarker(job: { published_at: Date | null; first_seen_at: Da
 const ORG_TYPE_LABEL: Record<string, string> = {
   "UN system": "UN system",
   "EU institution": "EU institution",
-  "International financial institution": "Development bank",
+  "International financial institution": "Financial institution",
   "International organization": "International organization",
   NGO: "NGO",
 };

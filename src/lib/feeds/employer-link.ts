@@ -102,8 +102,15 @@ export function findEmployerLink(body: string, title?: string | null): string | 
   const how = body.search(/how to apply|application (?:process|procedure|instructions)|to apply\b|comment postuler|modalit[ée]s de candidature|c[óo]mo (?:postular|aplicar)|para postular/i);
   const jobish = (l: Found) => JOBISH.test(l.url) || endsWithHost(hostOf(l.url), APPLICATION_SERVICES);
   const own = (l: Found) => jobish(l) && !isGeneralCareersPage(l.url, title);
+  // A page named by a sentence that isn't this vacancy ("/careers/using-ai-responsibly-undp-recruitment-and-selection"):
+  // an article, never the place to apply, even as a fallback.
+  const article = (l: Found) => {
+    const last = (() => { try { return new URL(l.url).pathname.replace(/\/+$/, "").split("/").pop() ?? ""; } catch { return ""; } })();
+    return last.split(/[-_]+/).filter((w) => /^[a-z]+$/i.test(w)).length >= 5;
+  };
+  const fallback = (l: Found) => jobish(l) && !article(l);
   const after = how >= 0 ? links.filter((l) => l.index > how) : [];
-  const found = (after.find(own) ?? links.find(own) ?? after.find(jobish) ?? links.find(jobish))?.url;
+  const found = (after.find(own) ?? links.find(own) ?? after.find(fallback) ?? links.find(fallback))?.url;
   return found ? stripBoardTracking(found) : null;
 }
 

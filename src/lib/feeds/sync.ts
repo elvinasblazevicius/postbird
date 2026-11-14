@@ -16,7 +16,8 @@ import { purgeStaleSubscribers } from "@/lib/subscribers";
 import { purgeOpsEvents, recordOpsEvent } from "@/lib/ops-events";
 import { reduceOldClickIds } from "@/lib/analytics";
 import { canonicalizeUrl, isAggregatorUrl, LISTING_HOSTS } from "./url";
-import { knownOrgByHost } from "./extract";
+import { knownOrgByHost, toOrgRef } from "./extract";
+import { KNOWN_ORGS } from "@/config/organizations";
 
 export type SyncTrigger = "cron" | "manual" | "cli";
 
@@ -585,6 +586,15 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
       if (dups) notes.push(`${dups} duplicate listings of the same vacancy taken down.`);
     } catch (e) {
       notes.push(`Duplicates were not checked: ${(e as Error).message}`);
+    }
+    // An organization on one site (KNOWN_ORGS' `site`): its listings that name no place are there.
+    for (const o of KNOWN_ORGS.filter((k) => k.site)) {
+      const ref = toOrgRef(o.name);
+      await sql`
+        update jobs j set country_code = ${o.site!.country}, city = ${o.site!.city}, updated_at = now()
+          from organizations org
+         where org.id = j.organization_id and org.slug = ${ref.slug} and j.status = 'active'
+           and j.country_code is null and j.city is null and j.location_text is null and not j.is_remote`;
     }
     // Placeholders a source puts where the place should be ("UNAVAILABLE, India"): no city rather than a wrong one.
     await sql`

@@ -62,6 +62,21 @@ export function cleanTitle(raw: string): string {
   t = t
     .replace(/^(\S+\s+)?(?:[A-Z]{1,4}\d{2}[A-Z]\d{3}[A-Z]\d{2}\s|[A-Z]{2,4}\d{6,8}_|VN-[A-Z]{2}\d{3}-+(?:\d{4}-+)?(?:[A-Z&]+\s)?|[A-Z]{1,3}\d{5}\s)(?=\S)/, (m, org: string | undefined) => org ?? "")
     .replace(/\s*\(\s*RFP\d+\s*\)/gi, "");
+  // UNICEF's and others' segments that hold codes, or only their empty shells once a feed dropped the
+  // digits: ", (NO-1)" / ", (NO-)", ", TA (364 days)" / ", TA ( days)", ", #00138514" / ", #", "Thailand#13919",
+  // a closing region code (", LACR"), "– GL D – Defined Duration until December", "(EN-EL-MO---GRAE)", "(TJO)".
+  t = t
+    .replace(/,?\s*\(\s*[A-Z]{1,4}-\s*\)/g, "")
+    .replace(/,?\s*\bTA\s*\(\s*\d*\s*days?\s*\)/gi, "")
+    .replace(/,?\s*#\s*\d*(?=\s*(?:,|$))/g, "")
+    .replace(/#\d{3,}\b/g, "")
+    .replace(/,\s*(?:LACR|ESAR|WCAR|MENAR|EAPR|ECAR|ROSA|SARO)\s*$/, "")
+    .replace(/\s*[–—-]\s*GL [A-H]\b(?=\s*(?:[–—-]|$))/g, "")
+    .replace(/\s*[–—-]\s*Defined Duration until \w+(?: \d{4})?/gi, "")
+    .replace(/\s*\((?:[A-Z0-9]+-+){2,}[A-Z0-9-]*\)/g, "")
+    .replace(/\s*\(TJO\)/gi, "")
+    .replace(/\s*,(?:\s*,)+/g, ",")
+    .replace(/[\s,]+$/, "");
   // "Field Documentation Officer || موثق/ـة ميداني/ـة": keep the Latin-script part.
   if (t.includes("||")) {
     const parts = t.split("||").map((p) => p.trim()).filter(Boolean);

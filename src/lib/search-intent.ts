@@ -19,6 +19,8 @@ export type SearchIntent = {
   grade?: string;
   /** A language the language filter knows ("french" → "French"; see languageFromWord). */
   lang?: string;
+  /** "entry level", "junior", "graduate": the experience band "0-2" (EXPERIENCE_BANDS in src/lib/jobs.ts). */
+  exp?: string;
   /** A world region the "Where" filter knows ("africa", "latin america" → its slug in REGIONS, src/config/regions.ts). */
   region?: string;
 };
@@ -96,6 +98,10 @@ const REGION_PHRASES: [string, string][] = ([
 
 /** The region slugs REGION_PHRASES names (a test checks each is a REGIONS slug). */
 export const SEARCH_REGION_SLUGS = [...new Set(REGION_PHRASES.map(([, slug]) => slug))];
+
+/** Words for a first job: the experience filter's lowest band. */
+const ENTRY_PHRASES = ["entry level", "early career", "entry-level", "early-career"];
+const ENTRY_WORDS = new Set(["junior", "graduate", "graduates", "beginner"]);
 
 const COUNTRY_NAMES: [string, string][] = COUNTRIES.flatMap((c) =>
   [c.name, ...c.aliases]
@@ -330,6 +336,13 @@ function readQuery(q: string | undefined | null): { intent: SearchIntent; from: 
       break;
     }
   }
+  for (const phrase of ENTRY_PHRASES) {
+    const re = wordRe(phrase);
+    if (re.test(s)) {
+      intent.exp = "0-2";
+      s = s.replace(re, " ");
+    }
+  }
   // One region (after countries: "south africa" is a country). A second region word, or one next
   // to a country, is taken out too: the more specific place, or the first region, is the filter.
   for (const [phrase, slug] of REGION_PHRASES) {
@@ -345,6 +358,7 @@ function readQuery(q: string | undefined | null): { intent: SearchIntent; from: 
   const kept: string[] = [...phrases];
   for (const w of words) {
     if (REMOTE_WORDS.has(w)) intent.remote = true;
+    else if (ENTRY_WORDS.has(w)) intent.exp = "0-2";
     else if (INTERNSHIP_WORDS.has(w)) { intent.type = "Internship"; from.type = w; }
     else if (CONSULTANCY_WORDS.has(w)) { from.type = intent.type ? from.type : w; intent.type ??= "Consultancy"; }
     else if (VOLUNTEER_WORDS.has(w)) { from.type = intent.type ? from.type : w; intent.type ??= "Volunteer"; }

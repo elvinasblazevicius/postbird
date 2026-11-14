@@ -399,3 +399,11 @@ describe("account page: build a search from filters", () => {
     expect(normalizeSearch(builderLink(new FormData()))).toBe("");
   });
 });
+
+describe("entry-level words", () => {
+  it("read as the lowest experience band", () => {
+    expect(interpretQuery("entry level finance")).toEqual({ text: "finance", exp: "0-2" });
+    expect(interpretQuery("junior data analyst").exp).toBe("0-2");
+    expect(interpretQuery("graduate").text).toBeNull();
+  });
+});

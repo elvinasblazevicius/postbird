@@ -283,7 +283,8 @@ export async function JobsBrowser({
         <MobileKeyword key={`k:${formKey}`} filters={filters} formId="filters-mobile" />
         <details className="group/panel rounded-xl border border-rule p-4 lg:hidden" open={false}>
           <summary className="flex cursor-pointer list-none items-center justify-between font-medium text-ink [&::-webkit-details-marker]:hidden">
-            Filters{userFilters ? ` (${userFilters})` : ""}
+            {/* The keyword is in the box above, not in this panel: not counted here. */}
+            Filters{userFilters - (filters.q ? 1 : 0) > 0 ? ` (${userFilters - (filters.q ? 1 : 0)})` : ""}
             <span className="text-sm text-accent group-open/panel:hidden">Show</span>
             <span className="hidden text-sm text-accent group-open/panel:inline">Hide</span>
           </summary>

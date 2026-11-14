@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useTransition } from "react";
+import { useEffect, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 /**
@@ -21,12 +21,23 @@ export function AutoSubmit({ formId, onChange: submitOnChange = true, keepScroll
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
+  const wasPending = useRef(false);
   useEffect(() => {
     const root = document.documentElement;
     if (pending) root.setAttribute("data-filtering", "");
     else root.removeAttribute("data-filtering");
+    // New results in: when their heading (the count) is scrolled out of view above, bring it back,
+    // so the change shows; the filters stay where they are (the sidebar is sticky).
+    if (wasPending.current && !pending && keepScroll) {
+      const h = document.getElementById("results-heading");
+      if (h && h.getBoundingClientRect().top < 0) {
+        const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        window.scrollTo({ top: h.getBoundingClientRect().top + window.scrollY - 110, behavior: reduce ? "auto" : "smooth" });
+      }
+    }
+    wasPending.current = pending;
     return () => root.removeAttribute("data-filtering");
-  }, [pending]);
+  }, [pending, keepScroll]);
 
   useEffect(() => {
     const form = document.getElementById(formId) as HTMLFormElement | null;

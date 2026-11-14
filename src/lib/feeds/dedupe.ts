@@ -23,6 +23,8 @@ export type DedupeRow = {
   deadline: string | null;
   apply_url: string | null;
   source_host: string | null;
+  /** The employer's vacancy number, when the listing gives one. */
+  reference?: string | null;
 };
 
 const norm = (t: string) => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
@@ -60,6 +62,19 @@ export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
     return 0;
   };
   const out = new Map<number, number>();
+  // The same vacancy number at the same employer is the same vacancy, whatever the two titles say
+  // ("UNITAID Team Lead (Communications)" and "Team Lead (Communications)", reference 2601234).
+  const byRef = new Map<string, DedupeRow>();
+  for (const r of [...rows].sort(before)) {
+    const ref = (r.reference ?? "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+    if (r.organization_id === null || ref.length < 4 || !/\d/.test(ref)) continue;
+    const k = `${r.organization_id}|${ref}`;
+    const kept = byRef.get(k);
+    if (kept && fits(kept.country_code, r.country_code) && fits(kept.deadline, r.deadline)) {
+      out.set(r.id, kept.id);
+      if (!kept.deadline && r.deadline) kept.deadline = r.deadline;
+    } else if (!kept) byRef.set(k, { ...r });
+  }
   for (const g of groups.values()) {
     if (g.length < 2) continue;
     // A job board's copy is matched to the employer's own listing by title only when the employer
@@ -67,6 +82,7 @@ export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
     const ownCopies = g.filter((r) => !fromBoard(r)).length;
     const kept: DedupeRow[] = [];
     for (const r of [...g].sort(before)) {
+      if (out.has(r.id)) continue;
       const same = kept.find((k) =>
         fits(k.country_code, r.country_code) && fits(k.deadline, r.deadline) &&
         ((linkKey(k.apply_url) !== null && linkKey(k.apply_url) === linkKey(r.apply_url)) || (ownCopies === 1 && fromBoard(k) !== fromBoard(r))));
@@ -87,7 +103,7 @@ export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
  */
 export async function removeDuplicateListings(): Promise<number> {
   const rows = await sql<(DedupeRow & { status: string })[]>`
-    select id::int, organization_id::int, title, country_code, deadline::text, apply_url, source_host, status
+    select id::int, organization_id::int, title, country_code, deadline::text, apply_url, source_host, reference, status
       from jobs
      where not is_demo and organization_id is not null
        and (status = 'active' or (status = 'removed' and removed_reason like 'Same vacancy as #%'

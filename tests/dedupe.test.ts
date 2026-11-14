@@ -14,6 +14,10 @@ describe("findDuplicates", () => {
   it("doesn't take a shared home or careers page for the same post", () => {
     expect(findDuplicates([row(1, { source_host: "untalent.org", apply_url: "https://worldbank.org" }), row(2, { source_host: "unjobnet.org", apply_url: "https://www.worldbank.org/" })]).size).toBe(0);
   });
+  it("matches the same vacancy number at the same employer across titles", () => {
+    const d = findDuplicates([row(1, { title: "UNITAID Team Lead (Communications)", reference: "2601234" }), row(2, { title: "Team Lead (Communications)", reference: "2601234", deadline: "2026-12-01" })]);
+    expect([...d]).toEqual([[1, 2]]);
+  });
   it("tells links apart by their query", () => {
     expect(findDuplicates([row(1, { apply_url: "https://jobs.fao.org/x?job=1" }), row(2, { apply_url: "https://jobs.fao.org/x?job=2" })]).size).toBe(0);
   });
