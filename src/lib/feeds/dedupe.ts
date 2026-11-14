@@ -170,6 +170,9 @@ export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
     // A job board's copy is matched to the employer's own listing by title only when the employer
     // lists one vacancy of that title; when it lists several ("E T Consultant"), only the same link counts.
     const ownCopies = g.filter((r) => !fromBoard(r)).length;
+    // Copies whose link opens a posting (not a careers page or a guide): with only one, every copy
+    // that links elsewhere is that one, whatever the title.
+    const postingCopies = g.filter((r) => linkKey(r.apply_url, r.title) !== null).length;
     const kept: DedupeRow[] = [];
     for (const r of [...g].sort(before)) {
       if (out.has(r.id)) continue;
@@ -178,6 +181,7 @@ export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
         ((linkKey(k.apply_url, k.title) !== null && linkKey(k.apply_url, k.title) === linkKey(r.apply_url, r.title)) ||
          (ownCopies === 1 && fromBoard(k) !== fromBoard(r)) ||
          withinSite(k.apply_url, r.apply_url) ||
+         (postingCopies === 1 && (linkKey(r.apply_url, r.title) === null) !== (linkKey(k.apply_url, k.title) === null)) ||
          // A long, specific title (not a common post like "Driver" or "E T Consultant", which an employer
          // lists many times):
          (specific(r.title) && (
@@ -188,7 +192,8 @@ export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
            // the same closing date and country, or the same country and no dates, read from two of the
            // employer's feeds that number vacancies differently (UNICEF's "/jobs/…" and "/cw/…/job/596976").
            (r.country_code !== null && r.country_code === k.country_code &&
-             (r.deadline !== null ? r.deadline === k.deadline : k.deadline === null && otherFeed(k, r)))))));
+             (r.deadline !== null && r.deadline === k.deadline ||
+              (r.deadline === null || k.deadline === null) && otherFeed(k, r)))))));
       if (same) {
         out.set(r.id, same.id);
         // The kept copy takes the closing date and place the other one had (it is checked against the next copies too).

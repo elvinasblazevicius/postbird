@@ -14,6 +14,7 @@ import { sql } from "@/lib/db";
 import { countryByCode } from "@/config/countries";
 import { stripBoardText } from "@/lib/board-text";
 import { factsFromPage } from "./vacancy-page";
+import { isGuideLink } from "./employer-link";
 import { isUnitCode, placeFromTitle, knownOrgByAtsPath, knownOrgByHost, knownOrgByName, knownOrgFromTitle, normalizeGrade, orgFromTitleAndLink, toOrgRef, withoutTrailingPlace } from "./extract";
 import { cleanTitle, stripOrgFromTitle } from "./title";
 
@@ -39,6 +40,7 @@ export async function tidyListings({ dryRun = false }: { dryRun?: boolean } = {}
   // Places first: a title's trailing place ("…, Maseru – Lesotho") is read before the title clean-up drops it.
   await tidyPlaces(out, dryRun);
   await tidyDeadlines(out, dryRun);
+  await tidyTowns(out, dryRun);
   await tidyTitlesAndEmployers(out, dryRun);
   await tidyDescriptions(out, dryRun);
   await tidyGrades(out, dryRun);
@@ -117,6 +119,29 @@ async function tidyGrades(out: TidyResult, dryRun: boolean) {
   }
 }
 
+/**
+ * Towns Workday puts in the vacancy link ("…/job/Phnom-Srok--Cambodia/…"), for listings that have a
+ * country but no town, so an employer's posts in several towns can be told apart.
+ */
+async function tidyTowns(out: TidyResult, dryRun: boolean) {
+  const rows = await sql<{ id: number; apply_url: string; country_code: string }[]>`
+    select id::int, apply_url, country_code from jobs
+     where status = 'active' and not is_demo and country_code is not null and coalesce(city, '') = ''
+       and apply_url ~* 'myworkdayjobs[.]com/.*/job/'`;
+  for (const r of rows) {
+    const seg = decodeURIComponent(r.apply_url.match(/\/job\/([^/?#]+)\/[^/?#]+/)?.[1] ?? "");
+    const country = countryByCode(r.country_code)?.name ?? "";
+    let town = seg.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+    if (country) town = town.replace(new RegExp(`\\s*${country.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i"), "").trim();
+    town = town.replace(/\s+(?:AP|Operations Office|Office|Zone)$/i, "").trim();
+    // Only a plain town name: no country left over, no remote or regional wording, not too long.
+    if (!town || town.length > 30 || /\d|remote|cluster|region|national|country|multiple/i.test(town) || town.toLowerCase() === country.toLowerCase()) continue;
+    out.places++;
+    out.lines.push(`#${r.id}: town "${town}"`);
+    if (!dryRun) await sql`update jobs set city = ${town}, updated_at = now() where id = ${r.id}`;
+  }
+}
+
 /** Closing dates the listing's own description states ("Closing Date: Dec 3, 2026"), for listings without one. */
 async function tidyDeadlines(out: TidyResult, dryRun: boolean) {
   const rows = await sql<{ id: number; title: string; apply_url: string | null; description_html: string }[]>`
@@ -158,17 +183,30 @@ async function tidyPlaces(out: TidyResult, dryRun: boolean) {
   }
 }
 
+/** Employers' job-search pages, for a listing whose only link is a page about recruitment (a guide, "diversity and inclusion"). */
+const CAREERS_HOMES: [RegExp, string][] = [
+  [/^(world health organization|who)$/i, "https://careers.who.int/careersection/ex/jobsearch.ftl"],
+  [/^(international organization for migration|iom)$/i, "https://www.iom.int/careers"],
+  [/^(european investment bank|eib)$/i, "https://www.eib.org/en/about/careers"],
+  [/^(unicef)$/i, "https://jobs.unicef.org/"],
+];
+
 async function tidyApplyLinks(out: TidyResult, dryRun: boolean) {
-  const rows = await sql<{ id: number; title: string; apply_url: string | null; description_html: string | null; org_name: string | null; org_short: string | null }[]>`
-    select j.id::int, j.title, j.apply_url, j.description_html, o.name as org_name, o.short_name as org_short
+  const rows = await sql<{ id: number; title: string; apply_url: string | null; description_html: string | null; org_name: string | null; org_short: string | null; org_website: string | null }[]>`
+    select j.id::int, j.title, j.apply_url, j.description_html, o.name as org_name, o.short_name as org_short, o.website as org_website
       from jobs j join organizations o on o.id = j.organization_id
      where j.status = 'active' and not j.is_demo`;
   for (const r of rows) {
     const rule = VACANCY_PAGES.find((v) => v.org.test(r.org_name ?? "") || v.org.test(r.org_short ?? ""));
-    if (!rule || (r.apply_url && rule.onPage.test(r.apply_url))) continue;
-    const id = (r.description_html ?? "").match(rule.id)?.[1] ?? r.title.match(rule.id)?.[1];
-    if (!id) continue;
-    const url = rule.url(id);
+    const onPage = Boolean(rule && r.apply_url && rule.onPage.test(r.apply_url));
+    const id = rule && !onPage ? (r.description_html ?? "").match(rule.id)?.[1] ?? r.title.match(rule.id)?.[1] : undefined;
+    // No vacancy page to build: a link to a page about recruitment becomes the employer's job search, which the button calls "Careers site".
+    const home = !id && r.apply_url && isGuideLink(r.apply_url)
+      ? CAREERS_HOMES.find(([re]) => re.test(r.org_name ?? "") || re.test(r.org_short ?? ""))?.[1] ?? r.org_website
+      : null;
+    if (!id && !home) continue;
+    const url = id ? rule!.url(id) : home!;
+    if (url === r.apply_url) continue;
     out.links++;
     out.lines.push(`#${r.id}: apply link ${r.apply_url ?? "-"} → ${url}`);
     if (!dryRun) await sql`update jobs set apply_url = ${url}, apply_host = ${new URL(url).hostname}, updated_at = now() where id = ${r.id}`;
