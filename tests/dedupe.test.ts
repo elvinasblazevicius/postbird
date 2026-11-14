@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { findDuplicates, type DedupeRow } from "@/lib/feeds/dedupe";
 
-const row = (id: number, o: Partial<DedupeRow> = {}): DedupeRow => ({ id, organization_id: 1, title: "Officer, Facilities and Operations", country_code: "KE", deadline: null, apply_url: `https://jobs.example.org/${id}`, source_host: "jobs.example.org", ...o });
+const row = (id: number, o: Partial<DedupeRow> = {}): DedupeRow => ({ id, organization_id: 1, title: "Officer, Facilities and Operations", country_code: "KE", deadline: null, apply_url: `https://jobs.example.org/vacancy/${100000 + id}`, source_host: "jobs.example.org", ...o });
 
 describe("findDuplicates", () => {
   it("keeps the employer's dated copy and takes down a job board's", () => {
-    const d = findDuplicates([row(1, { source_host: "untalent.org" }), row(2, { deadline: "2026-12-03" })]);
+    const d = findDuplicates([row(1, { source_host: "untalent.org", apply_url: "https://untalent.org/job/officer-facilities" }), row(2, { deadline: "2026-12-03" })]);
     expect([...d]).toEqual([[1, 2]]);
   });
   it("matches copies with the same link", () => {
@@ -65,9 +65,37 @@ describe("findDuplicates", () => {
       row(1277, { organization_id: 2, title: "Communications Analyst", apply_url: "https://estm.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/38070" }),
     ]).size).toBe(1);
   });
+  it("judges a careers-page link by the title, and never merges common posts by it", () => {
+    const t = "Roster of Consultants – Asia-Pacific Hub of the Alliance for Transformative Action on Climate and Health (ATACH), Seoul";
+    expect(findDuplicates([
+      row(795, { title: t, country_code: "KR", deadline: "2026-11-26", apply_url: "https://careers.who.int/careersection/ex/jobdetail.ftl?job=2604783" }),
+      row(937, { title: t, country_code: "KR", source_host: "untalent.org", apply_url: "https://www.who.int/careers/diversity-equity-and-inclusion" }),
+    ]).size).toBe(1);
+    // A common post the employer lists twice: a board copy linking to its careers site could be either, or another.
+    expect(findDuplicates([
+      row(336, { title: "Driver", country_code: null, source_host: "untalent.org", apply_url: "https://www.iom.int/careers" }),
+      row(6, { title: "Driver", country_code: "CD", deadline: "2026-11-16", apply_url: "https://iom.example/job/24002" }),
+      row(7, { title: "Driver", country_code: "NG", deadline: "2026-11-24", apply_url: "https://iom.example/job/24019" }),
+    ]).size).toBe(0);
+  });
+  it("matches one vacancy in two of the employer's feeds, and the same posting id in two link forms", () => {
+    const t = "Makani Programme Learning Support consultant 1 x math's subject specialist, Amman, Jordan, remote 6 months";
+    expect(findDuplicates([
+      row(1131, { title: t, country_code: "JO", apply_url: "https://jobs.unicef.org/jobs/makani-programme-learning-support-consultant-amman-jordan" }),
+      row(1243, { title: t, country_code: "JO", apply_url: "https://jobs.unicef.org/cw/en-us/job/596976" }),
+    ]).size).toBe(1);
+    expect(findDuplicates([
+      row(758, { title: "Internship – Contaminant Dynamics", country_code: null, apply_url: "http://iaea.taleo.net/careersection/ex/jobdetail.ftl?lang=en&job=TAL-NAFA20261014-001" }),
+      row(928, { title: "Internship – Contaminant Dynamics", country_code: null, apply_url: "https://iaea.taleo.net/careersection/ex/jobdetail.ftl?job=TAL-NAFA20261014-001" }),
+    ]).size).toBe(1);
+    expect(findDuplicates([
+      row(1061, { title: "International Consultant Pool: Employee Relations", apply_url: "https://jobs.jobvite.com/prosperglobal/job/oP86Afwn" }),
+      row(1207, { title: "International Consultant Pool: Employee Relations", apply_url: "https://jobs.jobvite.com/mercycorps/job/oP86Afwn" }),
+    ]).size).toBe(1);
+  });
   it("reads titles without numbers or grade codes", () => {
     expect([...findDuplicates([
-      row(1, { title: "Education Officer, (NO-1), Chilpancingo, Guerrero", source_host: "unjobnet.org", deadline: "2026-11-22" }),
+      row(1, { title: "Education Officer, (NO-1), Chilpancingo, Guerrero", source_host: "unjobnet.org", apply_url: "https://www.unjobnet.org/jobs/detail/education-officer", deadline: "2026-11-22" }),
       row(2, { title: "Education Officer, Chilpancingo, Guerrero", deadline: "2026-11-22" }),
     ])]).toEqual([[1, 2]]);
   });

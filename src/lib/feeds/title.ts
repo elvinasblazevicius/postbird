@@ -99,6 +99,12 @@ export function cleanTitle(raw: string): string {
     // A slash a feed dropped: "WASHNFI" (WASH/NFI), "Técnicoa" (Técnico/a).
     .replace(/\bWASHNFI\b/g, "WASH/NFI")
     .replace(/\b(T[ée]cnico|M[ée]dico|Psic[óo]logo|Abogado|Ingeniero|Licenciado|Encargado|Asociado)a\b/gu, "$1/a")
+    // UNICEF's vacancy number at the end of a title ("…, remote with travel 596955").
+    .replace(/[\s,]+\d{6}\s*$/, "")
+    // A comma without a space after it ("Freetown,remote").
+    .replace(/,(?=\p{L})/gu, ", ")
+    // UN Women's posts arriving as "Women UN Women: …".
+    .replace(/^Women\s+(?=UN Women\b)/, "")
     // A city written twice ("Seoul, Seoul").
     .replace(/\b(\p{Lu}[\p{L}-]{2,20}),\s*\1\b/gu, "$1")
     // A name written twice ("PAHO PAHO Consultant").

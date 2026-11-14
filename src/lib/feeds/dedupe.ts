@@ -46,13 +46,13 @@ const norm = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u
   .replace(/\b(?:anos|meses|mois|jours|dias|semanas|days?|weeks?|months?|years?)\b/g, " ")
   .replace(/\s+/g, " ").trim();
 /** An application link without scheme, "www.", fragment, tracking parameters or trailing slash (its query kept: "?job=123" tells vacancies apart). */
-const linkKey = (u: string | null) => {
+const linkKey = (u: string | null, title?: string) => {
   if (!u) return null;
   try {
     const x = new URL(u);
     // A site's home or general careers page names no vacancy: two copies sharing it are not the same post.
-    if (x.pathname.replace(/\/+$/, "") === "" || isGeneralCareersPage(u) || isGuideLink(u)) return null;
-    for (const k of [...x.searchParams.keys()]) if (/^(utm_|gclid|fbclid|source|src|promotion)/i.test(k)) x.searchParams.delete(k);
+    if (x.pathname.replace(/\/+$/, "") === "" || isGeneralCareersPage(u, title) || isGuideLink(u)) return null;
+    for (const k of [...x.searchParams.keys()]) if (/^(utm_|gclid|fbclid|source|src|promotion|lang$|pk_)/i.test(k)) x.searchParams.delete(k);
     return `${x.hostname.replace(/^www\./, "")}${x.pathname.replace(/\/+$/, "")}${x.search}`.toLowerCase();
   } catch {
     return u.toLowerCase();
@@ -69,10 +69,19 @@ const withinSite = (a: string | null, b: string | null) => {
  * the copies share. Links of different kinds (UNICEF's "/jobs/…-00138514-…" and "/cw/en-us/job/596992")
  * number vacancies differently, so they don't tell.
  */
+/** A link's site and its first path segments, numbers left out ("jobs.unicef.org/cw/en-us"). */
+const shape = (u: string | null, depth = 2) => {
+  try {
+    const x = new URL(u ?? "");
+    return `${x.hostname.replace(/^www\./, "")}/${x.pathname.split("/").filter(Boolean).slice(0, depth).join("/")}`.toLowerCase().replace(/\d+/g, "#");
+  } catch { return null; }
+};
+/** Two links on one site of different kinds ("/jobs/…" and "/cw/…": two of the employer's feeds). */
+const otherFeed = (a: DedupeRow, b: DedupeRow) => {
+  const [x, y] = [shape(a.apply_url, 1), shape(b.apply_url, 1)];
+  return x !== null && y !== null && x !== y && x.split("/")[0] === y.split("/")[0];
+};
 const distinctPosts = (a: DedupeRow, b: DedupeRow) => {
-  const shape = (u: string | null) => {
-    try { const x = new URL(u ?? ""); return `${x.hostname.replace(/^www\./, "")}/${x.pathname.split("/").filter(Boolean).slice(0, 2).join("/")}`.toLowerCase(); } catch { return null; }
-  };
   const [sa, sb] = [shape(a.apply_url), shape(b.apply_url)];
   if (!sa || sa !== sb) return false;
   const [ra, rb] = [linkRefs(a), linkRefs(b)];
@@ -106,7 +115,9 @@ const refsOf = (r: DedupeRow): string[] => {
   try {
     const x = new URL(u);
     add(x.pathname.match(/(?:^|\D)(\d{5,})(?=\D*$)/)?.[1]);
-    for (const k of ["job", "jobid", "jobId", "id", "req", "vacancy"]) add(x.searchParams.get(k)?.match(/^\d{5,}$/)?.[0]);
+    for (const k of ["job", "jobid", "jobId", "id", "req", "vacancy"]) add(x.searchParams.get(k)?.match(/^(?=.*\d)[A-Za-z0-9-]{6,40}$/)?.[0]);
+    // An opaque posting id at the end of a recruitment-system link ("jobvite.com/…/job/oP86Afwn").
+    add(x.pathname.match(/\/jobs?\/([A-Za-z0-9]{8,12})\/?$/)?.[1]?.match(/^(?=.*\d)(?=.*[A-Za-z])/) ? x.pathname.match(/\/jobs?\/([A-Za-z0-9]{8,12})\/?$/)![1] : null);
   } catch { /* not a link */ }
   return [...out];
 };
@@ -164,13 +175,20 @@ export function findDuplicates(rows: DedupeRow[]): Map<number, number> {
       if (out.has(r.id)) continue;
       const same = kept.find((k) =>
         !distinctPosts(k, r) && fits(k.country_code, r.country_code) && datesFit(k.deadline, r.deadline) &&
-        ((linkKey(k.apply_url) !== null && linkKey(k.apply_url) === linkKey(r.apply_url)) ||
+        ((linkKey(k.apply_url, k.title) !== null && linkKey(k.apply_url, k.title) === linkKey(r.apply_url, r.title)) ||
          (ownCopies === 1 && fromBoard(k) !== fromBoard(r)) ||
-         // A copy that links only to a careers page or a guide adds nothing to one with the same title.
-         linkKey(r.apply_url) === null || linkKey(k.apply_url) === null || withinSite(k.apply_url, r.apply_url) ||
-         // A long, specific title: a bare copy (no closing date, no place) of a fuller one, or two copies
-         // with the same closing date and country (one vacancy read from two of the employer's feeds).
-         (specific(r.title) && (bare(r) || bare(k) || (r.deadline !== null && r.deadline === k.deadline && r.country_code !== null && r.country_code === k.country_code)))));
+         withinSite(k.apply_url, r.apply_url) ||
+         // A long, specific title (not a common post like "Driver" or "E T Consultant", which an employer
+         // lists many times):
+         (specific(r.title) && (
+           // a copy that links only to a careers page or a guide adds nothing to the other;
+           linkKey(r.apply_url, r.title) === null || linkKey(k.apply_url, k.title) === null ||
+           // a bare copy (no closing date, no place) of a fuller one;
+           bare(r) || bare(k) ||
+           // the same closing date and country, or the same country and no dates, read from two of the
+           // employer's feeds that number vacancies differently (UNICEF's "/jobs/…" and "/cw/…/job/596976").
+           (r.country_code !== null && r.country_code === k.country_code &&
+             (r.deadline !== null ? r.deadline === k.deadline : k.deadline === null && otherFeed(k, r)))))));
       if (same) {
         out.set(r.id, same.id);
         // The kept copy takes the closing date and place the other one had (it is checked against the next copies too).
@@ -220,7 +238,7 @@ export async function removeDuplicateListings(): Promise<number> {
 export function explainPair(a: DedupeRow, b: DedupeRow): string {
   return JSON.stringify({
     norm: [norm(a.title), norm(b.title)], org: [a.organization_id, b.organization_id], country: [a.country_code, b.country_code],
-    deadline: [a.deadline, b.deadline], link: [linkKey(a.apply_url), linkKey(b.apply_url)], board: [isListingSite(a.source_host), isListingSite(b.source_host)],
+    deadline: [a.deadline, b.deadline], link: [linkKey(a.apply_url, a.title), linkKey(b.apply_url, b.title)], board: [isListingSite(a.source_host), isListingSite(b.source_host)],
     distinct: distinctPosts(a, b), specific: specific(a.title), bare: [bare(a), bare(b)],
   });
 }

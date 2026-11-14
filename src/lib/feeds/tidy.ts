@@ -43,6 +43,9 @@ export async function tidyListings({ dryRun = false }: { dryRun?: boolean } = {}
   return out;
 }
 
+/** Employers named at the start of their own titles, whatever site the listing came from. */
+const TITLE_EMPLOYERS = [{ re: /^UN Women\s*[:–—-]/, name: "UN Women" }];
+
 async function tidyTitlesAndEmployers(out: TidyResult, dryRun: boolean) {
   const jobs = await sql<{ id: number; title: string; apply_url: string | null; apply_host: string | null; org_name: string | null; org_short: string | null; org_slug: string | null }[]>`
     select j.id::int, j.title, j.apply_url, j.apply_host, o.name as org_name, o.short_name as org_short, o.slug as org_slug
@@ -53,8 +56,11 @@ async function tidyTitlesAndEmployers(out: TidyResult, dryRun: boolean) {
   for (const j of jobs) {
     // A known organization stored twice under different spellings: the listing moves to the known
     // organization's entry, only when that entry exists (an organization stored once keeps its page).
-    const canonical = j.org_name && knownOrgByName(j.org_name) ? toOrgRef(j.org_name) : null;
-    const misfiled = Boolean(canonical && j.org_slug && canonical.slug !== j.org_slug && orgSlugs.has(canonical.slug));
+    // A title that opens with its employer's name, filed under another (UN Women's posts on the UN's site).
+    const titled = TITLE_EMPLOYERS.find((t) => t.re.test(j.title.replace(/^Women\s+(?=UN Women\b)/, "")));
+    const retitled = titled && j.org_name !== titled.name ? toOrgRef(titled.name) : null;
+    const canonical = retitled ?? (j.org_name && knownOrgByName(j.org_name) ? toOrgRef(j.org_name) : null);
+    const misfiled = Boolean(retitled) || Boolean(canonical && j.org_slug && canonical.slug !== j.org_slug && orgSlugs.has(canonical.slug));
     // An employer's internal unit stored as the organization ("AF_COD Democratic Republic of Congo"): found again, or none.
     const replace = misfiled || Boolean(j.org_name && isUnitCode(j.org_name));
     const current = replace ? null : j.org_name;

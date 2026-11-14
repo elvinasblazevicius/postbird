@@ -206,8 +206,8 @@ function labelled(text: string, labels: string[], maxLen = 120, allowSemicolon =
 }
 
 const LOCATION_LABELS = ["primary location", "duty stations?", "duty station\\(s\\)", "duty locations?", "place of work", "post location", "location\\(s\\)", "locations?", "job location", "work location", "place of assignment", "place of performance", "lieu d['’]affectation", "lugar de destino", "country of assignment"];
-const COUNTRY_LABELS = ["countr(?:y|ies)", "pays", "pa[ií]s"];
-const CITY_LABELS = ["city", "ville", "ciudad"];
+const COUNTRY_LABELS = ["duty station country", "countr(?:y|ies)", "pays", "pa[ií]s"];
+const CITY_LABELS = ["duty station city", "city", "ville", "ciudad"];
 const ORG_LABELS = ["organi[sz]ation", "hiring organi[sz]ation", "agency", "employer", "entity", "organisme", "organismo"];
 const GRADE_LABELS = ["grade", "grade level", "level", "post level", "category and level"];
 const TYPE_LABELS = ["contract type", "type of contract", "contract", "appointment type", "type of appointment", "employment type", "vacancy type", "job type", "position type", "contract modality"];

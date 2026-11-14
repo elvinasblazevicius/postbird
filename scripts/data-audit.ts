@@ -90,7 +90,11 @@ async function main() {
               and (deadline is null or deadline >= (now() at time zone 'utc')::date)))`;
     const dups = findDuplicates(rows);
     const active = [...dups].filter(([id]) => rows.find((r) => r.id === id)?.status === "active");
-    console.log(`${rows.length} rows checked, ${dups.size} duplicates, ${active.length} of them still listed: ${active.slice(0, 40).map(([a, b]) => `#${a}→#${b}`).join(" ")}`);
+    console.log(`${rows.length} rows checked, ${dups.size} duplicates, ${active.length} of them still listed:`);
+    for (const [a, b] of active.slice(0, 80)) {
+      const [x, y] = [rows.find((r) => r.id === a)!, rows.find((r) => r.id === b)!];
+      console.log(`  #${a} (${x.country_code ?? "-"}, ${x.deadline ?? "-"}, ${(x.apply_url ?? "-").slice(0, 70)}) → #${b} (${y.country_code ?? "-"}, ${y.deadline ?? "-"}, ${(y.apply_url ?? "-").slice(0, 70)}) | ${x.title.slice(0, 70)}`);
+    }
     for (const [x, y] of [[227, 386], [937, 795], [938, 796], [1131, 1243]]) {
       const [a, b] = [rows.find((r) => r.id === x), rows.find((r) => r.id === y)];
       if (a && b) console.log(`#${x}/#${y}: ${explainPair(a, b)} | same group: ${rows.filter((r) => r.organization_id === a.organization_id && r.title === a.title).map((r) => `#${r.id}(${r.status})`).join(" ")}`);

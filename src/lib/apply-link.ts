@@ -30,6 +30,8 @@ export function isGeneralCareersPage(url: string, title?: string | null): boolea
   try { path = decodeURIComponent(path); } catch { /* keep as written */ }
   path = path.replace(/\/+$/, "");
   if (!path && !u.search) return true;
+  // A recruitment system's front page names no vacancy (Oracle's ".../CandidateExperience/en/sites/CX_1001").
+  if (/\/CandidateExperience\/[a-z-]+\/sites\/CX_\d+$/i.test(path) && !u.search) return true;
   if (onHost(host, APPLICATION_SERVICES) || onHost(host, OPAQUE_HOSTS)) return false;
   const rest = path + u.search;
   if (/\d{3,}/.test(rest) || /[?&](?:id|jid|job|jobid|req|rid|vacancy|pos|ref)=/i.test(u.search)) return false;

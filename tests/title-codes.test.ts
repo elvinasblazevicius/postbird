@@ -26,6 +26,8 @@ describe("cleanTitle: codes and sentences", () => {
     ["Meal Allowance Clerk", "Meal Allowance Clerk"],
     ["Oficial de Proyecto WASHNFI Base de Caracas", "Oficial de Proyecto WASH/NFI Base de Caracas"],
     ["Oficial Técnicoa", "Oficial Técnico/a"],
+    ["National consultant – First Foods Action Plan, Freetown,remote with travel 596955", "National consultant – First Foods Action Plan, Freetown, remote with travel"],
+    ["Women UN Women: Global Security Specialist", "UN Women: Global Security Specialist"],
     ["Roster of Consultants – ATACH, Seoul, Seoul", "Roster of Consultants – ATACH, Seoul"],
   ])("%s", (raw, clean) => expect(cleanTitle(raw)).toBe(clean));
 });

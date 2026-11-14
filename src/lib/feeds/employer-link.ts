@@ -100,7 +100,11 @@ function usable(url: string): boolean {
 export function isGuideLink(url: string): boolean {
   let path = "";
   try { path = new URL(url).pathname.toLowerCase(); } catch { return false; }
-  return /(?:^|[/_-])(?:user[-_]guides?|user[-_]manuals?|faqs?|publications?|how[-_]to[-_]apply)(?=[/_.-]|$)/.test(path);
+  if (/(?:^|[/_-])(?:user[-_]guides?|user[-_]manuals?|faqs?|publications?|how[-_]to[-_]apply)(?=[/_.-]|$)/.test(path)) return true;
+  // Pages about the employer's recruitment rather than a vacancy: "diversity, equity and inclusion",
+  // competency frameworks, the recruitment process, "resources" (IOM's candidate tier systems).
+  if (/(?:^|\/)(?:resources)\//.test(path)) return true;
+  return /(?:diversity[-_]equity|equity[-_]and[-_]inclusion|competencies|recruitment[-_]process|our[-_]values)(?=[/_.-]|$)/.test(path);
 }
 
 export function isArticleLink(url: string, title: string): boolean {
