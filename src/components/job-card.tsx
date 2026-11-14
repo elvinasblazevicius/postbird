@@ -17,7 +17,7 @@ export function Tag({ children, tone = "plain" }: { children: React.ReactNode; t
     lilac: "bg-lilac text-lilac-ink",
     remote: "bg-remote-bg text-remote",
     signal: "bg-signal-bg text-signal",
-    demo: "border border-dashed border-[#bfd0e3] text-slate",
+    demo: "bg-[#eef1f5] text-slate",
   };
   return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[0.8125rem] font-medium ${tones[tone]}`}>{children}</span>;
 }
@@ -148,7 +148,7 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
     posted && !posted.fresh ? `Posted ${posted.text}` : null,
   ].filter((x): x is string => Boolean(x));
   return (
-    <article className="group relative rounded-xl border border-[#d3e0ee] bg-paper px-4 py-3.5 shadow-[0_1px_3px_rgba(11,31,58,0.08)] transition-[border-color,box-shadow] duration-150 hover:border-sky-rule hover:shadow-[0_4px_14px_rgba(11,99,206,0.10)]">
+    <article className="group relative rounded-xl border border-[#d3e0ee] bg-paper px-4 py-3 shadow-[0_1px_3px_rgba(11,31,58,0.08)] transition-[border-color,box-shadow] duration-150 hover:border-sky-rule hover:shadow-[0_4px_14px_rgba(11,99,206,0.10)]">
       <span className="absolute right-2.5 top-2.5">
         <SaveButton compact job={{ id: job.id, path: href, title: job.title, org: job.org_name }} />
       </span>
@@ -166,32 +166,32 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
           </Link>
         </H>
       </div>
-      <ul className="mt-2 flex flex-wrap items-center gap-1.5 text-sm">
+      <ul className="mt-1.5 flex flex-wrap items-center gap-1.5 text-sm">
         {/* Always in this order: place, grade, who may apply, languages. */}
         {where !== NOT_SPECIFIED ? <li className={plain}><Flag code={job.country_code} /><span>{shortCountries(where)}</span></li>
           : job.is_remote ? <li className={plain}>Remote</li> : <li className={missing}>Duty station not stated</li>}
         {/* The grade is the first thing most applicants check, so it stands out from the other details. Employers
             without a grade system (NGOs, development banks) have no grade to state, so no placeholder for them. */}
-        {grade ? <li className={`${pill} border-[#c3d8ee] bg-tint font-semibold text-ink`}>{grade}</li>
+        {grade ? <li className={`${pill} border-[#bfd0e3] bg-[#f6f8fb] font-semibold text-ink`}>{grade}</li>
           : GRADED_TYPES.has(job.org_type ?? "") ? <li className={missing}>Grade not stated</li> : null}
         {/* Who may apply: local posts (usually nationals only) or internationally recruited grades (Professional,
             Director, Field Service). Neutral colours with an icon: red, amber and blue belong to the closing date. */}
-        {localLabel ? <li className={`${pill} border-[#e3d6c2] bg-[#f6f1e9] font-medium text-[#5c4a2e]`}><PinIcon /><span>{shortCountries(localLabel)}</span></li>
+        {localLabel ? <li className={`${pill} border-[#d9d5cc] bg-[#f3f2ee] font-medium text-[#4a4438]`}><PinIcon /><span>{shortCountries(localLabel)}</span></li>
           : job.grade && /^(P|D|FS)-/.test(job.grade) ? <li className={`${pill} border-[#bfd0e3] bg-paper font-medium text-ink`}><GlobeIcon />International post</li> : null}
         {/* Languages: a posting in another language, then the languages it requires besides English. */}
-        {lang ? <li className={`${pill} border-[#d6ccf3] bg-[#f1edfb] font-medium text-[#4a3b8f]`}>In {lang.name}</li> : null}
+        {lang && !languages.includes(lang.name) ? <li className={`${pill} border-[#d6ccf3] bg-[#f1edfb] font-medium text-[#4a3b8f]`}>Ad in {lang.name}</li> : null}
         {languages.map((l) => <li key={l} className={`${pill} border-[#d6ccf3] bg-[#f1edfb] font-medium text-[#4a3b8f]`}>{l} required</li>)}
       </ul>
       {details.length ? <p className="mt-1.5 text-[0.8125rem] leading-snug text-slate">{details.join(" · ")}</p> : null}
       {/* Date and Apply share one row on every width: the date's day moves under "Closes in…" when space is short. */}
-      <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-rule pt-2 [&>p]:min-w-0">
+      <div className="mt-2 flex items-center justify-between gap-3 border-t border-rule pt-2 [&>p]:min-w-0">
         <DeadlinePill deadline={job.deadline} />
         {/* Straight to the employer's vacancy, above the card's link (relative z-10). A careers home page says so. */}
         {job.apply_url ? (
           <ApplyLink
             href={job.apply_url}
             jobId={job.id}
-            className="group/apply relative z-10 ml-auto inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] bg-brand px-4 text-[0.95rem] font-bold text-white hover:bg-accent active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="group/apply relative z-10 ml-auto inline-flex min-h-10 shrink-0 sm:min-h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] bg-brand px-4 text-[0.95rem] font-bold text-white hover:bg-accent active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             {applyLinkKind(job.apply_url, job.title) === "homepage" ? "Careers site" : "Apply"}
             <span className="sr-only">: {job.title}{job.org_name ? `, ${job.org_name}` : ""} (opens the employer&apos;s site in a new tab)</span>
@@ -216,7 +216,7 @@ export function JobList({ jobs, headingLevel = 3, mobileLimit, phoneExtra, first
   const mentionAt = folded.findIndex(({ job }) => job.title_match === false);
   const mentionLine = mentionAt > 0 || (mentionAt === 0 && firstPage);
   return (
-    <ul className="grid gap-3">
+    <ul className="grid gap-2.5">
       {folded.map(({ job: j, posts }, i) => (
         <Fragment key={j.id}>
           {i === mentionAt && mentionLine ? (

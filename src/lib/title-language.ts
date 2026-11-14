@@ -11,7 +11,7 @@ const NAMES: Record<TitleLanguage["code"], string> = { es: "Spanish", fr: "Frenc
 /** Words used in one language's job titles and not in English (or in the other two). */
 const MARKERS: Record<"es" | "fr" | "pt", Set<string>> = {
   es: new Set([
-    "del", "y", "para", "con", "los", "las", "el", "oficial", "asistente", "especialista", "coordinador", "coordinadora", "consultor", "consultora",
+    "del", "y", "para", "con", "los", "las", "el", "urgencias", "emergencias", "enfermera", "enfermero", "medica", "oficial", "asistente", "especialista", "coordinador", "coordinadora", "consultor", "consultora",
     "proyecto", "proyectos", "programa", "programas", "gestion", "tecnico", "tecnica", "analista", "jefe", "jefa", "apoyo", "nacional",
     "desarrollo", "servicios", "auxiliar", "encargado", "encargada", "oficina", "salud", "educacion", "proteccion", "seguimiento", "evaluacion", "administrativo", "administrativa", "logistica", "comunicacion",
     "enumerador", "enumeradora", "encuestador", "encuestadora", "encuesta", "encuestas", "asesor", "asesora", "ingeniero", "ingeniera", "pasante", "monitoreo", "saneamiento", "hogares", "trabajo", "campana",
