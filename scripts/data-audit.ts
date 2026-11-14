@@ -14,6 +14,12 @@ async function main() {
   const [{ n }] = await sql<{ n: number }[]>`select count(*)::int as n from jobs j where ${open}`;
   console.log(`Open listings: ${n}`);
 
+  section("Taken down as duplicates (removed copy → kept listing)");
+  for (const r of await sql<{ id: number; kept: number; t1: string; t2: string; s1: string | null; s2: string | null; d1: string | null; d2: string | null; a1: string | null; a2: string | null }[]>`
+    select d.id::int, k.id::int as kept, d.title as t1, k.title as t2, d.source_host as s1, k.source_host as s2, d.deadline::text as d1, k.deadline::text as d2, d.apply_host as a1, k.apply_host as a2
+      from jobs d join jobs k on k.id = substring(d.removed_reason from '#(\d+)')::bigint
+     where d.status = 'removed' and d.removed_reason like 'Same vacancy as #%' order by d.updated_at desc limit 200`) console.log(`#${r.id} (${r.s1}, ${r.a1}, ${r.d1 ?? "-"}) → #${r.kept} (${r.s2}, ${r.a2}, ${r.d2 ?? "-"}) | ${r.t1}${r.t1 === r.t2 ? "" : ` | kept: ${r.t2}`}`);
+
   section("Apply hosts (top 60)");
   for (const r of await sql<{ apply_host: string | null; n: number; ex: number }[]>`
     select apply_host, count(*)::int as n, min(id)::int as ex from jobs j where ${open} group by 1 order by 2 desc limit 60`) console.log(`${r.n}\t${r.apply_host}\t#${r.ex}`);
