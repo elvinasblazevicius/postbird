@@ -12,6 +12,7 @@
  */
 import { createHash } from "node:crypto";
 import { META_PIXEL_ID } from "@/lib/meta-pixel";
+import { absoluteUrl } from "@/lib/site";
 
 export type MetaMatch = { eventId: string; fbc?: string; fbp?: string; url?: string };
 export type CapiEvent = "PageView" | "Lead" | "StartTrial" | "Purchase";
@@ -97,7 +98,7 @@ export async function metaCapiCheck(testCode: string, visitor: { ip?: string | n
   if (!token) return { ok: false, detail: "META_CAPI_TOKEN is not set in Netlify, so the server sends nothing to Meta." };
   const code = testCode.trim();
   if (!/^TEST[A-Z0-9]{3,20}$/i.test(code)) return { ok: false, detail: "Paste the test code from Events Manager → your pixel → Test events (it starts with TEST)." };
-  const body = capiBody({ event: "PageView", match: { eventId: `check-${Date.now()}`, url: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://example.org"}/` }, ip: visitor.ip, ua: visitor.ua ?? "Postbird Meta check" });
+  const body = capiBody({ event: "PageView", match: { eventId: `check-${Date.now()}`, url: absoluteUrl("/") }, ip: visitor.ip, ua: visitor.ua ?? "Postbird Meta check" });
   try {
     const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(token)}`, {
       method: "POST",
