@@ -589,9 +589,9 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
     // Placeholders a source puts where the place should be ("UNAVAILABLE, India"): no city rather than a wrong one.
     await sql`
       update jobs set city = null,
-             location_text = nullif(btrim(regexp_replace(location_text, '^\s*(unavailable|n/?a|tbd|tbc)\s*,?\s*', '', 'i')), ''),
+             location_text = nullif(btrim(regexp_replace(location_text, '^[[:space:]]*(unavailable|n/?a|tbd|tbc)[[:space:]]*,?[[:space:]]*', '', 'i')), ''),
              updated_at = now()
-      where status = 'active' and city ~* '^\s*(unavailable|n/?a|tbd|tbc)\s*$'`;
+      where status = 'active' and city ~* '^[[:space:]]*(unavailable|n/?a|tbd|tbc)[[:space:]]*$'`;
 
     // Expire / archive / clean up
     const expired = await sql`

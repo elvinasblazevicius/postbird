@@ -33,7 +33,7 @@ const hostOf = (href: string) => {
 const textOf = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#160;/g, " ").replace(/\s+/g, " ").trim();
 
 /** The email address placeholder a board's CDN leaves when it hides an address. */
-const HIDDEN_EMAIL = /\[email(?:&#160;|&nbsp;|\s)protected\]/i;
+const HIDDEN_EMAIL = /\[email(?:&#160;|&nbsp;|\s|\u00a0)protected\]/i;
 
 export function stripBoardText(html: string): string {
   let out = html;
@@ -41,12 +41,13 @@ export function stripBoardText(html: string): string {
   out = out.replace(/<p\b[^>]*>([\s\S]*?)<\/p>/gi, (m, inner: string) => (BOARD_PARAGRAPHS.some((re) => re.test(textOf(inner))) ? "" : m));
   // Links to the board: an email hidden by its CDN becomes a plain note; any other link keeps its words, without the link.
   out = out.replace(/<a\b[^>]*href\s*=\s*["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi, (m, href: string, inner: string) => {
-    if (!BOARD_HOST.test(hostOf(href))) return m;
+    // An address hidden by a CDN, on any site: the address itself is gone from the copy we have.
     if (/cdn-cgi\/l\/email-protection/i.test(href) || HIDDEN_EMAIL.test(inner)) return "(email address on the employer’s posting)";
+    if (!BOARD_HOST.test(hostOf(href))) return m;
     const words = textOf(inner);
     return /^(show advice for this position|more about .* contracts?)$/i.test(words) ? "" : inner;
   });
-  out = out.replace(/[\w.+-]*\[email(?:&#160;|&nbsp;|\s)protected\]/gi, "(email address on the employer’s posting)");
+  out = out.replace(/[\w.+-]*\[email(?:&#160;|&nbsp;|\s|\u00a0)protected\]/gi, "(email address on the employer’s posting)");
   // Impactpool's header line before the employer's text ("IOM - International Organization for MigrationChadNationalGS-4, …Speaks French").
   out = out.replace(/^\s*(?:<a\b[^>]*>\s*<\/a>\s*)?[^<]{0,300}?Speaks [A-Z][a-z]+(?:, [A-Z][a-z]+)*\s*(?=<p)/, "");
   // Empty links and paragraphs left behind.
