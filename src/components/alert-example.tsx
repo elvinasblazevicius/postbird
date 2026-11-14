@@ -80,8 +80,14 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
   // Demo listings never count. With `search` (the visitor's own), the example follows it.
   let own = search ? filtersFromQuery(search) : null;
   const pick = (posted: "1" | "7") =>
-    searchJobs({ ...(own ?? {}), posted, sort: "newest", page: undefined, hidelocal: own ? own.hidelocal || undefined : kind === "daily" || undefined, excludeDemo: true }, 30).catch(() => ({ items: [] as JobListItem[], total: 0 }));
-  const [firstTry, closing] = await Promise.all([pick(kind === "daily" ? "1" : "7"), kind === "daily" ? closingSoonJobs(12).catch(() => []) : Promise.resolve([])]);
+    // With keywords, best match first (titles holding the words before texts that only mention them), as the real email lists them.
+    searchJobs({ ...(own ?? {}), posted, sort: own?.q ? "relevance" : "newest", page: undefined, hidelocal: own ? own.hidelocal || undefined : kind === "daily" || undefined, excludeDemo: true }, 30).catch(() => ({ items: [] as JobListItem[], total: 0 }));
+  // Closing soon follows the search too (the visitor's, or none): its open matches with the soonest published closing dates.
+  const closingFor = (f: typeof own) => f
+    ? searchJobs({ ...f, posted: undefined, closing: "7", sort: "deadline", page: undefined, excludeDemo: true }, 12).then((r) => r.items).catch(() => [] as JobListItem[])
+    : closingSoonJobs(12).catch(() => [] as JobListItem[]);
+  const [firstTry, closingFirst] = await Promise.all([pick(kind === "daily" ? "1" : "7"), kind === "daily" ? closingFor(own) : Promise.resolve([] as JobListItem[])]);
+  let closing = closingFirst;
   let first = firstTry;
   // A quiet day: the daily example is built from the past week instead, and says so.
   let pastWeek = kind === "daily" && first.total < EXAMPLE_ROWS;
@@ -90,6 +96,7 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
   const ownEmpty = Boolean(own) && all.items.length === 0;
   if (ownEmpty) {
     own = null;
+    if (kind === "daily") closing = await closingFor(null);
     first = await pick(kind === "daily" ? "1" : "7");
     pastWeek = kind === "daily" && first.total < EXAMPLE_ROWS;
     all = pastWeek ? await pick("7") : first;
@@ -102,13 +109,13 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
   if (!ownLabel) for (const j of all.items) if (j.category && j.category !== "other") counts.set(j.category, (counts.get(j.category) ?? 0) + 1);
   const topCategory = ownLabel ? null : [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   // "Your search" only for a search the example really follows: the visitor's own, or the one it shows as an example search.
-  const yours = Boolean(ownLabel) || (Boolean(topCategory) && !ownEmpty);
+  const yours = Boolean(ownLabel);
   const inSearch = topCategory ? all.items.filter((j) => j.category === topCategory) : all.items;
   const found = topCategory ? { items: inSearch, total: inSearch.length } : all;
   const jobs = pickRows(found.items);
   // Closing soon: vacancies that close in 1 to 3 days (not today: the reminder comes before the day).
   const soon = closing
-    .filter((j) => { const d = daysUntil(j.deadline) ?? 99; return !j.is_demo && d >= 1 && d <= CLOSING_SOON_DAYS && !jobs.some((x) => x.id === j.id) && !isLocalOnly(j) && !looksGarbled(j.title); })
+    .filter((j) => { const d = daysUntil(j.deadline) ?? 99; return !j.is_demo && d >= 1 && d <= CLOSING_SOON_DAYS && !jobs.some((x) => x.id === j.id) && (own ? true : !isLocalOnly(j)) && (!topCategory || j.category === topCategory) && !looksGarbled(j.title); })
     .slice(0, 2);
   const real = jobs.length > 0;
   const n = real ? Math.max(found.total, jobs.length) : ILLUSTRATIVE.length;
@@ -116,7 +123,7 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
   const label = ownLabel
     ? `Your search: ${ownLabel}`
     : topCategory
-      ? `Your search: ${categoryName(topCategory)}${kind === "daily" ? ", international posts" : ""}`
+      ? `Example search: ${categoryName(topCategory)}${kind === "daily" ? ", international posts" : ""}`
       : kind === "daily" ? "All new vacancies, without local-only posts" : "All new vacancies";
   const matchWord = real && yours ? `${n === 1 ? "vacancy matches" : "vacancies match"} your search` : n === 1 ? "vacancy" : "vacancies";
   const subject = kind === "weekly"
@@ -143,7 +150,7 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
           when the example already says it isn't built from their search. */}
       {ownEmpty ? null : (
         <p data-example-stale="" hidden className="mt-1 text-sm text-ink">
-          {search ? "This example was built for the search you arrived with. Your emails will follow the search you set above." : "This example shows all new vacancies. Your emails will follow the search you set above."}
+          {search ? "This example was built for the search you arrived with. Your emails will follow the search you set above." : topCategory ? "This example uses a sample search. Your emails will follow the search you set above." : "This example shows all new vacancies. Your emails will follow the search you set above."}
         </p>
       )}
       <figure className="mt-3 rounded-xl border border-rule bg-mist p-2 sm:p-3">
@@ -159,7 +166,7 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
             </p>
             <p className="mt-1 text-sm text-slate">
               {kind === "weekly"
-                ? `New vacancies of the past week${real && yours ? " that match your search" : ""}. Apply on each employer’s own website.`
+                ? `New vacancies of the past week${real && yours ? " that match your search" : topCategory ? " for an example search" : ""}. Apply on each employer’s own website.`
                 : pastWeek && real
                   ? `New on ${siteConfig.name} in the past week. Apply on each employer’s own website.`
                   : `New on ${siteConfig.name} since yesterday’s email. Apply on each employer’s own website.`}

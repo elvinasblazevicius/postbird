@@ -215,7 +215,7 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
         filters = filtersFromQuery(r.search);
         const key = `${r.search}|${since.getTime()}`;
         if (!cache.has(key)) {
-          const p = searchJobs({ ...filters, page: undefined, posted: undefined, sort: "newest", firstSeenAfter: since, firstSeenUntil: until, excludeDemo: true }, WEEKLY_JOBS_PER_SEARCH);
+          const p = searchJobs({ ...filters, page: undefined, posted: undefined, sort: filters.q ? "relevance" : "newest", firstSeenAfter: since, firstSeenUntil: until, excludeDemo: true }, WEEKLY_JOBS_PER_SEARCH);
           p.catch(() => {}); // awaited below (and by later subscribers with the same search)
           cache.set(key, p);
         }
@@ -423,7 +423,7 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
     const lookup = (l: Lookup) => {
       if (!cache.has(l.key)) {
         const filters = filtersFromQuery(l.search);
-        const p = searchJobs({ ...filters, page: undefined, posted: undefined, sort: "newest", firstSeenAfter: l.since, firstSeenUntil: now, excludeDemo: true }, JOBS_PER_SEARCH);
+        const p = searchJobs({ ...filters, page: undefined, posted: undefined, sort: filters.q ? "relevance" : "newest", firstSeenAfter: l.since, firstSeenUntil: now, excludeDemo: true }, JOBS_PER_SEARCH);
         p.catch(() => {}); // awaited below; this only keeps an early failure from being reported as unhandled
         cache.set(l.key, p);
       }
