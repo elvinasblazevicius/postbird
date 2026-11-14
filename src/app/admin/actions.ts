@@ -305,7 +305,8 @@ export type MetaCheckState = { ok: boolean; detail: string } | null;
 export async function metaCheckAction(_prev: MetaCheckState, form: FormData): Promise<MetaCheckState> {
   await requireAdmin();
   const { metaCapiCheck } = await import("@/lib/meta-capi");
-  return metaCapiCheck(String(form.get("code") ?? ""));
+  const h = await headers();
+  return metaCapiCheck(String(form.get("code") ?? ""), { ip: clientIp(h), ua: h.get("user-agent") });
 }
 
 /** Marks a billing flag (Admin → Overview) as dealt with. */

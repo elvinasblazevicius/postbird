@@ -43,7 +43,7 @@ export const sha256 = (s: string) => createHash("sha256").update(s.trim().toLowe
 export function capiBody(o: { event: CapiEvent; match: MetaMatch; email?: string | null; ip?: string | null; ua?: string | null; value?: number; currency?: string; now?: number }) {
   const user_data: Record<string, unknown> = {};
   if (o.email) user_data.em = [sha256(o.email)];
-  if (o.ip) user_data.client_ip_address = o.ip;
+  if (o.ip && o.ip !== "unknown") user_data.client_ip_address = o.ip;
   if (o.ua) user_data.client_user_agent = o.ua.slice(0, 500);
   if (o.match.fbc) user_data.fbc = o.match.fbc;
   if (o.match.fbp) user_data.fbp = o.match.fbp;
@@ -90,13 +90,14 @@ export async function sendCapiEvent(o: Parameters<typeof capiBody>[0]): Promise<
  * events), so it shows there at once and never counts toward ads. Says whether the token is set and
  * what Meta answered (never the token itself).
  */
-export async function metaCapiCheck(testCode: string): Promise<{ ok: boolean; detail: string }> {
+/** `ip` and `ua`: the admin's own, as a real page view carries the visitor's (Meta refuses an event without them). */
+export async function metaCapiCheck(testCode: string, visitor: { ip?: string | null; ua?: string | null } = {}): Promise<{ ok: boolean; detail: string }> {
   const token = process.env.META_CAPI_TOKEN?.trim();
   if (!META_PIXEL_ID) return { ok: false, detail: "No Pixel ID in this build (NEXT_PUBLIC_META_PIXEL_ID)." };
   if (!token) return { ok: false, detail: "META_CAPI_TOKEN is not set in Netlify, so the server sends nothing to Meta." };
   const code = testCode.trim();
   if (!/^TEST[A-Z0-9]{3,20}$/i.test(code)) return { ok: false, detail: "Paste the test code from Events Manager → your pixel → Test events (it starts with TEST)." };
-  const body = capiBody({ event: "PageView", match: { eventId: `check-${Date.now()}`, url: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://example.org"}/` }, ua: "Postbird Meta check" });
+  const body = capiBody({ event: "PageView", match: { eventId: `check-${Date.now()}`, url: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://example.org"}/` }, ip: visitor.ip, ua: visitor.ua ?? "Postbird Meta check" });
   try {
     const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(token)}`, {
       method: "POST",
