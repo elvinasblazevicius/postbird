@@ -17,10 +17,14 @@ let restore: { formId: string; field?: { name: string; value: string }; open: st
 function showResults() {
   const h = document.getElementById("results-heading");
   if (!h) return;
-  const top = h.getBoundingClientRect().top;
-  if (top >= 80 && top <= window.innerHeight - 120) return;
+  // The results' top (the filters-in-use row above the count), just under the sticky site header.
+  const target = h.closest("section") ?? h;
+  const header = Array.from(document.querySelectorAll("header")).find((e) => getComputedStyle(e).position === "sticky");
+  const below = header ? Math.max(0, header.getBoundingClientRect().bottom) : 0;
+  const top = target.getBoundingClientRect().top;
+  if (top >= below + 4 && h.getBoundingClientRect().top <= window.innerHeight - 120) return;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  window.scrollTo({ top: Math.max(0, top + window.scrollY - 110), behavior: reduce ? "auto" : "smooth" });
+  window.scrollTo({ top: Math.max(0, top + window.scrollY - below - 12), behavior: reduce ? "auto" : "smooth" });
 }
 
 /**

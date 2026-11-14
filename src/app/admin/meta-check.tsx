@@ -14,7 +14,7 @@ export function MetaCheck() {
     <form action={action} className="text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <label htmlFor="meta-code" className="sr-only">Test code from Events Manager</label>
-        <input id="meta-code" name="code" placeholder="TEST12345" autoComplete="off" className="w-40 rounded-md border border-rule bg-paper px-3 py-2 font-mono text-ink" />
+        <input id="meta-code" name="code" key={state?.code ?? ""} defaultValue={state?.code ?? ""} placeholder="e.g. TEST5000" autoComplete="off" className="w-40 rounded-md border border-rule bg-paper px-3 py-2 font-mono text-ink" />
         <button disabled={pending} className="rounded-lg border border-rule px-4 py-2 font-semibold text-ink hover:bg-mist disabled:opacity-60">
           {pending ? "Sending…" : "Send test event to Meta"}
         </button>

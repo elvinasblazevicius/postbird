@@ -299,14 +299,15 @@ export async function billingSelfCheckAction(): Promise<SelfCheckState> {
   return { checked: true, items: await billingSelfCheck(PADDLE_PRICE_MONTHLY) };
 }
 
-export type MetaCheckState = { ok: boolean; detail: string } | null;
+export type MetaCheckState = { ok: boolean; detail: string; code?: string } | null;
 
 /** "Meta check": one test page view to the Conversions API with the code from Events Manager → Test events. */
 export async function metaCheckAction(_prev: MetaCheckState, form: FormData): Promise<MetaCheckState> {
   await requireAdmin();
   const { metaCapiCheck } = await import("@/lib/meta-capi");
   const h = await headers();
-  return metaCapiCheck(String(form.get("code") ?? ""), { ip: clientIp(h), ua: h.get("user-agent") });
+  const code = String(form.get("code") ?? "").trim().slice(0, 40);
+  return { ...(await metaCapiCheck(code, { ip: clientIp(h), ua: h.get("user-agent") })), code };
 }
 
 /** Marks a billing flag (Admin → Overview) as dealt with. */

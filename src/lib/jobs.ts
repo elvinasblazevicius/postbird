@@ -12,6 +12,8 @@ import { ABBREVIATIONS, categoriesForWord, foldText, gradeTitlePattern, interpre
 
 export type JobListItem = {
   id: number;
+  /** Keyword searches in best-match order only: the title (or employer) holds the search's subject; false when only the description does. */
+  title_match?: boolean;
   slug: string;
   title: string;
   org_name: string | null;
@@ -448,12 +450,29 @@ function titleWordHits(q: string): Frag {
  * True for a search without such words.
  */
 export function topicInTitleOrSummary(q: string | undefined): Frag {
-  if (!q) return sql`true`;
+  return topicIn(q, "AC") ?? sql`true`;
+}
+
+/**
+ * The search's subject in the vacancy's title, or the search names its employer: results that only
+ * mention the words in their description come after these, under a line saying so (searchJobs).
+ */
+function topicInTitle(q: string): Frag | null {
+  const orgNames = orgNamesForTerm(q);
+  const words = topicIn(q, "A");
+  if (!words) return null; // nothing but places or employers: every result matches them exactly
+  const org = orgNames.length ? sql`pb_fold(o.name) = any(${orgNames}) or pb_fold(o.short_name) = any(${orgNames}) or ` : sql``;
+  return sql`(${org}${words})`;
+}
+
+/** Null when the search has no word to look for (only places, employers or field abbreviations). */
+function topicIn(q: string | undefined, weights: "A" | "AC"): Frag | null {
+  if (!q) return null;
   const terms = [...new Set(searchWords(interpretQuery(q).text ?? q).map(foldText))]
     .filter((t) => /^[a-z0-9]+$/.test(t) && !placeVariants(t).length && !orgNamesForTerm(t).length && !ABBREVIATIONS[t])
     .slice(0, 8);
-  if (!terms.length) return sql`true`;
-  const query = terms.map((t) => { const one = singular(t); return one !== t ? `(${t}:AC | ${one}:AC)` : `${t}:AC`; }).join(" | ");
+  if (!terms.length) return null;
+  const query = terms.map((t) => { const one = singular(t); return one !== t ? `(${t}:${weights} | ${one}:${weights})` : `${t}:${weights}`; }).join(" | ");
   return sql`(j.search_folded @@ to_tsquery('simple', ${query}))`;
 }
 
@@ -664,18 +683,20 @@ export async function searchJobs(input: JobFilters, pageSize: number = LISTING_S
     const where = whereFor(f, mode);
     const terms = f.q ? searchWords(f.q) : [];
     const looseOrder = sort === "relevance" && mode === "any" && terms.length > 0;
+    // Best match: results whose title holds the search's subject first (the rest are marked as mentioning it).
+    const titleHit = sort === "relevance" && f.q ? topicInTitle(f.q) : null;
     const weights = looseOrder ? await looseWordWeights(terms) : [];
     const order =
       sort === "deadline" ? sql`j.deadline asc nulls last, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
       looseOrder && f.q
         ? sql`(${looseRank(terms, weights)}) desc, ts_rank(j.search_folded, ${rankQuery(f.q)}) desc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
-      sort === "relevance" && f.q ? sql`${titleBoost(f.q)} desc, ${titleWordHits(f.q)} desc, ts_rank(j.search_folded, ${rankQuery(f.q)}) desc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
+      sort === "relevance" && f.q ? sql`${titleHit ? sql`${titleHit} desc, ` : sql``}${titleBoost(f.q)} desc, ${titleWordHits(f.q)} desc, ts_rank(j.search_folded, ${rankQuery(f.q)}) desc, coalesce(j.published_at, j.first_seen_at) desc, j.id desc` :
       sql`coalesce(j.published_at, j.first_seen_at) desc, j.id desc`;
     // Each in its own short transaction, which carries the statement time limit (see
     // transaction() in src/lib/db.ts); two of them, so the queries still run side by side.
     const [items, [{ count }]] = await Promise.all([
       transaction(async (tx) => await tx<JobListItem[]>`
-        select ${listColumns()}
+        select ${listColumns()}${titleHit && !looseOrder ? sql`, ${titleHit} as title_match` : sql``}
         from jobs j left join organizations o on o.id = j.organization_id
         where ${where}
         order by ${order}

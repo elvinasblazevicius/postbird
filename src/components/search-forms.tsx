@@ -171,7 +171,8 @@ export function WhereFields({ facets, filters, idPrefix, label = "Where", name =
   const groups = counts ? placeChoices(facets) : placeChoices(facets).map((g) => ({ ...g, options: g.options.map((o) => ({ ...o, count: undefined })) }));
   return (
     <MultiCombobox name={name} label={label} idPrefix={idPrefix} groups={groups} chosen={chosen} max={MAX_PLACES}
-      placeholder={placeholder} itemNoun="place" itemsNoun="places" anyHint="Jobs in any of the places you choose">
+      placeholder={placeholder} itemNoun="place" itemsNoun="places" anyHint="Jobs in any of the places you choose"
+      noMatchHint="Looking for remote work? Tick “Remote / home-based only”.">
       <RepeatSelect name={name} label={label} idPrefix={idPrefix} chosen={chosen} groups={placeGroups(facets)} max={MAX_PLACES}
         anyLabel="Anywhere" chooseLabel="Choose a place" addLabel="Add another place" addHint="Jobs in any of the places you choose" removeLabel="Remove this place" itemNoun="place" />
     </MultiCombobox>
@@ -471,7 +472,8 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
       </details>
       {/* Outside "More filters": it also applies to the grade boxes above. */}
       <UnstatedToggle filters={filters} idPrefix={P} />
-      <div className="flex items-center gap-3 pt-1">
+      {/* Phones (the panel waits for this button): it stays in view at the bottom while the filters scroll. */}
+      <div className={`flex items-center gap-3 pt-1 ${submitOnChange ? "" : "sticky bottom-0 z-10 -mx-1 border-t border-rule bg-paper px-1 pb-3 pt-3"}`}>
         <button type="submit" className="flex-1 rounded-lg bg-brand px-4 py-2.5 font-semibold text-white hover:bg-accent">Show jobs</button>
         <Link href={jobsUrl({}, action)} className="rounded-lg px-3 py-2.5 text-sm font-medium text-accent hover:bg-mist">Clear</Link>
       </div>

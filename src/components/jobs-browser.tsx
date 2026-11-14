@@ -312,7 +312,7 @@ export async function JobsBrowser({
         ) : null}
 
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="results-heading" className="font-sans text-[1.05rem] font-semibold text-ink">
+          <h2 id="results-heading" aria-live="polite" aria-atomic="true" className="font-sans text-[1.05rem] font-semibold text-ink">
             {/* A fallback (some of the words, or similar words) never reads as a match. */}
             {result.matchMode === "any"
               ? `No exact matches · ${result.total.toLocaleString("en-US")} similar ${result.total === 1 ? "vacancy" : "vacancies"}`
@@ -373,7 +373,7 @@ export async function JobsBrowser({
         {alertRow ? <div className="max-sm:hidden">{alertRow}</div> : null}
 
         {result.items.length ? (
-          <JobList jobs={result.items} phoneExtra={alertRow ? { after: 3, node: <div className="rounded-xl bg-sky-wash p-3 [&>div]:mb-0">{alertRow}</div> } : undefined} />
+          <JobList jobs={result.items} firstPage={result.page === 1} phoneExtra={alertRow ? { after: 3, node: <div className="rounded-xl bg-sky-wash p-3 [&>div]:mb-0">{alertRow}</div> } : undefined} />
         ) : (
           <div className="rounded-xl border border-dashed border-rule p-6 sm:p-8">
             <p className="font-display text-xl text-ink">

@@ -106,7 +106,7 @@ export async function metaCapiCheck(testCode: string, visitor: { ip?: string | n
       signal: AbortSignal.timeout(8000),
     });
     const text = (await res.text().catch(() => "")).slice(0, 400);
-    if (res.ok) return { ok: true, detail: `Meta accepted the test page view (${text}). It shows under Test events within a minute.` };
+    if (res.ok) return { ok: true, detail: `Meta accepted the test page view sent with test code ${code} (${text}). With that code's Test events tab open in Events Manager, it shows there within a minute.` };
     const msg = (() => { try { return (JSON.parse(text) as { error?: { message?: string } }).error?.message ?? text; } catch { return text; } })();
     return { ok: false, detail: `Meta refused it (${res.status}): ${msg}` };
   } catch (e) {

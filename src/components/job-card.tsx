@@ -87,7 +87,7 @@ export function postedMarker(job: { published_at: Date | null; first_seen_at: Da
 const ORG_TYPE_LABEL: Record<string, string> = {
   "UN system": "UN system",
   "EU institution": "EU institution",
-  "International financial institution": "Financial institution",
+  "International financial institution": "Development bank or IFI",
   "International organization": "International organization",
   NGO: "NGO",
 };
@@ -195,13 +195,27 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
 
 /** A list of cards, one per vacancy (identical posts folded into one). `mobileLimit`: how many show on phones. */
 /** `phoneExtra`: shown on phones only, after the first `after` cards (the search results' alert button, so the first cards come first). */
-export function JobList({ jobs, headingLevel = 3, mobileLimit, phoneExtra }: { jobs: JobListItem[]; headingLevel?: 2 | 3; mobileLimit?: number; phoneExtra?: { after: number; node: React.ReactNode } }) {
+/**
+ * `firstPage`: a keyword search's first page, where a list that has no title match at all says so
+ * at the top. A search's results whose titles hold the words come first (searchJobs); the first one
+ * that only mentions them in its description gets a line above it.
+ */
+export function JobList({ jobs, headingLevel = 3, mobileLimit, phoneExtra, firstPage = true }: { jobs: JobListItem[]; headingLevel?: 2 | 3; mobileLimit?: number; phoneExtra?: { after: number; node: React.ReactNode }; firstPage?: boolean }) {
   const folded = foldSameVacancies(jobs);
   const extraAt = phoneExtra ? Math.min(phoneExtra.after, folded.length) : -1;
+  const mentionAt = folded.findIndex(({ job }) => job.title_match === false);
+  const mentionLine = mentionAt > 0 || (mentionAt === 0 && firstPage);
   return (
     <ul className="grid gap-3">
       {folded.map(({ job: j, posts }, i) => (
         <Fragment key={j.id}>
+          {i === mentionAt && mentionLine ? (
+            <li className="mt-2 flex items-center gap-3 text-[0.9rem] text-slate" data-mentioned-only>
+              <span className="h-px flex-1 bg-rule" aria-hidden="true" />
+              <span>{i === 0 ? "No title holds your words: these vacancies mention them in the description" : "Also mentioned in the description"}</span>
+              <span className="h-px flex-1 bg-rule" aria-hidden="true" />
+            </li>
+          ) : null}
           {i === extraAt ? <li className="sm:hidden">{phoneExtra!.node}</li> : null}
           <li className={mobileLimit !== undefined && i >= mobileLimit ? "max-sm:hidden" : undefined}>
             <JobCard job={j} headingLevel={headingLevel} posts={posts} />
