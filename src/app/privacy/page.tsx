@@ -143,10 +143,15 @@ export default function PrivacyPage() {
           </p>
         ) : null}
 
-        <H2>Feature suggestions</H2>
+        <H2>Messages, suggestions and shared experiences</H2>
         <p>
-          When you send a message from the &ldquo;Suggest a feature&rdquo; page, we keep the message, the email address you give (if any) and the page you came
-          from, and forward them to our own inbox, so we can read it and, if you asked, reply. We delete them when you ask us to.
+          When you send a message from the Contact, &ldquo;Suggest a feature&rdquo; or &ldquo;Share your experience&rdquo; page, we keep the message, the email
+          address you give (required on the Contact page, optional elsewhere) and the page you came from, and forward them to our own inbox, so we can read
+          it and, if you asked, reply. We delete them when you ask us to.
+        </p>
+        <p>
+          An experience you share is shown on the site only if you ticked that we may quote it, and only with the name you chose to show, never your email
+          address. We don&apos;t edit the words. To have it taken down, write to us and we remove it.
         </p>
 
         <H2>Our book link</H2>

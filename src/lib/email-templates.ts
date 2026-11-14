@@ -155,7 +155,7 @@ export function weeklyEmail(opts: { group: AlertGroup; search: string; trialUrl:
      <p style="font-size:15px;color:#566476;margin:0 0 10px">${esc(intro)} Apply on each employer's own website.</p>
      ${rows}${more}
      <p style="font-size:14px;line-height:1.6;color:#566476;margin:24px 0 0">${esc(upsell.lead)} <a href="${esc(opts.trialUrl)}" style="color:${siteConfig.colors.accent};font-weight:600">${esc(upsell.link)}</a></p>`,
-    `${esc(siteConfig.disclaimer)}<br><br>You get this free weekly email because you signed up on ${esc(siteConfig.name)}.
+    `${esc(siteConfig.disclaimer)}<br><br>${shareLine()}<br><br>You get this free weekly email because you signed up on ${esc(siteConfig.name)}.
     <a href="${esc(opts.accountUrl)}" style="color:#566476">Change your search</a> &nbsp;|&nbsp; <a href="${esc(opts.unsubscribeUrl)}" style="color:#566476">Unsubscribe</a>`,
   );
   const text =
@@ -163,20 +163,27 @@ export function weeklyEmail(opts: { group: AlertGroup; search: string; trialUrl:
     jobRowsText(g.jobs) +
     (g.total > g.jobs.length ? `\n\nSee all ${g.total}: ${g.url}` : "") +
     `\n\n${upsell.lead} ${upsell.link}: ${opts.trialUrl}` +
+    `\n\n${SHARE_TEXT} ${absoluteUrl("/share")}` +
     `\n\nChange your search: ${opts.accountUrl}\nUnsubscribe: ${opts.unsubscribeUrl}\n\n${postal()}`;
   return { subject, html, text };
+}
+
+/** In alert emails: an invitation to say how the alerts helped (/share; quoted on the site only with permission). */
+const SHARE_TEXT = "Did an alert help you apply? Tell us:";
+function shareLine(): string {
+  return `Did an alert help you apply? <a href="${esc(absoluteUrl("/share"))}" style="color:#566476">Tell us</a>.`;
 }
 
 // ── Paid email alerts ────────────────────────────────────────
 
 /** Footer of every paid-alert email: the account link and the unsubscribe link (the postal line is added by layout()). */
 function accountFooter(accountUrl: string, unsubscribeUrl: string): string {
-  return `${esc(siteConfig.disclaimer)}<br><br><a href="${esc(accountUrl)}" style="color:#566476">Your account</a>: saved searches, daily or weekly, billing.
+  return `${esc(siteConfig.disclaimer)}<br><br>${shareLine()}<br><br><a href="${esc(accountUrl)}" style="color:#566476">Your account</a>: saved searches, daily or weekly, billing.
     &nbsp;|&nbsp; <a href="${esc(unsubscribeUrl)}" style="color:#566476">Unsubscribe</a> from these emails.`;
 }
 
 const accountFooterText = (accountUrl: string, unsubscribeUrl: string) =>
-  `Your account (saved searches, frequency, billing): ${accountUrl}\nUnsubscribe: ${unsubscribeUrl}\n\n${postal()}`;
+  `${SHARE_TEXT} ${absoluteUrl("/share")}\n\nYour account (saved searches, frequency, billing): ${accountUrl}\nUnsubscribe: ${unsubscribeUrl}\n\n${postal()}`;
 
 /**
  * What the subscriber will be charged: their plan's price when `plan` is one of the plan

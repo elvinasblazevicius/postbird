@@ -1,3 +1,4 @@
+import { Testimonials } from "@/components/testimonials";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertSignup } from "@/components/alert-signup";
@@ -316,6 +317,8 @@ export default async function HomePage() {
           </ul>
         </div>
       </section>
+
+      <Testimonials className="mx-auto mt-14 max-w-6xl px-4 sm:px-6" />
 
       {/* Alerts: one choice, weekly (free) or daily (trial) */}
       <section className="mx-auto mt-20 max-w-6xl px-4 sm:px-6" aria-labelledby="alerts-heading">

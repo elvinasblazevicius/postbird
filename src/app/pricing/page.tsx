@@ -1,3 +1,4 @@
+import { Testimonials } from "@/components/testimonials";
 import type { Metadata } from "next";
 import { sharedTitle, shareMetadata } from "@/lib/share-metadata";
 import Link from "next/link";
@@ -197,6 +198,8 @@ export default async function PricingPage() {
         </section>
         <AlertExample />
       </div>
+
+      <Testimonials className="mx-auto max-w-4xl px-4 pt-12 sm:px-6" />
 
       <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6" aria-labelledby="faq-heading">
         <h2 id="faq-heading" className="text-xl font-semibold text-ink">Questions</h2>

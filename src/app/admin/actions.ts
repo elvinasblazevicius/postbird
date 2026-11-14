@@ -338,3 +338,17 @@ export async function resolveOpsEventAction(form: FormData): Promise<void> {
   revalidatePath("/admin");
   redirect("/admin");
 }
+
+/** Admin → Feedback: shows a shared experience on the site (only one its author agreed to have quoted), or hides it again. */
+export async function approveTestimonialAction(form: FormData): Promise<void> {
+  await requireAdmin();
+  const id = parseId(String(form.get("id") ?? ""));
+  const show = form.get("show") === "1";
+  if (id) {
+    await sql`update feedback set approved_at = ${show ? sql`now()` : sql`null`}
+               where id = ${id} and kind = 'testimonial' and (quote_ok or ${!show})`;
+  }
+  revalidatePath("/admin/feedback");
+  revalidatePath("/pricing");
+  revalidatePath("/");
+}

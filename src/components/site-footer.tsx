@@ -56,9 +56,8 @@ export async function SiteFooter() {
             <li><Link href="/refunds" className="hover:text-ink">Refunds</Link></li>
             <li><Link href="/account/login" className="hover:text-ink">Sign in: manage or cancel alerts</Link></li>
             <li><Link href="/feedback" className="hover:text-ink">Suggest a feature</Link></li>
-            {siteConfig.contactEmail ? (
-              <li><a href={`mailto:${siteConfig.contactEmail}`} className="hover:text-ink">Contact</a></li>
-            ) : null}
+            <li><Link href="/share" className="hover:text-ink">Share your experience</Link></li>
+            <li><Link href="/contact" className="hover:text-ink">Contact</Link></li>
             <li><CookieSettingsLink className="text-left hover:text-ink" /></li>
           </ul>
         </nav>
