@@ -439,14 +439,21 @@ function placeOnly(segment: string): { countries: string[]; city: string | null 
 }
 
 /** The place a title's last parts name ("Officer (NO-3), Maseru – Lesotho"): country code, city and the part as written. */
-export function placeFromTitle(title: string): { countryCode: string | null; city: string | null; locationText: string } | null {
-  for (const seg of titleTailSegments(title)) {
+export function placeFromTitle(title: string): { countryCode: string | null; city: string | null; locationText: string | null } | null {
+  const commaParts = title.split(/\s*,\s*/).slice(1);
+  for (const seg of [...titleTailSegments(title), ...commaParts]) {
     const place = placeOnly(seg);
     if (place && (place.countries.length === 1 || place.city)) {
       const city = place.city;
       return { countryCode: place.countries.length === 1 ? place.countries[0] : city ? DUTY_STATIONS[city] ?? null : null, city, locationText: seg };
     }
   }
+  // Anywhere in the title, when it names exactly one country ("CFRA Project BURUNDI", "(Ukraine Nationals Only)").
+  // Not for a name that is also a word or a first name ("Chad Coordinator", "Jordan"), nor a place that only
+  // contains a country's name ("New Mexico"). Cities only as a place part above ("Paris Agreement" is no place).
+  const countries = findCountries(title);
+  const ambiguous = [...AMBIGUOUS_PLACES].some((w) => new RegExp(`\\b${w}\\b`, "i").test(title)) || /\bnew mexico\b/i.test(title);
+  if (countries.length === 1 && !ambiguous) return { countryCode: countries[0], city: null, locationText: null };
   return null;
 }
 
@@ -629,6 +636,11 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
     for (const seg of titleTailSegments(title)) {
       const place = placeOnly(seg);
       if (place && place.countries.length) { countries = place.countries; countryFromTitle = true; if (!locationText) locationText = seg; break; }
+    }
+    // Still nothing: one country named anywhere in the title, or a duty station ("CFRA Project BURUNDI").
+    if (countries.length === 0 && !locationText) {
+      const t = placeFromTitle(title);
+      if (t?.countryCode) { countries = [t.countryCode]; countryFromTitle = true; }
     }
   }
   let knownCity: string | null = null;
