@@ -63,7 +63,8 @@ export function PageHeader({ title, subline, intro, crumbs, badge, compact = fal
           </div>
         </div>
         {intro ? <div className={`mt-3 max-w-3xl text-[1.05rem] leading-relaxed text-slate ${compact ? "hidden sm:block" : ""}`}>{intro}</div> : null}
-        {note ? <p className={`max-w-3xl text-sm text-slate ${compact ? "mt-1.5 sm:mt-3" : "mt-3"}`}>{note}</p> : null}
+        {/* Compact (results pages): on phones the results come first; the note is in the footer of every page too. */}
+        {note ? <p className={`max-w-3xl text-sm text-slate ${compact ? "hidden sm:mt-3 sm:block" : "mt-3"}`}>{note}</p> : null}
         {children}
       </div>
     </header>

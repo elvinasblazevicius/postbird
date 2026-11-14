@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import type { JobListItem } from "@/lib/jobs";
 import { countryByCode } from "@/config/countries";
@@ -188,14 +189,21 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
 }
 
 /** A list of cards, one per vacancy (identical posts folded into one). `mobileLimit`: how many show on phones. */
-export function JobList({ jobs, headingLevel = 3, mobileLimit }: { jobs: JobListItem[]; headingLevel?: 2 | 3; mobileLimit?: number }) {
+/** `phoneExtra`: shown on phones only, after the first `after` cards (the search results' alert button, so the first cards come first). */
+export function JobList({ jobs, headingLevel = 3, mobileLimit, phoneExtra }: { jobs: JobListItem[]; headingLevel?: 2 | 3; mobileLimit?: number; phoneExtra?: { after: number; node: React.ReactNode } }) {
+  const folded = foldSameVacancies(jobs);
+  const extraAt = phoneExtra ? Math.min(phoneExtra.after, folded.length) : -1;
   return (
     <ul className="grid gap-3">
-      {foldSameVacancies(jobs).map(({ job: j, posts }, i) => (
-        <li key={j.id} className={mobileLimit !== undefined && i >= mobileLimit ? "max-sm:hidden" : undefined}>
-          <JobCard job={j} headingLevel={headingLevel} posts={posts} />
-        </li>
+      {folded.map(({ job: j, posts }, i) => (
+        <Fragment key={j.id}>
+          {i === extraAt ? <li className="sm:hidden">{phoneExtra!.node}</li> : null}
+          <li className={mobileLimit !== undefined && i >= mobileLimit ? "max-sm:hidden" : undefined}>
+            <JobCard job={j} headingLevel={headingLevel} posts={posts} />
+          </li>
+        </Fragment>
       ))}
+      {extraAt === folded.length && extraAt >= 0 ? <li className="sm:hidden">{phoneExtra!.node}</li> : null}
     </ul>
   );
 }

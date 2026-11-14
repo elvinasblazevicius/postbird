@@ -414,7 +414,7 @@ export function FilterForm({ filters, facets, action = "/jobs", hidden = {}, for
       {keyword ? (
         <div>
           <label htmlFor={`${P}-q`} className="mb-1.5 block text-sm font-medium text-ink">What</label>
-          <input id={`${P}-q`} name="q" type="search" defaultValue={filters.q ?? ""} placeholder="Title, skill or organization" className={fieldCls} />
+          <input id={`${P}-q`} name="q" type="search" defaultValue={filters.q ?? ""} placeholder="Job title or keyword" className={fieldCls} />
         </div>
       ) : null}
       {!("country" in hidden) && !("region" in hidden) ? <WhereFields facets={facets} filters={filters} idPrefix={P} /> : null}

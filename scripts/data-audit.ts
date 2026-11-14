@@ -34,6 +34,23 @@ async function main() {
     console.log(`${String(rows.length).padStart(4)}  ${label}: ${rows.slice(0, 12).map((r) => `#${r.id}`).join(" ")}`);
   }
 
+  section("Snippets around those phrases (description as stored, 3 per phrase)");
+  for (const [label, re] of [["no longer open", "no longer open"], ["report this job", "report this job"], ["email protected", "email.{0,10}protected"], ["untalent", "untalent"], ["impactpool", "impactpool"], ["jica", "jica"]] as const) {
+    const rows = await sql<{ id: number; source_host: string | null; snip: string }[]>`
+      select id::int, source_host, substring(description_html from greatest(1, position(lower(${label.split(" ")[0]}) in lower(description_html)) - 700) for 1100) as snip
+        from jobs j where ${open} and description_html ~* ${re} order by id desc limit 3`;
+    for (const r of rows) console.log(`--- ${label} #${r.id} (${r.source_host}) ---\n${r.snip.replace(/\s+/g, " ")}`);
+  }
+  // How each source's description ends (the last 500 characters), one example per aggregator source.
+  for (const host of ["unjobnet.org", "untalent.org", "impactpool.org", "unjobs.org"]) {
+    const rows = await sql<{ id: number; tail: string; head: string }[]>`
+      select id::int, right(description_html, 700) as tail, left(description_html, 400) as head from jobs j where ${open} and source_host = ${host} order by id desc limit 2`;
+    for (const r of rows) console.log(`--- ${host} #${r.id} head ---\n${r.head.replace(/\s+/g, " ")}\n--- tail ---\n${r.tail.replace(/\s+/g, " ")}`);
+  }
+  const [{ ln }] = await sql<{ ln: number }[]>`select count(*)::int as ln from jobs j where ${open} and description_html ~* 'no longer open'`;
+  const [{ lp }] = await sql<{ lp: number }[]>`select count(*)::int as lp from jobs j where ${open} and coalesce(page_text,'') ~* 'no longer open'`;
+  console.log(`"no longer open" in description: ${ln}, in page text: ${lp}`);
+
   section("No employer (count, then samples: id | apply host | title)");
   const noOrg = await sql<{ id: number; apply_host: string | null; source_host: string | null; title: string }[]>`
     select id::int, apply_host, source_host, title from jobs j where ${open} and organization_id is null order by id desc`;

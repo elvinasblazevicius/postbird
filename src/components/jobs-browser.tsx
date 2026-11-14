@@ -160,7 +160,7 @@ function MobileKeyword({ filters, formId }: { filters: JobFilters; formId: strin
         form={formId}
         type="search"
         defaultValue={filters.q ?? ""}
-        placeholder="Title, skill or organization"
+        placeholder="Job title or keyword"
         className="min-w-0 flex-1 rounded-lg border border-rule bg-paper px-3 py-2.5 text-base text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]"
       />
       <button type="submit" form={formId} className="rounded-lg bg-brand px-4 py-2.5 font-semibold text-white hover:bg-accent">Search</button>
@@ -239,6 +239,36 @@ export async function JobsBrowser({
   const unstatedHref = unstatedMore ? jobsUrl({ ...filters, unstated: true, page: undefined }, base) : null;
   // Next to the alert button: how many of these results publish a closing date (the ones a closing-date reminder can cover).
   const dated = result.total > 0 && result.matchMode === "all" && userFilters > 0 ? await countDated(effective).catch(() => null) : null;
+
+  // The alert button and closing-date coverage for a search with exact matches (not an any-word fallback: alerts match every word,
+  // so they would not send those jobs). Above the results on wide screens; on phones after the first three cards.
+  const alertRow = result.total > 0 && result.matchMode === "all" ? (
+    <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-ink">
+      {siteConfig.freeWeeklyEmail ? (
+        // One short link: the alerts page offers the free weekly email and daily alerts for this search.
+        <Link href={`/alerts?search=${encodeURIComponent(alertSearch)}`} className={`-my-1 ${ALERT_BUTTON}`}>
+          Get alerts for this search
+        </Link>
+      ) : (
+        <TrackedLink
+          href={`/pricing/trial?search=${encodeURIComponent(alertSearch)}`}
+          event="premium_cta_click"
+          source="search-alert"
+          className="font-medium text-accent underline-offset-2 hover:underline"
+        >
+          Get new matches for this search by email
+        </TrackedLink>
+      )}
+      {dated !== null && BILLING_LIVE ? (
+        <span className="text-slate">
+          {dated === result.total
+            ? result.total === 1 ? "It has a published closing date." : `All ${result.total.toLocaleString("en-US")} have a published closing date.`
+            : `${dated.toLocaleString("en-US")} of these ${result.total.toLocaleString("en-US")} have a published closing date.`}
+          {dated > 0 ? ` Daily alerts remind you ${CLOSING_SOON_DAYS} days before ${dated === 1 ? "it closes" : "each one closes"}.` : ""}
+        </span>
+      ) : null}
+    </div>
+  ) : null;
 
   // The forms' boxes are set from the address when drawn: a new address (a removed chip, Back) draws them afresh.
   const formKey = jobsUrl({ ...filters, page: undefined }, base);
@@ -328,37 +358,10 @@ export async function JobsBrowser({
           </div>
         ) : null}
 
-        {/* Not for an any-word fallback: alerts match every word, so they would not send these jobs. */}
-        {result.total > 0 && result.matchMode === "all" ? (
-          <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-ink">
-            {siteConfig.freeWeeklyEmail ? (
-              // One short link: the alerts page offers the free weekly email and daily alerts for this search.
-              <Link href={`/alerts?search=${encodeURIComponent(alertSearch)}`} className={`-my-1 ${ALERT_BUTTON}`}>
-                Get alerts for this search
-              </Link>
-            ) : (
-              <TrackedLink
-                href={`/pricing/trial?search=${encodeURIComponent(alertSearch)}`}
-                event="premium_cta_click"
-                source="search-alert"
-                className="font-medium text-accent underline-offset-2 hover:underline"
-              >
-                Get new matches for this search by email
-              </TrackedLink>
-            )}
-            {dated !== null && BILLING_LIVE ? (
-              <span className="text-slate">
-                {dated === result.total
-                  ? result.total === 1 ? "It has a published closing date." : `All ${result.total.toLocaleString("en-US")} have a published closing date.`
-                  : `${dated.toLocaleString("en-US")} of these ${result.total.toLocaleString("en-US")} have a published closing date.`}
-                {dated > 0 ? ` Daily alerts remind you ${CLOSING_SOON_DAYS} days before ${dated === 1 ? "it closes" : "each one closes"}.` : ""}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
+        {alertRow ? <div className="max-sm:hidden">{alertRow}</div> : null}
 
         {result.items.length ? (
-          <JobList jobs={result.items} />
+          <JobList jobs={result.items} phoneExtra={alertRow ? { after: 3, node: <div className="rounded-xl bg-sky-wash p-3 [&>div]:mb-0">{alertRow}</div> } : undefined} />
         ) : (
           <div className="rounded-xl border border-dashed border-rule p-6 sm:p-8">
             <p className="font-display text-xl text-ink">
