@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   ...shareMetadata(sharedTitle(TITLE), DESCRIPTION),
 };
 
-/** Official pay sources, linked (no figures): see PAY_SOURCES in src/lib/grades.ts. */
+/** Official pay sources, linked; UN Professional and Director net base ranges in NET_BASE below. */
 const { icscSalaryScales: ICSC_SALARY_SCALES, icscPostAdjustment: ICSC_POST_ADJUSTMENT, euSalaries: EU_SALARIES, euStaffRegulations: EU_STAFF_REGULATIONS } = PAY_SOURCES;
 
 function Pay({ children }: { children: React.ReactNode }) {
@@ -30,6 +30,54 @@ function Pay({ children }: { children: React.ReactNode }) {
 }
 
 const ext = { className: "text-accent underline", rel: "noopener" } as const;
+
+/**
+ * Annual net base salary in US dollars, first and highest step, from the ICSC "Salary scale for the
+ * Professional and higher categories", effective 1 January 2026 (USG and ASG: one rate). Check
+ * the ICSC page each January and update the figures and the date together.
+ */
+const NET_BASE_EFFECTIVE = "1 January 2026";
+const NET_BASE_SOURCE = "https://icsc.un.org/Home/GetDataFile/8956";
+const NET_BASE: Record<string, [number, number]> = {
+  "P-1": [43834, 59617], "P-2": [56046, 74640], "P-3": [71335, 92127], "P-4": [86027, 108485], "P-5": [103165, 126441],
+  "D-1": [117953, 145310], "D-2": [130477, 153845], ASG: [159016, 159016], USG: [173372, 173372],
+};
+const usd = (n: number) => `$${n.toLocaleString("en-US")}`;
+
+/** The net base salary range of each grade, with what it leaves out (post adjustment, allowances). */
+function PayTable({ grades }: { grades: string[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full max-w-md text-left text-[0.95rem]">
+        <caption className="pb-2 text-left text-sm text-slate">
+          Annual net base salary, US dollars, from the{" "}
+          <a href={NET_BASE_SOURCE} {...ext}>ICSC scale effective {NET_BASE_EFFECTIVE}</a>
+        </caption>
+        <thead>
+          <tr className="border-b border-rule text-sm text-slate">
+            <th scope="col" className="py-1.5 pr-4 font-medium">Grade</th>
+            <th scope="col" className="py-1.5 font-medium">First step to highest step</th>
+          </tr>
+        </thead>
+        <tbody>
+          {grades.map((g) => {
+            const [lo, hi] = NET_BASE[g];
+            return (
+              <tr key={g} className="border-b border-rule/60">
+                <th scope="row" className="py-1.5 pr-4 font-semibold text-ink">{g}</th>
+                <td className="py-1.5 tabular-nums text-ink">{lo === hi ? `${usd(lo)} (one rate)` : `${usd(lo)} to ${usd(hi)}`}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="mt-2 text-sm text-slate">
+        On top of this comes a post adjustment, which depends on the duty station&apos;s cost of living and can add a large share, plus allowances
+        that depend on your situation. So the take-home pay for the same grade differs a lot from one duty station to another.
+      </p>
+    </div>
+  );
+}
 
 const SECTIONS: { id: string; title: string; body: React.ReactNode; search?: [string, string] }[] = [
   {
@@ -50,6 +98,7 @@ const SECTIONS: { id: string; title: string; body: React.ReactNode; search?: [st
           one salary scale across the UN common system, plus a post adjustment that depends on the duty station. See the{" "}
           <a href={ICSC_SALARY_SCALES} {...ext}>ICSC salary scales</a> and <a href={ICSC_POST_ADJUSTMENT} {...ext}>post adjustment</a>.
         </Pay>
+        <PayTable grades={["P-1", "P-2", "P-3", "P-4", "P-5"]} />
       </>
     ),
   },
@@ -66,6 +115,7 @@ const SECTIONS: { id: string; title: string; body: React.ReactNode; search?: [st
         <Pay>
           the same scale and post adjustment as Professional posts: the <a href={ICSC_SALARY_SCALES} {...ext}>ICSC salary scales</a>.
         </Pay>
+        <PayTable grades={["D-1", "D-2", "ASG", "USG"]} />
       </>
     ),
   },
