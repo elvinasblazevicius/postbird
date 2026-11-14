@@ -14,6 +14,7 @@ import { hostOf, isListingSite } from "./url";
 import { parseRobots, robotsAllows, type RobotsRules } from "./robots";
 import { looksBuiltByScript, openRenderer } from "./rendered-page";
 import { askDeepSeek, checkFacts } from "./ai-extract";
+import { knownOrgByName, toOrgRef } from "./extract";
 import { countryByCode } from "@/config/countries";
 import { htmlToText } from "@/lib/text";
 import { EMPTY_FACTS, factsFromPage, factsFromSystem, hasFacts, mainContentHtml, pageSaysClosed, plausibleDeadline, systemApiUrl, systemSaysClosed, type PageFacts } from "./vacancy-page";
@@ -34,7 +35,7 @@ type DueJob = {
   id: number; title: string; apply_url: string; apply_host: string;
   deadline: string | null; country_code: string | null; location_text: string | null; job_type: string | null;
   grade: string | null; min_experience_years: number | null; languages: string[] | null; page_attempts: number;
-  description_html: string | null; ai_checked_at: Date | null;
+  description_html: string | null; ai_checked_at: Date | null; organization_id: number | null;
 };
 
 class BlockedByRobots extends Error {}
@@ -129,7 +130,8 @@ async function withAi(job: DueJob, facts: PageFacts | null, text: string | null,
   const needPlace = !job.country_code && !job.location_text && !f.countryCode && !f.locationText;
   const needType = !job.job_type && !f.jobType;
   const needGrade = !job.grade && !f.grade;
-  if (!needDate && !needPlace && !needType && !needGrade) return facts;
+  const needOrg = !job.organization_id;
+  if (!needDate && !needPlace && !needType && !needGrade && !needOrg) return facts;
   try {
     const ai = await askDeepSeek(job.title, text);
     if (!ai) return facts;
@@ -148,6 +150,16 @@ async function withAi(job: DueJob, facts: PageFacts | null, text: string | null,
     }
     if (needType && c.contractType) { out.jobType = c.contractType; r.ai.filled++; }
     if (needGrade && c.grade) { out.grade = c.grade; r.ai.filled++; }
+    // The employer, only when it is one we know (never a new organization made up from the AI's answer).
+    const known = needOrg && c.organization ? knownOrgByName(c.organization) : undefined;
+    if (known) {
+      const set = await sql`
+        update jobs set organization_id = o.id, updated_at = now()
+          from organizations o
+         where jobs.id = ${job.id} and jobs.organization_id is null and o.slug = ${toOrgRef(known.name).slug}
+        returning jobs.id`;
+      if (set.length) r.ai.filled++;
+    }
     return out;
   } catch {
     return facts; // the AI being down never stops the import
@@ -204,7 +216,7 @@ export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: 
   const started = Date.now();
   const budget = opts.budgetMs ?? S.budgetMs;
   const due = await sql<DueJob[]>`
-    select id::int as id, title, apply_url, apply_host, deadline::text as deadline, country_code, location_text, job_type, grade, min_experience_years, languages, page_attempts, description_html, ai_checked_at
+    select id::int as id, title, apply_url, apply_host, deadline::text as deadline, country_code, location_text, job_type, grade, min_experience_years, languages, page_attempts, description_html, ai_checked_at, organization_id::int as organization_id
       from jobs
      where status = 'active' and not is_demo
        and (page_checked_at is null
@@ -300,10 +312,10 @@ async function aiFillGaps(r: EnrichResult): Promise<void> {
   if (room <= 0) return;
   const jobs = await sql<(DueJob & { page_text: string | null })[]>`
     select id::int as id, title, apply_url, apply_host, deadline::text as deadline, country_code, location_text, job_type, grade,
-           min_experience_years, languages, page_attempts, description_html, ai_checked_at, page_text
+           min_experience_years, languages, page_attempts, description_html, ai_checked_at, organization_id::int as organization_id, page_text
       from jobs
      where status = 'active' and not is_demo and ai_checked_at is null and page_checked_at is not null
-       and (deadline is null or (country_code is null and location_text is null) or job_type is null or grade is null)
+       and (deadline is null or (country_code is null and location_text is null) or job_type is null or grade is null or organization_id is null)
      order by first_seen_at desc
      limit ${room}`;
   const started = Date.now();

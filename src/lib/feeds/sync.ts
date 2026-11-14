@@ -492,7 +492,7 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
 
             if (!changed) { result.unchanged++; continue; }
             await sql`
-              update jobs set title = ${j.title}, slug = ${j.slug}, organization_id = ${orgId}, primary_feed_id = ${feedId},
+              update jobs set title = ${j.title}, slug = ${j.slug}, organization_id = coalesce(${orgId}, organization_id), primary_feed_id = ${feedId},
                 country_code = ${j.countryCode}, city = ${j.city}, location_text = ${j.locationText}, is_remote = ${j.isRemote},
                 category = ${category}, job_type = ${j.jobType}, grade = ${j.grade}, reference = ${j.reference},
                 languages = ${j.languages}, desirable_languages = ${j.desirableLanguages}, min_experience_years = ${j.minExperienceYears},

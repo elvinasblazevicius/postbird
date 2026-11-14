@@ -310,6 +310,17 @@ const REQUIRED_MARK = /\b(?:required|requirements?|essential|mandatory|must|nece
 const OTHER_UN_LANGUAGE =
   /\b(?:another|other|an additional|a second|a further|one of the other)\s+(?:official\s+)?(?:UN|U\.N\.|United Nations)\s+(?:official\s+)?languages?\b(?:\s*\([^)]*\)|,?\s*(?:such as|eg|ie|namely|including|like)\s+[^;.()]*?(?=\s+(?:is|are|would|will|an?|as)\b|[;.]|$))?/gi;
 
+/**
+ * A list of four or more of the UN's other official languages ("Arabic, Chinese, French, Russian and
+ * Spanish", "the working languages of ICAO: …"): any one of them counts, so the list names no
+ * language the job needs on its own.
+ */
+const UN_LANGUAGE_LIST = (() => {
+  const l = "(?:Arabic|Chinese|French|Russian|Spanish|English)";
+  const sep = "\\s*(?:,|;|/|\\band\\b|\\bor\\b|and\\/or)\\s*(?:,\\s*)?";
+  return new RegExp(`\\b${l}(?:${sep}${l}){3,}\\b`, "gi");
+})();
+
 export type LanguageRequirements = { required: string[] | null; desirable: string[] | null };
 
 /** "French or Spanish", "English, French and/or Spanish": languages joined by "or" (English included, so "English or French" counts). */
@@ -335,7 +346,7 @@ export function detectLanguageRequirements(text: string): LanguageRequirements {
   for (const raw of plain.split(/(?<=[.;!?])\s+|\n/)) {
     if (raw.length > 600 || !LANG_CONTEXT.test(raw)) continue;
     if (/\b(working|official) languages?\b/i.test(raw)) continue; // describes the organization, not the job
-    const sentence = raw.replace(OTHER_UN_LANGUAGE, (m) => " ".repeat(m.length));
+    const sentence = raw.replace(OTHER_UN_LANGUAGE, (m) => " ".repeat(m.length)).replace(UN_LANGUAGE_LIST, (m) => " ".repeat(m.length));
     const marks = [
       ...[...sentence.matchAll(DESIRABLE_MARK)].map((m) => ({ at: m.index ?? 0, desirable: true })),
       ...[...sentence.matchAll(REQUIRED_MARK)].map((m) => ({ at: m.index ?? 0, desirable: false })),
@@ -537,7 +548,13 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   const sourceOrg = knownOrgByName(raw.sourceTitle?.replace(/\b(jobs?|careers?|vacanc(y|ies)|opportunities|rss|feed)\b/gi, ""));
   const titleOrg = knownOrgFromTitle(title);
 
+  // UN Careers names the hiring entity under "Department/Office" ("United Nations Environment
+  // Programme"): it wins over the site's own name (UN Secretariat) when it is a known organization.
+  const deptRaw = labelled(head, ["department/office", "department / office", "department or office"], 120);
+  const deptOrg = deptRaw ? knownOrgByName(deptRaw) : null;
+
   if (feed.defaultOrganization) orgName = feed.defaultOrganization;
+  else if (deptOrg) orgName = deptOrg.name;
   else if (labelledOrg) orgName = labelledOrg;
   else if (hostOrg) orgName = hostOrg.name;
   else if (authorOrg) orgName = authorOrg.name;
@@ -568,10 +585,11 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
       .map(({ found }) => found[0]);
     countries = [...new Set(tagCountries)];
   }
+  let countryFromTitle = false;
   if (countries.length === 0) {
     for (const seg of titleTailSegments(title)) {
       const place = placeOnly(seg);
-      if (place && place.countries.length) { countries = place.countries; if (!locationText) locationText = seg; break; }
+      if (place && place.countries.length) { countries = place.countries; countryFromTitle = true; if (!locationText) locationText = seg; break; }
     }
   }
   let knownCity: string | null = null;
@@ -579,6 +597,12 @@ export function normalizeItem(raw: RawItem, feed: FeedContext): NormalizedJob {
   else for (const seg of titleTailSegments(title)) {
     const place = placeOnly(seg);
     if (place?.city) { knownCity = place.city; if (!locationText) locationText = seg; break; }
+  }
+  // "Duty Station: PARIS" with "(Côte d'Ivoire)" in the title: the labelled duty station decides the country.
+  const labelledCityCountry = knownCity && (cityLabel || locLabel) ? DUTY_STATIONS[knownCity] : undefined;
+  if (countryFromTitle && labelledCityCountry && !countries.includes(labelledCityCountry)) {
+    countries = [labelledCityCountry];
+    if (locationText && findCountries(locationText).length) locationText = locLabel ?? null;
   }
   if (cityLabel && !PLACEHOLDER_RE.test(cityLabel)) city = oneLine(cityLabel).slice(0, 80);
   else if (knownCity) city = knownCity;

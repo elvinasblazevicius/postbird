@@ -576,3 +576,25 @@ describe("NATO-style labels", () => {
     expect(j.city).toBe("Brunssum");
   });
 });
+
+describe("UN Careers posting: labelled duty station and Department/Office", () => {
+  it("reads Paris, France and UNEP, not Côte d'Ivoire and the Secretariat", () => {
+    const html = "<p>Level : CON</p><p>Job ID : 288134</p><p>Job Family : Environmental Affairs</p><p>Department/Office : United Nations Environment Programme</p><p>Duty Station : PARIS</p><p>Deadline : 11/22/2026 23:59:59 PM (New York time)</p>";
+    const j = normalizeItem({ title: "National Project Coordinator – Nature for Cooling Challenge (Côte d'Ivoire)", links: ["https://careers.un.org/jobSearchDescription/288134"], contentHtml: html, categories: [] } as never, {} as FeedContext);
+    expect(j.countryCode).toBe("FR");
+    expect(j.city).toBe("Paris");
+    expect(j.organization?.short ?? j.organization?.name).toMatch(/UNEP|Environment Programme/);
+  });
+});
+
+describe("a list of the UN's official languages names no required language", () => {
+  it("ignores 'Arabic, Chinese, French, Russian and Spanish'", () => {
+    const r = detectLanguageRequirements("Fluency in English is required. Knowledge of one of the other working languages of ICAO (Arabic, Chinese, French, Russian and Spanish) would be an asset.");
+    expect(r.required ?? []).toEqual([]);
+    const r2 = detectLanguageRequirements("Languages: English, Arabic, Chinese, French, Russian, Spanish.");
+    expect(r2.required ?? []).toEqual([]);
+  });
+  it("still reads a single required language", () => {
+    expect(detectLanguageRequirements("Fluency in English and French is required.").required).toEqual(["French"]);
+  });
+});
