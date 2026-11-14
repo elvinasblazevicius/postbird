@@ -15,6 +15,8 @@ describe("cleanTitle: codes and sentences", () => {
     ["Advisor, Partnerships – GL D – Defined Duration until December 2029", "Advisor, Partnerships"],
     ["Junior Electrical Systems Asset Manager (EN-EL-MO---GRAE)", "Junior Electrical Systems Asset Manager"],
     ["Human Rights Officer (TJO)", "Human Rights Officer"],
+    ["Monitoring & Evaluation Officer, NO-, Temporary Position, days, Sarajevo, #", "Monitoring & Evaluation Officer, Temporary Position, Sarajevo"],
+    ["Driver (G-), TA, #, Lashkar Gah, # and # Kandahar", "Driver, TA, Lashkar Gah, and Kandahar"],
     ["Senior Officer, P4 Programme", "Senior Officer, P4 Programme"],
   ])("%s", (raw, clean) => expect(cleanTitle(raw)).toBe(clean));
 });

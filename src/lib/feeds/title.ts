@@ -75,6 +75,9 @@ export function cleanTitle(raw: string): string {
     .replace(/\s*[–—-]\s*Defined Duration until \w+(?: \d{4})?/gi, "")
     .replace(/\s*\((?:[A-Z0-9]+-+){2,}[A-Z0-9-]*\)/g, "")
     .replace(/\s*\(TJO\)/gi, "")
+    .replace(/,\s*(?:NO|GS|P|G|D)-(?=\s*(?:,|$))/g, "")
+    .replace(/,\s*\.?\s*(?:days|months)\b(?=\s*(?:[,(]|$))/gi, "")
+    .replace(/(^|[\s,])#(?=[\s,]|$)/g, "$1")
     .replace(/\s*,(?:\s*,)+/g, ",")
     .replace(/[\s,]+$/, "");
   // "Field Documentation Officer || موثق/ـة ميداني/ـة": keep the Latin-script part.
