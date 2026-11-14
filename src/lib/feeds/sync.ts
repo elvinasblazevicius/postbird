@@ -586,7 +586,7 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
     // places from the description), so a rule added later reaches what is already listed (src/lib/feeds/tidy.ts).
     try {
       const t = await tidyListings();
-      const parts = [t.titles && `${t.titles} titles`, t.employers && `${t.employers} employers`, t.descriptions && `${t.descriptions} descriptions`, t.grades && `${t.grades} grades`, t.places && `${t.places} places`, t.links && `${t.links} application links`].filter(Boolean);
+      const parts = [t.titles && `${t.titles} titles`, t.employers && `${t.employers} employers`, t.descriptions && `${t.descriptions} descriptions`, t.grades && `${t.grades} grades`, t.places && `${t.places} places`, t.links && `${t.links} application links`, t.deadlines && `${t.deadlines} closing dates`].filter(Boolean);
       if (parts.length) notes.push(`Tidied open listings: ${parts.join(", ")}.`);
     } catch (e) {
       notes.push(`Listings were not tidied: ${(e as Error).message}`);

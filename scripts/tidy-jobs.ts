@@ -10,7 +10,7 @@ const dryRun = process.argv.includes("--dry-run");
 tidyListings({ dryRun })
   .then((r) => {
     for (const l of r.lines) console.log(l);
-    console.log(`${r.checked} open jobs: ${r.titles} titles, ${r.employers} employers, ${r.descriptions} descriptions, ${r.grades} grades, ${r.places} places ${dryRun ? "to change (dry run, nothing written)" : "changed"}.`);
+    console.log(`${r.checked} open jobs: ${r.titles} titles, ${r.employers} employers, ${r.descriptions} descriptions, ${r.grades} grades, ${r.places} places, ${r.links} application links, ${r.deadlines} closing dates ${dryRun ? "to change (dry run, nothing written)" : "changed"}.`);
   })
   .then(() => getSql().end({ timeout: 2 }))
   .then(() => process.exit(0))

@@ -16,7 +16,7 @@ import { factsFromPage } from "./vacancy-page";
 import { isUnitCode, placeFromTitle, knownOrgByAtsPath, knownOrgByHost, knownOrgByName, knownOrgFromTitle, normalizeGrade, orgFromTitleAndLink, toOrgRef, withoutTrailingPlace } from "./extract";
 import { cleanTitle, stripOrgFromTitle } from "./title";
 
-export type TidyResult = { checked: number; titles: number; employers: number; descriptions: number; grades: number; places: number; links: number; lines: string[] };
+export type TidyResult = { checked: number; titles: number; employers: number; descriptions: number; grades: number; places: number; links: number; deadlines: number; lines: string[] };
 
 /**
  * Employers whose vacancy page can be built from the vacancy number the listing's text gives, used
@@ -33,10 +33,11 @@ const VACANCY_PAGES: { org: RegExp; onPage: RegExp; id: RegExp; url: (id: string
 ];
 
 export async function tidyListings({ dryRun = false }: { dryRun?: boolean } = {}): Promise<TidyResult> {
-  const out: TidyResult = { checked: 0, titles: 0, employers: 0, descriptions: 0, grades: 0, places: 0, links: 0, lines: [] };
+  const out: TidyResult = { checked: 0, titles: 0, employers: 0, descriptions: 0, grades: 0, places: 0, links: 0, deadlines: 0, lines: [] };
   await tidyApplyLinks(out, dryRun);
   // Places first: a title's trailing place ("…, Maseru – Lesotho") is read before the title clean-up drops it.
   await tidyPlaces(out, dryRun);
+  await tidyDeadlines(out, dryRun);
   await tidyTitlesAndEmployers(out, dryRun);
   await tidyDescriptions(out, dryRun);
   await tidyGrades(out, dryRun);
@@ -112,6 +113,23 @@ async function tidyGrades(out: TidyResult, dryRun: boolean) {
     out.grades++;
     out.lines.push(`#${r.id}: grade "${r.grade}" → "${g}"`);
     if (!dryRun) await sql`update jobs set grade = ${g}, updated_at = now() where id = ${r.id}`;
+  }
+}
+
+/** Closing dates the listing's own description states ("Closing Date: Dec 3, 2026"), for listings without one. */
+async function tidyDeadlines(out: TidyResult, dryRun: boolean) {
+  const rows = await sql<{ id: number; title: string; apply_url: string | null; description_html: string }[]>`
+    select id::int, title, apply_url, description_html from jobs
+     where status = 'active' and not is_demo and deadline is null and description_html is not null`;
+  const today = new Date().toISOString().slice(0, 10);
+  const yearOut = new Date(Date.now() + 365 * 86_400_000).toISOString().slice(0, 10);
+  for (const r of rows) {
+    const d = factsFromPage(r.title, r.apply_url ?? "", r.description_html)?.deadline;
+    // Only a date still to come and within a year (not a contract end date read by mistake).
+    if (!d || d < today || d > yearOut) continue;
+    out.deadlines++;
+    out.lines.push(`#${r.id}: closing date ${d}`);
+    if (!dryRun) await sql`update jobs set deadline = ${d}, updated_at = now() where id = ${r.id}`;
   }
 }
 

@@ -389,7 +389,8 @@ export function singular(term: string): string {
  */
 export function wordPattern(term: string): string {
   const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  if (term.length <= 4) return `\\m${esc(term)}\\M`;
+  // Short words whole, or with a plural ending ("agua" finds "aguas", "law" finds "laws").
+  if (term.length <= 4) return /^[a-z]{3,4}$/.test(term) ? `\\m${esc(term)}(s|es)?\\M` : `\\m${esc(term)}\\M`;
   // A plural matches the word and its singular as whole words only: "units" never "United",
   // "plans" never "Planning".
   if (/^[a-z0-9]+ies$/.test(term) && term.length >= 7) return `\\m${esc(term.slice(0, -3))}(y|ies)\\M`;
