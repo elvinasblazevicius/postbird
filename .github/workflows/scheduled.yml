@@ -40,7 +40,7 @@ on:
         required: true
         default: sync
         type: choice
-        options: [sync, digest, setup, diagnose, sources, feed-coverage, tidy-jobs-dry-run, tidy-jobs, copy-database, ai-fill-trial]
+        options: [sync, digest, setup, diagnose, sources, feed-coverage, data-audit, tidy-jobs-dry-run, tidy-jobs, copy-database, ai-fill-trial]
 
 # actions: read lets the job check that CI passed for this commit before it applies migrations.
 permissions:
