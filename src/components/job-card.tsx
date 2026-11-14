@@ -124,17 +124,20 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
   const localLabel = localOnlyLabel(job, countryByCode(job.country_code)?.name);
   const posted = postedMarker(job);
   const title = titleWithoutGrade(job.title, grade);
-  const pill = "inline-flex items-center gap-1.5 rounded-full border border-rule px-2.5 py-0.5 text-[0.8125rem] leading-5 text-ink";
-  const filled = "inline-flex items-center rounded-full px-2.5 py-0.5 text-[0.8125rem] leading-5";
+  // Every pill has the same shape and a visible border; facts the listing doesn't give get a dashed pill, so each card shows the same row in the same order.
+  const pill = "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[0.8125rem] leading-5";
+  const plain = `${pill} border-[#bfd0e3] bg-paper text-ink`;
+  const missing = `${pill} border-dashed border-[#bfd0e3] text-slate`;
   // Required languages besides English (two at most): their own kind of pill, easy to spot.
   const languages = (job.languages ?? []).slice(0, 2);
+  // Always in this order: contract, remote, experience, language of the posting, number of posts, when it was posted.
   const details = [
     job.job_type,
-    job.is_remote && where !== "Remote" ? "Remote" : null,
-    lang ? `In ${lang.name}` : null,
+    job.is_remote && where !== "Remote" && where !== NOT_SPECIFIED ? "Remote" : null,
     job.min_experience_years ? `${job.min_experience_years}+ years experience` : null,
+    lang ? `In ${lang.name}` : null,
     posts > 1 ? `${posts} posts` : null,
-    posted && !posted.fresh ? posted.text : null,
+    posted && !posted.fresh ? `Posted ${posted.text}` : null,
   ].filter((x): x is string => Boolean(x));
   return (
     <article className="group relative rounded-xl border border-[#d3e0ee] bg-paper px-4 py-3.5 shadow-[0_1px_3px_rgba(11,31,58,0.08)] transition-[border-color,box-shadow] duration-150 hover:border-sky-rule hover:shadow-[0_4px_14px_rgba(11,99,206,0.10)]">
@@ -156,13 +159,15 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
         </H>
       </div>
       <ul className="mt-2 flex flex-wrap items-center gap-1.5 text-sm">
-        {where !== NOT_SPECIFIED ? <li className={pill}><Flag code={job.country_code} />{where}</li> : job.is_remote ? null : <li className="px-1 text-[0.8125rem] text-slate">Duty station not stated</li>}
+        {/* Always in this order: place, grade, who may apply, languages. */}
+        {where !== NOT_SPECIFIED ? <li className={plain}><Flag code={job.country_code} />{where}</li>
+          : job.is_remote ? <li className={plain}>Remote</li> : <li className={missing}>Duty station not stated</li>}
         {/* The grade is the first thing most applicants check, so it stands out from the other details. */}
-        {grade ? <li className={`${filled} bg-tint font-semibold text-ink`}>{grade}</li> : null}
+        {grade ? <li className={`${pill} border-[#c3d8ee] bg-tint font-semibold text-ink`}>{grade}</li> : <li className={missing}>Grade not stated</li>}
         {/* Who may apply: local posts (usually nationals only) or internationally recruited grades (Professional, Director, Field Service). */}
-        {localLabel ? <li className={`${filled} bg-due-mid-bg font-medium text-due-mid-ink`}>{localLabel}</li>
-          : job.grade && /^(P|D|FS)-/.test(job.grade) ? <li className={`${filled} bg-sky-wash font-medium text-accent`}>International post</li> : null}
-        {languages.map((l) => <li key={l} className={`${filled} bg-[#f1edfb] font-medium text-[#4a3b8f]`}>{l} required</li>)}
+        {localLabel ? <li className={`${pill} border-[#f0d58a] bg-due-mid-bg font-medium text-due-mid-ink`}>{localLabel}</li>
+          : job.grade && /^(P|D|FS)-/.test(job.grade) ? <li className={`${pill} border-[#b5dcf7] bg-sky-wash font-medium text-accent`}>International post</li> : null}
+        {languages.map((l) => <li key={l} className={`${pill} border-[#d6ccf3] bg-[#f1edfb] font-medium text-[#4a3b8f]`}>{l} required</li>)}
       </ul>
       {details.length ? <p className="mt-1.5 text-[0.8125rem] leading-snug text-slate">{details.join(" · ")}</p> : null}
       {/* Date and Apply share one row on every width: the date's day moves under "Closes in…" when space is short. */}
