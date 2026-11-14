@@ -98,7 +98,7 @@ export default function PrivacyPage() {
               (<code>PageView</code>, with the page address as shown in your address bar, which on search results includes the search filters), signing up
               for the free weekly email (<code>Lead</code>) and a completed checkout (<code>StartTrial</code> for a free trial, <code>Purchase</code> with the
               plan&apos;s price for a plan that starts straight away). So that these sign-ups are counted even when a browser blocks Meta&apos;s script, our
-              server also reports the same three sign-up events to Meta (its Conversions API), only after you clicked &quot;Allow&quot;: the event, the page
+              server also reports the same page views and three sign-up events to Meta (its Conversions API), only after you clicked &quot;Allow&quot; (where we ask) and never for private pages such as your account: the event, the page
               address, your IP address and browser type (which Meta uses to match the visit), Meta&apos;s cookie values above, and your email address only as a
               one-way scrambled code (a SHA-256 hash), never in readable form. We never send Meta your name or what you enter in our sign-up forms
               (including the search you choose for alerts); search filters reach Meta only as part of a results page&apos;s address. We have switched off the

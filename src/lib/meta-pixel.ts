@@ -6,7 +6,8 @@
  * Data minimisation (Employment ads, a scam-sensitive audience):
  *  - autoConfig is off, so the pixel doesn't read buttons, forms or page metadata;
  *  - init is called without customer data (no advanced matching from this code; switch off
- *    "Automatic advanced matching" in Events Manager too), and there is no Conversions API;
+ *    "Automatic advanced matching" in Events Manager too); the server's Conversions API copy of
+ *    each event (src/lib/meta-capi.ts) carries the same event id, so Meta counts it once;
  *  - events take only a numeric value and a currency code (MetaParams), never an email address,
  *    a name, search terms or anything typed into a form;
  *  - page views are reported by AdsManager, never by the pixel's own History API listener
@@ -73,7 +74,7 @@ function fbqStub(win: PixelWindow): Fbq {
  * Loads the pixel and reports the current page view. Call only once advertising measurement is
  * allowed. Returns false (and does nothing) when the ID is invalid or the pixel is already there.
  */
-export function loadMetaPixel(env: PixelEnv, pixelId: string | null): boolean {
+export function loadMetaPixel(env: PixelEnv, pixelId: string | null, pageViewId?: string): boolean {
   const id = parsePixelId(pixelId);
   if (!id || metaPixelLoaded(env)) return false;
   const fbq = fbqStub(env.win);
@@ -83,7 +84,9 @@ export function loadMetaPixel(env: PixelEnv, pixelId: string | null): boolean {
   // Before init: no automatic events from buttons, forms or page metadata.
   fbq("set", "autoConfig", false, id);
   fbq("init", id);
-  fbq("track", "PageView");
+  // With the id the server also sends to the Conversions API for this page view (Meta counts it once).
+  if (pageViewId) fbq("track", "PageView", {}, { eventID: pageViewId });
+  else fbq("track", "PageView");
   const s = env.doc.createElement("script");
   s.id = META_PIXEL_SCRIPT_ID;
   s.async = true;

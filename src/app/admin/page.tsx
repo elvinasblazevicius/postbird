@@ -11,6 +11,7 @@ import { openOpsEvents } from "@/lib/ops-events";
 import { DAILY_JOB_STALE_HOURS, dailyJobFresh, readDailyJob, type DailyJobStatus } from "@/lib/heartbeat";
 import { resolveBillingFlagAction, resolveOpsEventAction, sendTestEmailAction, syncNowAction } from "./actions";
 import { BillingSelfCheck } from "./billing-check";
+import { MetaCheck } from "./meta-check";
 import { requireAdmin } from "./guard";
 import { AdminShell, Card, fmtDateTime, olderThanHours, Stat, StatusPill, Table } from "./ui";
 
@@ -260,6 +261,10 @@ export default async function AdminHome({ searchParams }: Props) {
           <p className="mt-3 text-sm text-slate">{dailyJobSummary(dailyJob)}</p>
         </Card>
       ) : null}
+      <Card className="mt-4">
+        <div className="mb-2 text-sm font-medium text-ink">Meta (Facebook and Instagram ads) check</div>
+        <MetaCheck />
+      </Card>
       {flags.length ? (
         <div className="mt-4">
           <h3 className="mb-2 text-base font-semibold text-ink">Billing flags ({flags.length})</h3>

@@ -164,6 +164,30 @@ export function metaEvent(event: MetaEvent, params?: MetaParams, eventId?: strin
  * (src/lib/meta-capi.ts), so Meta counts the conversion once. A new id after each conversion.
  */
 let metaEventId: string | null = null;
+/** This page view's event id (a new one for each page, `next`), shared by the pixel and the server. */
+let pageView: string | null = null;
+function pageViewId(next = false): string {
+  if (next || !pageView) pageView = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  return pageView;
+}
+
+/**
+ * The same page view sent from our server to Meta's Conversions API (/api/meta-event), so it is
+ * counted when a browser or network blocks Meta's script. Only with advertising measurement allowed
+ * (the pixel is loaded only then), never for private pages. Meta keeps one of the two (same id).
+ */
+function serverPageView() {
+  try {
+    if (!storageAllowed || !META_PIXEL_ID || isPrivatePath(window.location.pathname)) return;
+    const body = JSON.stringify({ event: "PageView", meta: JSON.stringify({ ...JSON.parse(metaMatchValue() || "{}"), eventId: pageViewId() }) });
+    if (!navigator.sendBeacon?.("/api/meta-event", new Blob([body], { type: "application/json" }))) {
+      void fetch("/api/meta-event", { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+    }
+  } catch {
+    /* never break the page */
+  }
+}
+
 function currentMetaEventId(): string {
   metaEventId ??= typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
   return metaEventId;
@@ -307,7 +331,7 @@ export function AdsManager({ tagId, metaPixelId = null }: { tagId: string | null
       captureAttribution();
       if (granted && !isPrivatePath(window.location.pathname)) {
         if (tagId) loadUet(tagId, true);
-        if (metaPixelId) loadMetaPixel(pixelEnv(), metaPixelId);
+        if (metaPixelId && loadMetaPixel(pixelEnv(), metaPixelId, pageViewId())) serverPageView();
       }
       return { saved, granted };
     },
@@ -345,7 +369,10 @@ export function AdsManager({ tagId, metaPixelId = null }: { tagId: string | null
       /* ignore */
     }
     // The pixel reported the page it loaded on itself; this is each later in-site page.
-    if (metaPixelLoaded(pixelEnv())) metaEvent("PageView");
+    if (metaPixelLoaded(pixelEnv())) {
+      metaEvent("PageView", undefined, pageViewId(true));
+      serverPageView();
+    }
   }, [pathname]);
 
   if (!panel) return null;
@@ -374,7 +401,7 @@ export function AdsManager({ tagId, metaPixelId = null }: { tagId: string | null
       }
       if (metaPixelId && !isPrivatePath(window.location.pathname)) {
         if (metaPixelLoaded(pixelEnv())) metaConsent(pixelEnv(), true);
-        else loadMetaPixel(pixelEnv(), metaPixelId);
+        else if (loadMetaPixel(pixelEnv(), metaPixelId, pageViewId())) serverPageView();
       }
     }
     setPanel(null);

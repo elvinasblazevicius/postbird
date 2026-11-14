@@ -1,7 +1,7 @@
 /**
- * Meta Conversions API: the same conversions the browser pixel reports (Lead, StartTrial,
- * Purchase), sent from the server, so a visitor whose browser blocks Meta's script is still
- * counted. Meta removes the duplicate when both arrive (same event name and event_id).
+ * Meta Conversions API: the same page views and conversions the browser pixel reports (PageView,
+ * Lead, StartTrial, Purchase), sent from the server, so a visitor whose browser blocks Meta's script
+ * is still counted. Meta removes the duplicate when both arrive (same event name and event_id).
  *
  * Only for visitors who allowed advertising measurement: the browser sends the `meta` field
  * (MetaMatchField in src/components/ads.tsx) only then, and without it nothing is sent.
@@ -14,7 +14,7 @@ import { createHash } from "node:crypto";
 import { META_PIXEL_ID } from "@/lib/meta-pixel";
 
 export type MetaMatch = { eventId: string; fbc?: string; fbp?: string; url?: string };
-export type CapiEvent = "Lead" | "StartTrial" | "Purchase";
+export type CapiEvent = "PageView" | "Lead" | "StartTrial" | "Purchase";
 
 const API_VERSION = "v21.0";
 
@@ -82,5 +82,33 @@ export async function sendCapiEvent(o: Parameters<typeof capiBody>[0]): Promise<
     return false;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * Admin → Overview "Meta check": one PageView sent with Meta's test code (Events Manager → Test
+ * events), so it shows there at once and never counts toward ads. Says whether the token is set and
+ * what Meta answered (never the token itself).
+ */
+export async function metaCapiCheck(testCode: string): Promise<{ ok: boolean; detail: string }> {
+  const token = process.env.META_CAPI_TOKEN?.trim();
+  if (!META_PIXEL_ID) return { ok: false, detail: "No Pixel ID in this build (NEXT_PUBLIC_META_PIXEL_ID)." };
+  if (!token) return { ok: false, detail: "META_CAPI_TOKEN is not set in Netlify, so the server sends nothing to Meta." };
+  const code = testCode.trim();
+  if (!/^TEST[A-Z0-9]{3,20}$/i.test(code)) return { ok: false, detail: "Paste the test code from Events Manager → your pixel → Test events (it starts with TEST)." };
+  const body = capiBody({ event: "PageView", match: { eventId: `check-${Date.now()}`, url: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://example.org"}/` }, ua: "Postbird Meta check" });
+  try {
+    const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(token)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...body, test_event_code: code }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const text = (await res.text().catch(() => "")).slice(0, 400);
+    if (res.ok) return { ok: true, detail: `Meta accepted the test page view (${text}). It shows under Test events within a minute.` };
+    const msg = (() => { try { return (JSON.parse(text) as { error?: { message?: string } }).error?.message ?? text; } catch { return text; } })();
+    return { ok: false, detail: `Meta refused it (${res.status}): ${msg}` };
+  } catch (e) {
+    return { ok: false, detail: `Couldn't reach Meta: ${(e as Error).message}` };
   }
 }
