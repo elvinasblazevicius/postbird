@@ -71,7 +71,8 @@ export async function sendCapiEvent(o: Parameters<typeof capiBody>[0]): Promise<
     const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(token)}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(capiBody(o)),
+      // META_CAPI_TEST_CODE (optional, from Events Manager → Test events): the events show there instead of counting. Remove after testing.
+      body: JSON.stringify({ ...capiBody(o), ...(process.env.META_CAPI_TEST_CODE?.trim() ? { test_event_code: process.env.META_CAPI_TEST_CODE.trim() } : {}) }),
       signal: ctrl.signal,
     });
     if (!res.ok) console.error("meta capi: event not accepted", res.status, (await res.text().catch(() => "")).slice(0, 200));
