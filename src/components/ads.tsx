@@ -18,7 +18,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ATTRIBUTION_KEY, clearAdStorage } from "@/lib/ad-storage";
-import { loadMetaPixel, metaConsent, metaPixelLoaded, metaTrack, type MetaEvent, type MetaParams, type PixelEnv } from "@/lib/meta-pixel";
+import { META_PIXEL_ID, loadMetaPixel, metaConsent, metaPixelLoaded, metaTrack, type MetaEvent, type MetaParams, type PixelEnv } from "@/lib/meta-pixel";
 
 const ATTR_KEY = ATTRIBUTION_KEY;
 const CONSENT_KEY = "gch_ads_consent";
@@ -148,13 +148,47 @@ export function uetEvent(action: string, params: Record<string, string | number>
 const pixelEnv = (): PixelEnv => ({ win: window as unknown as PixelEnv["win"], doc: document });
 
 /** Report an event to Meta (no-op without the pixel, without advertising consent, or on private pages). */
-export function metaEvent(event: MetaEvent, params?: MetaParams) {
+export function metaEvent(event: MetaEvent, params?: MetaParams, eventId?: string) {
   try {
     if (!storageAllowed || isPrivatePath(window.location.pathname)) return;
-    metaTrack(pixelEnv(), event, params);
+    metaTrack(pixelEnv(), event, params, eventId);
   } catch {
     /* never break the page */
   }
+}
+
+// ── Conversions API match data ───────────────────────────────
+
+/**
+ * One id per conversion, shared by the browser pixel and the server's Conversions API event
+ * (src/lib/meta-capi.ts), so Meta counts the conversion once. A new id after each conversion.
+ */
+let metaEventId: string | null = null;
+function currentMetaEventId(): string {
+  metaEventId ??= typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  return metaEventId;
+}
+
+function cookie(name: string): string | undefined {
+  try {
+    return document.cookie.split("; ").find((c) => c.startsWith(`${name}=`))?.slice(name.length + 1) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * What the server may send to Meta with a conversion, as JSON: the event id, Meta's click id
+ * cookie (_fbc, or one made from the ad's fbclid as Meta documents) and browser id (_fbp), and the
+ * page. Empty without advertising consent, so the server then sends nothing.
+ */
+export function metaMatchValue(): string {
+  if (!storageAllowed || !META_PIXEL_ID) return "";
+  const a = getAttribution() ?? attributionFromUrl();
+  const fbclid = a?.fbclid && a.fbclid !== "present" ? a.fbclid : null;
+  const at = a?.at ? Date.parse(a.at) : NaN;
+  const fbc = cookie("_fbc") ?? (fbclid ? `fb.1.${Number.isFinite(at) ? at : Date.now()}.${fbclid}` : undefined);
+  return JSON.stringify({ eventId: currentMetaEventId(), fbc, fbp: cookie("_fbp"), url: window.location.href.split("#")[0].slice(0, 500) });
 }
 
 /**
@@ -172,7 +206,10 @@ const META_CONVERSIONS: Record<string, MetaEvent> = { subscribe: "Lead", begin_t
 export function adConversion(action: string, params: Record<string, string | number> = {}, meta?: MetaParams) {
   uetEvent(action, params);
   const m = META_CONVERSIONS[action];
-  if (m) metaEvent(m, meta);
+  if (m) {
+    metaEvent(m, meta, currentMetaEventId());
+    metaEventId = null; // the next conversion gets its own id
+  }
 }
 
 function loadUet(tagId: string, granted: boolean) {
@@ -373,5 +410,21 @@ export function AttributionField() {
       window.removeEventListener(CONSENT_EVENT, update);
     };
   }, []);
-  return <input type="hidden" name="attribution" value={value} />;
+  const [meta, setMeta] = useState("");
+  useEffect(() => {
+    const update = () => setMeta(metaMatchValue());
+    const t = setTimeout(update, 0);
+    window.addEventListener(CONSENT_EVENT, update);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener(CONSENT_EVENT, update);
+    };
+  }, []);
+  return (
+    <>
+      <input type="hidden" name="attribution" value={value} />
+      {/* Conversions API match data (only with advertising consent): src/lib/meta-capi.ts */}
+      <input type="hidden" name="meta" value={meta} />
+    </>
+  );
 }

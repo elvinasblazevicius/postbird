@@ -9,6 +9,8 @@ import { redirect } from "next/navigation";
 import { refresh } from "next/cache";
 import { after } from "next/server";
 import { cleanCampaign, visitorFromHeaders } from "@/lib/analytics";
+import { parseMetaMatch, sendCapiEvent } from "@/lib/meta-capi";
+import { planPriceNumber } from "@/lib/early-access-copy";
 import { accountUrl, findByManageToken, sendAccountLink } from "@/lib/account";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { checkoutReply, continueCheckout, createCheckoutLink, sendCheckoutLink, type CheckoutState } from "@/lib/billing/checkout-links";
@@ -117,6 +119,28 @@ export async function checkoutDoneAction(ref: string): Promise<{ linked: boolean
   if ((await safeRateLimit(`checkout-done:${clientIp(h)}`, 40, 3600)) !== "ok") return { linked: false, accountUrl: null };
   const res = await checkoutAccountToken(ref).catch(() => ({ linked: false, manageToken: null }));
   return { linked: res.linked, accountUrl: res.manageToken ? accountUrl(res.manageToken) : null };
+}
+
+/**
+ * After Paddle's checkout completed in the browser: the same StartTrial or Purchase the pixel
+ * reports, sent from the server (Conversions API), for a checkout started here in the last two
+ * hours (`ref`), and only with advertising consent (`meta`, from metaMatchValue in ads.tsx).
+ */
+export async function metaCheckoutAction(ref: string, trial: boolean, meta: string): Promise<void> {
+  if (typeof ref !== "string" || ref.length > 100) return;
+  const match = parseMetaMatch(meta);
+  if (!match) return;
+  const h = await headers();
+  if ((await safeRateLimit(`meta-checkout:${clientIp(h)}`, 20, 3600)) !== "ok") return;
+  const [row] = await sql<{ email: string; plan: string }[]>`
+    select s.email, c.plan from paddle_checkouts c join subscribers s on s.id = c.subscriber_id
+     where c.ref = ${ref} and c.created_at > now() - interval '2 hours'`.catch(() => []);
+  if (!row) return;
+  const ip = clientIp(h);
+  const ua = h.get("user-agent");
+  after(() => sendCapiEvent(trial
+    ? { event: "StartTrial", match, email: row.email, ip, ua }
+    : { event: "Purchase", match, email: row.email, ip, ua, value: planPriceNumber(row.plan === "quarterly" ? "quarter" : "month"), currency: "USD" }));
 }
 
 // ── Account page ─────────────────────────────────────────────

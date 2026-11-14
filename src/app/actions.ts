@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { after } from "next/server";
 import siteConfig from "@site-config";
 import { cleanCampaign, recordEvent, visitorFromHeaders } from "@/lib/analytics";
+import { parseMetaMatch, sendCapiEvent } from "@/lib/meta-capi";
 import { clientIp, safeRateLimit } from "@/lib/rate-limit";
 import { planRenewal, runWelcomeRetries } from "@/lib/billing/notices";
 import { confirmSubscriber, findByUnsubscribeToken, signup, unsubscribe, type SignupKind } from "@/lib/subscribers";
@@ -74,6 +75,14 @@ export async function signupAction(_prev: FormState, form: FormData): Promise<Fo
       weeklySearch,
     });
     if (!res.ok) return { status: "error", message: res.error };
+    // Meta "Lead" from the server too (Conversions API), only with advertising consent (the `meta` field).
+    const match = !isWaitlist ? parseMetaMatch(form.get("meta")) : null;
+    if (match) {
+      const email = String(form.get("email") ?? "");
+      const ip = clientIp(h);
+      const ua = h.get("user-agent");
+      after(() => sendCapiEvent({ event: "Lead", match, email, ip, ua }));
+    }
     return { status: "success", message: isWaitlist ? WAITLIST_MESSAGES[res.state]() : MESSAGES[res.state] };
   } catch (e) {
     console.error("signup failed", e);

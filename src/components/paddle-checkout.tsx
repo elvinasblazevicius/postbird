@@ -9,13 +9,13 @@ import siteConfig from "@site-config";
  */
 import Link from "next/link";
 import { useActionState, useEffect, useId, useRef, useState } from "react";
-import { checkoutDoneAction, continueCheckoutAction, startCheckoutAction, type CheckoutState } from "@/app/billing-actions";
+import { checkoutDoneAction, continueCheckoutAction, metaCheckoutAction, startCheckoutAction, type CheckoutState } from "@/app/billing-actions";
 import { PADDLE_CLIENT_TOKEN, PADDLE_ENV, PADDLE_PRICE_MONTHLY, PADDLE_PRICE_QUARTERLY } from "@/lib/billing/live";
 import {
   CARD_STATEMENT_LINE, CHECK_INBOX_FIRST, CONFIRM_FIRST_DONE, NO_TRIAL_RENEWAL_ACK, noTrialButton, noTrialLine, ONE_TRIAL_SHORT, planOptions, planPriceNumber, RENEWING, RENEWS,
   TAX_LINE, TRIAL_CONFIRM_NOTE, TRIAL_RENEWAL_ACK, TRIAL_TERMS, trialButton, trialSummary,
 } from "@/lib/early-access-copy";
-import { adConversion, AttributionField, consentRegion } from "./ads";
+import { adConversion, AttributionField, consentRegion, metaMatchValue } from "./ads";
 
 // ── Paddle.js loader ─────────────────────────────────────────
 
@@ -89,6 +89,8 @@ function openPaddleCheckout(c: Launch, h: { source: string; setPhase: (p: Phase)
       eventListener = (e) => {
         if (e.name === "checkout.completed" && !completed) {
           completed = true;
+          // The same conversion from the server (Meta Conversions API), with this event's id; before adConversion, which starts a new id.
+          void metaCheckoutAction(c.ref, trial, metaMatchValue()).catch(() => {});
           // "begin_trial" is the Microsoft Ads conversion for a trial; a plan paid straight away is a purchase
           // (Meta: StartTrial / Purchase, the purchase with the plan's US-dollar price from site.config.ts).
           adConversion(trial ? "begin_trial" : "purchase", { event_category: "premium", event_label: h.source },

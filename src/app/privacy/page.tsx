@@ -98,9 +98,12 @@ export default function PrivacyPage() {
               cookies <code>_fbp</code> and, when you arrive from a Meta ad link, <code>_fbc</code>, and sends Meta these events: the pages you view here
               (<code>PageView</code>, with the page address as shown in your address bar, which on search results includes the search filters), signing up
               for the free weekly email (<code>Lead</code>) and a completed checkout (<code>StartTrial</code> for a free trial, <code>Purchase</code> with the
-              plan&apos;s price for a plan that starts straight away). We never send Meta your email address, your name or what you enter in our sign-up forms
-              (including the search you choose for alerts); search filters reach Meta only as part of a results page&apos;s address. We have switched off the pixel&apos;s automatic detection of buttons and forms, and we don&apos;t send Meta any data from our
-              servers. Meta processes this under its own{" "}
+              plan&apos;s price for a plan that starts straight away). So that these sign-ups are counted even when a browser blocks Meta&apos;s script, our
+              server also reports the same three sign-up events to Meta (its Conversions API), only after you clicked &quot;Allow&quot;: the event, the page
+              address, your IP address and browser type (which Meta uses to match the visit), Meta&apos;s cookie values above, and your email address only as a
+              one-way scrambled code (a SHA-256 hash), never in readable form. We never send Meta your name or what you enter in our sign-up forms
+              (including the search you choose for alerts); search filters reach Meta only as part of a results page&apos;s address. We have switched off the
+              pixel&apos;s automatic detection of buttons and forms. Meta processes this under its own{" "}
               <a className="text-accent underline" href="https://www.facebook.com/privacy/policy/" rel="noopener">privacy policy</a>.
             </li>
           ) : null}

@@ -103,11 +103,15 @@ export function cleanParams(p?: MetaParams): MetaParams | undefined {
   return out;
 }
 
-/** Sends one event. No-op unless the pixel was loaded (consent given and ID set). */
-export function metaTrack(env: PixelEnv, event: MetaEvent, params?: MetaParams): boolean {
+/**
+ * Sends one event. No-op unless the pixel was loaded (consent given and ID set). `eventId` is the
+ * id the server also sends to the Conversions API for the same conversion, so Meta counts it once.
+ */
+export function metaTrack(env: PixelEnv, event: MetaEvent, params?: MetaParams, eventId?: string): boolean {
   if (!metaPixelLoaded(env) || !env.win.fbq) return false;
   const p = cleanParams(params);
-  if (p) env.win.fbq("track", event, p);
+  if (eventId) env.win.fbq("track", event, p ?? {}, { eventID: eventId });
+  else if (p) env.win.fbq("track", event, p);
   else env.win.fbq("track", event);
   return true;
 }
