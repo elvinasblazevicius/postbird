@@ -99,7 +99,7 @@ export default async function TrialPage({ searchParams }: Props) {
               searchLabel ? (
                 <p className="rounded-xl border border-sky-rule bg-sky-wash px-4 py-3 text-[0.95rem] text-ink">
                   Your daily alerts will follow your search: <strong>{searchLabel}</strong>. You can add up to {MAX_SAVED_SEARCHES} searches after signing up.{" "}
-                  <a href="/pricing/trial#alert-signup" className="font-medium text-accent underline underline-offset-2">Change</a>
+                  <a href="/pricing/trial#alert-signup" className="font-medium text-accent underline underline-offset-2">Start over with other keywords</a>
                 </p>
               ) : (
                 <div className="space-y-1.5">

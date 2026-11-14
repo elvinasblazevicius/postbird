@@ -80,7 +80,7 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
   // Demo listings never count. With `search` (the visitor's own), the example follows it.
   let own = search ? filtersFromQuery(search) : null;
   const pick = (posted: "1" | "7") =>
-    searchJobs({ ...(own ?? {}), posted, sort: "newest", page: undefined, hidelocal: kind === "daily" || own?.hidelocal || undefined, excludeDemo: true }, 30).catch(() => ({ items: [] as JobListItem[], total: 0 }));
+    searchJobs({ ...(own ?? {}), posted, sort: "newest", page: undefined, hidelocal: own ? own.hidelocal || undefined : kind === "daily" || undefined, excludeDemo: true }, 30).catch(() => ({ items: [] as JobListItem[], total: 0 }));
   const [firstTry, closing] = await Promise.all([pick(kind === "daily" ? "1" : "7"), kind === "daily" ? closingSoonJobs(12).catch(() => []) : Promise.resolve([])]);
   let first = firstTry;
   // A quiet day: the daily example is built from the past week instead, and says so.

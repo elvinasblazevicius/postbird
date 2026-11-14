@@ -247,7 +247,7 @@ export async function JobsBrowser({
     : 0;
   const unstatedHref = unstatedMore ? jobsUrl({ ...filters, unstated: true, page: undefined }, base) : null;
   // Next to the alert button: how many of these results publish a closing date (the ones a closing-date reminder can cover).
-  const dated = result.total > 0 && result.matchMode === "all" && userFilters > 0 ? await countDated(effective).catch(() => null) : null;
+  const dated = result.total > 0 && result.matchMode === "all" ? await countDated(effective).catch(() => null) : null;
 
   // The alert button and closing-date coverage for a search with exact matches (not an any-word fallback: alerts match every word,
   // so they would not send those jobs). Above the results on wide screens; on phones after the first three cards.
@@ -256,7 +256,7 @@ export async function JobsBrowser({
       {siteConfig.freeWeeklyEmail ? (
         // One short link: the alerts page offers the free weekly email and daily alerts for this search.
         <Link href={`/alerts?search=${encodeURIComponent(alertSearch)}`} className={`-my-1 ${ALERT_BUTTON}`}>
-          Get alerts for this search
+          {userFilters > 0 ? "Get alerts for this search" : "Get alerts for new vacancies"}
         </Link>
       ) : (
         <TrackedLink

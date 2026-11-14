@@ -172,7 +172,7 @@ export default async function PricingPage() {
               <li key={f} className="flex gap-2.5"><Check />{f}</li>
             ))}
           </ul>
-          <Link href={siteConfig.freeWeeklyEmail ? "/alerts#alert-signup" : "/jobs"} className="mt-8 rounded-lg bg-brand px-5 py-3 text-center font-semibold text-white hover:bg-accent">
+          <Link href={siteConfig.freeWeeklyEmail ? "/alerts#alert-signup" : "/jobs"} className="mt-8 rounded-lg border-2 border-brand bg-paper px-5 py-3 text-center font-semibold text-brand hover:bg-mist">
             {siteConfig.freeWeeklyEmail ? "Get the free weekly email" : "Browse jobs"}
           </Link>
         </section>
