@@ -856,7 +856,8 @@ export async function searchSuggestion(q: string | undefined): Promise<{ q: stri
     if (placeVariants(term).length) continue;
     // A Spanish or French word with no vacancy holding it: the English word the vacancies use ("saneamiento" → "sanitation").
     // Checked before the known words, which hold the category vocabulary in several languages.
-    const english = TRANSLATIONS[term] && !(await anyJobHas(term)) ? TRANSLATIONS[term].find((w) => vocab.words.has(w)) : undefined;
+    // Once one word is translated, every word with a translation is ("ingeniero sanitario" → "engineer sanitation", never "engineer sanitario").
+    const english = TRANSLATIONS[term] && (translating || !(await anyJobHas(term))) ? TRANSLATIONS[term].find((w) => vocab.words.has(w)) : undefined;
     if (!english && (vocab.words.has(term) || translating)) continue;
     const grams = wordTrigrams(term);
     let best: string | null = english ?? null;

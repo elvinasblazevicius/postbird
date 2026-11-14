@@ -93,6 +93,16 @@ function usable(url: string): boolean {
  * A link to an article rather than a vacancy: its last path part is a phrase of five words or more
  * and no word of the title is in the address ("/careers/using-ai-responsibly-undp-recruitment-and-selection").
  */
+/**
+ * A page of guidance, not a vacancy: a user guide or manual, an FAQ, a publication or "how to apply"
+ * ("who.int/publications/m/item/stellis-user-guide-how-to-apply-to-who-job-opportunities").
+ */
+export function isGuideLink(url: string): boolean {
+  let path = "";
+  try { path = new URL(url).pathname.toLowerCase(); } catch { return false; }
+  return /(?:^|[/_-])(?:user[-_]guides?|user[-_]manuals?|faqs?|publications?|how[-_]to[-_]apply)(?=[/_.-]|$)/.test(path);
+}
+
 export function isArticleLink(url: string, title: string): boolean {
   let last = "";
   try { last = new URL(url).pathname.replace(/\/+$/, "").split("/").pop() ?? ""; } catch { return false; }
@@ -108,7 +118,7 @@ export function isArticleLink(url: string, title: string): boolean {
  */
 export function findEmployerLink(body: string, title?: string | null): string | null {
   if (!body) return null;
-  const links = linksIn(body).filter((l) => usable(l.url));
+  const links = linksIn(body).filter((l) => usable(l.url) && !isGuideLink(l.url));
   if (!links.length) return null;
   const how = body.search(/how to apply|application (?:process|procedure|instructions)|to apply\b|comment postuler|modalit[ée]s de candidature|c[óo]mo (?:postular|aplicar)|para postular/i);
   const jobish = (l: Found) => JOBISH.test(l.url) || endsWithHost(hostOf(l.url), APPLICATION_SERVICES);
