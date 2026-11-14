@@ -102,7 +102,7 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
   if (!ownLabel) for (const j of all.items) if (j.category && j.category !== "other") counts.set(j.category, (counts.get(j.category) ?? 0) + 1);
   const topCategory = ownLabel ? null : [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   // "Your search" only for a search the example really follows: the visitor's own, or the one it shows as an example search.
-  const yours = Boolean(ownLabel) || Boolean(topCategory);
+  const yours = Boolean(ownLabel) || (Boolean(topCategory) && !ownEmpty);
   const inSearch = topCategory ? all.items.filter((j) => j.category === topCategory) : all.items;
   const found = topCategory ? { items: inSearch, total: inSearch.length } : all;
   const jobs = pickRows(found.items);
