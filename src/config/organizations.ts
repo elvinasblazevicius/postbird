@@ -112,7 +112,7 @@ export const KNOWN_ORGS: KnownOrg[] = [
   { name: "Management Sciences for Health", short: "MSH", type: "NGO", aliases: ["MSH"], domains: ["msh.org"] },
   { name: "Plan International", type: "NGO", domains: ["plan-international.org"] },
   // Employers seen without a name in their feed items (Nov 2026 data audit): recognised by their recruitment site or the name opening the title.
-  { name: "ICAO", short: "ICAO", type: "UN system", aliases: ["International Civil Aviation Organization"], domains: ["icao.int", "estm.fa.em2.oraclecloud.com"] },
+  { name: "ICAO", short: "ICAO", type: "UN system", aliases: ["International Civil Aviation Organization"], domains: ["icao.int"] },
   { name: "Catholic Relief Services", short: "CRS", type: "NGO", aliases: ["CRS"], domains: ["crs.org", "eipn.fa.us2.oraclecloud.com"] },
   { name: "The Global Fund", short: "Global Fund", type: "International organization", aliases: ["Global Fund", "The Global Fund to Fight AIDS, Tuberculosis and Malaria", "Global Fund to Fight AIDS, Tuberculosis and Malaria"], domains: ["theglobalfund.org", "theglobalfund.wd1.myworkdayjobs.com"] },
   { name: "Gates Foundation", short: "Gates Foundation", badge: "BMGF", type: "NGO", aliases: ["BMGF", "Bill & Melinda Gates Foundation", "Bill and Melinda Gates Foundation"], domains: ["gatesfoundation.org", "gatesfoundation.wd1.myworkdayjobs.com"] },

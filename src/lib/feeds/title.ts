@@ -130,5 +130,7 @@ export function stripOrgFromTitle(title: string, names: (string | null | undefin
   const lead = list.find((n) => t.startsWith(`${n} `) && /^\p{Lu}/u.test(t.slice(n.length + 1)));
   if (lead) t = t.slice(lead.length + 1);
   t = t.replace(/\s{2,}/g, " ").trim();
+  // A part of the organization's name that names a separate entity ("IDB Invest", "UNDP-IC") is not a prefix to drop.
+  if (/^(invest\b|ic\b|-)/i.test(t)) return title;
   return t.length >= 3 ? t : title;
 }
