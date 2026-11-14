@@ -22,6 +22,10 @@ name: Scheduled jobs
 on:
   schedule:
     - cron: "17 */2 * * *"   # import feeds every 2 hours (UTC)
+    # GitHub drops many scheduled runs at busy times (often only 4–5 of the 12 a day ran): a second
+    # import schedule in the odd hours, at a quiet minute, so the import still runs every few hours.
+    # Runs never overlap (concurrency below); a run with nothing new finishes in a few minutes.
+    - cron: "47 1-23/2 * * *"
     # Emails, daily 06:23 UTC: paid alerts (each subscriber's daily or weekly
     # choice is enforced in the code, so weekly subscribers get one email a
     # week) and the free weekly email, which starts on Mondays (UTC), or on

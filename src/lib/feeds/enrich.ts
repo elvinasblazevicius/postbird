@@ -137,7 +137,8 @@ async function withAi(job: DueJob, facts: PageFacts | null, text: string | null,
     if (!ai) return facts;
     await sql`update jobs set ai_checked_at = now() where id = ${job.id}`;
     r.ai.asked++; r.ai.tokensIn += ai.usage.input; r.ai.tokensOut += ai.usage.output;
-    const c = checkFacts(ai.facts, text);
+    // The title counts as part of the text ("Consultant – …" is where the contract type is often said).
+    const c = checkFacts(ai.facts, `${job.title}\n${text}`);
     r.ai.rejected += c.rejected.length;
     // "country: quote not on the page" → counted under that reason, without the value.
     for (const why of c.rejected) { const k = why.replace(/"[^"]*"|\d{4}-\d{2}-\d{2}/g, "…"); r.ai.why[k] = (r.ai.why[k] ?? 0) + 1; }
