@@ -140,4 +140,6 @@ export const KNOWN_ORGS: KnownOrg[] = [
   { name: "Amref Health Africa", short: "Amref", type: "NGO", aliases: ["AMREF", "Amref"], domains: ["amref.org"] },
   { name: "Partners In Health", short: "PIH", type: "NGO", aliases: ["PIH"], domains: ["pih.org"] },
   { name: "WWF", short: "WWF", type: "NGO", aliases: ["World Wide Fund for Nature", "World Wildlife Fund"], domains: ["wwf.org", "worldwildlife.org", "panda.org"] },
+  { name: "Children's Investment Fund Foundation", short: "CIFF", type: "NGO", aliases: ["CIFF"], domains: ["ciff.org"] },
+  { name: "CGIAR", short: "CGIAR", type: "International organization", domains: ["cgiar.org"] },
 ];

@@ -427,7 +427,13 @@ function titleBoost(q: string): Frag {
 function titleWordHits(q: string): Frag {
   const terms = [...new Set(searchWords(interpretQuery(q).text ?? q).map(foldText).filter((t) => /[a-z0-9]/.test(t)))].slice(0, 8);
   if (!terms.length) return sql`0`;
-  return terms.map((t) => sql`(case when pb_fold(j.title) ~ ${wordPattern(t)} then 1 else 0 end)`).reduce((a, b) => sql`${a} + ${b}`);
+  // A duty station's name counts when the vacancy is there ("finance geneva": Geneva posts with finance in the title first).
+  return terms.map((t) => {
+    const place = placeTsQuery([t]);
+    return place
+      ? sql`(case when pb_fold(j.title) ~ ${wordPattern(t)} or j.search_folded @@ to_tsquery('simple', ${place}) then 1 else 0 end)`
+      : sql`(case when pb_fold(j.title) ~ ${wordPattern(t)} then 1 else 0 end)`;
+  }).reduce((a, b) => sql`${a} + ${b}`);
 }
 
 /**
@@ -806,6 +812,7 @@ const TRANSLATIONS: Record<string, string[]> = {
   monitoreo: ["monitoring"], evaluacion: ["evaluation"], suivi: ["monitoring"], evaluation: ["evaluation"],
   datos: ["data"], donnees: ["data"], informatica: ["it"], clima: ["climate"], climat: ["climate"], medio: ["environment"], ambiente: ["environment"], environnement: ["environment"],
   asistente: ["assistant"], coordinador: ["coordinator"], coordinadora: ["coordinator"], coordonnateur: ["coordinator"], especialista: ["specialist"], specialiste: ["specialist"],
+  publica: ["public"], publico: ["public"], publique: ["public"], alimentaire: ["food"], alimentos: ["food"],
   oficial: ["officer"], responsable: ["manager", "officer"], gerente: ["manager"], director: ["director"], directeur: ["director"],
 };
 
@@ -817,6 +824,7 @@ export async function searchSuggestion(q: string | undefined): Promise<{ q: stri
   const vocab = await suggestionVocabulary();
   let out = q;
   const words: string[] = [];
+  let translated = false;
   for (const term of terms) {
     // A place's name is never "corrected" ("geneva" is not a typo of "genes").
     if (placeVariants(term).length) continue;
@@ -836,12 +844,24 @@ export async function searchSuggestion(q: string | undefined): Promise<{ q: stri
       }
     }
     if (!best || best === term) continue;
-    const re = new RegExp(`(^|[^\\p{L}\\p{N}])${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^\\p{L}\\p{N}])`, "giu");
-    const next = out.replace(re, `$1${best}`);
+    if (english) translated = true;
+    // Word by word, compared folded: "protección" is the term "proteccion".
+    const swap = best;
+    const next = out.replace(/[\p{L}\p{N}]+/gu, (w) => (foldText(w) === term ? swap : w));
     if (next !== out) {
       out = next;
       words.push(best);
     }
+  }
+  // A translated search keeps only words vacancies hold: "agua saneamiento" → "sanitation", not "agua sanitation",
+  // which would find nothing again (results hold every word).
+  if (translated) {
+    const keep = await Promise.all(out.split(/\s+/).map(async (w) => {
+      const f = foldText(w).replace(/[^a-z0-9]/g, "");
+      return !f || vocab.words.has(f) || words.includes(w) || (await anyJobHas(f)) ? w : null;
+    }));
+    const kept = keep.filter((w): w is string => w !== null).join(" ").trim();
+    if (kept) out = kept;
   }
   return words.length ? { q: out, words } : null;
 }
