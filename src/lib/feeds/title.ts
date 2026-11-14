@@ -176,7 +176,8 @@ export function stripOrgFromTitle(title: string, names: (string | null | undefin
   // A last part that starts with the name and says which office: " – OSCE Programme Office in Bishkek, Bishkek", " – OSCE Secretariat".
   t = t.replace(new RegExp(`\\s+[|–—]\\s+(?:${any})\\s[^|–—]{2,70}$`), (m) => (t.length - m.length >= 8 ? "" : m));
   // Prefix: "IOM – ", "IOM: ", or a capitalised short name followed by the role ("UNDP Chief", "WHO Chargé").
-  t = t.replace(new RegExp(`^(?:${any})\\s*(?:[–—:|-]\\s*|\\((?:[^()]*)\\)\\s*[–—-]?\\s*)`, "i"), "");
+  // A hyphen counts only with a space after it: "UN-Habitat Intern" keeps "UN-Habitat".
+  t = t.replace(new RegExp(`^(?:${any})\\s*(?:[–—:|]\\s*|-\\s+|\\((?:[^()]*)\\)\\s*[–—-]?\\s*)`, "i"), "");
   // The name exactly as written, then a capitalised role: "UNDP Chief", "Jhpiego State Team Lead", "FHI 360 Administrative Associate".
   const lead = list.find((n) => t.startsWith(`${n} `) && /^\p{Lu}/u.test(t.slice(n.length + 1)));
   if (lead) t = t.slice(lead.length + 1);

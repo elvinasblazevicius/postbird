@@ -48,7 +48,10 @@ export async function tidyListings({ dryRun = false }: { dryRun?: boolean } = {}
 }
 
 /** Employers named at the start of their own titles, whatever site the listing came from. */
-const TITLE_EMPLOYERS = [{ re: /^UN Women\b/, name: "UN Women" }];
+const TITLE_EMPLOYERS = [{ re: /^UN Women\b/, name: "UN Women" }, { re: /^UN-Habitat\b/i, name: "UN-Habitat" }];
+/** Titles an earlier tidy-up cut short ("UN-Habitat Intern" stored as "Habitat Intern" under the UN): restored first. */
+const restoreTitle = (title: string, org: string | null) =>
+  /^United Nations Secretariat$/i.test(org ?? "") && /^Habitat\s/.test(title) ? `UN-${title}` : title;
 
 async function tidyTitlesAndEmployers(out: TidyResult, dryRun: boolean) {
   const jobs = await sql<{ id: number; title: string; apply_url: string | null; apply_host: string | null; org_name: string | null; org_short: string | null; org_slug: string | null }[]>`
@@ -58,6 +61,8 @@ async function tidyTitlesAndEmployers(out: TidyResult, dryRun: boolean) {
   out.checked = jobs.length;
   const orgSlugs = new Set((await sql<{ slug: string }[]>`select slug from organizations`).map((r) => r.slug));
   for (const j of jobs) {
+    const restored = restoreTitle(j.title, j.org_name);
+    if (restored !== j.title) j.title = restored;
     // A known organization stored twice under different spellings: the listing moves to the known
     // organization's entry, only when that entry exists (an organization stored once keeps its page).
     // A title that opens with its employer's name, filed under another (UN Women's posts on the UN's site).

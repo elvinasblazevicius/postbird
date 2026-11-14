@@ -31,3 +31,11 @@ describe("cleanTitle: codes and sentences", () => {
     ["Roster of Consultants – ATACH, Seoul, Seoul", "Roster of Consultants – ATACH, Seoul"],
   ])("%s", (raw, clean) => expect(cleanTitle(raw)).toBe(clean));
 });
+
+describe("stripOrgFromTitle keeps hyphenated names", () => {
+  it("keeps UN-Habitat when the employer is filed as UN", async () => {
+    const { stripOrgFromTitle } = await import("@/lib/feeds/title");
+    expect(stripOrgFromTitle("UN-Habitat Intern – Data analytics", ["United Nations Secretariat", "UN"])).toBe("UN-Habitat Intern – Data analytics");
+    expect(stripOrgFromTitle("UN - Data Analyst", ["UN"])).toBe("Data Analyst");
+  });
+});
