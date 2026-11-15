@@ -186,7 +186,7 @@ describe.skipIf(!TEST_DB)("free weekly email (database)", () => {
       expect(m.text).toContain("Senior nurse");
       expect(m.text).not.toMatch(/demo|Nurse closed|Accountant|Nurse old/);
       // One calm line about daily alerts, with the search filled in, and the usual links.
-      expect(m.text).toContain("Want new matches every day, with up to 20 searches? Start a 14-day free trial: http://localhost:3000/pricing/trial?search=q%3Dnurse&");
+      expect(m.text).toContain("Some vacancies close within days of being posted, before the next weekly email. Daily alerts send new matches every day, with a reminder before each closing date. Start a 14-day free trial: http://localhost:3000/pricing/trial?search=q%3Dnurse&");
       expect(m.text).toContain("/account?t=");
       expect(m.headers?.["List-Unsubscribe"]).toContain("/api/unsubscribe?token=");
       // The idempotency key is built from the recipient's id for this week.

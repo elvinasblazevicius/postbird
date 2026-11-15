@@ -171,9 +171,9 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
         {where !== NOT_SPECIFIED ? <li className={plain}><Flag code={job.country_code} /><span>{shortCountries(where)}</span></li>
           : job.is_remote ? <li className={plain}>Remote</li> : <li className={missing}>Duty station not stated</li>}
         {/* The grade is the first thing most applicants check, so it stands out from the other details. Employers
-            without a grade system (NGOs, development banks) have no grade to state, so no placeholder for them. */}
+            without a grade system (NGOs, development banks) and consultancies have no grade to state, so no placeholder for them. */}
         {grade ? <li className={`${pill} border-[#bfd0e3] bg-[#f6f8fb] font-semibold text-ink`}>{grade}</li>
-          : GRADED_TYPES.has(job.org_type ?? "") ? <li className={missing}>Grade not stated</li> : null}
+          : GRADED_TYPES.has(job.org_type ?? "") && job.job_type !== "Consultancy" ? <li className={missing}>Grade not stated</li> : null}
         {/* Who may apply: local posts (usually nationals only) or internationally recruited grades (Professional,
             Director, Field Service). Neutral colours with an icon: red, amber and blue belong to the closing date. */}
         {localLabel ? <li className={`${pill} border-[#d9d5cc] bg-[#f3f2ee] font-medium text-[#4a4438]`}><PinIcon /><span>{shortCountries(localLabel)}</span></li>

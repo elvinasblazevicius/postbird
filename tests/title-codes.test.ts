@@ -47,3 +47,13 @@ describe("cleanTitle keeps unit acronyms", () => {
     expect(cleanTitle("Officer – ACCOUNTS CLERK LOCAL AGENT")).toContain("Accounts Clerk");
   });
 });
+
+describe("shareWords", () => {
+  it("says a share in plain words", async () => {
+    const { shareWords } = await import("@/lib/jobs");
+    expect(shareWords(921, 202)).toBe("About 1 in 5");
+    expect(shareWords(165, 54)).toBe("About 1 in 3");
+    expect(shareWords(50, 20)).toBeNull();
+    expect(shareWords(500, 30)).toBeNull();
+  });
+});

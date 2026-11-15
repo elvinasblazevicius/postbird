@@ -10,6 +10,7 @@ import { TrackedLink } from "@/components/tracking";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { CARD_STATEMENT_LINE, EARLY_ACCESS_BUTTON, earlyAccessLine, ONE_TRIAL_RULE, TAX_LINE } from "@/lib/early-access-copy";
 import { siteConfig } from "@/lib/site";
+import { closingWithinWeekShare } from "@/lib/jobs";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,7 @@ function Check() {
 
 export default async function PricingPage() {
   const p = siteConfig.premium;
-  const cov = await coverage();
+  const [cov, share] = await Promise.all([coverage(), closingWithinWeekShare()]);
   const billingFaq: [string, React.ReactNode][] = BILLING_LIVE
     ? [
         [
@@ -75,7 +76,7 @@ export default async function PricingPage() {
         ],
         [
           "What do daily alerts add?",
-          <>New matches every day instead of once a week, so you see a vacancy up to 6 days sooner, and up to 20 searches instead of one, each with the same full filters. Each alert also lists matching vacancies that close in the next 3 days, once each, so a deadline doesn&apos;t slip past you. While you have a paid plan you get your alerts instead of the weekly email, not both.</>,
+          <>New matches every day instead of once a week, so you see a vacancy up to 6 days sooner and can be among the first to apply, and up to 20 searches instead of one, each with the same full filters. Each alert also lists matching vacancies that close in the next 3 days, once each, so a deadline doesn&apos;t slip past you. While you have a paid plan you get your alerts instead of the weekly email, not both.</>,
         ],
       ]
     : [];
@@ -98,11 +99,11 @@ export default async function PricingPage() {
     <>
       <PageHeader
         width="max-w-4xl"
-        title={siteConfig.freeWeeklyEmail ? "Get reminded before vacancies close" : "Plans and pricing"}
+        title={siteConfig.freeWeeklyEmail ? "Apply early. Never miss a closing date." : "Plans and pricing"}
         crumbs={[{ href: "/", label: "Home" }, { href: "/pricing", label: "Pricing" }]}
         intro={
           siteConfig.freeWeeklyEmail
-            ? `Daily alerts${BILLING_LIVE ? "" : ", launching soon,"} email you new matches every day for up to 20 searches, and remind you of each matching vacancy 3 days before its published closing date. Every vacancy, search and filter stays free, and so does a weekly email for one search.`
+            ? `${share ? `${share} vacancies close within a week of being posted. ` : ""}Daily alerts${BILLING_LIVE ? "" : ", launching soon,"} email you new matches every day for up to 20 searches, and remind you of each matching vacancy 3 days before its published closing date. Every vacancy, search and filter stays free, and so does a weekly email for one search.`
             : `Every vacancy, search and filter is free. Paid email alerts${BILLING_LIVE ? "" : ", launching soon,"} bring new matches to your inbox so you don't have to keep checking.`
         }
       >

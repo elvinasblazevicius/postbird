@@ -117,8 +117,8 @@ const siteConfig = {
      */
     features: [
       "A reminder of matching vacancies that close in the next 3 days (when the employer publishes a closing date)",
+      "New matches every day, so you can apply up to 6 days before people on the weekly email",
       "Up to 20 searches instead of one, with the same filters",
-      "New matches every day, up to 6 days before the weekly email",
     ],
   },
 

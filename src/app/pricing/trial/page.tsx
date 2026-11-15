@@ -74,7 +74,7 @@ export default async function TrialPage({ searchParams }: Props) {
         {BILLING_LIVE ? (
           // Phones: the header's intro is hidden (compact), so the offer in one line, with the form right below.
           <p className="mb-5 text-[0.95rem] text-ink sm:hidden">
-            New matches every day and a reminder {CLOSING_SOON_DAYS} days before each published closing date. {p.trialDays} days free.
+            Be among the first to apply: new matches every day and a reminder {CLOSING_SOON_DAYS} days before each published closing date. {p.trialDays} days free.
           </p>
         ) : null}
         {remindJob ? (

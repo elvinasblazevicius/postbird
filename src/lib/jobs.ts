@@ -1377,3 +1377,34 @@ export async function hasDemoJobs(): Promise<boolean> {
   const [r] = await sql<{ n: number }[]>`select count(*)::int as n from jobs j where j.is_demo and ${isOpen()}`;
   return r.n > 0;
 }
+
+/**
+ * How often a vacancy closes within a week of being posted (listings first seen in the last 90 days
+ * with a closing date), as "About 1 in 5", for the daily-alerts pitch. Null when too few listings
+ * or too rare to be worth saying. Kept for 6 hours per server.
+ */
+let closingWeekMemo: { at: number; value: string | null } | null = null;
+export async function closingWithinWeekShare(): Promise<string | null> {
+  if (closingWeekMemo && Date.now() - closingWeekMemo.at < 6 * 3600_000) return closingWeekMemo.value;
+  let value: string | null = null;
+  try {
+    const [r] = await sql<{ n: number; week: number }[]>`
+      select count(*)::int as n,
+             count(*) filter (where deadline - coalesce(published_at, first_seen_at)::date <= 7)::int as week
+        from jobs
+       where not is_demo and deadline is not null and first_seen_at > now() - interval '90 days'
+         and deadline >= coalesce(published_at, first_seen_at)::date`;
+    value = shareWords(r?.n ?? 0, r?.week ?? 0);
+  } catch {
+    value = null;
+  }
+  closingWeekMemo = { at: Date.now(), value };
+  return value;
+}
+
+/** "About 1 in 5" from counts; null below 100 listings or under 1 in 10. */
+export function shareWords(n: number, part: number): string | null {
+  if (n < 100 || part / n < 0.1) return null;
+  if (part / n >= 0.45) return "About half of";
+  return `About 1 in ${Math.round(n / part)}`;
+}

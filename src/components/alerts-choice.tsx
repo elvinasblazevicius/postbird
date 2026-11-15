@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BILLING_LIVE } from "@/lib/billing/live";
+import { closingWithinWeekShare } from "@/lib/jobs";
 import { EARLY_ACCESS_BUTTON } from "@/lib/early-access-copy";
 import { CLOSING_SOON_DAYS } from "@/lib/email-templates";
 import { MAX_SAVED_SEARCHES } from "@/lib/saved-searches";
@@ -24,8 +25,9 @@ function Check() {
   );
 }
 
-export function AlertsChoice({ weeklyHref, trialHref, source, onBand = false, weeklyForm, searchLabel }: { weeklyHref: string; trialHref: string; source: string; onBand?: boolean; weeklyForm?: React.ReactNode; searchLabel?: string | null }) {
+export async function AlertsChoice({ weeklyHref, trialHref, source, onBand = false, weeklyForm, searchLabel }: { weeklyHref: string; trialHref: string; source: string; onBand?: boolean; weeklyForm?: React.ReactNode; searchLabel?: string | null }) {
   const p = siteConfig.premium;
+  const share = await closingWithinWeekShare();
   // plans[0] is monthly, plans[1] the 3-month plan (site.config.ts).
   const [monthly, quarterly] = p.plans;
   const fromPrice = "perMonth" in quarterly && quarterly.perMonth ? quarterly.perMonth : monthly.price;
@@ -53,8 +55,12 @@ export function AlertsChoice({ weeklyHref, trialHref, source, onBand = false, we
           {BILLING_LIVE ? `${p.trialDays} days free` : "Coming soon"}
         </span>
       </div>
+      {/* Why daily: the reason (how fast vacancies close, from live listings), then what it gets you. */}
+      <p className="text-[0.95rem] font-semibold leading-snug text-ink">
+        {share ? `${share} vacancies close within a week of being posted. ` : ""}Be among the first to apply, and never miss a closing date.
+      </p>
       <ul className="space-y-1.5 text-sm leading-snug text-tint-ink">
-        <li className="flex gap-2"><Check />{searchLabel ? <span>New matches every day for <strong className="text-ink" data-follows-copy="">{searchLabel}</strong></span> : "New matches every day"}</li>
+        <li className="flex gap-2"><Check />{searchLabel ? <span>New matches every day for <strong className="text-ink" data-follows-copy="">{searchLabel}</strong>, up to 6 days before the weekly email</span> : "New matches every day, up to 6 days before the weekly email"}</li>
         <li className="flex gap-2"><Check /><span><strong className="text-ink">Closing-date reminders:</strong> each matching vacancy {CLOSING_SOON_DAYS} days before its published closing date</span></li>
         <li className="flex gap-2"><Check />Up to {MAX_SAVED_SEARCHES} searches</li>
       </ul>

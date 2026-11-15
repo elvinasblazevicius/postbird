@@ -146,7 +146,7 @@ export function weeklyEmail(opts: { group: AlertGroup; search: string; trialUrl:
     : "";
   const p = siteConfig.premium;
   const upsell = BILLING_LIVE
-    ? { lead: "Want new matches every day, with up to 20 searches?", link: opts.hadTrial ? "Get daily alerts" : `Start a ${p.trialDays}-day free trial` }
+    ? { lead: "Some vacancies close within days of being posted, before the next weekly email. Daily alerts send new matches every day, with a reminder before each closing date.", link: opts.hadTrial ? "Get daily alerts" : `Start a ${p.trialDays}-day free trial` }
     : { lead: "Daily alerts with up to 20 searches are coming.", link: "Join early access" };
   const intro = all ? "The newest vacancies of the past week." : `New this week for your search: ${g.label}.`;
   const html = layout(
