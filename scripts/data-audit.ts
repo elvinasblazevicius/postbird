@@ -105,6 +105,19 @@ async function main() {
     }
   }
 
+  section("Days from posting to closing (listings first seen in the last 90 days, with a closing date)");
+  for (const r of await sql<{ b: string; n: number; pct: number }[]>`
+    with x as (select (deadline - coalesce(published_at, first_seen_at)::date) as d from jobs
+                where not is_demo and deadline is not null and first_seen_at > now() - interval '90 days')
+    select case when d <= 7 then 'a ≤7' when d <= 14 then 'b 8-14' when d <= 21 then 'c 15-21' else 'd 22+' end as b,
+           count(*)::int as n, round(100.0 * count(*) / sum(count(*)) over ())::int as pct
+      from x where d >= 0 group by 1 order by 1`) console.log(`${r.b} days: ${r.n} (${r.pct}%)`);
+  for (const r of await sql<{ t: string; n: number; within7: number }[]>`
+    select coalesce(job_type, '(none)') as t, count(*)::int as n,
+           count(*) filter (where deadline - coalesce(published_at, first_seen_at)::date <= 7)::int as within7
+      from jobs where not is_demo and deadline is not null and first_seen_at > now() - interval '90 days'
+       and deadline >= coalesce(published_at, first_seen_at)::date group by 1 order by 2 desc limit 8`) console.log(`  ${r.t}: ${r.within7} of ${r.n} within 7 days`);
+
   section("Grades (value, count)");
   for (const r of await sql<{ grade: string; n: number }[]>`select grade, count(*)::int as n from jobs j where ${open} and grade is not null group by 1 order by 2 desc`) console.log(`${r.n}\t${r.grade}`);
   const [{ g }] = await sql<{ g: number }[]>`select count(*)::int as g from jobs j where ${open} and grade is null`;
