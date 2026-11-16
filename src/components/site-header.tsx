@@ -15,6 +15,7 @@ const ALERTS_LABEL = "Get job alerts";
 const NAV = [
   { href: "/remote-jobs", label: "Remote jobs" },
   { href: "/organizations", label: "Organizations" },
+  { href: "/resources", label: "Resources" },
   { href: "/pricing", label: "Pricing" },
 ];
 
@@ -51,9 +52,9 @@ export async function SiteHeader() {
         <nav aria-label="Main" className="hidden items-center gap-4 whitespace-nowrap md:flex lg:gap-6">
           <FindJobsMenu employers={employers} />
           {NAV.map((n) => (
-            // Tablet widths: "Remote jobs" gives way (it is in the footer and the filters), so the
+            // Tablet widths: "Remote jobs" and "Resources" give way (both are in the footer and the phone menu), so the
             // header stays on one line and never scrolls sideways.
-            <span key={n.href} className={n.href === "/remote-jobs" ? "max-lg:hidden" : undefined}>
+            <span key={n.href} className={n.href === "/remote-jobs" || n.href === "/resources" ? "max-lg:hidden" : undefined}>
               <NavLink href={n.href}>{n.label}</NavLink>
             </span>
           ))}
