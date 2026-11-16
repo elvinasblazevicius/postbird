@@ -25,11 +25,11 @@ export const NET_BASE: Record<string, [number, number]> = {
  * listed once, its figure applies to every duty station in it (the circular's own rule).
  *
  * Multipliers change monthly. To refresh: take the newest consolidated circular and any later memos
- * from PA_DATA_PAGE, and change PA_EFFECTIVE with the figures.
+ * from PA_DATA_PAGE: python3 -I scripts/un-pay/refresh-pa.py WORK_DIR rewrites this block.
  */
 export const PA_EFFECTIVE = "November 2026";
 export const PA_CIRCULAR = { label: "ICSC Consolidated Post Adjustment Circular ICSC/CIRC/PAC/622 (effective 1 October 2026)", href: "https://icsc.un.org/Home/GetDataFile/9309" };
-export const PA_MEMO = { label: "ICSC post adjustment classification memo for November 2026", href: "https://icsc.un.org/Home/GetDataFile/9333" };
+export const PA_MEMO: { label: string; href: string } | null = { label: "ICSC post adjustment classification memo for November 2026", href: "https://icsc.un.org/Home/GetDataFile/9333" };
 export const PA_DATA_PAGE = "https://icsc.un.org/Home/DataPostAdjustment";
 const PA_ROWS: [string, number][] = [
   ["Afghanistan", 37.4],

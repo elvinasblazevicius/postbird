@@ -117,8 +117,8 @@ export default function UnSalariesGuide() {
                 </table>
               </div>
               <p className="text-[0.95rem] text-slate">
-                Multipliers from the <a href={PA_CIRCULAR.href} rel="noopener">ICSC consolidated circular</a> of October 2026 with the
-                changes in the <a href={PA_MEMO.href} rel="noopener">November 2026 memo</a>. Geneva, Vienna, Copenhagen, Nairobi, Addis Ababa
+                Multipliers for {PA_EFFECTIVE} from the <a href={PA_CIRCULAR.href} rel="noopener">ICSC consolidated circular</a>
+                {PA_MEMO ? <> with the changes in the <a href={PA_MEMO.href} rel="noopener">monthly memo</a></> : null}. Geneva, Vienna, Copenhagen, Nairobi, Addis Ababa
                 and Bangkok take their country&apos;s figure, which the ICSC applies to every duty station in a country listed once. Multipliers
                 change monthly: the current figures are on the <a href={PA_DATA_PAGE} rel="noopener">ICSC post adjustment data page</a>.
               </p>
@@ -162,7 +162,7 @@ export default function UnSalariesGuide() {
       sources={[
         { label: `ICSC salary scale for the Professional and higher categories, effective ${NET_BASE_EFFECTIVE}`, href: NET_BASE_SOURCE },
         PA_CIRCULAR,
-        PA_MEMO,
+        ...(PA_MEMO ? [PA_MEMO] : []),
         { label: "ICSC: post adjustment", href: PAY_SOURCES.icscPostAdjustment },
         { label: "ICSC salary scales", href: PAY_SOURCES.icscSalaryScales },
       ]}
