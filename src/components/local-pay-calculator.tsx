@@ -104,17 +104,20 @@ export function LocalPayCalculator({ stations }: { stations: PickerStation[] }) 
       </div>
       {scale ? (
         <>
-          <dl className="mt-5 grid gap-3 sm:grid-cols-2" aria-live="polite">
-            <div className="rounded-lg bg-highlight/40 p-3">
+          <dl className="mt-5 grid gap-3" aria-live="polite">
+            <div className="rounded-lg bg-highlight/40 p-3 sm:col-span-2">
               <dt className="text-sm text-slate">Net pay per year, first to highest step</dt>
-              <dd className="mt-0.5 text-lg font-bold tabular-nums">{amount(lo, station.currency)} – {amount(hi, station.currency)}</dd>
+              {/* Two lines kept on phones, where long amounts wrap, so changing station doesn't move what follows. */}
+              <dd className="mt-0.5 min-h-[2lh] text-lg font-bold tabular-nums sm:min-h-0">
+                <span className="whitespace-nowrap">{amount(lo, station.currency)}</span> – <span className="whitespace-nowrap">{amount(hi, station.currency)}</span>
+              </dd>
             </div>
             <div className="rounded-lg bg-mist p-3">
               <dt className="text-sm text-slate">Per month at the first step (a year ÷ 12)</dt>
               <dd className="mt-0.5 font-semibold tabular-nums">{amount(lo / 12, station.currency)}</dd>
             </div>
           </dl>
-          <p className="mt-3 text-sm text-slate">
+          <p className="mt-3 min-h-[3lh] text-sm text-slate">
             Scale effective {dateLabel(scale.effective)}.
             {station.paidIn !== station.currency ? ` Set in ${station.currency}, paid in ${station.paidIn}.` : null}
             {scale.note ? ` This scale is ${scale.note}.` : null}{" "}

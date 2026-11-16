@@ -99,7 +99,14 @@ export function SalaryCalculator() {
       <p className="mt-1 text-sm text-slate">
         Looking for G or NO pay? <a href={`${LOCAL_CALCULATOR}#calculator`} className="text-accent underline">Local staff salaries</a> by duty station.
       </p>
-      <dl className="mt-5 grid gap-3 sm:grid-cols-3" aria-live="polite">
+      {/* Net pay on its own row, so a longer figure never wraps and moves what follows. */}
+      <dl className="mt-5 grid gap-3 sm:grid-cols-2" aria-live="polite">
+        <div className="rounded-lg bg-highlight/40 p-3 sm:col-span-2">
+          <dt className="text-sm text-slate">Net pay per year</dt>
+          <dd className="mt-0.5 text-lg font-bold tabular-nums">
+            {lo === hi ? usd(netRemuneration(lo, pa.multiplier)) : `${usd(netRemuneration(lo, pa.multiplier))} – ${usd(netRemuneration(hi, pa.multiplier))}`}
+          </dd>
+        </div>
         <div className="rounded-lg bg-mist p-3">
           <dt className="text-sm text-slate">Net base salary</dt>
           <dd className="mt-0.5 font-semibold tabular-nums">{lo === hi ? usd(lo) : `${usd(lo)} – ${usd(hi)}`}</dd>
@@ -107,12 +114,6 @@ export function SalaryCalculator() {
         <div className="rounded-lg bg-mist p-3">
           <dt className="text-sm text-slate">Post adjustment ({PA_EFFECTIVE})</dt>
           <dd className="mt-0.5 font-semibold tabular-nums">+{pa.multiplier}%</dd>
-        </div>
-        <div className="rounded-lg bg-highlight/40 p-3">
-          <dt className="text-sm text-slate">Net pay per year</dt>
-          <dd className="mt-0.5 text-lg font-bold tabular-nums">
-            {lo === hi ? usd(netRemuneration(lo, pa.multiplier)) : `${usd(netRemuneration(lo, pa.multiplier))} – ${usd(netRemuneration(hi, pa.multiplier))}`}
-          </dd>
         </div>
       </dl>
       <div className="mt-4 flex flex-wrap items-center gap-3">
