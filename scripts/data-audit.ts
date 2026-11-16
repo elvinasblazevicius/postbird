@@ -105,6 +105,21 @@ async function main() {
     }
   }
 
+  section("Missing place or closing date by employer site (open listings: host | open | no place | no date | page results)");
+  for (const r of await sql<{ h: string; n: number; np: number; nd: number; res: string; ex: string }[]>`
+    select coalesce(apply_host, '-') as h, count(*)::int as n,
+           count(*) filter (where country_code is null and coalesce(location_text, '') = '' and not is_remote)::int as np,
+           count(*) filter (where deadline is null)::int as nd,
+           string_agg(distinct coalesce(page_result, 'unread'), ',') as res,
+           (array_agg(apply_url order by (deadline is null) desc, id desc))[1] as ex
+      from jobs j where ${open}
+     group by 1 having count(*) filter (where deadline is null or (country_code is null and coalesce(location_text, '') = '' and not is_remote)) >= 3
+     order by count(*) filter (where deadline is null or (country_code is null and coalesce(location_text, '') = '')) desc limit 45`)
+    console.log(`${r.h} | ${r.n} | ${r.np} | ${r.nd} | ${r.res} | ${r.ex}`);
+  for (const r of await sql<{ id: number; title: string; apply_url: string; page_result: string | null; page_attempts: number; country_code: string | null; deadline: string | null }[]>`
+    select id::int, title, apply_url, page_result, page_attempts, country_code, deadline::text from jobs j where ${open} and title ilike 'WASH Technical Manager%'`)
+    console.log(`sample #${r.id} ${r.title} | ${r.apply_url} | ${r.page_result ?? "unread"} x${r.page_attempts} | ${r.country_code ?? "-"} | ${r.deadline ?? "-"}`);
+
   section("Days from posting to closing (listings first seen in the last 90 days, with a closing date)");
   for (const r of await sql<{ b: string; n: number; pct: number }[]>`
     with x as (select (deadline - coalesce(published_at, first_seen_at)::date) as d from jobs
