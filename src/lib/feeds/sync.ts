@@ -556,6 +556,12 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
         await sql`update jobs set page_checked_at = null, page_attempts = 0
                    where status = 'active' and not is_demo and apply_url ~* 'careersection/[^?]*jobdetail'
                      and (deadline is null or country_code is null) and page_checked_at < '2026-11-14T13:30:00Z'`;
+        // Once: every open listing still missing a closing date or place is read again with the readers
+        // added on 16 Nov 2026 (UN Careers, more Oracle links, Taleo date formats, page data, robots.txt per RFC 9309).
+        await sql`update jobs set page_checked_at = null, page_attempts = 0
+                   where status = 'active' and not is_demo
+                     and (deadline is null or (country_code is null and coalesce(location_text, '') = ''))
+                     and page_checked_at < '2026-11-16T03:00:00Z'`;
         const e = await enrichFromVacancyPages();
         if (e.checked) {
           const f = e.filled;

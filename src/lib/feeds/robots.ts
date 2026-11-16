@@ -1,10 +1,11 @@
 /**
  * A small robots.txt reader: the rules for our bot's name, or for "*" when none name it, and
  * whether a path is allowed (longest matching rule wins; Allow wins a tie; "*" and "$" supported).
- * A missing robots.txt (404) allows everything; one that can't be read (5xx, timeout) allows
- * nothing for this run, the cautious reading.
+ * As the robots.txt standard (RFC 9309) says: a robots.txt that answers 4xx (missing, forbidden)
+ * sets no rules; one that can't be reached (5xx, 429, timeout) allows nothing for now
+ * ("unreachable", tried again on a later run, never treated as the site saying no).
  */
-export type RobotsRules = { allow: string[]; disallow: string[] } | "allow-all" | "deny-all";
+export type RobotsRules = { allow: string[]; disallow: string[] } | "allow-all" | "deny-all" | "unreachable";
 
 export function parseRobots(text: string, botName: string): RobotsRules {
   type Group = { agents: string[]; allow: string[]; disallow: string[] };
@@ -44,7 +45,7 @@ function ruleRegex(rule: string): RegExp {
 
 export function robotsAllows(rules: RobotsRules, pathAndQuery: string): boolean {
   if (rules === "allow-all") return true;
-  if (rules === "deny-all") return false;
+  if (rules === "deny-all" || rules === "unreachable") return false;
   let best: { len: number; allow: boolean } | null = null;
   for (const [list, allow] of [[rules.disallow, false], [rules.allow, true]] as const) {
     for (const r of list) {

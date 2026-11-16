@@ -22,7 +22,7 @@ export type PageFacts = {
   grade: string | null;
   experienceYears: number | null;
   languages: string[] | null;
-  via: "oracle" | "smartrecruiters" | "workday" | "jsonld" | "taleo" | "text";
+  via: SystemVia | "jsonld" | "taleo" | "microdata" | "pagedata" | "text";
 };
 
 export const EMPTY_FACTS: Omit<PageFacts, "via"> = {
@@ -37,7 +37,7 @@ export function hasFacts(f: Partial<PageFacts> | null | undefined): boolean {
 
 /** Oracle Recruiting Cloud: …/hcmUI/CandidateExperience/en/sites/CX_1001/job/24002 → its job-details API. */
 export function oracleApiUrl(url: string): string | null {
-  const m = url.match(/^https:\/\/([a-z0-9.-]+\.oraclecloud\.com)\/hcmUI\/CandidateExperience\/[a-z-]+\/sites\/([A-Za-z0-9_]+)\/(?:requisitions\/preview|job)\/(\d+)/i);
+  const m = url.match(/^https:\/\/([a-z0-9.-]+\.oraclecloud\.com)\/hcmUI\/CandidateExperience\/[a-z-]+\/sites\/([A-Za-z0-9_]+)\/(?:requisitions\/(?:preview|job)|job)\/(\d+)/i);
   if (!m) return null;
   return `https://${m[1]}/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails?expand=all&onlyData=true&finder=ById;Id=%22${m[3]}%22,siteNumber=${m[2]}`;
 }
@@ -54,7 +54,17 @@ export function workdayApiUrl(url: string): string | null {
   return m ? `https://${m[1]}/wday/cxs/${m[2]}/${m[3]}/job/${m[4]}` : null;
 }
 
-export function systemApiUrl(url: string): { api: string; via: "oracle" | "smartrecruiters" | "workday" } | null {
+/** UN Careers (careers.un.org/jobSearchDescription/288425) → the public job-opening data its page loads. */
+export function unCareersApiUrl(url: string): string | null {
+  const m = url.match(/^https:\/\/careers\.un\.org\/jobSearchDescription\/(\d+)/i);
+  return m ? `https://careers.un.org/api/public/opening/jo/${m[1]}/en` : null;
+}
+
+export type SystemVia = "oracle" | "smartrecruiters" | "workday" | "uncareers";
+
+export function systemApiUrl(url: string): { api: string; via: SystemVia } | null {
+  const u = unCareersApiUrl(url);
+  if (u) return { api: u, via: "uncareers" };
   const o = oracleApiUrl(url);
   if (o) return { api: o, via: "oracle" };
   const s = smartRecruitersApiUrl(url);
@@ -86,9 +96,34 @@ function textFacts(html: string | null | undefined) {
   return { experienceYears: detectExperienceYears(text), languages: langs?.length ? langs : null };
 }
 
-export function factsFromSystem(via: "oracle" | "smartrecruiters" | "workday", data: unknown): PageFacts | null {
+/** The calendar day of an instant in New York (UN closing times are 23:59 New York, stored as 04:59 UTC the next day). */
+function newYorkDay(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = new Date(v);
+  if (Number.isNaN(t.getTime())) return null;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(t);
+}
+
+export function factsFromSystem(via: SystemVia, data: unknown): PageFacts | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
+  if (via === "uncareers") {
+    // Read as labelled text, so duty stations ("GENEVA"), grades and contract types go through the same rules as any page.
+    const it = (d.data ?? null) as Record<string, unknown> | null;
+    if (!it) return null;
+    const stations = (Array.isArray(it.dutyStation) ? it.dutyStation : []).map((x) => String((x as { description?: string })?.description ?? "").trim()).filter(Boolean);
+    const station = stations.length === 1 ? stations[0].toLowerCase().replace(/\b\p{L}/gu, (c) => c.toUpperCase()) : null;
+    const closing = newYorkDay(it.endDate);
+    const html = [
+      closing ? `<p>Closing date: ${closing}</p>` : "",
+      station ? `<p>Duty station: ${station}</p>` : "",
+      typeof it.jobLevel === "string" && it.jobLevel ? `<p>Grade: ${it.jobLevel}</p>` : "",
+      typeof it.recrTypeDescription === "string" && it.recrTypeDescription ? `<p>Contract type: ${it.recrTypeDescription}</p>` : "",
+      typeof it.jobDescription === "string" ? it.jobDescription : "",
+    ].join("");
+    const f = factsFromText(String(it.jobTitle ?? ""), "https://careers.un.org/", `<main>${html}</main>`);
+    return f ? { ...f, deadline: closing ?? f.deadline, via } : null;
+  }
   if (via === "oracle") {
     const it = (Array.isArray(d.items) ? d.items[0] : null) as Record<string, unknown> | null;
     if (!it) return null;
@@ -257,11 +292,30 @@ export function taleoText(html: string): string | null {
     if (m && MONTHS[m[2].toLowerCase()]) return `${m[3]}-${String(MONTHS[m[2].toLowerCase()]).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
     m = p.match(/^([A-Za-z]{3})[a-z]* (\d{1,2}), (\d{4})/); // Dec 3, 2026
     if (m && MONTHS[m[1].toLowerCase()]) return `${m[3]}-${String(MONTHS[m[1].toLowerCase()]).padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+    m = p.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})/); // 18-Nov-2026, 5:59:00 PM
+    if (m && MONTHS[m[2].toLowerCase()]) return `${m[3]}-${String(MONTHS[m[2].toLowerCase()]).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+    m = p.match(/^(\d{4})-(\d{2})-(\d{2})(?:,|\s|$)/); // 2026-11-27, 11:59:00 PM
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
     return null;
   };
-  const dates = [...new Set(parts.map(dateOf).filter((d): d is string => Boolean(d)))].sort();
-  const closing = dates.length >= 2 ? dates[dates.length - 1] : null;
-  const grade = parts.find((p) => /^(?:P|D|G|GS|NO[A-D]?|FS|NPSA|IPSA|ICS|SB|LICA|IICA|A|B|C)-?\d{1,2}$/.test(p) && /\d/.test(p));
+  // Taleo shows times in a time zone that varies between requests: "23:59 Vienna" can come back as
+  // "00:59 AM" the next day. A time before 5 AM is taken as the evening before.
+  const dayOf = (p: string): string | null => {
+    const d = dateOf(p);
+    const t = p.match(/,\s*(\d{1,2}):\d{2}(?::\d{2})?\s*(AM|PM)?/i);
+    if (!d || !t) return d;
+    const h = Number(t[1]) % 12 + (t[2]?.toUpperCase() === "PM" ? 12 : t[2] ? 0 : Number(t[1]) >= 12 ? 12 : 0);
+    if (h >= 5) return d;
+    const prev = new Date(`${d}T12:00:00Z`);
+    prev.setUTCDate(prev.getUTCDate() - 1);
+    return prev.toISOString().slice(0, 10);
+  };
+  const dates = [...new Set(parts.map(dayOf).filter((d): d is string => Boolean(d)))].sort();
+  // The latest of two or more dates (posted, closing), or a lone date still ahead (pages that show only the closing date).
+  const today = new Date().toISOString().slice(0, 10);
+  const closing = dates.length >= 2 ? dates[dates.length - 1] : dates.length === 1 && dates[0] >= today ? dates[0] : null;
+  const grade = parts.find((p) => /^(?:P|D|G|GS|NO[A-D]?|FS|NPSA|IPSA|ICS|SB|LICA|IICA|A|B|C)-?\d{1,2}$/.test(p) && /\d/.test(p))
+    ?? parts.map((p) => p.match(/^NATO Grade ([A-Z]\d{1,2})$/)?.[1]).find(Boolean);
   const place = parts.find((p) => /^[A-Z][\p{L} .'(),]{2,40}-[A-Z][\p{L} .'-]{1,40}$/u.test(p));
   // No "Country-City" ("Various Locations"): the office the post belongs to names the country ("FAO Representation in Georgia").
   const office = place ? null : parts.map((p) => p.match(/(?:Representation|Country Office|Office) (?:in|for) (?:the )?([A-Z][\p{L} .'-]{2,40})$/u)?.[1]).find(Boolean);
@@ -274,7 +328,88 @@ export function taleoText(html: string): string | null {
   return facts || description ? `${facts}${description}` : null;
 }
 
+/** A date written by a system in almost any machine format ("2026-11-30T20:59:00+00:00", "Wed Nov 18 06:00:00 UTC 2026"). */
+function anyDate(v: unknown): string | null {
+  if (typeof v !== "string" && typeof v !== "number") return null;
+  const iso = typeof v === "string" ? v.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] : null;
+  if (iso) return iso;
+  const t = new Date(typeof v === "number" && v < 1e11 ? v * 1000 : v);
+  return Number.isNaN(t.getTime()) ? null : t.toISOString().slice(0, 10);
+}
+
+/**
+ * schema.org written into the page's tags instead of a script ("microdata"): <meta itemprop="validThrough"
+ * content="Wed Nov 18 06:00:00 UTC 2026">, itemprop="addressCountry", itemprop="addressLocality".
+ */
+export function factsFromMicrodata(html: string): PageFacts | null {
+  const prop = (name: string): string | null => {
+    const tag = html.match(new RegExp(`<[^>]+itemprop=["']${name}["'][^>]*>`, "i"))?.[0];
+    if (!tag) return null;
+    const content = tag.match(/content=["']([^"']+)["']/i)?.[1];
+    if (content) return content.trim();
+    const after = html.slice(html.indexOf(tag) + tag.length, html.indexOf(tag) + tag.length + 200).match(/^([^<]{1,120})</)?.[1];
+    return after?.trim() || null;
+  };
+  const deadline = anyDate(prop("validThrough"));
+  const city = prop("addressLocality");
+  const countryCode = countryOf(prop("addressCountry")) ?? (city ? countryOf(city) : null);
+  const facts: PageFacts = { ...EMPTY_FACTS, deadline, countryCode, city: countryCode ? city : null, locationText: countryCode ? [city, countryByCode(countryCode)?.name].filter(Boolean).join(", ") : null, via: "microdata" };
+  return hasFacts(facts) ? facts : null;
+}
+
+/** Keys that name a posting's closing date in page data (never a plain "endDate", which is often the contract's). */
+const CLOSING_KEY = /^(?:posting)?(?:expir(?:y|ation|es)|closing|close|deadline|applicationDeadline|applyBy|validThrough|postingEnd|jobPostingEnd|postingClose|applicationClose|applicationEnd)(?:Date|DateTime|Timestamp|TimestampUTC|Utc|At|On)?$/i;
+const COUNTRY_KEY = /^(?:iso)?(?:countryCode|country|addressCountry|isoCountryCode)$/i;
+const CITY_KEY = /^(?:city|cityName|locality|addressLocality|town)$/i;
+
+/**
+ * The job's data that script-built pages embed for themselves (Next.js "__NEXT_DATA__", other
+ * application/json blocks): a closing date under a closing-date key, and a country and town under a
+ * location key. Works for any system built this way, known or not. Texts for the page's own
+ * interface (translations) are skipped.
+ */
+export function factsFromPageData(html: string): PageFacts | null {
+  let deadline: string | null = null, countryCode: string | null = null, city: string | null = null;
+  for (const m of html.matchAll(/<script\b[^>]*type=["']application\/json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    if (m[1].length > 3_000_000) continue;
+    let data: unknown;
+    try { data = JSON.parse(m[1]); } catch { continue; }
+    const stack: { v: unknown; path: string }[] = [{ v: data, path: "" }];
+    let seen = 0;
+    while (stack.length && seen++ < 200_000) {
+      const { v, path } = stack.pop()!;
+      if (Array.isArray(v)) { v.slice(0, 50).forEach((x, i) => stack.push({ v: x, path: `${path}[${i}]` })); continue; }
+      if (!v || typeof v !== "object") continue;
+      for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+        const p = `${path}.${k}`;
+        if (/i18n|translation|locale[s]?\b|messages/i.test(p)) continue;
+        if (x && typeof x === "object") { stack.push({ v: x, path: p }); continue; }
+        if (!deadline && CLOSING_KEY.test(k)) deadline = plausibleDeadline(anyDate(x));
+        if (/location|address|place|site/i.test(path)) {
+          if (!countryCode && COUNTRY_KEY.test(k)) countryCode = countryOf(x);
+          if (!city && CITY_KEY.test(k) && typeof x === "string" && x.trim().length < 60) city = x.trim();
+        }
+      }
+    }
+  }
+  const facts: PageFacts = { ...EMPTY_FACTS, deadline, countryCode, city: countryCode ? city : null, locationText: countryCode ? [city, countryByCode(countryCode)?.name].filter(Boolean).join(", ") : null, via: "pagedata" };
+  return hasFacts(facts) ? facts : null;
+}
+
 export function factsFromPage(title: string, url: string, html: string): PageFacts | null {
+  const best = factsFromPageCore(title, url, html);
+  // Whatever the main readers left empty, from schema.org tags and the page's own embedded data.
+  const extra = [factsFromMicrodata(html), factsFromPageData(html)].filter((f): f is PageFacts => Boolean(f));
+  if (!extra.length) return best;
+  const out: PageFacts = best ? { ...best } : { ...EMPTY_FACTS, via: extra[0].via };
+  for (const f of extra) {
+    if (!out.deadline) out.deadline = believableValidThrough(f.deadline);
+    if (!out.countryCode && !out.locationText && (f.countryCode || f.locationText)) { out.countryCode = f.countryCode; out.city = f.city; out.locationText = f.locationText; }
+  }
+  return hasFacts(out) ? out : best;
+}
+
+function factsFromPageCore(title: string, url: string, html: string): PageFacts | null {
   const taleo = taleoText(html);
   if (taleo) {
     const t = factsFromText(title, url, `<main>${taleo}</main>`);
@@ -321,7 +456,7 @@ export function pageSaysClosed(html: string): boolean {
 }
 
 /** A recruitment system's answer for one job: "closed" only when the system says so plainly. */
-export function systemSaysClosed(via: "oracle" | "smartrecruiters" | "workday", data: unknown): boolean {
+export function systemSaysClosed(via: SystemVia, data: unknown): boolean {
   if (!data || typeof data !== "object") return false;
   const d = data as Record<string, unknown>;
   if (via === "smartrecruiters") return d.active === false;

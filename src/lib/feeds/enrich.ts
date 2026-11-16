@@ -70,18 +70,22 @@ async function get(url: string, accept: string): Promise<Response> {
   }
 }
 
-/** robots.txt per host for this run: missing → allowed; unreadable → not allowed (cautious). */
+/** robots.txt per host for this run: missing or forbidden → no rules; unreachable → not now, try again on a later run. */
 export async function robotsFor(host: string, cache: Map<string, RobotsRules>): Promise<RobotsRules> {
   const hit = cache.get(host);
   if (hit) return hit;
   let rules: RobotsRules;
   try {
     const res = await get(`https://${host}/robots.txt`, "text/plain");
-    if (res.status === 404 || res.status === 410) rules = "allow-all";
-    else if (res.ok) rules = parseRobots(await readCapped(res, 500_000), S.robotsName);
-    else rules = "deny-all";
+    // RFC 9309: 4xx (except 429) means no rules; 5xx and 429 mean "can't tell yet".
+    if (res.status >= 400 && res.status < 500 && res.status !== 429) { await res.body?.cancel().catch(() => {}); rules = "allow-all"; }
+    else if (res.ok) {
+      const body = await readCapped(res, 500_000);
+      // A site that answers every address with its app page (no robots.txt at all) sets no rules.
+      rules = /^\s*</.test(body) ? "allow-all" : parseRobots(body, S.robotsName);
+    } else { await res.body?.cancel().catch(() => {}); rules = "unreachable"; }
   } catch {
-    rules = "deny-all";
+    rules = "unreachable";
   }
   cache.set(host, rules);
   return rules;
@@ -92,18 +96,27 @@ export async function allowed(url: string, cache: Map<string, RobotsRules>): Pro
   return robotsAllows(await robotsFor(u.host, cache), u.pathname + u.search);
 }
 
+/** Like allowed(), but an unreachable robots.txt is an error to retry later, not the site saying no. */
+async function mayRead(url: string, cache: Map<string, RobotsRules>): Promise<boolean> {
+  const u = new URL(url);
+  const rules = await robotsFor(u.host, cache);
+  if (rules === "unreachable") throw new NotReadable("robots.txt unreachable");
+  return robotsAllows(rules, u.pathname + u.search);
+}
+
 /** Reads one job's facts: a recruitment system's job data when its address shows one, else the page. */
 async function readFacts(job: DueJob, cache: Map<string, RobotsRules>): Promise<{ facts: PageFacts | null; html: string | null }> {
   const system = systemApiUrl(job.apply_url);
-  if (system) {
-    if (!(await allowed(system.api, cache))) throw new BlockedByRobots();
+  // A system's job data when its robots.txt allows it; otherwise (or when it has nothing) the page itself,
+  // which some systems allow while closing their data to robots (SmartRecruiters).
+  if (system && (await mayRead(system.api, cache))) {
     const res = await get(system.api, "application/json");
-    if (!res.ok) throw new NotReadable(`HTTP ${res.status}`);
-    const facts = factsFromSystem(system.via, JSON.parse(await readCapped(res, S.maxBytes)));
-    if (hasFacts(facts)) return { facts, html: null };
-    // Some systems' pages also carry a JobPosting record; fall through to the page.
+    if (res.ok) {
+      const facts = factsFromSystem(system.via, JSON.parse(await readCapped(res, S.maxBytes)));
+      if (hasFacts(facts)) return { facts, html: null };
+    } else await res.body?.cancel().catch(() => {});
   }
-  if (!(await allowed(job.apply_url, cache))) throw new BlockedByRobots();
+  if (!(await mayRead(job.apply_url, cache))) throw new BlockedByRobots();
   const res = await get(job.apply_url, "text/html,application/xhtml+xml");
   if (!res.ok) throw new NotReadable(`HTTP ${res.status}`);
   const type = res.headers.get("content-type") ?? "";
@@ -246,7 +259,10 @@ export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: 
             or (page_result = 'none' and page_attempts < ${S.maxAttempts}
                 and page_checked_at < now() - make_interval(days => ${S.retryDays}))
             or (page_result = 'error' and page_attempts < ${S.maxAttempts}
-                and page_checked_at < now() - make_interval(hours => ${S.retryErrorHours})))
+                and page_checked_at < now() - make_interval(hours => ${S.retryErrorHours}))
+            -- Sites change their robots.txt: a page closed to robots is asked again now and then.
+            or (page_result = 'blocked' and page_attempts < ${S.maxAttempts}
+                and page_checked_at < now() - make_interval(days => ${S.retryDays})))
      order by page_checked_at nulls first, first_seen_at desc
      limit ${opts.limit ?? S.perRun}`;
 

@@ -188,3 +188,71 @@ describe("Taleo pages without a duty station", () => {
     expect(f?.countryCode).toBe("GE");
   });
 });
+
+describe("readers added for every employer's system (16 Nov 2026)", () => {
+  const ahead = (days: number) => new Date(Date.now() + days * 86400_000);
+  const iso = (days: number) => ahead(days).toISOString().slice(0, 10);
+
+  it("reads Oracle links written as …/requisitions/job/N", () => {
+    expect(oracleApiUrl("https://estm.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/requisitions/job/37836"))
+      .toContain("finder=ById;Id=%2237836%22,siteNumber=CX_1");
+  });
+
+  it("reads UN Careers job data: New York closing day, duty station, contract type", async () => {
+    const { unCareersApiUrl } = await import("@/lib/feeds/vacancy-page");
+    expect(unCareersApiUrl("https://careers.un.org/jobSearchDescription/288425?language=en")).toBe("https://careers.un.org/api/public/opening/jo/288425/en");
+    const end = `${iso(10)}T04:59:59.000Z`;
+    const f = factsFromSystem("uncareers", { data: { jobTitle: "Legal Affairs Internship", dutyStation: [{ description: "GENEVA" }], endDate: end, jobLevel: "P-3", recrTypeDescription: "Intern" } });
+    expect(f?.deadline).toBe(iso(9));
+    expect(f?.countryCode).toBe("CH");
+    expect(f?.city).toBe("Geneva");
+    expect(f?.grade).toBe("P-3");
+    expect(f?.jobType).toBe("Internship");
+  });
+
+  it("reads Taleo pages that show only the closing date (NATO) or ISO dates (IAEA)", () => {
+    const d = ahead(5);
+    const mon = d.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+    const nato = `${String(d.getUTCDate()).padStart(2, "0")}-${mon}-${d.getUTCFullYear()}, 5\\:59\\:00 PM`;
+    const page = (vals: string[]) => `<input type="hidden" id="initialHistory" value="${encodeURIComponent(["ftlx0", ...vals].join("!|!"))}">`;
+    const n = factsFromPage("Assistant Coordinator", "https://nato.taleo.net/careersection/2/jobdetail.ftl?job=261761", page(["Belgium-Mons", "Belgium-Mons", "Full-time", nato, nato, "NATO Grade G8"]));
+    expect(n?.deadline).toBe(iso(5));
+    expect(n?.countryCode).toBe("BE");
+    const i = factsFromPage("Consultant", "https://iaea.taleo.net/careersection/ex/jobdetail.ftl?job=X", page(["Austria-Vienna", `${iso(-3)}, 12\\:15\\:01 PM`, `${iso(11)}, 11\\:59\\:00 PM`]));
+    expect(i?.deadline).toBe(iso(11));
+  });
+
+  it("reads schema.org tags (microdata) when there is no JobPosting script", () => {
+    const d = ahead(4);
+    const js = d.toUTCString().replace(/^(\w+), (\d+) (\w+) (\d+) (.*) GMT$/, "$1 $3 $2 $5 UTC $4");
+    const f = factsFromPage("MERL Officer", "https://jobs.plan-international.org/job/x/1/", `<html><body><h1>MERL Officer</h1><meta itemprop="validThrough" content="${js}"><span itemprop="addressCountry">Guatemala</span></body></html>`);
+    expect(f?.deadline).toBe(iso(4));
+    expect(f?.countryCode).toBe("GT");
+  });
+
+  it("reads a page's embedded job data, skipping interface texts", () => {
+    const data = { props: { pageProps: {
+      _nextI18Next: { initialI18nStore: { "en-US": { common: { "closing-date": "Closing date", countryCode: "US" } } } },
+      jobData: { jobTitle: "KEN - WASH Intern", postingExpiryTimestampUTC: `${iso(14)}T20:59:00+00:00`, postingLocations: [{ isoCountryCode: "KE" }] },
+    } } };
+    const html = `<html><body><div id="__next"></div><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(data)}</script></body></html>`;
+    const f = factsFromPage("KEN - WASH Intern", "https://jobs.dayforcehcm.com/en-US/x/CANDIDATEPORTAL/jobs/805", html);
+    expect(f?.deadline).toBe(iso(14));
+    expect(f?.countryCode).toBe("KE");
+  });
+
+  it("treats an unreachable robots.txt as 'not now', never as the site saying no", () => {
+    expect(robotsAllows("unreachable", "/job/1")).toBe(false);
+    expect(robotsAllows("allow-all", "/job/1")).toBe(true);
+  });
+});
+
+describe("Taleo closing times shown in another time zone", () => {
+  it("takes a time just after midnight as the evening before", () => {
+    const d = new Date(Date.now() + 12 * 86400_000);
+    const next = new Date(d.getTime() + 86400_000).toISOString().slice(0, 10);
+    const posted = new Date(Date.now() - 2 * 86400_000).toISOString().slice(0, 10);
+    const page = `<input type="hidden" id="initialHistory" value="${encodeURIComponent(["ftlx0", "Austria-Vienna", `${posted}, 12\\:15\\:01 PM`, `${next}, 12\\:59\\:00 AM`].join("!|!"))}">`;
+    expect(factsFromPage("Consultant", "https://iaea.taleo.net/x", page)?.deadline).toBe(d.toISOString().slice(0, 10));
+  });
+});
