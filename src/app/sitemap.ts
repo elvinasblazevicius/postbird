@@ -6,6 +6,7 @@ import { BILLING_LIVE } from "@/lib/billing/live";
 import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
 import { countFor } from "@/lib/landing";
 import { absoluteUrl, jobPath, siteConfig } from "@/lib/site";
+import { LOCAL_PAY_PATH, LOCAL_PAY_STATIONS } from "@/lib/local-pay";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: absoluteUrl("/guides/un-volunteers"), changeFrequency: "monthly", priority: 0.5 },
     { url: absoluteUrl("/guides/epso-exams"), changeFrequency: "monthly", priority: 0.5 },
     { url: absoluteUrl("/guides/eu-blue-book-traineeship"), changeFrequency: "monthly", priority: 0.5 },
+    { url: absoluteUrl(LOCAL_PAY_PATH), changeFrequency: "monthly", priority: 0.5 },
+    ...LOCAL_PAY_STATIONS.map((st) => ({ url: absoluteUrl(`${LOCAL_PAY_PATH}/${st.slug}`), changeFrequency: "monthly" as const, priority: 0.4 })),
     { url: absoluteUrl("/pricing"), changeFrequency: "monthly", priority: 0.3 },
     { url: absoluteUrl("/about"), changeFrequency: "monthly", priority: 0.3 },
   ];

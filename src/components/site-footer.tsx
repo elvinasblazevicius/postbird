@@ -51,6 +51,7 @@ export async function SiteFooter() {
             <li><Link href="/guides/how-to-read-a-un-vacancy" className="hover:text-ink">How to read a UN vacancy</Link></li>
             <li><Link href="/guides/how-to-get-a-un-job" className="hover:text-ink">How to get a UN job</Link></li>
             <li><Link href="/guides/un-salaries" className="hover:text-ink">UN salary calculator</Link></li>
+            <li><Link href="/guides/un-local-salaries" className="hover:text-ink">Local staff salaries</Link></li>
             <li><Link href="/guides/un-internships" className="hover:text-ink">Paid UN internships</Link></li>
             <li><Link href="/alerts" className="hover:text-ink">Job alerts</Link></li>
             {siteConfig.freeWeeklyEmail ? <li><Link href="/alerts#alert-signup" className="hover:text-ink">Free weekly email</Link></li> : null}

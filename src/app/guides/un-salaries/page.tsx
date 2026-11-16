@@ -133,7 +133,7 @@ export default function UnSalariesGuide() {
               <p>
                 Locally recruited staff (National Officers, NO-A to NO-E, and General Service, G-1 to G-7) are paid on local salary scales set
                 for each duty station, in local currency, based on the best prevailing conditions of employment in that location. Their pay
-                is not comparable across countries.
+                is not comparable across countries: see <Link href="/guides/un-local-salaries">local staff salaries by duty station</Link>.
               </p>
               <p>
                 <Link href="/grades">Grades and contract types explained</Link> describes each category.

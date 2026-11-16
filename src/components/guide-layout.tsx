@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
+import { ShareButton } from "@/components/job-tools";
 import { absoluteUrl, INDEPENDENCE_NOTE, jsonLd, siteConfig } from "@/lib/site";
 
 export type GuideSection = { id: string; title: string; body: React.ReactNode };
@@ -25,6 +26,7 @@ export function GuideLayout({
   vacancies,
   sources,
   before,
+  parent,
 }: {
   path: string;
   title: string;
@@ -36,6 +38,8 @@ export function GuideLayout({
   sources: GuideLink[];
   /** Shown above the sections (a tool or a table the guide is built around). */
   before?: React.ReactNode;
+  /** A guide this one sits under (a duty station's page under the local salaries guide), for the breadcrumbs. */
+  parent?: GuideLink;
 }) {
   const ld = {
     "@context": "https://schema.org",
@@ -53,11 +57,14 @@ export function GuideLayout({
       <PageHeader
         width="max-w-3xl"
         title={title}
-        crumbs={[{ href: "/", label: "Home" }, { href: "/resources", label: "Resources" }, { href: path, label: crumb }]}
+        crumbs={[{ href: "/", label: "Home" }, { href: "/resources", label: "Resources" }, ...(parent ? [parent] : []), { href: path, label: crumb }]}
         intro={intro}
         note={INDEPENDENCE_NOTE}
       />
       <div className="mx-auto max-w-3xl px-4 py-10 text-[1.05rem] leading-relaxed text-ink sm:px-6">
+        <div className="mb-6">
+          <ShareButton url={absoluteUrl(path)} title={title} />
+        </div>
         {before ? <div className="mb-10">{before}</div> : null}
         {sections.length > 2 ? (
           <nav aria-label="On this page" className="rounded-xl border border-rule bg-paper p-5 text-[0.95rem]">

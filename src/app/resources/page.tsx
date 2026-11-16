@@ -43,6 +43,11 @@ const GUIDES: { href: string; title: string; text: string }[] = [
     text: "Work out Professional pay by grade and duty station from the official ICSC scales: net base salary, post adjustment, and what else is paid on top.",
   },
   {
+    href: "/guides/un-local-salaries",
+    title: "UN local staff salaries by duty station",
+    text: "General Service and National Officer pay in every duty station, from the official local salary scales, with a calculator.",
+  },
+  {
     href: "/guides/un-internships",
     title: "Which UN internships are paid",
     text: "Agency by agency, which internships pay a stipend and which don't, with links to each organization's own rules.",
