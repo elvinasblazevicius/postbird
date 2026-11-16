@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { SearchSelect } from "@/components/search-select";
 import { NET_BASE, PA_EFFECTIVE, POST_ADJUSTMENT, netRemuneration, usd } from "@/lib/un-pay";
 
 const GRADES = ["P-1", "P-2", "P-3", "P-4", "P-5", "D-1", "D-2"];
@@ -29,7 +30,7 @@ function subscribe(onChange: () => void) {
   };
 }
 
-export function SalaryCalculator() {
+export function SalaryCalculator({ placeNames = {} }: { placeNames?: Record<string, { covers: string[]; keys: string[] }> }) {
   // The address is the state: the static page renders the defaults, then the browser's choice.
   const search = useSyncExternalStore(subscribe, () => window.location.search, () => "");
   const q = new URLSearchParams(search);
@@ -39,6 +40,7 @@ export function SalaryCalculator() {
   const place = askedPlace && POST_ADJUSTMENT.some((x) => x.place === askedPlace) ? askedPlace : DEFAULT_PLACE;
   const [copied, setCopied] = useState(false);
   const router = useRouter();
+  const placeOptions = useMemo(() => POST_ADJUSTMENT.map((p) => ({ value: p.place, label: p.place, ...placeNames[p.place] })), [placeNames]);
 
   function choose(nextGrade: string, nextPlace: string) {
     setCopied(false);
@@ -88,14 +90,9 @@ export function SalaryCalculator() {
             </optgroup>
           </select>
         </label>
-        <label className="text-sm font-medium text-ink">
-          Duty station
-          <select className={field} value={place} onChange={(e) => choose(grade, e.target.value)}>
-            {POST_ADJUSTMENT.map((p) => <option key={p.place} value={p.place}>{p.place}</option>)}
-          </select>
-        </label>
+        <SearchSelect label="Duty station" options={placeOptions} value={place} onChange={(v) => choose(grade, v)} placeholder="Type a country or city" keyPrefix="Covers " />
       </div>
-      <p className="mt-2 text-sm text-slate">A country listed once covers every duty station in it: choose Switzerland for Geneva, Kenya for Nairobi.</p>
+      <p className="mt-2 text-sm text-slate">Type a country or city. A country listed once covers every duty station in it: Switzerland covers Geneva.</p>
       <p className="mt-1 text-sm text-slate">
         Looking for G or NO pay? <a href={`${LOCAL_CALCULATOR}#calculator`} className="text-accent underline">Local staff salaries</a> by duty station.
       </p>

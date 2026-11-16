@@ -1,5 +1,5 @@
 /** Writes src/lib/local-pay-data.ts from scripts/local-pay/local-pay.json (see refresh.py). */
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { countriesInLocation } from "@/lib/country-match";
 import data from "./local-pay.json";
 type E = { country: string; [k: string]: unknown };
@@ -21,6 +21,9 @@ writeFileSync("src/lib/local-pay-data.ts", `/**
 import type { LocalPayStation } from "./local-pay";
 
 export const LOCAL_PAY_FETCHED = "${new Date().toISOString().slice(0, 10)}";
+
+/** Date of the UN operational rates of exchange used for the US dollar amounts (usdRate: units per US dollar). */
+export const LOCAL_PAY_RATES_DATE = "${readFileSync(new URL("./rates-date.txt", import.meta.url), "utf8").trim()}";
 
 export const LOCAL_PAY_STATIONS: LocalPayStation[] = [
 ${body},

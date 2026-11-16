@@ -1,14 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { SearchSelect } from "@/components/search-select";
 
 /** What the calculator needs of each duty station (passed from the server, so the data stays in one place). */
 export type PickerStation = {
   slug: string;
   label: string;
+  /** Other names to find it by (country aliases: "USA", "DRC"). */
+  keys?: string[];
   currency: string;
   paidIn: string;
+  /** Units of the scale's currency per US dollar (UN operational rate); none for US dollar scales. */
+  usdRate?: number;
   gs?: { effective: string; grades: Record<string, [number, number]>; note?: string };
   no?: { effective: string; grades: Record<string, [number, number]>; note?: string };
 };
@@ -33,6 +38,7 @@ function fallbackGrade(offered: string[], wanted: string): string {
   return offered.includes("G-5") ? "G-5" : offered[0];
 }
 
+const usd = (n: number) => `US$ ${Math.round(n).toLocaleString("en-US")}`;
 const amount = (n: number, currency: string) => `${currency} ${Math.round(n).toLocaleString("en-US")}`;
 const dateLabel = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
@@ -42,7 +48,7 @@ const dateLabel = (iso: string) =>
  * station's published scale. The choice is kept in the address (?station=nairobi&grade=G-5), so a
  * result can be shared as a link.
  */
-export function LocalPayCalculator({ stations }: { stations: PickerStation[] }) {
+export function LocalPayCalculator({ stations, ratesDate }: { stations: PickerStation[]; ratesDate: string }) {
   const search = useSyncExternalStore(subscribe, () => window.location.search, () => "");
   const q = new URLSearchParams(search);
   const station = stations.find((s) => s.slug === q.get("station")) ?? stations.find((s) => s.slug === DEFAULT_STATION) ?? stations[0];
@@ -52,6 +58,7 @@ export function LocalPayCalculator({ stations }: { stations: PickerStation[] }) 
   const scale = grade.startsWith("NO-") ? station.no : station.gs;
   const [lo, hi] = scale?.grades[grade] ?? [0, 0];
   const [copied, setCopied] = useState(false);
+  const options = useMemo(() => stations.map((s) => ({ value: s.slug, label: s.label, keys: s.keys })), [stations]);
 
   function choose(nextStation: string, wanted: string) {
     setCopied(false);
@@ -80,12 +87,7 @@ export function LocalPayCalculator({ stations }: { stations: PickerStation[] }) 
       <h2 className="text-xl font-semibold">Local staff salary calculator</h2>
       <p className="mt-1 text-[0.95rem] text-tint-ink">Annual net pay for General Service and National Officer grades, in {stations.length} duty stations.</p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <label className="text-sm font-medium text-ink">
-          Duty station
-          <select className={field} value={station.slug} onChange={(e) => choose(e.target.value, grade)}>
-            {stations.map((s) => <option key={s.slug} value={s.slug}>{s.label}</option>)}
-          </select>
-        </label>
+        <SearchSelect label="Duty station" options={options} value={station.slug} onChange={(v) => choose(v, grade)} placeholder="Type a city or country" />
         <label className="text-sm font-medium text-ink">
           Grade
           <select className={field} value={grade} onChange={(e) => choose(station.slug, e.target.value)}>
@@ -107,18 +109,27 @@ export function LocalPayCalculator({ stations }: { stations: PickerStation[] }) 
           <dl className="mt-5 grid gap-3" aria-live="polite">
             <div className="rounded-lg bg-highlight/40 p-3 sm:col-span-2">
               <dt className="text-sm text-slate">Net pay per year, first to highest step</dt>
-              {/* Two lines kept on phones, where long amounts wrap, so changing station doesn't move what follows. */}
-              <dd className="mt-0.5 min-h-[2lh] text-lg font-bold tabular-nums sm:min-h-0">
-                <span className="whitespace-nowrap">{amount(lo, station.currency)}</span> – <span className="whitespace-nowrap">{amount(hi, station.currency)}</span>
+              {/* On phones the two ends always take a line each, so changing station never changes the height. */}
+              <dd className="mt-0.5 text-lg font-bold tabular-nums">
+                <span className="block whitespace-nowrap sm:inline">{amount(lo, station.currency)} –</span>{" "}
+                <span className="block whitespace-nowrap sm:inline">{amount(hi, station.currency)}</span>
+              </dd>
+              {/* Always one line here (dollars, or that the scale is in dollars), so the box keeps its height. */}
+              <dd className="mt-0.5 text-[0.95rem] text-tint-ink tabular-nums">
+                {station.usdRate ? `About ${usd(lo / station.usdRate)} – ${usd(hi / station.usdRate)}` : "Set in US dollars"}
               </dd>
             </div>
             <div className="rounded-lg bg-mist p-3">
-              <dt className="text-sm text-slate">Per month at the first step (a year ÷ 12)</dt>
-              <dd className="mt-0.5 font-semibold tabular-nums">{amount(lo / 12, station.currency)}</dd>
+              <dt className="text-sm text-slate">Net pay per month, first step (a year ÷ 12)</dt>
+              <dd className="mt-0.5 font-semibold tabular-nums">
+                {amount(lo / 12, station.currency)}
+                {station.usdRate ? <span className="font-normal text-tint-ink"> (about {usd(lo / 12 / station.usdRate)})</span> : null}
+              </dd>
             </div>
           </dl>
           <p className="mt-3 min-h-[3lh] text-sm text-slate">
             Scale effective {dateLabel(scale.effective)}.
+            {station.usdRate ? ` Dollars at the UN operational rate of ${ratesDate}.` : null}
             {station.paidIn !== station.currency ? ` Set in ${station.currency}, paid in ${station.paidIn}.` : null}
             {scale.note ? ` This scale is ${scale.note}.` : null}{" "}
             <Link href={`/guides/un-local-salaries/${station.slug}`} className="text-accent underline">All grades for {station.label}</Link>

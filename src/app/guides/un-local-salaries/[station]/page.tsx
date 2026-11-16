@@ -6,7 +6,7 @@ import { GuideLayout } from "@/components/guide-layout";
 import { countryByCode } from "@/config/countries";
 import {
   effectiveLabel, LOCAL_PAY_FAQ, LOCAL_PAY_PATH, LOCAL_PAY_SOURCE, LOCAL_PAY_STATIONS, localPayStation, money, stationLabel,
-  linksToCountry, postAdjustmentForStation, type LocalPayScale, type LocalPayStation,
+  inUsd, LOCAL_PAY_RATES_DATE, linksToCountry, postAdjustmentForStation, UN_RATES_SOURCE, usdMoney, type LocalPayScale, type LocalPayStation,
 } from "@/lib/local-pay";
 
 export const revalidate = 3600;
@@ -34,7 +34,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-function ScaleTable({ title, scale, currency }: { title: string; scale: LocalPayScale; currency: string }) {
+/** The amount, with its US dollar value under it when the scale is in another currency. */
+function Amount({ value, station }: { value: number; station: LocalPayStation }) {
+  const usd = inUsd(value, station);
+  return (
+    <>
+      {money(value, station.currency)}
+      {usd !== null ? <span className="block text-sm text-slate">about {usdMoney(usd)}</span> : null}
+    </>
+  );
+}
+
+function ScaleTable({ title, scale, station }: { title: string; scale: LocalPayScale; station: LocalPayStation }) {
+  const currency = station.currency;
   return (
     <div className="mt-6 first:mt-0">
       <h3 className="text-lg font-semibold">{title}</h3>
@@ -48,16 +60,16 @@ function ScaleTable({ title, scale, currency }: { title: string; scale: LocalPay
               <th scope="col" className="py-1.5 pr-4 font-medium">Grade</th>
               <th scope="col" className="py-1.5 pr-4 font-medium">First step</th>
               <th scope="col" className="py-1.5 pr-4 font-medium">Highest step</th>
-              <th scope="col" className="py-1.5 font-medium">Per month, first step</th>
+              <th scope="col" className="py-1.5 font-medium">Net per month, first step</th>
             </tr>
           </thead>
           <tbody>
             {Object.entries(scale.grades).map(([g, [lo, hi]]) => (
               <tr key={g} className="border-b border-rule/60">
-                <th scope="row" className="py-1.5 pr-4 font-semibold">{g}</th>
-                <td className="py-1.5 pr-4 tabular-nums">{money(lo, currency)}</td>
-                <td className="py-1.5 pr-4 tabular-nums">{money(hi, currency)}</td>
-                <td className="py-1.5 tabular-nums">{money(lo / 12, currency)}</td>
+                <th scope="row" className="py-1.5 pr-4 align-top font-semibold">{g}</th>
+                <td className="py-1.5 pr-4 align-top tabular-nums"><Amount value={lo} station={station} /></td>
+                <td className="py-1.5 pr-4 align-top tabular-nums"><Amount value={hi} station={station} /></td>
+                <td className="py-1.5 align-top tabular-nums"><Amount value={lo / 12} station={station} /></td>
               </tr>
             ))}
           </tbody>
@@ -75,10 +87,11 @@ export default async function StationSalaries({ params }: Props) {
   const pa = postAdjustmentForStation(s.code, s.station);
   const scales = (
     <div className="rounded-xl border-2 border-brand bg-paper p-5">
-      {s.gs ? <ScaleTable title="General Service (G)" scale={s.gs} currency={s.currency} /> : null}
-      {s.no ? <ScaleTable title="National Officer (NO)" scale={s.no} currency={s.currency} /> : null}
+      {s.gs ? <ScaleTable title="General Service (G)" scale={s.gs} station={s} /> : null}
+      {s.no ? <ScaleTable title="National Officer (NO)" scale={s.no} station={s} /> : null}
       <p className="mt-4 text-sm text-slate">
-        From the first step to the highest; the highest includes long-service steps. Allowances are not included.{" "}
+        From the first step to the highest; the highest includes long-service steps. Allowances are not included.
+        {s.usdRate ? <> US dollar amounts use the <a href={UN_RATES_SOURCE} rel="noopener" className="text-accent underline">UN operational rate of exchange</a> of {LOCAL_PAY_RATES_DATE} ({s.usdRate.toLocaleString("en-US")} {s.currency} to the dollar) and move with it.</> : null}{" "}
         <Link href={`${LOCAL_PAY_PATH}?station=${s.slug}#calculator`} className="text-accent underline">Compare with another duty station</Link>
       </p>
     </div>
@@ -144,6 +157,7 @@ export default async function StationSalaries({ params }: Props) {
       sources={[
         { label: `United Nations: salary scales for locally recruited staff (choose ${linksToCountry(s) ? `${s.country}, ` : ""}${s.station})`, href: LOCAL_PAY_SOURCE },
         { label: "ICSC: where to find the General Service salary scale for each duty station", href: LOCAL_PAY_FAQ },
+        ...(s.usdRate ? [{ label: "United Nations: operational rates of exchange", href: UN_RATES_SOURCE }] : []),
       ]}
     />
   );

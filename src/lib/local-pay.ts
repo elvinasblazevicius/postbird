@@ -5,7 +5,7 @@
  */
 import { countryByCode } from "@/config/countries";
 import { countriesInLocation, normalizePlace } from "@/lib/country-match";
-import { LOCAL_PAY_FETCHED, LOCAL_PAY_STATIONS } from "@/lib/local-pay-data";
+import { LOCAL_PAY_FETCHED, LOCAL_PAY_RATES_DATE, LOCAL_PAY_STATIONS } from "@/lib/local-pay-data";
 import { POST_ADJUSTMENT } from "@/lib/un-pay";
 
 export type LocalPayScale = {
@@ -28,11 +28,27 @@ export type LocalPayStation = {
   paidIn: string;
   /** The station's scales apply to every duty station in the country. */
   countryWide?: boolean;
+  /** Units of the scale's currency per US dollar, at the UN operational rate of exchange (LOCAL_PAY_RATES_DATE); none for USD scales. */
+  usdRate?: number;
   gs?: LocalPayScale;
   no?: LocalPayScale;
 };
 
-export { LOCAL_PAY_FETCHED, LOCAL_PAY_STATIONS };
+export { LOCAL_PAY_FETCHED, LOCAL_PAY_RATES_DATE, LOCAL_PAY_STATIONS };
+
+/** The UN operational rates of exchange, used to show local amounts in US dollars. */
+export const UN_RATES_SOURCE = "https://treasury.un.org/operationalrates/OperationalRates.php";
+
+/** A local amount in US dollars at the UN operational rate, or null when the scale is already in dollars or has no rate. */
+export function inUsd(amount: number, s: Pick<LocalPayStation, "currency" | "usdRate">): number | null {
+  if (s.currency === "USD" || !s.usdRate) return null;
+  return amount / s.usdRate;
+}
+
+/** "US$ 6,975" (rounded to the dollar). */
+export function usdMoney(amount: number): string {
+  return `US$ ${Math.round(amount).toLocaleString("en-US")}`;
+}
 
 /** The official source: the UN's salary scale site, which the ICSC points to for local scales. */
 export const LOCAL_PAY_SOURCE = "https://onehr.un.org/salary-survey/#/salary_scale";
@@ -101,6 +117,11 @@ const PA_CODES: Record<string, string> = {
 };
 const compact = (s: string) => normalizePlace(s).replace(/ /g, "");
 
+/** Country codes a post adjustment entry names ("USA, New York" → US; "China, Macao (SAR)" → MO, CN). */
+export function postAdjustmentCountries(place: string): string[] {
+  return PA_CODES[place] ? [PA_CODES[place]] : countriesInLocation(place);
+}
+
 /**
  * The post adjustment entry that covers a duty station: an entry named like the station
  * ("Jerusalem"), the entry naming its city where the circular lists cities ("USA, New York"),
@@ -110,7 +131,7 @@ export function postAdjustmentForStation(code: string, station: string): { place
   const city = compact(station);
   const exact = POST_ADJUSTMENT.find((p) => compact(p.place) === city);
   if (exact) return exact;
-  const inCountry = POST_ADJUSTMENT.filter((p) => (PA_CODES[p.place] ? [PA_CODES[p.place]] : countriesInLocation(p.place)).includes(code));
+  const inCountry = POST_ADJUSTMENT.filter((p) => postAdjustmentCountries(p.place).includes(code));
   const named = inCountry.find((p) => {
     if (!p.place.includes(",")) return false;
     const c = compact(p.place.split(",").slice(1).join(" "));

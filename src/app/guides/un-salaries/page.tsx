@@ -4,7 +4,9 @@ import { sharedTitle, shareMetadata } from "@/lib/share-metadata";
 import { GuideLayout } from "@/components/guide-layout";
 import { SalaryCalculator } from "@/components/salary-calculator";
 import { PAY_SOURCES } from "@/lib/grades";
-import { EXAMPLE_STATIONS, NET_BASE, NET_BASE_EFFECTIVE, NET_BASE_SOURCE, PA_CIRCULAR, PA_DATA_PAGE, PA_EFFECTIVE, PA_MEMO, multiplierFor, netRemuneration, usd } from "@/lib/un-pay";
+import { countryByCode } from "@/config/countries";
+import { LOCAL_PAY_STATIONS, postAdjustmentCountries, postAdjustmentForStation } from "@/lib/local-pay";
+import { POST_ADJUSTMENT, EXAMPLE_STATIONS, NET_BASE, NET_BASE_EFFECTIVE, NET_BASE_SOURCE, PA_CIRCULAR, PA_DATA_PAGE, PA_EFFECTIVE, PA_MEMO, multiplierFor, netRemuneration, usd } from "@/lib/un-pay";
 
 const PATH = "/guides/un-salaries";
 const TITLE = "UN salaries in 2026: pay by grade and duty station";
@@ -22,6 +24,31 @@ export const metadata: Metadata = {
 
 const EXAMPLE_GRADES = ["P-2", "P-3", "P-4"];
 
+/**
+ * Other names each post adjustment entry is found by in the calculator: the duty stations it covers
+ * ("Geneva" for Switzerland, shown) and the site's name and aliases for the country ("United States").
+ */
+function placeNames(): Record<string, { covers: string[]; keys: string[] }> {
+  const out: Record<string, { covers: string[]; keys: string[] }> = {};
+  for (const p of POST_ADJUSTMENT) {
+    const keys = postAdjustmentCountries(p.place).flatMap((code) => {
+      const c = countryByCode(code);
+      return c ? [c.name, ...c.aliases] : [];
+    });
+    out[p.place] = { covers: [], keys: keys.filter((k) => !p.place.toLowerCase().includes(k.toLowerCase())) };
+  }
+  for (const s of LOCAL_PAY_STATIONS) {
+    const pa = postAdjustmentForStation(s.code, s.station);
+    if (!pa) continue;
+    const country = countryByCode(s.code);
+    const inPlace = (k: string) => pa.place.toLowerCase().includes(k.toLowerCase());
+    const entry = (out[pa.place] ??= { covers: [], keys: [] });
+    if (!inPlace(s.station) && !entry.covers.includes(s.station)) entry.covers.push(s.station);
+    for (const k of country ? [country.name, ...country.aliases] : []) if (!inPlace(k) && !entry.keys.includes(k)) entry.keys.push(k);
+  }
+  return out;
+}
+
 export default function UnSalariesGuide() {
   return (
     <GuideLayout
@@ -30,7 +57,7 @@ export default function UnSalariesGuide() {
       crumb="UN salaries"
       description={DESCRIPTION}
       intro="What Professional and Director staff in the UN common system are paid, from the official ICSC figures, and why the same grade pays very differently from one city to another."
-      before={<SalaryCalculator />}
+      before={<SalaryCalculator placeNames={placeNames()} />}
       sections={[
         {
           id: "how-pay-works",

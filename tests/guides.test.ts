@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { guidesFor } from "@/lib/guide-links";
-import { LOCAL_PAY_STATIONS, localPayForPlace, postAdjustmentForStation } from "@/lib/local-pay";
+import { inUsd, LOCAL_PAY_STATIONS, localPayForPlace, postAdjustmentForStation } from "@/lib/local-pay";
 import { EXAMPLE_STATIONS, NET_BASE, POST_ADJUSTMENT, multiplierFor, netRemuneration } from "@/lib/un-pay";
 
 const job = (over: Partial<Parameters<typeof guidesFor>[0]>) => ({ title: "Programme Officer", grade: null, job_type: null, org_type: "UN system", ...over });
@@ -88,5 +88,14 @@ describe("local staff pay", () => {
     expect(postAdjustmentForStation("CH", "Geneva")?.place).toBe("Switzerland");
     expect(postAdjustmentForStation("US", "Washington DC")?.place).toBe("USA, Washington, D.C.");
     expect(postAdjustmentForStation("IT", "Milan")).toBeNull();
+  });
+
+  it("converts every non-dollar scale to US dollars at a UN rate", () => {
+    for (const s of LOCAL_PAY_STATIONS) {
+      if (s.currency === "USD") expect(s.usdRate, s.station).toBeUndefined();
+      else expect(s.usdRate, `${s.station} ${s.currency}`).toBeGreaterThan(0);
+    }
+    expect(inUsd(1299, { currency: "KES", usdRate: 129.9 })).toBe(10);
+    expect(inUsd(1000, { currency: "USD" })).toBeNull();
   });
 });

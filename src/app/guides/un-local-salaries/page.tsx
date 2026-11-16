@@ -3,7 +3,8 @@ import Link from "next/link";
 import { sharedTitle, shareMetadata } from "@/lib/share-metadata";
 import { GuideLayout } from "@/components/guide-layout";
 import { LocalPayCalculator, type PickerStation } from "@/components/local-pay-calculator";
-import { LOCAL_PAY_FAQ, LOCAL_PAY_PATH, LOCAL_PAY_SOURCE, LOCAL_PAY_STATIONS, stationLabel, stationsByCountry } from "@/lib/local-pay";
+import { countryByCode } from "@/config/countries";
+import { LOCAL_PAY_FAQ, LOCAL_PAY_PATH, LOCAL_PAY_SOURCE, LOCAL_PAY_RATES_DATE, LOCAL_PAY_STATIONS, stationLabel, UN_RATES_SOURCE, stationsByCountry } from "@/lib/local-pay";
 
 const TITLE = "UN local staff salaries: General Service and National Officer pay by duty station";
 const DESCRIPTION =
@@ -21,7 +22,12 @@ export const metadata: Metadata = {
 export default function LocalSalariesGuide() {
   const stations: PickerStation[] = [...LOCAL_PAY_STATIONS]
     .sort((a, b) => a.country.localeCompare(b.country) || a.station.localeCompare(b.station))
-    .map((s) => ({ slug: s.slug, label: stationLabel(s), currency: s.currency, paidIn: s.paidIn, gs: s.gs, no: s.no }));
+    .map((s) => {
+      // Found by the site's own country name and its aliases too ("USA", "DRC", "Laos").
+      const country = countryByCode(s.code);
+      const keys = country ? [country.name, ...country.aliases].filter((k) => !stationLabel(s).includes(k)) : [];
+      return { slug: s.slug, label: stationLabel(s), keys, currency: s.currency, paidIn: s.paidIn, usdRate: s.usdRate, gs: s.gs, no: s.no };
+    });
   return (
     <GuideLayout
       path={LOCAL_PAY_PATH}
@@ -29,7 +35,7 @@ export default function LocalSalariesGuide() {
       crumb="Local staff salaries"
       description={DESCRIPTION}
       intro="What General Service and National Officer staff are paid in each duty station, from the UN's official local salary scales."
-      before={<LocalPayCalculator stations={stations} />}
+      before={<LocalPayCalculator stations={stations} ratesDate={LOCAL_PAY_RATES_DATE} />}
       sections={[
         {
           id: "how",
@@ -57,6 +63,10 @@ export default function LocalSalariesGuide() {
               <li>Annual net salary, from the grade&apos;s first step to its highest step. The highest step includes long-service steps, which staff reach only after many years.</li>
               <li>Not included: allowances such as those for dependants or languages, which each scale lists separately.</li>
               <li>The currency the scale is set in. In some countries the scale is set in US dollars and paid in local currency.</li>
+              <li>
+                An approximate US dollar amount, at the <a href={UN_RATES_SOURCE} rel="noopener">UN operational rate of exchange</a> of{" "}
+                {LOCAL_PAY_RATES_DATE}. Staff are paid in the scale&apos;s currency, so the dollar amount moves with the exchange rate.
+              </li>
               <li>The date the scale took effect. Scales are revised at different times in each duty station, and a few have not been revised for years.</li>
               <li>Where a country has one scale, it applies to every duty station in that country.</li>
             </ul>
@@ -99,6 +109,7 @@ export default function LocalSalariesGuide() {
       sources={[
         { label: "United Nations: salary scales for locally recruited staff, by duty station", href: LOCAL_PAY_SOURCE },
         { label: "ICSC: where to find the General Service salary scale for each duty station", href: LOCAL_PAY_FAQ },
+        { label: "United Nations: operational rates of exchange", href: UN_RATES_SOURCE },
       ]}
     />
   );

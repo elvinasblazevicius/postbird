@@ -36,6 +36,22 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 MAX_FILES_PER_STATION = 12  # how far back to look for a station's GS and NO scales
 
 
+# Scale currency codes that differ from the UN operational rates' codes. BGN: Bulgaria's lev, now
+# converted at the euro's fixed conversion rate.
+RATE_CODES = {"BAH": "BSD", "CFA": "XOF", "SOL": "PEN"}
+FIXED_PER_EUR = {"BGN": 1.95583}
+
+
+def usd_rates():
+    """UN operational rates of exchange: units of each currency per US dollar, and their date."""
+    import xml.etree.ElementTree as ET
+    xml = subprocess.run(["curl", "-sS", "-m", "60", "https://treasury.un.org/operationalrates/xsql2XML.php"], capture_output=True, check=True).stdout
+    rows = [{c.tag: c.text for c in r} for r in ET.fromstring(xml).iter("UN_OPERATIONAL_RATES")]
+    rates = {r["f_curr_code"]: float(r["rate"]) for r in rows if r.get("rate")}
+    dates = sorted({r["eff_date"] for r in rows if r.get("eff_date")})
+    return rates, dates[-1] if dates else None
+
+
 def get_json(url):
     out = subprocess.run(["curl", "-sS", "-m", "60", url], capture_output=True, check=True).stdout
     return json.loads(out)["data"]
@@ -201,6 +217,21 @@ def main(work):
             entry["no"] = chosen["NO"]
         out.append(entry)
 
+    rates, rate_date = usd_rates()
+    no_rate = []
+    for e in out:
+        cur = e["currency"]
+        if cur == "USD":
+            continue
+        code = RATE_CODES.get(cur, cur)
+        rate = rates.get(code) or (FIXED_PER_EUR[code] * rates["EUR"] if code in FIXED_PER_EUR else None)
+        if rate:
+            e["usdRate"] = round(rate, 6)
+        else:
+            no_rate.append(f"{e['station']} ({cur})")
+    if no_rate:
+        print("No UN rate for:", ", ".join(no_rate))
+
     names = [e["slug"] for e in out]
     for e in out:
         if names.count(e["slug"]) > 1:
@@ -208,6 +239,8 @@ def main(work):
     out.sort(key=lambda e: (e["country"], e["station"]))
     with open(os.path.join(HERE, "local-pay.json"), "w") as fh:
         json.dump(out, fh, ensure_ascii=False, indent=0)
+    with open(os.path.join(HERE, "rates-date.txt"), "w") as fh:
+        fh.write(rate_date or "")
     print(f"{len(out)} stations; GS {sum('gs' in e for e in out)}, NO {sum('no' in e for e in out)}; none readable: {missing}")
 
 
