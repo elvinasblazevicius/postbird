@@ -79,6 +79,14 @@ const robotsWhy = new Map<string, string>();
 export async function robotsFor(host: string, cache: Map<string, RobotsRules>): Promise<RobotsRules> {
   const hit = cache.get(host);
   if (hit) return hit;
+  // Two tries a few seconds apart: a busy server's first "try later" isn't its answer.
+  let rules = await robotsOnce(host);
+  if (rules === "unreachable") { await new Promise((res) => setTimeout(res, 3000)); rules = await robotsOnce(host); }
+  cache.set(host, rules);
+  return rules;
+}
+
+async function robotsOnce(host: string): Promise<RobotsRules> {
   let rules: RobotsRules;
   try {
     const res = await get(`https://${host}/robots.txt`, "text/plain");
@@ -93,7 +101,6 @@ export async function robotsFor(host: string, cache: Map<string, RobotsRules>): 
     rules = "unreachable";
     robotsWhy.set(host, e instanceof Error ? (e.name === "AbortError" ? "timeout" : `${e.name}${(e as { cause?: { code?: string } }).cause?.code ? ` ${(e as { cause?: { code?: string } }).cause!.code}` : ""}`) : "error");
   }
-  cache.set(host, rules);
   return rules;
 }
 
