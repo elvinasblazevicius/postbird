@@ -25,6 +25,14 @@ function subscribe(onChange: () => void) {
   };
 }
 
+/** The grade asked for if the station has it; otherwise the nearest of the same kind (NO-E → the highest NO), then G-5. */
+function fallbackGrade(offered: string[], wanted: string): string {
+  if (offered.includes(wanted)) return wanted;
+  const sameKind = offered.filter((g) => g.startsWith(wanted.startsWith("NO-") ? "NO-" : "G-"));
+  if (sameKind.length) return wanted.startsWith("NO-") ? sameKind[sameKind.length - 1] : sameKind.includes("G-5") ? "G-5" : sameKind[0];
+  return offered.includes("G-5") ? "G-5" : offered[0];
+}
+
 const amount = (n: number, currency: string) => `${currency} ${Math.round(n).toLocaleString("en-US")}`;
 const dateLabel = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
@@ -40,7 +48,7 @@ export function LocalPayCalculator({ stations }: { stations: PickerStation[] }) 
   const station = stations.find((s) => s.slug === q.get("station")) ?? stations.find((s) => s.slug === DEFAULT_STATION) ?? stations[0];
   const grades = [...Object.keys(station.gs?.grades ?? {}), ...Object.keys(station.no?.grades ?? {})];
   const asked = q.get("grade")?.toUpperCase() ?? "";
-  const grade = grades.includes(asked) ? asked : grades.includes("G-5") ? "G-5" : grades[0];
+  const grade = fallbackGrade(grades, asked);
   const scale = grade.startsWith("NO-") ? station.no : station.gs;
   const [lo, hi] = scale?.grades[grade] ?? [0, 0];
   const [copied, setCopied] = useState(false);
@@ -49,7 +57,7 @@ export function LocalPayCalculator({ stations }: { stations: PickerStation[] }) 
     setCopied(false);
     const st = stations.find((s) => s.slug === nextStation);
     const offered = [...Object.keys(st?.gs?.grades ?? {}), ...Object.keys(st?.no?.grades ?? {})];
-    const nextGrade = offered.includes(wanted) ? wanted : offered.includes("G-5") ? "G-5" : offered[0];
+    const nextGrade = fallbackGrade(offered, wanted);
     const url = new URL(window.location.href);
     url.searchParams.set("station", nextStation);
     url.searchParams.set("grade", nextGrade);

@@ -1,10 +1,14 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 import { NET_BASE, PA_EFFECTIVE, POST_ADJUSTMENT, netRemuneration, usd } from "@/lib/un-pay";
 
 const GRADES = ["P-1", "P-2", "P-3", "P-4", "P-5", "D-1", "D-2"];
 const DEFAULT_PLACE = "USA, New York";
+/** Locally recruited grades: paid on each duty station's own scale, so they open the local staff calculator. */
+const LOCAL_GRADES = ["G-1", "G-2", "G-3", "G-4", "G-5", "G-6", "G-7", "NO-A", "NO-B", "NO-C", "NO-D", "NO-E"];
+const LOCAL_CALCULATOR = "/guides/un-local-salaries";
 
 /**
  * Net base salary of a grade (first to highest step) plus a duty station's post adjustment, from
@@ -34,6 +38,7 @@ export function SalaryCalculator() {
   const askedPlace = q.get("place");
   const place = askedPlace && POST_ADJUSTMENT.some((x) => x.place === askedPlace) ? askedPlace : DEFAULT_PLACE;
   const [copied, setCopied] = useState(false);
+  const router = useRouter();
 
   function choose(nextGrade: string, nextPlace: string) {
     setCopied(false);
@@ -42,6 +47,14 @@ export function SalaryCalculator() {
     url.searchParams.set("place", nextPlace);
     window.history.replaceState(null, "", url);
     window.dispatchEvent(new Event(CHANGE));
+  }
+
+  function pickGrade(next: string) {
+    if (LOCAL_GRADES.includes(next)) {
+      router.push(`${LOCAL_CALCULATOR}?grade=${next}#calculator`);
+      return;
+    }
+    choose(next, place);
   }
 
   async function copyLink() {
@@ -63,8 +76,16 @@ export function SalaryCalculator() {
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="text-sm font-medium text-ink">
           Grade
-          <select className={field} value={grade} onChange={(e) => choose(e.target.value, place)}>
-            {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+          <select className={field} value={grade} onChange={(e) => pickGrade(e.target.value)}>
+            <optgroup label="Professional and Director">
+              {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+            </optgroup>
+            <optgroup label="General Service (local scales)">
+              {LOCAL_GRADES.filter((g) => g.startsWith("G-")).map((g) => <option key={g} value={g}>{g}</option>)}
+            </optgroup>
+            <optgroup label="National Officer (local scales)">
+              {LOCAL_GRADES.filter((g) => g.startsWith("NO-")).map((g) => <option key={g} value={g}>{g}</option>)}
+            </optgroup>
           </select>
         </label>
         <label className="text-sm font-medium text-ink">
@@ -75,6 +96,9 @@ export function SalaryCalculator() {
         </label>
       </div>
       <p className="mt-2 text-sm text-slate">A country listed once covers every duty station in it: choose Switzerland for Geneva, Kenya for Nairobi.</p>
+      <p className="mt-1 text-sm text-slate">
+        Looking for G or NO pay? <a href={`${LOCAL_CALCULATOR}#calculator`} className="text-accent underline">Local staff salaries</a> by duty station.
+      </p>
       <dl className="mt-5 grid gap-3 sm:grid-cols-3" aria-live="polite">
         <div className="rounded-lg bg-mist p-3">
           <dt className="text-sm text-slate">Net base salary</dt>
