@@ -72,6 +72,9 @@ async function get(url: string, accept: string): Promise<Response> {
   }
 }
 
+/** Why a host's robots.txt couldn't be read this run (for the run summary). */
+const robotsWhy = new Map<string, string>();
+
 /** robots.txt per host for this run: missing or forbidden → no rules; unreachable → not now, try again on a later run. */
 export async function robotsFor(host: string, cache: Map<string, RobotsRules>): Promise<RobotsRules> {
   const hit = cache.get(host);
@@ -85,9 +88,10 @@ export async function robotsFor(host: string, cache: Map<string, RobotsRules>): 
       const body = await readCapped(res, 500_000);
       // A site that answers every address with its app page (no robots.txt at all) sets no rules.
       rules = /^\s*</.test(body) ? "allow-all" : parseRobots(body, S.robotsName);
-    } else { await res.body?.cancel().catch(() => {}); rules = "unreachable"; }
-  } catch {
+    } else { await res.body?.cancel().catch(() => {}); rules = "unreachable"; robotsWhy.set(host, `HTTP ${res.status}`); }
+  } catch (e) {
     rules = "unreachable";
+    robotsWhy.set(host, e instanceof Error ? (e.name === "AbortError" ? "timeout" : `${e.name}${(e as { cause?: { code?: string } }).cause?.code ? ` ${(e as { cause?: { code?: string } }).cause!.code}` : ""}`) : "error");
   }
   cache.set(host, rules);
   return rules;
@@ -102,7 +106,7 @@ export async function allowed(url: string, cache: Map<string, RobotsRules>): Pro
 async function mayRead(url: string, cache: Map<string, RobotsRules>): Promise<boolean> {
   const u = new URL(url);
   const rules = await robotsFor(u.host, cache);
-  if (rules === "unreachable") throw new NotReadable("robots.txt unreachable");
+  if (rules === "unreachable") throw new NotReadable(`robots.txt unreachable (${robotsWhy.get(u.host) ?? "?"})`);
   return robotsAllows(rules, u.pathname + u.search);
 }
 
