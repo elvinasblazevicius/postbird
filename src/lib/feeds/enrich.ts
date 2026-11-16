@@ -23,6 +23,8 @@ const S = IMPORT_SETTINGS.vacancyPages;
 
 export type EnrichResult = {
   checked: number; withFacts: number; nothing: number; blocked: number; errors: number; skipped: number;
+  /** Unreachable pages by website and reason ("jobs.example.org: HTTP 403"), for the run summary. */
+  errorsBy?: Record<string, number>;
   /** Pages built in the browser that were read with a headless browser (of them, how many gave facts). */
   rendered: number; renderedWithFacts: number;
   /** Pages the AI read for details the rules missed; values it filled; its token use. */
@@ -302,7 +304,12 @@ export async function enrichFromVacancyPages(opts: { limit?: number; budgetMs?: 
           // The page can't be read: the AI reads the feed's own text instead (closed to robots: now;
           // unreachable: on the last try, as the page may come back).
           else if (e instanceof BlockedByRobots) { r.blocked++; await save(job, "blocked", await withAi(job, null, feedTextOf(job), r), r); }
-          else { r.errors++; await save(job, "error", await withAi(job, null, feedTextOf(job), r, job.page_attempts + 1 >= S.maxAttempts), r); }
+          else {
+            const why = e instanceof Error && e.message ? e.message.replace(/https?:\/\/\S+/g, "").slice(0, 60) : e instanceof Error ? e.name : "error";
+            r.errorsBy ??= {};
+            r.errorsBy[`${host}: ${why}`] = (r.errorsBy[`${host}: ${why}`] ?? 0) + 1;
+            r.errors++; await save(job, "error", await withAi(job, null, feedTextOf(job), r, job.page_attempts + 1 >= S.maxAttempts), r);
+          }
         }
         await new Promise((res) => setTimeout(res, S.perHostDelayMs));
       }
