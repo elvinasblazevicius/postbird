@@ -286,9 +286,19 @@ export function detectCategory(title: string): string {
 }
 
 /** Each language with every name it is written with (LANGUAGE_ALIASES: "Farsi" is Persian). */
+/**
+ * The same languages as French, Spanish and Portuguese vacancies name them, written without accents
+ * (the requirement reader folds accents first: "français" → "francais", "árabe" → "arabe").
+ */
+const FOREIGN_LANGUAGE_NAMES: Record<string, string[]> = {
+  French: ["francais", "frances", "frances", "frances"], Spanish: ["espagnol", "espanol", "espanhol"],
+  Arabic: ["arabe"], Portuguese: ["portugais", "portugues"], Russian: ["russe", "ruso", "russo"],
+  Chinese: ["chinois", "chino", "chines", "mandarin"], German: ["allemand", "aleman", "alemao"],
+  Italian: ["italien", "italiano"], Dutch: ["neerlandais", "neerlandes", "holandes"], Swahili: ["swahili"],
+};
 const LANGUAGE_NAMES: readonly { lang: string; names: string[] }[] = LANGUAGES.map((lang) => ({
   lang,
-  names: [lang, ...Object.entries(LANGUAGE_ALIASES).filter(([, l]) => l === lang).map(([alias]) => alias)],
+  names: [...new Set([lang, ...Object.entries(LANGUAGE_ALIASES).filter(([, l]) => l === lang).map(([alias]) => alias), ...(FOREIGN_LANGUAGE_NAMES[lang] ?? [])])],
 }));
 const ALL_LANGUAGE_NAMES = LANGUAGE_NAMES.flatMap((l) => l.names);
 /**
@@ -300,11 +310,11 @@ const ALL_LANGUAGE_NAMES = LANGUAGE_NAMES.flatMap((l) => l.names);
 const NOT_A_LANGUAGE_AFTER = "(?! Polynesia| Guiana| Southern| Republic| Refugee| Red Cross| Red Crescent| Church| Government| Ministry| Embassy| Agency| Council| Institute| International| Development| Relief| Humanitarian| Aid\\b| Cooperation| Presidency| authorities| nationals?\\b| citizens?\\b| nationality| National\\b| Region| regional| State\\b| communit| population| people| Cypriot| lira| Gulf| encephalitis| Army| Armed| Forces| Police|-language|[- ]speaking (?:countr|region|area|world|communit|populat|context|environment|africa|west|east|central|north|south|nation|state|people))";
 /** Languages named as alternatives: "one of the following: French, Spanish", "either French or Spanish". */
 const ANY_OF_MARK = /\b(?:(?:one|any) of the following|(?:one|any) of|either)\b/gi;
-const LANG_CONTEXT = /\b(fluen\w*|proficien\w*|knowledge of|command of|written and (?:oral|spoken)|spoken and written|oral and written|bilingual|mother tongue|native speaker|language (?:skills?|requirements?|proficiency)|required|essential|mandatory|obligatory|must\s+(?:be\s+able\s+to\s+)?(?:speak|read|write|understand|communicate|be fluent|be proficient|have)|speak|speaks|speaking|spoken|desirable|an asset|advantage|preferred)\b|\blanguages?\s*[:：]/i;
+const LANG_CONTEXT = /\b(maitrise\w*|connaissances?|courant|exigences? linguistiques|competences? linguistiques|dominio|fluid[eo]z?\w*|conocimientos?|requisitos? (?:de )?idiomas?|fluencia|conhecimentos?|parl[ée]e?|bilingue|langues?\s*[:：]|idiomas?\s*[:：]|linguas?\s*[:：]|fluen\w*|proficien\w*|knowledge of|command of|written and (?:oral|spoken)|spoken and written|oral and written|bilingual|mother tongue|native speaker|language (?:skills?|requirements?|proficiency)|required|essential|mandatory|obligatory|must\s+(?:be\s+able\s+to\s+)?(?:speak|read|write|understand|communicate|be fluent|be proficient|have)|speak|speaks|speaking|spoken|desirable|an asset|advantage|preferred)\b|\blanguages?\s*[:：]/i;
 /** Words that make a language a plus rather than a requirement ("… is an advantage", "Desirable: French"). */
-const DESIRABLE_MARK = /\b(?:advantage\w*|advantageous|desirable|desired|assets?|preferred|preferabl[ey]|a plus|added value|nice to have|beneficial)\b/gi;
+const DESIRABLE_MARK = /\b(?:atouts?|souhait\w*|apprecie\w*|un plus|deseabl\w*|valorar\w*|valorad\w*|se valora|desejave\w*|diferencial|valorizad\w*|advantage\w*|advantageous|desirable|desired|assets?|preferred|preferabl[ey]|a plus|added value|nice to have|beneficial)\b/gi;
 /** Words that make it a requirement ("… is required", "Essential: French"). */
-const REQUIRED_MARK = /\b(?:required|requirements?|essential|mandatory|must|necessary|indispensable)\b/gi;
+const REQUIRED_MARK = /\b(?:requis[e]?|exige\w*|obligatoire|indispensable|essentiel\w*|requerid\w*|obligatori\w*|imprescindible|necesari\w*|obrigatori\w*|exigid\w*|essencia\w*|required|requirements?|essential|mandatory|must|necessary|indispensable)\b/gi;
 /**
  * "another official UN language (Arabic, Chinese, French, Russian and Spanish)" and the like: a list
  * of the UN's official languages, any one of which counts, so it names no language the job needs.
@@ -346,7 +356,8 @@ export function detectLanguageRequirements(text: string): LanguageRequirements {
   const required = new Set<string>();
   const desirable = new Set<string>();
   // "e.g." and "i.e." don't end a sentence ("another UN language (e.g. Arabic, Chinese) is desirable").
-  const plain = text.replace(/\be\.g\./gi, "eg").replace(/\bi\.e\./gi, "ie");
+  // Accents folded so French, Spanish and Portuguese wording matches ("maîtrise du français", "árabe").
+  const plain = text.normalize("NFD").replace(/\p{M}/gu, "").replace(/\be\.g\./gi, "eg").replace(/\bi\.e\./gi, "ie");
   for (const raw of plain.split(/(?<=[.;!?])\s+|\n/)) {
     if (raw.length > 600 || !LANG_CONTEXT.test(raw)) continue;
     if (/\b(working|official) languages?\b/i.test(raw)) continue; // describes the organization, not the job

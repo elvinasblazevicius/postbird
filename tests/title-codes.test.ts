@@ -57,3 +57,29 @@ describe("shareWords", () => {
     expect(shareWords(500, 30)).toBeNull();
   });
 });
+
+describe("language requirements written in French, Spanish and Portuguese", () => {
+  it("reads required and desirable languages in French", async () => {
+    const { detectLanguageRequirements } = await import("@/lib/feeds/extract");
+    const r = detectLanguageRequirements("Exigences linguistiques : Excellente maîtrise du français, à l’écrit comme à l’oral. Bonne maîtrise de l’arabe. La maîtrise de l’espagnol est un atout.");
+    expect(r.required).toEqual(["Arabic", "French"]);
+    expect(r.desirable).toEqual(["Spanish"]);
+  });
+  it("reads Spanish and Portuguese wording", async () => {
+    const { detectLanguageRequirements } = await import("@/lib/feeds/extract");
+    expect(detectLanguageRequirements("Idiomas: dominio del español requerido; el conocimiento del francés es deseable.").required).toEqual(["Spanish"]);
+    expect(detectLanguageRequirements("Requisitos de idioma: fluência em português é obrigatória. Conhecimento de francês é desejável.").required).toEqual(["Portuguese"]);
+  });
+  it("still ignores languages that aren't about the job", async () => {
+    const { detectLanguageRequirements } = await import("@/lib/feeds/extract");
+    expect(detectLanguageRequirements("Le bureau couvre les pays francophones de la région.").required).toBeNull();
+  });
+});
+
+describe("title language with an English unit name", () => {
+  it("knows a French title that names an English section", async () => {
+    const { titleLanguage } = await import("@/lib/title-language");
+    expect(titleLanguage("Consultant·e en suivi et coordination en santé et nutrition, UNICEF Morocco, Health&Nutrition section, basé·e dans la région de Béni Mella, à domicile, 1 an – Morocco, Marrakech")?.name).toBe("French");
+    expect(titleLanguage("Health and Nutrition Officer, programme de santé")).toBeNull();
+  });
+});

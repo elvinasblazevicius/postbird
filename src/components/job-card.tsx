@@ -60,11 +60,12 @@ export function postedMarker(job: { published_at: Date | null; first_seen_at: Da
   // Without the employer's posting date, a vacancy that closes within a week was most likely posted
   // long before we found it: no "New" (or "2d ago") that would suggest otherwise.
   if (!job.published_at && job.deadline && new Date(job.deadline).getTime() - now < 7 * 86_400_000) return null;
-  // Closing within 3 days: the closing date is the news, not "New".
-  if (job.deadline && new Date(job.deadline).getTime() - now < 3 * 86_400_000) return null;
   const posted = new Date(job.published_at ?? job.first_seen_at).getTime();
   if (Number.isNaN(posted)) return null;
   const hours = (now - posted) / 3_600_000;
+  // Closing within 3 days: the closing date is the news, not "New", unless the employer's own posting
+  // date says it really went up in the last 48 hours (a short window: both facts matter).
+  if (job.deadline && new Date(job.deadline).getTime() - now < 3 * 86_400_000 && !(job.published_at && hours < 48)) return null;
   if (hours < 48) return { text: "New", fresh: true };
   const days = Math.floor(hours / 24);
   return days <= 30 ? { text: `${days}d ago`, fresh: false } : null;

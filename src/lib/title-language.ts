@@ -20,7 +20,7 @@ const MARKERS: Record<"es" | "fr" | "pt", Set<string>> = {
     "du", "des", "et", "pour", "au", "aux", "le", "les", "charge", "chargee", "charges", "chargees", "specialiste", "coordinateur", "coordinatrice", "projet", "projets",
     "suivi", "developpement", "adjoint", "adjointe", "conseiller", "conseillere", "chef", "appui", "responsable", "gestionnaire", "agent",
     "assistante", "sante", "education", "protection", "superviseur", "superviseure", "chauffeur", "comptable", "juriste", "logisticien",
-    "programme", "administratif", "logistique", "enquete", "enquetes", "enqueteur", "enqueteuse", "enqueteurs", "ingenieur", "medecin", "infirmier",
+    "programme", "administratif", "logistique", "dans", "domicile", "aupres", "chez", "consultante", "basee", "enquete", "enquetes", "enqueteur", "enqueteuse", "enqueteurs", "ingenieur", "medecin", "infirmier",
     "infirmiere", "formateur", "formatrice", "animateur", "animatrice", "stagiaire", "volontaire", "secretaire", "directeur", "directrice", "humanitaire",
     "eau", "assainissement", "securite",
   ]),
@@ -62,7 +62,9 @@ export function titleLanguage(title: string | null | undefined): TitleLanguage |
   if (cyrillic / letters.length > 0.5) return { code: "ru", name: NAMES.ru };
 
   const words = fold(title).split(/[^a-z]+/).filter(Boolean);
-  if (words.some((w) => ENGLISH.has(w))) return null;
+  // English words usually mean an English title; a title can still be clearly in another language
+  // with a unit or office name in English ("… UNICEF Morocco, Health&Nutrition section, basé·e dans …").
+  const english = new Set(words.filter((w) => ENGLISH.has(w))).size;
   // Each different marker word counts once; the language's accented letters add one more, but
   // only alongside a marker word (accents alone could be a name).
   const score = (lang: "es" | "fr" | "pt") => {
@@ -73,5 +75,6 @@ export function titleLanguage(title: string | null | undefined): TitleLanguage |
   const [best, next] = ranked;
   // Two pieces of evidence, and clearly more than the runner-up (Spanish and Portuguese share many).
   if (best.n < 2 || best.n === next.n) return null;
+  if (english && (best.n < 4 || best.n < 3 * english)) return null;
   return { code: best.code, name: NAMES[best.code] };
 }

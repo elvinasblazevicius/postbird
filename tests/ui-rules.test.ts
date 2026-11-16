@@ -270,6 +270,15 @@ describe("job page and card helpers", () => {
     expect(postedMarker(at(50), now)?.text).toBe("2d ago");
     expect(postedMarker(at(24 * 40), now)).toBeNull();
   });
+
+  it("keeps 'New' on a just-posted vacancy that closes within 3 days, only when the employer dated it", async () => {
+    const { postedMarker } = await import("@/components/job-card");
+    const now = Date.parse("2026-11-16T03:00:00Z");
+    const tomorrow = "2026-11-17";
+    expect(postedMarker({ published_at: new Date(now - 6 * 3_600_000), first_seen_at: new Date(now), deadline: tomorrow }, now)?.text).toBe("New");
+    expect(postedMarker({ published_at: new Date(now - 10 * 86_400_000), first_seen_at: new Date(now), deadline: tomorrow }, now)).toBeNull();
+    expect(postedMarker({ published_at: null, first_seen_at: new Date(now), deadline: tomorrow }, now)).toBeNull();
+  });
 });
 
 describe("who can apply (local-only posts)", () => {
