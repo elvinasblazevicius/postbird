@@ -11,6 +11,7 @@ import { categoryBySlug } from "@/config/categories";
 import { countryByCode } from "@/config/countries";
 import { LISTING_SETTINGS } from "@/config/import";
 import { applyLinkKind } from "@/lib/apply-link";
+import { guidesFor } from "@/lib/guide-links";
 import { displayGrade, isLocalOnly, payScaleFor, whoCanApplyLine } from "@/lib/grades";
 import { ORG_TYPES, regionOf } from "@/config/regions";
 import { EMPLOYER_TYPE_PAGES } from "@/lib/employer-types";
@@ -212,8 +213,8 @@ export default async function JobPage({ params }: Props) {
   // The employer's type (its landing page) and what it usually posts, worked out from its listings.
   const typePage = EMPLOYER_TYPE_PAGES.find((p) => p.orgtype === ORG_TYPES.find((t) => t.type === job.org_type)?.value);
   const usually = mix ? usuallyPosts(mix) : null;
-  // The guide is about UN vacancies (grades, UN languages): linked from UN-system vacancies only.
-  const unSystem = job.org_type === "UN system";
+  // The site's guides for this kind of vacancy (UN vacancy reading, pay by grade, internships, EPSO...).
+  const guides = guidesFor(job);
   const orgRef = orgInText(job.org_name, job.org_short);
   // Where Apply goes, in plain words: "Opens IOM's recruitment system (Oracle)"; the address only for the organization's own site.
   const homepage = applyLinkKind(job.apply_url, job.title) === "homepage";
@@ -255,7 +256,7 @@ export default async function JobPage({ params }: Props) {
     <p className="rounded-[10px] bg-due-none-bg px-4 py-3 text-sm text-slate">No closing date given. Check the employer&apos;s page.</p>
   );
 
-  /** Where Apply goes, that applying is free, and (UN-system vacancies) the guide to reading one. */
+  /** Where Apply goes, that applying is free, and the guides for this kind of vacancy. */
   const applyNotes = (
     <>
       <p className="mt-3 text-sm leading-snug text-slate">
@@ -263,10 +264,14 @@ export default async function JobPage({ params }: Props) {
         {target.host ? <span className="mt-0.5 block break-all text-xs text-slate">{target.host}</span> : null}
       </p>
       <p className="mt-2 text-sm leading-snug text-ink">Applying is free. {siteConfig.name} never charges a fee to apply.</p>
-      {unSystem ? (
-        <p className="mt-2 text-sm">
-          <Link href="/guides/how-to-read-a-un-vacancy" className="font-medium text-accent underline-offset-2 hover:underline">How to read a UN vacancy</Link>
-        </p>
+      {guides.length ? (
+        <ul className="mt-2 space-y-1 text-sm">
+          {guides.map((g) => (
+            <li key={g.href}>
+              <Link href={g.href} className="font-medium text-accent underline-offset-2 hover:underline">{g.label}</Link>
+            </li>
+          ))}
+        </ul>
       ) : null}
     </>
   );

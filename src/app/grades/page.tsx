@@ -3,6 +3,7 @@ import { sharedTitle, shareMetadata } from "@/lib/share-metadata";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { PAY_SOURCES } from "@/lib/grades";
+import { NET_BASE, NET_BASE_EFFECTIVE, NET_BASE_SOURCE, usd } from "@/lib/un-pay";
 import { INDEPENDENCE_NOTE } from "@/lib/site";
 
 const TITLE = "UN and international job grades explained";
@@ -31,18 +32,7 @@ function Pay({ children }: { children: React.ReactNode }) {
 
 const ext = { className: "text-accent underline", rel: "noopener" } as const;
 
-/**
- * Annual net base salary in US dollars, first and highest step, from the ICSC "Salary scale for the
- * Professional and higher categories", effective 1 January 2026 (USG and ASG: one rate). Check
- * the ICSC page each January and update the figures and the date together.
- */
-const NET_BASE_EFFECTIVE = "1 January 2026";
-const NET_BASE_SOURCE = "https://icsc.un.org/Home/GetDataFile/8956";
-const NET_BASE: Record<string, [number, number]> = {
-  "P-1": [43834, 59617], "P-2": [56046, 74640], "P-3": [71335, 92127], "P-4": [86027, 108485], "P-5": [103165, 126441],
-  "D-1": [117953, 145310], "D-2": [130477, 153845], ASG: [159016, 159016], USG: [173372, 173372],
-};
-const usd = (n: number) => `$${n.toLocaleString("en-US")}`;
+
 
 /** The net base salary range of each grade, with what it leaves out (post adjustment, allowances). */
 function PayTable({ grades }: { grades: string[] }) {

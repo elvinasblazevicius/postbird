@@ -8,7 +8,7 @@ import { INDEPENDENCE_NOTE } from "@/lib/site";
 const PATH = "/resources";
 const TITLE = "Resources for international job seekers";
 const DESCRIPTION =
-  "Guides to reading UN and international vacancies and their grades, and preparation for the EU's EPSO selection tests.";
+  "Free guides for UN, NGO and EU job seekers: how to get a UN job, a UN salary calculator, which UN internships are paid, JPO sponsors, the YPP, UN Volunteers, EPSO exams and the Blue Book traineeship.";
 
 /** Rendered again at most hourly, like the guides (the header and footer list employer types with live counts). */
 export const revalidate = 3600;
@@ -33,9 +33,44 @@ const GUIDES: { href: string; title: string; text: string }[] = [
     text: "P, D, G and NO grades, service contracts, consultancies, internships, UN Volunteers and EU staff categories, with links to the official pay scales.",
   },
   {
-    href: "/grades#professional",
-    title: "UN salaries",
-    text: "Net base salaries for Professional and Director grades from the official ICSC scale, how post adjustment changes take-home pay by duty station, and where to find pay for local, EU and other contracts.",
+    href: "/guides/how-to-get-a-un-job",
+    title: "How to get a UN job",
+    text: "Every route in, and who each suits: regular vacancies, internships, the Young Professionals Programme, JPO posts, UN Volunteers, consultancies and the EU institutions.",
+  },
+  {
+    href: "/guides/un-salaries",
+    title: "UN salaries and salary calculator",
+    text: "Work out Professional pay by grade and duty station from the official ICSC scales: net base salary, post adjustment, and what else is paid on top.",
+  },
+  {
+    href: "/guides/un-internships",
+    title: "Which UN internships are paid",
+    text: "Agency by agency, which internships pay a stipend and which don't, with links to each organization's own rules.",
+  },
+  {
+    href: "/guides/jpo-programme",
+    title: "Junior Professional Officer (JPO) programme",
+    text: "Which countries sponsor JPOs, who can apply, and where each country's programme is announced.",
+  },
+  {
+    href: "/guides/un-young-professionals-programme",
+    title: "UN Young Professionals Programme (YPP)",
+    text: "The age limit, participating countries, the exam, the reserve list and P-1/P-2 appointments.",
+  },
+  {
+    href: "/guides/un-volunteers",
+    title: "UN Volunteers",
+    text: "International, youth, university and national assignments, the living allowance, and how to apply.",
+  },
+  {
+    href: "/guides/epso-exams",
+    title: "EPSO exams explained",
+    text: "How EU competitions for permanent posts work, from the notice and reasoning tests to the case study and reserve list.",
+  },
+  {
+    href: "/guides/eu-blue-book-traineeship",
+    title: "EU Blue Book traineeship",
+    text: "The European Commission's paid five-month traineeship: eligibility, the monthly grant, application windows and selection.",
   },
 ];
 
