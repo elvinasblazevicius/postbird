@@ -16,6 +16,7 @@ export type AiFacts = {
   organization: AiField<string>;
   contractType: AiField<string>;
   grade: AiField<string>;
+  nationalsOnly: AiField<string>;
 };
 export type CheckedFacts = {
   deadline: string | null;
@@ -25,6 +26,8 @@ export type CheckedFacts = {
   organization: string | null;
   contractType: string | null;
   grade: string | null;
+  /** The page says only nationals (or residents) of the duty-station country may apply. */
+  nationalsOnly: boolean;
   /** Values the model gave that failed the checks, with the reason (for the trial report). */
   rejected: string[];
 };
@@ -36,8 +39,9 @@ const PROMPT = `You read job vacancy pages for a job board. From the page text, 
 - organization: the hiring organization's name
 - contract_type: one of "Fixed-term", "Temporary", "Consultancy", "Internship", "Volunteer", "Fellowship", "Traineeship"
 - grade: the post's grade as written (e.g. P-3, NO-B, G-5, FS-4)
+- nationals_only: "yes" only if the page says the post is open only to nationals (citizens) or legal residents of the duty-station country, e.g. "National Consultant", "only Namibian nationals are eligible", "open to nationals of Kenya only", "locally recruited position"; otherwise null. Not for statements about other groups ("EU citizens only", "nationals of member states", "nationals of non-represented countries are encouraged")
 For each field return {"value": ..., "quote": ...} where quote is the exact words from the page (copied character for character, 3 to 120 characters) that state it. If the page doesn't state a field, return {"value": null, "quote": null}. Never guess, infer or use outside knowledge.
-Answer with one JSON object with exactly these keys: closing_date, country, city, organization, contract_type, grade.`;
+Answer with one JSON object with exactly these keys: closing_date, country, city, organization, contract_type, grade, nationals_only.`;
 
 const CONTRACT_TYPES = ["Fixed-term", "Temporary", "Consultancy", "Internship", "Volunteer", "Fellowship", "Traineeship"];
 
@@ -70,7 +74,7 @@ export async function askDeepSeek(title: string, pageText: string): Promise<{ fa
     return { value: typeof v?.value === "string" && v.value.trim() ? v.value.trim() : null, quote: typeof v?.quote === "string" && v.quote.trim() ? v.quote.trim() : null };
   };
   return {
-    facts: { closingDate: field("closing_date"), country: field("country"), city: field("city"), organization: field("organization"), contractType: field("contract_type"), grade: field("grade") },
+    facts: { closingDate: field("closing_date"), country: field("country"), city: field("city"), organization: field("organization"), contractType: field("contract_type"), grade: field("grade"), nationalsOnly: field("nationals_only") },
     usage: { input: data.usage?.prompt_tokens ?? 0, output: data.usage?.completion_tokens ?? 0 },
   };
 }
@@ -78,7 +82,7 @@ export async function askDeepSeek(title: string, pageText: string): Promise<{ fa
 /** Keeps only the values whose quote is in the page text and that pass the checks. */
 export function checkFacts(f: AiFacts, pageText: string, today = new Date()): CheckedFacts {
   const page = norm(pageText);
-  const out: CheckedFacts = { deadline: null, countryCode: null, city: null, organization: null, contractType: null, grade: null, rejected: [] };
+  const out: CheckedFacts = { deadline: null, countryCode: null, city: null, organization: null, contractType: null, grade: null, nationalsOnly: false, rejected: [] };
   const quoted = (name: string, x: AiField<string>): string | null => {
     if (!x.value) return null;
     if (!x.quote || x.quote.length < 3 || !page.includes(norm(x.quote))) { out.rejected.push(`${name}: quote not on the page`); return null; }
@@ -110,6 +114,12 @@ export function checkFacts(f: AiFacts, pageText: string, today = new Date()): Ch
   if (g) {
     // UN grades (P-3, NO-B, G-5, FS-4) and EU or ESA ranges (AD9-AD11, AST 3, A2 - A4).
     if (/^([A-Z]{1,4} ?-?\d{1,2}|NO-?[A-E])( ?[-–] ?([A-Z]{1,4} ?-?)?\d{1,2})?$/i.test(g)) out.grade = normalizeGrade(g); else out.rejected.push(`grade: "${g}" not a grade`);
+  }
+  const n = quoted("nationals only", f.nationalsOnly);
+  if (n) {
+    // The quote must itself say so: nationals, citizens, "national consultant" or "locally recruited".
+    if (/^yes$/i.test(n) && /\b(nationals?|citizens?|locally[- ]recruited|nacional|nationale?)\b/i.test(f.nationalsOnly.quote ?? "")) out.nationalsOnly = true;
+    else out.rejected.push(`nationals only: quote doesn't say so`);
   }
   return out;
 }

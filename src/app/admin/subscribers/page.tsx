@@ -1,17 +1,19 @@
 import { sql } from "@/lib/db";
 import { isEmailConfigured } from "@/lib/email";
 import { BILLING_LIVE } from "@/lib/billing/live";
-import { notifyWaitlistAction, resendConfirmationsAction, sendDigestNowAction } from "../actions";
+import { adminCancelPlanAction, notifyWaitlistAction, resendConfirmationsAction, sendDigestNowAction } from "../actions";
+import { isLiveStatus } from "@/lib/billing/statuses";
 import { requireAdmin } from "../guard";
 import { AdminShell, Card, fmtDateTime, Stat, StatusPill, Table } from "../ui";
 
 export const dynamic = "force-dynamic";
 
-type Props = { searchParams: Promise<{ msg?: string }> };
+type Props = { searchParams: Promise<{ msg?: string; q?: string }> };
 
 export default async function SubscribersPage({ searchParams }: Props) {
   await requireAdmin();
-  const msg = (await searchParams).msg;
+  const { msg, q: rawQ } = await searchParams;
+  const q = (rawQ ?? "").trim().toLowerCase().slice(0, 120);
   const [[c], recent, digests] = await Promise.all([
     sql<{ alerts: number; weekly: number; pending: number; waitlist: number; waitlist_all: number; waitlist_to_notify: number; unsub: number; total: number }[]>`
       select count(*) filter (where status = 'confirmed' and wants_alerts)::int as alerts,
@@ -24,8 +26,11 @@ export default async function SubscribersPage({ searchParams }: Props) {
              count(*) filter (where status = 'unsubscribed')::int as unsub,
              count(*)::int as total
       from subscribers`,
-    sql<{ email: string; status: string; wants_alerts: boolean; premium_waitlist: boolean; billing_status: string | null; plan_interval: string | null; source: string | null; created_at: Date; preferences: Record<string, string>; waitlist_note: string | null }[]>`
-      select email, status, wants_alerts, premium_waitlist, billing_status, plan_interval, source, created_at, preferences, waitlist_note from subscribers order by id desc limit 100`,
+    sql<{ id: number; email: string; status: string; wants_alerts: boolean; premium_waitlist: boolean; billing_status: string | null; plan_interval: string | null; source: string | null; created_at: Date; preferences: Record<string, string>; waitlist_note: string | null; has_sub: boolean; trial_ends_at: Date | null }[]>`
+      select id::int as id, email, status, wants_alerts, premium_waitlist, billing_status, plan_interval, source, created_at, preferences, waitlist_note,
+             paddle_subscription_id is not null as has_sub, trial_ends_at
+      from subscribers ${q ? sql`where email like ${`%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`}` : sql``}
+      order by id desc limit 100`,
     sql<{ period_key: string; status: string; recipients: number; sent: number; failed: number; jobs_included: number; started_at: Date; message: string | null }[]>`
       select period_key, status, recipients, sent, failed, jobs_included, started_at, message from digests order by id desc limit 8`,
   ]);
@@ -33,7 +38,7 @@ export default async function SubscribersPage({ searchParams }: Props) {
 
   return (
     <AdminShell title="Subscribers" active="/admin/subscribers">
-      {msg ? <Card className="mb-6 text-sm text-ink">{msg === "email-not-configured" ? "Email isn't set up yet (RESEND_API_KEY missing)." : msg.replace(/-/g, " ")}</Card> : null}
+      {msg ? <Card className="mb-6 text-sm text-ink">{msg === "email-not-configured" ? "Email isn't set up yet (RESEND_API_KEY missing)." : decodeURIComponent(msg).replace(/-/g, " ")}</Card> : null}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Confirmed alert subscribers" value={c.alerts} hint={`${c.weekly} get the free weekly email`} />
         <Stat label="Premium waitlist (confirmed)" value={c.waitlist} hint={`${c.waitlist_all} including unconfirmed`} />
@@ -83,9 +88,19 @@ export default async function SubscribersPage({ searchParams }: Props) {
         </Table>
       </div>
 
-      <h2 className="mt-10 text-xl font-semibold text-ink">Latest sign-ups</h2>
+      <h2 className="mt-10 text-xl font-semibold text-ink">{q ? `Subscribers matching “${q}”` : "Latest sign-ups"}</h2>
+      <form className="mt-3 flex flex-wrap items-center gap-2" action="/admin/subscribers">
+        <label className="text-sm text-ink" htmlFor="sub-q">Find by email</label>
+        <input id="sub-q" name="q" defaultValue={q} placeholder="name@example.com or part of it" className="min-h-10 w-72 rounded-lg border border-rule bg-paper px-3 text-sm" />
+        <button className="rounded-lg border border-rule bg-paper px-4 py-2 text-sm font-medium text-ink hover:bg-mist">Find</button>
+        {q ? <a href="/admin/subscribers" className="text-sm text-accent underline">Show latest</a> : null}
+      </form>
+      <p className="mt-2 text-sm text-slate">
+        To cancel a plan a subscriber asked to cancel: find them, choose when, tick the box and press Cancel plan. &ldquo;At the end of the
+        period&rdquo; stops renewal with no further charge (a free trial just ends); &ldquo;Now&rdquo; ends it at once. Refunds are made in the Paddle dashboard.
+      </p>
       <div className="mt-3">
-        <Table head={["Email", "Status", "Wants", "Source", "Premium interests", "Joined"]}>
+        <Table head={["Email", "Status", "Wants", "Source", "Premium interests", "Joined", "Plan"]}>
           {recent.map((s) => (
             <tr key={s.email} className="align-top">
               <td className="px-4 py-2">{s.email}</td>
@@ -100,9 +115,22 @@ export default async function SubscribersPage({ searchParams }: Props) {
                 {s.waitlist_note ? <div className="mt-1 text-ink">“{s.waitlist_note}”</div> : null}
               </td>
               <td className="px-4 py-2 whitespace-nowrap">{fmtDateTime(s.created_at)}</td>
+              <td className="px-4 py-2">
+                {s.has_sub && isLiveStatus(s.billing_status) ? (
+                  <form action={adminCancelPlanAction} className="flex min-w-[14rem] flex-col gap-1.5 text-xs text-ink">
+                    <input type="hidden" name="id" value={s.id} />
+                    <select name="when" className="rounded border border-rule bg-paper px-2 py-1">
+                      <option value="period">At the end of the period{s.billing_status === "trialing" ? " (trial ends, no charge)" : " (no further charge)"}</option>
+                      <option value="now">Now</option>
+                    </select>
+                    <label className="flex items-center gap-1.5"><input type="checkbox" name="confirm" required /> They asked to cancel</label>
+                    <button className="self-start rounded-lg border border-rule bg-paper px-3 py-1.5 font-medium hover:border-red-700 hover:text-red-700">Cancel plan</button>
+                  </form>
+                ) : <span className="text-xs text-slate">—</span>}
+              </td>
             </tr>
           ))}
-          {recent.length === 0 ? <tr><td colSpan={6} className="px-4 py-3 text-slate">No sign-ups yet.</td></tr> : null}
+          {recent.length === 0 ? <tr><td colSpan={7} className="px-4 py-3 text-slate">{q ? "No subscriber matches." : "No sign-ups yet."}</td></tr> : null}
         </Table>
       </div>
     </AdminShell>

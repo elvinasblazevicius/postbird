@@ -17,7 +17,7 @@ vi.mock("@/lib/jobs", async (importOriginal) => {
       calls.total++;
       calls.running++;
       calls.peak = Math.max(calls.peak, calls.running);
-      calls.keys.push(`${args[0].q ?? ""}|${args[0].firstSeenAfter?.toISOString()}`);
+      calls.keys.push(`${args[0].q ?? ""}|${args[0].listedAfter?.toISOString()}`);
       try {
         // A little slower than real, so overlapping searches show in the peak.
         await new Promise((r) => setTimeout(r, 20));

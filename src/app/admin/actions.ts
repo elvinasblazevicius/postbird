@@ -352,3 +352,35 @@ export async function approveTestimonialAction(form: FormData): Promise<void> {
   revalidatePath("/pricing");
   revalidatePath("/");
 }
+
+/**
+ * Admin → Subscribers: cancels a subscriber's plan in Paddle when they ask by email. "period": at
+ * the end of the current period or free trial (no further charge); "now": at once. Paddle's
+ * webhook then updates the subscriber. A subscription Paddle doesn't know (404, e.g. one made in
+ * Paddle's test mode before payments went live) is marked as ended here instead.
+ */
+export async function adminCancelPlanAction(form: FormData): Promise<void> {
+  await requireAdmin();
+  const id = parseId(form.get("id"));
+  const when = form.get("when") === "now" ? "immediately" : "next_billing_period";
+  if (id === null || form.get("confirm") !== "on") redirect("/admin/subscribers?msg=tick-the-box-to-confirm-the-cancellation");
+  const [s] = await sql<{ paddle_subscription_id: string | null; billing_status: string | null }[]>`
+    select paddle_subscription_id, billing_status from subscribers where id = ${id}`;
+  if (!s?.paddle_subscription_id) redirect("/admin/subscribers?msg=this-subscriber-has-no-paddle-subscription");
+  const { cancelSubscription, PaddleApiError } = await import("@/lib/billing/paddle");
+  let msg: string;
+  try {
+    await cancelSubscription(s.paddle_subscription_id, when);
+    msg = when === "immediately" ? "plan-canceled-now-in-paddle" : "plan-set-to-end-at-the-end-of-its-period-in-paddle-no-further-charge";
+  } catch (e) {
+    if (e instanceof PaddleApiError && e.status === 404) {
+      await sql`update subscribers set billing_status = 'canceled', canceled_at = coalesce(canceled_at, now()) where id = ${id}`;
+      msg = "paddle-doesn't-know-this-subscription-(made-in-test-mode?)-marked-as-ended-here";
+    } else {
+      console.error("admin cancel failed", (e as Error).message);
+      msg = `cancel-failed:-${(e as Error).message.replace(/\s+/g, "-").slice(0, 80)}`;
+    }
+  }
+  revalidatePath("/admin/subscribers");
+  redirect(`/admin/subscribers?msg=${encodeURIComponent(msg)}`);
+}

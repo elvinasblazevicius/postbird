@@ -198,8 +198,17 @@ export async function getSubscription(subscriptionId: string, opts: PaddleCallOp
  * address, and a trial at an address nobody confirmed: no further charge is taken.
  */
 export async function cancelSubscriptionNow(subscriptionId: string, opts: PaddleCallOptions = {}): Promise<void> {
+  await cancelSubscription(subscriptionId, "immediately", opts);
+}
+
+/**
+ * Cancels a subscription (needs subscription.write): "immediately", or "next_billing_period" so it
+ * ends when the current period (or the free trial) does, with no further charge. Paddle's webhook
+ * then updates the subscriber here. Refunds are made in the Paddle dashboard.
+ */
+export async function cancelSubscription(subscriptionId: string, when: "immediately" | "next_billing_period", opts: PaddleCallOptions = {}): Promise<void> {
   if (!PADDLE_ID("sub").test(subscriptionId)) throw new Error("Invalid Paddle subscription id");
-  await paddleFetch<{ id: string }>(`/subscriptions/${subscriptionId}/cancel`, { method: "POST", body: { effective_from: "immediately" }, ...opts });
+  await paddleFetch<{ id: string }>(`/subscriptions/${subscriptionId}/cancel`, { method: "POST", body: { effective_from: when }, ...opts });
 }
 
 /** Customer fields this site reads (a subset of Paddle's customer entity). */

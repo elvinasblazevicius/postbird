@@ -3,13 +3,14 @@ import Link from "next/link";
 import { AccountUnsubscribe, AddSearchForm, CancelPlanButton, FrequencyForm, PortalButton, RemoveSearchButton, RestartPlanButton } from "@/components/account-forms";
 import { ALL_CATEGORIES } from "@/config/categories";
 import { COUNTRIES } from "@/config/countries";
-import { GRADE_GROUPS, LANGUAGES, REGIONS } from "@/config/regions";
+import { OrgFields, WhereFields, type FacetData } from "@/components/search-forms";
+import { GRADE_GROUPS, LANGUAGES } from "@/config/regions";
 import { findByManageToken, type Account } from "@/lib/account";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { hadTrialBefore, LIVE_STATUSES } from "@/lib/billing/subscriptions";
 import { trialUsedElsewhere } from "@/lib/billing/trial-markers";
 import { planDescription } from "@/lib/early-access-copy";
-import { EXPERIENCE_BANDS, JOB_TYPES, organizationFacets } from "@/lib/jobs";
+import { alertOrganizations, countryFacets, EXPERIENCE_BANDS, JOB_TYPES, regionFacets } from "@/lib/jobs";
 import { listSavedSearches, MAX_SAVED_SEARCHES, searchLimit } from "@/lib/saved-searches";
 import { formatDate, siteConfig } from "@/lib/site";
 
@@ -72,54 +73,50 @@ export default async function AccountPage({ searchParams }: Props) {
   const billing = Boolean(acct.paddle_customer_id || acct.paddle_subscription_id);
   // The free weekly email goes only to confirmed addresses without a plan.
   const weekly = siteConfig.freeWeeklyEmail && !paying && acct.weekly_email && acct.status === "confirmed";
-  const where = [
-    { label: "Regions", options: REGIONS.map((r) => ({ value: `region-${r.slug}`, label: r.name })) },
-    { label: "Countries", options: [...COUNTRIES].sort((a, b) => a.name.localeCompare(b.name)).map((c) => ({ value: c.slug, label: c.name })) },
-  ];
+  // The Organization and Where pickers of the alert sign-up (several of each), every country offered.
+  const [orgs, openCountries, regions] = await Promise.all([alertOrganizations().catch(() => []), countryFacets(false).catch(() => []), regionFacets(false).catch(() => [])]);
+  const openCount = new Map(openCountries.map((c) => [c.slug, c.count]));
+  const facets: FacetData = {
+    orgs: orgs.map((o) => ({ slug: o.slug, name: o.name, count: o.count })),
+    countries: [...COUNTRIES].sort((a, b) => a.name.localeCompare(b.name)).map((c) => ({ slug: c.slug, name: c.name, count: openCount.get(c.slug) ?? 0 })),
+    regions, categories: [], grades: [],
+  };
   const card = "rounded-xl border border-rule bg-paper p-6";
+
+  const how = acct.frequency === "weekly" ? "Weekly" : "Daily";
+  const summary = paying
+    ? !alertsOn ? "Your alerts are on hold: see Plan and billing below."
+      : searches.length ? `${how} alerts are on for your ${searches.length === 1 ? "saved search" : `${searches.length} saved searches`}.`
+      : `${how} alerts are on, but you have no saved search yet: add one below.`
+    : weekly ? "You get the free weekly email on Mondays." : "No alerts are being sent.";
+  const addForm = (
+    <AddSearchForm
+      t={acct.manage_token}
+      placeFields={<>
+        <OrgFields facets={facets} filters={{}} idPrefix="add" counts={false} />
+        <WhereFields facets={facets} filters={{}} idPrefix="add" counts={false} placeholder="Anywhere: type a country or region" />
+      </>}
+      categories={ALL_CATEGORIES.map((c) => ({ value: c.slug, label: c.name }))}
+      grades={GRADE_GROUPS.map((g) => ({ value: g.value, label: g.name }))}
+      types={JOB_TYPES.map((x) => ({ value: x, label: x }))}
+      langs={LANGUAGES.map((l) => ({ value: l, label: l }))}
+      exps={EXPERIENCE_BANDS.map((b) => ({ value: b.value, label: b.name }))}
+    />
+  );
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
       <h1 className="text-[2rem] font-semibold text-ink">Your account</h1>
       <p className="mt-1 text-slate">{acct.email}</p>
+      <p className="mt-4 rounded-lg bg-mist px-4 py-3 text-[0.95rem] text-ink">{summary}</p>
 
-      <section className={`${card} mt-8`} aria-labelledby="plan-h">
-        <h2 id="plan-h" className="text-lg font-semibold text-ink">{siteConfig.premium.name}</h2>
-        <dl className="mt-3 grid gap-x-6 gap-y-1 text-[0.95rem] sm:grid-cols-[auto_1fr]">
-          <dt className="text-slate">Plan</dt>
-          <dd className="text-ink">{acct.billing_status === "none" ? "None yet" : planDescription(acct.plan_interval)}</dd>
-          <dt className="text-slate">Status</dt>
-          <dd className="font-semibold text-ink">{STATUS_TEXT[acct.billing_status]}</dd>
-        </dl>
-        {planLines(acct).map((l) => <p key={l} className="mt-3 text-[0.95rem] text-ink">{l}</p>)}
-        {weekly ? (
-          <p className="mt-3 text-[0.95rem] text-ink">
-            You get the free weekly email on Mondays. A plan adds daily alerts and up to {MAX_SAVED_SEARCHES} searches, sent instead of the weekly email.
-          </p>
-        ) : null}
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          {/* Cancel goes straight to Paddle's cancel page; "Manage billing" opens the overview (card, invoices). */}
-          {billing ? <PortalButton t={acct.manage_token} /> : null}
-          {paying && acct.paddle_subscription_id && !acct.cancel_at ? <CancelPlanButton t={acct.manage_token} /> : null}
-          {!paying && BILLING_LIVE ? (
-            hadPlan ? (
-              <RestartPlanButton t={acct.manage_token} />
-            ) : (
-              <RestartPlanButton t={acct.manage_token} label={`Start your ${siteConfig.premium.trialDays}-day free trial`} />
-            )
-          ) : null}
-        </div>
-        {billing ? (
-          <p className="mt-3 text-sm text-slate">Billing is handled by Paddle, our reseller: cancel, update your card or see invoices there.</p>
-        ) : null}
-      </section>
-
+      {/* 1. What we send: the searches, how often, and adding one. */}
       <section className={`${card} mt-6`} aria-labelledby="searches-h">
-        <h2 id="searches-h" className="text-lg font-semibold text-ink">Saved searches</h2>
+        <h2 id="searches-h" className="text-lg font-semibold text-ink">Your job alerts</h2>
         <p className="mt-1 text-[0.95rem] text-slate">
           {paying ? (
             <>
-              Each alert lists the new vacancies matching these searches. Up to {MAX_SAVED_SEARCHES} searches.
+              Each email lists the new vacancies matching any of these searches, and matching ones closing in the next 3 days. Up to {MAX_SAVED_SEARCHES} searches.
               {alertsOn ? "" : " Alerts are sent only while your plan is in trial or active."}
             </>
           ) : weekly ? (
@@ -130,52 +127,99 @@ export default async function AccountPage({ searchParams }: Props) {
           ) : (
             <>
               Without a plan you can keep one saved search.
-              {siteConfig.freeWeeklyEmail ? <> <Link href="/alerts" className="text-accent underline">Sign up for the free weekly email</Link> to get its new matches on Mondays.</> : null}
+              {siteConfig.freeWeeklyEmail ? <> <Link href="/alerts" className="text-accent underline">Get the free weekly email</Link> to receive its new matches on Mondays.</> : null}
             </>
           )}
         </p>
+
+        {paying ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <span className="text-[0.95rem] font-medium text-ink">Send me an email</span>
+            <FrequencyForm t={acct.manage_token} current={acct.frequency} />
+          </div>
+        ) : null}
+
         {searches.length ? (
-          <ul className="mt-4 divide-y divide-rule border-y border-rule">
+          <ul className="mt-5 divide-y divide-rule border-y border-rule">
             {searches.map((s) => (
               <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                 <div className="min-w-0">
-                  <Link href={s.search ? `/jobs?${s.search}` : "/jobs"} className="font-medium text-accent hover:underline">{s.label || "All new vacancies"}</Link>
-                  <div className="text-sm text-slate">{s.last_sent_at ? `Last alert ${formatDate(s.last_sent_at)}` : "No alert sent yet"}</div>
+                  <p className="font-medium text-ink">{s.label || "All new vacancies"}</p>
+                  <p className="text-sm text-slate">
+                    {s.last_sent_at ? `Last alert ${formatDate(s.last_sent_at)}` : "No alert sent yet"}
+                    {" · "}
+                    <Link href={s.search ? `/jobs?${s.search}` : "/jobs"} className="text-accent underline underline-offset-2">See matching jobs</Link>
+                  </p>
                 </div>
                 <RemoveSearchButton t={acct.manage_token} id={s.id} />
               </li>
             ))}
           </ul>
         ) : (
-          <p className="mt-4 rounded-lg bg-signal-bg p-3 text-[0.95rem] text-ink">
-            {weekly ? "You have no saved search, so your weekly email lists the week's newest vacancies. Add one below to narrow it." : "You have no saved searches, so no alerts are sent. Add one below."}
+          <p className="mt-5 rounded-lg bg-signal-bg p-3 text-[0.95rem] text-ink">
+            {weekly ? "You have no saved search, so your weekly email lists the week's newest vacancies. Add one below to narrow it." : "You have no saved searches yet, so no alerts are sent. Add one below."}
           </p>
         )}
+
         {searches.length < limit ? (
-          <div className="mt-6">
-            <h3 className="mb-3 font-semibold text-ink">Add a search</h3>
-            <AddSearchForm
-              t={acct.manage_token}
-              where={where}
-              categories={ALL_CATEGORIES.map((c) => ({ value: c.slug, label: c.name }))}
-              grades={GRADE_GROUPS.map((g) => ({ value: g.value, label: g.name }))}
-              types={JOB_TYPES.map((x) => ({ value: x, label: x }))}
-              orgs={(await organizationFacets(500, false).catch(() => [])).map((o) => ({ value: o.slug, label: o.name }))}
-              langs={LANGUAGES.map((l) => ({ value: l, label: l }))}
-              exps={EXPERIENCE_BANDS.map((b) => ({ value: b.value, label: b.name }))}
-            />
-          </div>
+          searches.length ? (
+            <details className="mt-6 [&[open]>summary]:mb-4">
+              <summary className="inline-flex cursor-pointer items-center rounded-lg border border-rule px-4 py-2 text-sm font-semibold text-ink hover:border-accent hover:text-accent">Add another search</summary>
+              {addForm}
+            </details>
+          ) : (
+            <div className="mt-6">
+              <h3 className="mb-3 font-semibold text-ink">Add a search</h3>
+              {addForm}
+            </div>
+          )
+        ) : (
+          <p className="mt-4 text-sm text-slate">You have the most searches your plan allows. Remove one to add another.</p>
+        )}
+      </section>
+
+      {/* 2. The plan. */}
+      <section className={`${card} mt-6`} aria-labelledby="plan-h">
+        <h2 id="plan-h" className="text-lg font-semibold text-ink">Plan and billing</h2>
+        <dl className="mt-3 grid gap-x-6 gap-y-1 text-[0.95rem] sm:grid-cols-[auto_1fr]">
+          <dt className="text-slate">Plan</dt>
+          <dd className="text-ink">{acct.billing_status === "none" ? "None yet" : `${siteConfig.premium.name}, ${planDescription(acct.plan_interval)}`}</dd>
+          <dt className="text-slate">Status</dt>
+          <dd className="font-semibold text-ink">{STATUS_TEXT[acct.billing_status]}</dd>
+        </dl>
+        {planLines(acct).map((l) => <p key={l} className="mt-3 text-[0.95rem] text-ink">{l}</p>)}
+        {weekly ? (
+          <p className="mt-3 text-[0.95rem] text-ink">
+            A plan adds daily alerts and up to {MAX_SAVED_SEARCHES} searches, sent instead of the weekly email.
+          </p>
+        ) : null}
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          {!paying && BILLING_LIVE ? (
+            hadPlan ? (
+              <RestartPlanButton t={acct.manage_token} />
+            ) : (
+              <RestartPlanButton t={acct.manage_token} label={`Start your ${siteConfig.premium.trialDays}-day free trial`} />
+            )
+          ) : null}
+          {billing ? <PortalButton t={acct.manage_token} /> : null}
+        </div>
+        {billing ? (
+          <p className="mt-3 text-sm text-slate">
+            Payments are handled by Paddle, our reseller: &ldquo;Manage billing&rdquo; is where you update your card and see invoices.
+          </p>
+        ) : null}
+        {paying && acct.paddle_subscription_id && !acct.cancel_at ? (
+          <details className="mt-4 text-sm">
+            <summary className="cursor-pointer text-slate underline underline-offset-2">Cancel your plan</summary>
+            <div className="mt-3 space-y-3">
+              <p className="text-slate">You keep your alerts until the end of the period you&apos;ve paid for{acct.billing_status === "trialing" ? " (for a free trial, until it ends)" : ""}, and you aren&apos;t charged again.</p>
+              <CancelPlanButton t={acct.manage_token} />
+            </div>
+          </details>
         ) : null}
       </section>
 
-      {paying ? (
-        <section className={`${card} mt-6`} aria-labelledby="freq-h">
-          <h2 id="freq-h" className="text-lg font-semibold text-ink">How often</h2>
-          <p className="mb-3 mt-1 text-[0.95rem] text-slate">One email with all your matches, every day or once a week, with matching vacancies that close in the next 3 days. No email when there is nothing new and nothing closing.</p>
-          <FrequencyForm t={acct.manage_token} current={acct.frequency} />
-        </section>
-      ) : null}
-
+      {/* 3. All emails. */}
       <section className={`${card} mt-6`} aria-labelledby="unsub-h">
         <h2 id="unsub-h" className="text-lg font-semibold text-ink">Emails</h2>
         <div className="mt-2">
@@ -184,7 +228,8 @@ export default async function AccountPage({ searchParams }: Props) {
       </section>
 
       <p className="mt-6 text-[0.95rem] text-ink">
-        Missing something? <Link href="/feedback" className="font-medium text-accent underline underline-offset-2">Suggest a feature</Link>
+        Need help or missing something? <Link href="/feedback" className="font-medium text-accent underline underline-offset-2">Tell us</Link>
+        {siteConfig.contactEmail ? <> or email <a href={`mailto:${siteConfig.contactEmail}`} className="font-medium text-accent underline underline-offset-2">{siteConfig.contactEmail}</a></> : null}.
       </p>
       <p className="mt-8 text-sm text-slate">Keep this page&apos;s address private: anyone with it can change your alerts.</p>
     </div>

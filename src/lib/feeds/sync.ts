@@ -11,7 +11,7 @@ import { normalizeItem, ItemSkipped, type ContentPolicy, type NormalizedJob } fr
 import { parseFeed, FeedParseError } from "./parse";
 import { refreshOrgLogos } from "./logos";
 import { addEmployerLinksFromBoards } from "./board-links";
-import { enrichFromVacancyPages, recheckUndatedJobs } from "./enrich";
+import { enrichFromVacancyPages, markLocalOnly, recheckUndatedJobs } from "./enrich";
 import { cleanupRateLimits } from "@/lib/rate-limit";
 import { purgeStaleSubscribers } from "@/lib/subscribers";
 import { purgeOpsEvents, recordOpsEvent } from "@/lib/ops-events";
@@ -293,6 +293,32 @@ function statusFor(deadline: string | null, today: string): "active" | "expired"
   return deadline && deadline < today ? "expired" : "active";
 }
 
+// ── Holding new listings until their details are filled ──────
+
+/** New listings from the import start held (not shown) until markListed releases them. */
+const HOLD_NEW = true;
+/** A held listing is shown after this long whatever happened, so nothing waits forever. */
+const HOLD_MAX_HOURS = 6;
+
+/**
+ * Shows the held listings that are ready: complete from the feed (a place, or remote, and a
+ * closing date), or whose employer page has been read and the AI asked where it could help (or
+ * the page couldn't be read), or held for HOLD_MAX_HOURS. Their listed_at is now, so alerts and
+ * the weekly email pick them up as new from this moment. Returns how many were shown.
+ */
+export async function markListed(): Promise<number> {
+  const rows = await sql`
+    update jobs set held = false, listed_at = now(), updated_at = now()
+    where held and (
+      status <> 'active'
+      or ((country_code is not null or is_remote) and deadline is not null)
+      or (page_checked_at is not null and (ai_checked_at is not null or ${!process.env.DEEPSEEK_API_KEY}
+                                           or coalesce(page_result, '') in ('blocked', 'skipped', 'error')))
+      or first_seen_at < now() - make_interval(hours => ${HOLD_MAX_HOURS}))
+    returning id`;
+  return rows.length;
+}
+
 // ── Main sync ────────────────────────────────────────────────
 
 export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
@@ -435,10 +461,10 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
               const [row] = await sql<{ id: number }[]>`
                 insert into jobs (slug, title, organization_id, primary_feed_id, country_code, city, location_text, is_remote,
                   category, job_type, grade, languages, desirable_languages, min_experience_years, reference, summary, description_html, content_policy, apply_url, apply_host,
-                  source_host, url_hash, fingerprint, published_at, deadline, status)
+                  source_host, url_hash, fingerprint, published_at, deadline, status, held)
                 values (${j.slug}, ${j.title}, ${orgId}, ${feedId}, ${j.countryCode}, ${j.city}, ${j.locationText}, ${j.isRemote},
                   ${j.category}, ${j.jobType}, ${j.grade}, ${j.languages}, ${j.desirableLanguages}, ${j.minExperienceYears}, ${j.reference}, ${j.summary}, ${j.descriptionHtml}, ${j.contentPolicy},
-                  ${j.applyUrl}, ${j.applyHost}, ${j.sourceHost}, ${j.urlHash}, ${j.fingerprint}, ${j.publishedAt}, ${j.deadline}, ${status})
+                  ${j.applyUrl}, ${j.applyHost}, ${j.sourceHost}, ${j.urlHash}, ${j.fingerprint}, ${j.publishedAt}, ${j.deadline}, ${status}, ${HOLD_NEW})
                 on conflict (url_hash) do nothing
                 returning id`;
               if (!row) { result.unchanged++; continue; } // created concurrently; ignore
@@ -656,6 +682,17 @@ export async function runSync(trigger: SyncTrigger): Promise<SyncResult> {
     result.expired = expired.length + archived.length;
     // The employer's page text is kept only while the vacancy is open (migration 028).
     await sql`update jobs set page_text = null where status <> 'active' and page_text is not null`;
+    // Posts whose own text says nationals of the duty-station country only (for "Hide local-only posts").
+    try {
+      const lo = await markLocalOnly();
+      if (lo.national) notes.push(`${lo.national} of ${lo.checked} newly read listings say they are open only to nationals.`);
+    } catch (e) {
+      notes.push(`National posts were not checked: ${(e as Error).message}`);
+    }
+    // New listings whose missing details have now been looked for are shown.
+    const shown = await markListed();
+    const stillHeld = (await sql<{ n: number }[]>`select count(*)::int as n from jobs where held and status = 'active'`)[0].n;
+    if (shown || stillHeld) notes.push(`New listings: ${shown} shown once their details were looked for${stillHeld ? `, ${stillHeld} still being filled in (shown within ${HOLD_MAX_HOURS} hours at most)` : ""}.`);
     // Retention clean-up only in the scheduled import (every 2 hours), never
     // inside the website's 10-second limit.
     if (isCli) await retentionCleanup();

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { checkFacts, type AiFacts } from "@/lib/feeds/ai-extract";
 
 const empty = { value: null, quote: null };
-const facts = (over: Partial<AiFacts>): AiFacts => ({ closingDate: empty, country: empty, city: empty, organization: empty, contractType: empty, grade: empty, ...over });
+const facts = (over: Partial<AiFacts>): AiFacts => ({ closingDate: empty, country: empty, city: empty, organization: empty, contractType: empty, grade: empty, nationalsOnly: empty, ...over });
 const PAGE = "Programme Officer. Duty Station: Nairobi, Kenya. Grade: P-3. Type of contract: Fixed-term. Deadline for applications: 30 November 2026. UNICEF";
 const today = new Date("2026-11-12T00:00:00Z");
 
@@ -40,5 +40,16 @@ describe("AI fill-in checks", () => {
     expect(bad.city).toBeNull();
     const missing = checkFacts(facts({ city: { value: "Mombasa", quote: "Duty Station: Mombasa" } }), PAGE, today);
     expect(missing.city).toBeNull();
+  });
+});
+
+describe("AI: nationals only", () => {
+  const page = "National Communication Consultant. Only Namibian nationals are eligible to apply. Duty station: Windhoek.";
+  it("keeps it when the quote says so", () => {
+    expect(checkFacts(facts({ nationalsOnly: { value: "yes", quote: "Only Namibian nationals are eligible to apply" } }), page, today).nationalsOnly).toBe(true);
+  });
+  it("drops it when the quote isn't on the page or doesn't say nationals", () => {
+    expect(checkFacts(facts({ nationalsOnly: { value: "yes", quote: "Only Kenyan nationals may apply" } }), page, today).nationalsOnly).toBe(false);
+    expect(checkFacts(facts({ nationalsOnly: { value: "yes", quote: "Duty station: Windhoek" } }), page, today).nationalsOnly).toBe(false);
   });
 });

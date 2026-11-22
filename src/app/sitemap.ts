@@ -21,7 +21,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [jobs, orgs, cats, countries, remote, regions, typeCounts] = await Promise.all([
     sql<{ id: number; slug: string; updated_at: Date }[]>`
       select id, slug, updated_at from jobs
-      where status = 'active' and not is_demo
+      where status = 'active' and not is_demo and not held
         and (deadline is null or deadline >= (now() at time zone 'utc')::date)
         and (${LISTING_SETTINGS.indexJobsWithoutDescription} or summary is not null or description_html is not null)
       order by coalesce(published_at, first_seen_at) desc, id desc limit 45000`,

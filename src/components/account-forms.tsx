@@ -38,80 +38,77 @@ export function RemoveSearchButton({ t, id }: { t: string; id: number }) {
 
 type Opt = { value: string; label: string };
 
-/** The "Build a search from filters" fields, in the order a /jobs link writes them. */
+/** The "Build a search from filters" fields, in the order a /jobs link writes them. Every one but the keywords may repeat. */
 const BUILDER_FIELDS = ["q", "org", "where", "grade", "lang", "exp", "category", "remote", "type", "hidelocal"] as const;
 
 /**
  * The builder's filters as a /jobs link, the same saved search the Jobs page's address gives
- * ("" fields left out), for the "link" field the server reads. The server also reads some of these
- * fields on their own; the link carries all of them.
+ * ("" fields left out; a field chosen several times is repeated), for the "link" field the server reads.
  */
 export function builderLink(form: FormData): string {
   const p = new URLSearchParams();
   for (const k of BUILDER_FIELDS) {
-    const v = String(form.get(k) ?? "").trim().slice(0, 120);
-    if (v) p.append(k, v);
+    for (const raw of form.getAll(k).slice(0, 10)) {
+      const v = String(raw ?? "").trim().slice(0, 120);
+      if (v) p.append(k, v);
+    }
   }
   const q = p.toString();
   return q ? `/jobs?${q}` : "/jobs";
 }
 
-function BuilderSelect({ id, name, label, all, options }: { id: string; name: string; label: string; all: string; options: Opt[] }) {
+/** A short list where any number can be ticked (a listing matching any of them counts), as pills. */
+function Choices({ name, label, options, hint }: { name: string; label: string; options: Opt[]; hint?: string }) {
   return (
-    <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-ink">{label}</label>
-      <select id={id} name={name} defaultValue="" className={field}>
-        <option value="">{all}</option>
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </div>
+    <fieldset>
+      <legend className="mb-1.5 text-sm font-medium text-ink">{label}</legend>
+      {hint ? <p className="-mt-1 mb-2 text-xs text-slate">{hint}</p> : null}
+      <div className="flex flex-wrap gap-2">
+        {options.map((o) => (
+          <label key={o.value} className="cursor-pointer">
+            <input type="checkbox" name={name} value={o.value} className="peer sr-only" />
+            <span className="inline-block rounded-full border border-rule bg-paper px-3 py-1.5 text-sm text-ink peer-checked:border-brand peer-checked:bg-brand peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-accent">
+              {o.label}
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 
-/** Add a search by pasting a /jobs link, or by picking a few filters. */
-export function AddSearchForm({ t, where, categories, grades, types, orgs, langs, exps }: {
-  t: string; where: { label: string; options: Opt[] }[]; categories: Opt[]; grades: Opt[]; types: Opt[]; orgs: Opt[]; langs: Opt[]; exps: Opt[];
+/**
+ * Add a search: pick filters (several places, organizations, grades… each; a vacancy matching any
+ * of the choices in a field counts), or paste a link from the Jobs page. `placeFields`: the
+ * Organization and Where pickers, rendered on the server (their lists come from the database).
+ */
+export function AddSearchForm({ t, placeFields, categories, grades, types, langs, exps }: {
+  t: string; placeFields: React.ReactNode; categories: Opt[]; grades: Opt[]; types: Opt[]; langs: Opt[]; exps: Opt[];
 }) {
   const [state, action, pending] = useActionState(addSearchAction, initial);
-  // Without a pasted link, the picked filters go as a link, so every one of them (organization,
-  // language, experience, local-only posts included) is saved exactly as on the Jobs page.
+  // Without a pasted link, the picked filters go as a link, so every one of them is saved exactly as on the Jobs page.
   const submit = (form: FormData) => {
     if (!String(form.get("link") ?? "").trim()) form.set("link", builderLink(form));
     return action(form);
   };
   return (
-    <form action={submit} className="space-y-4">
+    <form action={submit} className="space-y-5">
       <input type="hidden" name="t" value={t} />
       <div>
-        <label htmlFor="add-link" className="mb-1.5 block text-sm font-medium text-ink">Paste a search link</label>
-        <input id="add-link" name="link" placeholder="e.g. a link copied from the Jobs page after filtering" className={field} />
-        <p className="mt-1 text-sm text-slate">Search and filter on the Jobs page, then copy the address from your browser. Or leave this empty and pick filters below.</p>
+        <label htmlFor="add-q" className="mb-1.5 block text-sm font-medium text-ink">Keywords</label>
+        <input id="add-q" name="q" maxLength={120} placeholder="e.g. data analyst, WASH, communication" className={field} />
+        <p className="mt-1 text-xs text-slate">Optional. Vacancies that mention these words.</p>
       </div>
-      <details className="rounded-lg border border-rule p-4">
-        <summary className="cursor-pointer text-sm font-semibold text-ink">Build a search from filters</summary>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <label htmlFor="add-q" className="mb-1.5 block text-sm font-medium text-ink">Keywords</label>
-            <input id="add-q" name="q" maxLength={120} placeholder="e.g. data analyst, WASH, UNICEF" className={field} />
-          </div>
-          <BuilderSelect id="add-org" name="org" label="Organization" all="Any organization" options={orgs} />
-          <div>
-            <label htmlFor="add-where" className="mb-1.5 block text-sm font-medium text-ink">Where</label>
-            <select id="add-where" name="where" defaultValue="" className={field}>
-              <option value="">Anywhere</option>
-              {where.map((g) => (
-                <optgroup key={g.label} label={g.label}>
-                  {g.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </optgroup>
-              ))}
-            </select>
-          </div>
-          <BuilderSelect id="add-category" name="category" label="Category" all="Any category" options={categories} />
-          <BuilderSelect id="add-grade" name="grade" label="Grade" all="Any grade" options={grades} />
-          <BuilderSelect id="add-type" name="type" label="Contract type" all="Any contract" options={types} />
-          <BuilderSelect id="add-exp" name="exp" label="Experience required" all="Any experience" options={exps} />
-          <BuilderSelect id="add-lang" name="lang" label="Language in requirements" all="Any language" options={langs} />
-          <div className="space-y-2 sm:col-span-2">
+      <div className="grid gap-5 sm:grid-cols-2">{placeFields}</div>
+      <details className="rounded-lg border border-rule p-4 [&[open]>summary]:mb-4">
+        <summary className="cursor-pointer text-sm font-semibold text-ink">More filters: grade, category, contract, languages</summary>
+        <div className="space-y-5">
+          <Choices name="grade" label="Grade" options={grades} />
+          <Choices name="category" label="Category" options={categories} />
+          <Choices name="type" label="Contract type" options={types} />
+          <Choices name="exp" label="Experience required" options={exps} />
+          <Choices name="lang" label="Language in the requirements" options={langs} hint="Vacancies that ask for any of these" />
+          <div className="space-y-2">
             <label className="flex items-center gap-2.5 text-[0.95rem] text-ink">
               <input type="checkbox" name="remote" value="1" className="h-4 w-4 accent-[var(--accent)]" />
               Remote only
@@ -120,13 +117,18 @@ export function AddSearchForm({ t, where, categories, grades, types, orgs, langs
               <input type="checkbox" name="hidelocal" value="1" className="mt-1 h-4 w-4 shrink-0 accent-[var(--accent)]" />
               <span>
                 Hide local-only posts
-                <span className="block text-xs text-slate">National Officer, General Service and other posts usually open only to nationals or residents</span>
+                <span className="block text-xs text-slate">National Officer, General Service, national consultant and other posts open only to nationals or residents</span>
               </span>
             </label>
           </div>
         </div>
       </details>
-      <button disabled={pending} className={primary}>{pending ? "Saving…" : "Add this search"}</button>
+      <details className="rounded-lg border border-rule p-4 [&[open]>summary]:mb-3">
+        <summary className="cursor-pointer text-sm font-semibold text-ink">Or paste a search from the Jobs page</summary>
+        <label htmlFor="add-link" className="mb-1.5 block text-sm text-ink">Search and filter on the Jobs page, copy the address from your browser and paste it here. It is used instead of the filters above.</label>
+        <input id="add-link" name="link" placeholder="https://…/jobs?q=…" className={field} />
+      </details>
+      <button disabled={pending} className={primary}>{pending ? "Saving…" : "Save this search"}</button>
       <Message state={state} />
     </form>
   );
@@ -197,9 +199,9 @@ export function AccountUnsubscribe({ t, unsubscribed, paying }: { t: string; uns
     <form action={action}>
       <input type="hidden" name="t" value={t} />
       {unsubscribed ? (
-        <p className="mb-3 text-[0.95rem] text-slate">You&apos;re unsubscribed: we don&apos;t send you any emails.{paying ? " Your plan is still running; cancel it under billing if you no longer want it." : ""}</p>
+        <p className="mb-3 text-[0.95rem] text-slate">You&apos;re unsubscribed: we don&apos;t send you any emails.{paying ? " Your plan is still running: see “Cancel your plan” above if you no longer want it." : ""}</p>
       ) : (
-        <p className="mb-3 text-[0.95rem] text-slate">Stops every email from us.{paying ? " It doesn't cancel your plan: use \"Cancel plan\" for that." : ""}</p>
+        <p className="mb-3 text-[0.95rem] text-slate">Stops every email from us.{paying ? " It doesn't cancel your plan." : ""}</p>
       )}
       <button disabled={pending} className={secondary}>{pending ? "Saving…" : unsubscribed ? "Turn emails back on" : "Unsubscribe from all emails"}</button>
       <Message state={state} />

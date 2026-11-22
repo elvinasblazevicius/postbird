@@ -245,7 +245,7 @@ export function accountLinkEmail(opts: { accountUrl: string; unsubscribeUrl: str
         }
       : {
           subject: `Your ${siteConfig.name} account link`,
-          lead: `Here is the link to your ${siteConfig.name} account, where you can change your saved searches, choose daily or weekly emails and, if you have a plan, cancel it (“Cancel plan”) or manage billing.`,
+          lead: `Here is the link to your ${siteConfig.name} account, where you can add or change your saved searches, choose daily or weekly alerts and see your plan.`,
           button: "Open my account",
         };
   // "already" resends the current link (sendAccountLink): links in older emails keep working.

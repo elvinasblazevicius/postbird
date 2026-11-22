@@ -125,7 +125,7 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
     const from = new Date(until.getTime() - WEEK_HOURS * 3_600_000);
     const [{ total }] = await sql<{ total: number }[]>`
       select count(*)::int as total from jobs
-      where status = 'active' and not is_demo and first_seen_at > ${from} and first_seen_at <= ${until}`;
+      where status = 'active' and not is_demo and not held and coalesce(listed_at, first_seen_at) > ${from} and coalesce(listed_at, first_seen_at) <= ${until}`;
 
     // Free subscribers not yet emailed this week, each with their one saved search ('' = every new vacancy).
     // Someone whose plan ended may still have several searches: the oldest one is used.
@@ -215,7 +215,7 @@ export async function runDigest(opts: { force?: boolean; at?: Date } = {}): Prom
         filters = filtersFromQuery(r.search);
         const key = `${r.search}|${since.getTime()}`;
         if (!cache.has(key)) {
-          const p = searchJobs({ ...filters, page: undefined, posted: undefined, sort: filters.q ? "relevance" : "newest", firstSeenAfter: since, firstSeenUntil: until, excludeDemo: true }, WEEKLY_JOBS_PER_SEARCH);
+          const p = searchJobs({ ...filters, page: undefined, posted: undefined, sort: filters.q ? "relevance" : "newest", listedAfter: since, listedUntil: until, excludeDemo: true }, WEEKLY_JOBS_PER_SEARCH);
           p.catch(() => {}); // awaited below (and by later subscribers with the same search)
           cache.set(key, p);
         }
@@ -423,7 +423,7 @@ export async function runAlerts(opts: { limit?: number } = {}): Promise<AlertsRe
     const lookup = (l: Lookup) => {
       if (!cache.has(l.key)) {
         const filters = filtersFromQuery(l.search);
-        const p = searchJobs({ ...filters, page: undefined, posted: undefined, sort: filters.q ? "relevance" : "newest", firstSeenAfter: l.since, firstSeenUntil: now, excludeDemo: true }, JOBS_PER_SEARCH);
+        const p = searchJobs({ ...filters, page: undefined, posted: undefined, sort: filters.q ? "relevance" : "newest", listedAfter: l.since, listedUntil: now, excludeDemo: true }, JOBS_PER_SEARCH);
         p.catch(() => {}); // awaited below; this only keeps an early failure from being reported as unhandled
         cache.set(l.key, p);
       }

@@ -28,7 +28,8 @@ export function isLocalOnlyGrade(grade: string | null | undefined): boolean {
 const LOCAL_TITLE_WORDS = [
   "national (professional |project |programme |program )?officers?",
   "npos?",
-  "national (individual )?consultants?",
+  // "National Consultant", "National Communication Consultant", "national consultancy".
+  "national ([a-z&/-]+ ){0,3}consultan(ts?|cy)",
   "consultante? nationale?",
   "consultora? nacional",
   "national (un )?volunteers?",
@@ -87,8 +88,16 @@ export function isLocalOnlyTitle(title: string | null | undefined): boolean {
  * From the parsed grade, or else from the title. Same rule as the "Hide local-only posts" filter
  * (the hidelocal condition in src/lib/jobs.ts).
  */
-export function isLocalOnly(job: { grade: string | null | undefined; title: string | null | undefined }): boolean {
-  return isLocalOnlyGrade(job.grade) || isLocalOnlyTitle(job.title);
+type LocalJob = { grade: string | null | undefined; title: string | null | undefined; local_only?: boolean | null };
+
+/** Also true when the vacancy's own text says nationals only (local_only, src/lib/local-only.ts). */
+export function isLocalOnly(job: LocalJob): boolean {
+  return job.local_only === true || isLocalOnlyGrade(job.grade) || isLocalOnlyTitle(job.title);
+}
+
+/** Open only to nationals: a National Officer post, or one whose text says so (local_only). */
+function nationalsOnly(job: LocalJob): boolean {
+  return isNationalOfficerPost(job) || job.local_only === true || /\bnational ([a-z&/-]+ ){0,3}consultan(ts?|cy)\b/i.test(job.title ?? "");
 }
 
 /** Does the title name the National Officer category ("National Professional Officer", "NPO")? */
@@ -149,22 +158,22 @@ export function isNationalOfficerPost(job: { grade: string | null | undefined; t
  * posts; other local posts (General Service, service contracts) are usually open to legal
  * residents too, so they are "Local post · Kenya". Null for other posts.
  */
-export function localOnlyLabel(job: { grade: string | null | undefined; title: string | null | undefined }, country: string | null | undefined): string | null {
+export function localOnlyLabel(job: LocalJob, country: string | null | undefined): string | null {
   if (!isLocalOnly(job)) return null;
-  if (isNationalOfficerPost(job) && country) return `Nationals of ${country} only`;
+  if (nationalsOnly(job) && country) return `Nationals of ${country} only`;
   return country ? `Local post · ${country}` : "Local post";
 }
 
 /** The same in an email row, where the place is already in the line: "Nationals only" or "Local post". */
-export function localOnlyShort(job: { grade: string | null | undefined; title: string | null | undefined }): string | null {
+export function localOnlyShort(job: LocalJob): string | null {
   if (!isLocalOnly(job)) return null;
-  return isNationalOfficerPost(job) ? "Nationals only" : "Local post";
+  return nationalsOnly(job) ? "Nationals only" : "Local post";
 }
 
 /** "Who can apply" on a job page, matching localOnlyLabel. Null for posts that aren't local-only. */
-export function whoCanApplyLine(job: { grade: string | null | undefined; title: string | null | undefined }, country: string | null | undefined): string | null {
+export function whoCanApplyLine(job: LocalJob, country: string | null | undefined): string | null {
   if (!isLocalOnly(job)) return null;
-  if (isNationalOfficerPost(job)) return `Only nationals of ${country ?? "the duty-station country"}.`;
+  if (nationalsOnly(job)) return `Only nationals of ${country ?? "the duty-station country"}.`;
   return `Usually only nationals or legal residents of ${country ?? "the duty-station country"}.`;
 }
 

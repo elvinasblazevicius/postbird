@@ -17,6 +17,7 @@ import { askDeepSeek, checkFacts } from "./ai-extract";
 import { knownOrgByName, toOrgRef } from "./extract";
 import { countryByCode } from "@/config/countries";
 import { htmlToText } from "@/lib/text";
+import { saysNationalsOnly } from "@/lib/local-only";
 import { EMPTY_FACTS, factsFromPage, factsFromSystem, hasFacts, mainContentHtml, pageSaysClosed, plausibleDeadline, systemApiUrl, systemSaysClosed, type PageFacts } from "./vacancy-page";
 
 const S = IMPORT_SETTINGS.vacancyPages;
@@ -169,6 +170,8 @@ async function withAi(job: DueJob, facts: PageFacts | null, text: string | null,
     // "country: quote not on the page" → counted under that reason, without the value.
     for (const why of c.rejected) { const k = why.replace(/"[^"]*"|\d{4}-\d{2}-\d{2}/g, "…"); r.ai.why[k] = (r.ai.why[k] ?? 0) + 1; }
     const out: PageFacts = { ...f };
+    // Open only to nationals of the duty-station country, in the page's own words (quote checked).
+    if (c.nationalsOnly) await sql`update jobs set local_only = true where id = ${job.id} and local_only is not true`;
     if (needDate && c.deadline) { out.deadline = c.deadline; r.ai.filled++; }
     if (needPlace && c.countryCode) {
       out.countryCode = c.countryCode;
@@ -243,6 +246,8 @@ async function save(job: DueJob, result: string, f: PageFacts | null, r: EnrichR
     update jobs set
       page_checked_at = now(), page_attempts = page_attempts + 1, page_result = ${result},
       page_text = coalesce(${text}, page_text),
+      -- New page text: read again for "nationals only" (markLocalOnly).
+      local_only = case when ${text}::text is not null and local_only = false then null else local_only end,
       page_deadline = ${deadline}, page_country_code = ${f?.countryCode ?? null}, page_city = ${f?.city ?? null},
       page_location_text = ${f?.locationText?.slice(0, 200) ?? null}, page_job_type = ${f?.jobType ?? null},
       page_grade = ${f?.grade ?? null}, page_experience_years = ${f?.experienceYears ?? null}, page_languages = ${f?.languages ?? null},
@@ -484,4 +489,26 @@ export async function recheckUndatedJobs(opts: { limit?: number; budgetMs?: numb
   }
   await Promise.all(Array.from({ length: S.concurrency }, worker));
   return r;
+}
+
+// ── Posts open only to nationals ─────────────
+
+/**
+ * Reads the text of open listings not checked yet (local_only null) for "open only to nationals of
+ * the duty-station country" (saysNationalsOnly in src/lib/local-only.ts) and stores true or false.
+ * The AI sets it too when it reads a page (withAi). Returns how many were found to be national posts.
+ */
+export async function markLocalOnly(limit = 3000): Promise<{ checked: number; national: number }> {
+  const rows = await sql<{ id: number; title: string; country_code: string | null; description_html: string | null; page_text: string | null }[]>`
+    select id::int as id, title, country_code, description_html, page_text from jobs
+     where status = 'active' and local_only is null order by id desc limit ${limit}`;
+  const yes: number[] = [];
+  const no: number[] = [];
+  for (const j of rows) {
+    const text = `${j.title}\n${htmlToText(j.description_html ?? "")}\n${j.page_text ?? ""}`;
+    (saysNationalsOnly(text, j.country_code) ? yes : no).push(j.id);
+  }
+  if (yes.length) await sql`update jobs set local_only = true where id = any(${yes})`;
+  if (no.length) await sql`update jobs set local_only = false where id = any(${no}) and local_only is null`;
+  return { checked: rows.length, national: yes.length };
 }

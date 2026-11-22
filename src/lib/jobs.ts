@@ -39,6 +39,8 @@ export type JobListItem = {
   min_experience_years?: number | null;
   languages?: string[] | null;
   org_type?: string | null;
+  /** The vacancy's text says nationals of the duty-station country only (src/lib/local-only.ts). */
+  local_only?: boolean | null;
 };
 
 export type JobDetail = JobListItem & {
@@ -107,8 +109,9 @@ export type JobFilters = {
   fromWords?: QueryWords["from"];
   exact?: string[];
   /** Email alerts only (never read from the URL): first seen after / up to these times, and no demo listings. */
-  firstSeenAfter?: Date;
-  firstSeenUntil?: Date;
+  /** Shown on the site after / until (coalesce(listed_at, first_seen_at)): the alert and weekly-email windows. */
+  listedAfter?: Date;
+  listedUntil?: Date;
   excludeDemo?: boolean;
   /** Only vacancies with a search word in the title or summary (topicInTitleOrSummary): the closing-soon lists. */
   topicOnly?: boolean;
@@ -225,7 +228,8 @@ export function activeFilterCount(f: JobFilters): number {
 }
 
 /** A listing is shown while active and not past its published closing date (checked at query time, between syncs). */
-const isOpen = () => sql`j.status = 'active' and (j.deadline is null or j.deadline >= (now() at time zone 'utc')::date)`;
+/** Open and shown: a new vacancy is held (not shown anywhere) until its missing details have been looked for (markListed in src/lib/feeds/sync.ts). */
+const isOpen = () => sql`j.status = 'active' and not j.held and (j.deadline is null or j.deadline >= (now() at time zone 'utc')::date)`;
 
 type Frag = ReturnType<typeof isOpen>;
 
@@ -282,7 +286,7 @@ const listColumns = () => sql`
   case when o.logo is not null and not ${logoProtectedSql("o")} then o.slug end as org_logo,
   j.country_code, j.city, j.location_text, j.is_remote, j.category, j.job_type, j.grade,
   j.published_at, j.first_seen_at, j.deadline::text as deadline, j.status, j.is_demo, j.apply_url,
-  j.min_experience_years, j.languages, o.org_type`;
+  j.min_experience_years, j.languages, o.org_type, j.local_only`;
 
 /** The location text normalized exactly like normalizePlace() in src/lib/country-match.ts. */
 const FOLD_FROM_SQL = [...FOLD_FROM].join("") + [...FOLD_FROM].map((c) => c.toUpperCase()).join("") + DROP_CHARS;
@@ -658,15 +662,15 @@ function filterConditions(f: JobFilters, mode: MatchMode = "all"): Partial<Recor
   if (f.posted) c.posted = sql`coalesce(j.published_at, j.first_seen_at) >= now() - make_interval(days => ${Number(f.posted)})`;
   if (f.closing) c.closing = sql`j.deadline is not null and j.deadline <= (now() at time zone 'utc')::date + ${Number(f.closing)}::int`;
   // Same rule as isLocalOnly() in src/lib/grades.ts: the parsed grade, or words in the title.
-  if (f.hidelocal) c.hidelocal = sql`(coalesce(j.grade, '') !~ ${LOCAL_ONLY_GRADE_SQL} and lower(j.title) !~ ${LOCAL_ONLY_TITLE_SQL} and j.title !~ ${NO_LEVEL_CAPS_SQL})`;
+  if (f.hidelocal) c.hidelocal = sql`(coalesce(j.grade, '') !~ ${LOCAL_ONLY_GRADE_SQL} and lower(j.title) !~ ${LOCAL_ONLY_TITLE_SQL} and j.title !~ ${NO_LEVEL_CAPS_SQL} and not coalesce(j.local_only, false))`;
   return c;
 }
 
 /** Open listings plus the alert-only limits (never set from the URL). */
 function baseCondition(f: JobFilters): Frag {
   let w = isListed();
-  if (f.firstSeenAfter) w = sql`${w} and j.first_seen_at > ${f.firstSeenAfter}`;
-  if (f.firstSeenUntil) w = sql`${w} and j.first_seen_at <= ${f.firstSeenUntil}`;
+  if (f.listedAfter) w = sql`${w} and coalesce(j.listed_at, j.first_seen_at) > ${f.listedAfter}`;
+  if (f.listedUntil) w = sql`${w} and coalesce(j.listed_at, j.first_seen_at) <= ${f.listedUntil}`;
   if (f.excludeDemo) w = sql`${w} and not j.is_demo`;
   if (f.topicOnly && f.q) w = sql`${w} and ${topicInTitleOrSummary(f.q)}`;
   return w;
