@@ -43,7 +43,7 @@ export async function SiteHeader() {
   const employers = await employerNav();
   return (
     <header className="sticky top-0 z-40 border-b border-rule bg-paper/95 backdrop-blur supports-[backdrop-filter]:bg-paper/85">
-      <div className="mx-auto flex h-[72px] max-w-6xl items-center justify-between gap-3 px-4 sm:px-6 md:gap-6">
+      <div className="mx-auto flex h-[72px] max-w-[78rem] items-center justify-between gap-3 px-4 sm:px-6 md:gap-6">
         <Link href="/" className="group flex items-center gap-3 text-ink no-underline" aria-label={`${siteConfig.name} home`}>
           <BrandMark className="h-9 w-9 shrink-0" />
           <span className="font-display text-[1.3rem] font-semibold leading-none tracking-[-0.015em]">{siteConfig.name}</span>

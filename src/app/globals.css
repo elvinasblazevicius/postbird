@@ -88,10 +88,12 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* The smallest text on the site is 13px (Tailwind's text-xs is 12px by default). */
+/* Small text stays easy to read: text-xs is 14px and text-sm 15px (Tailwind's defaults are 12px and 14px). */
 @theme {
-  --text-xs: 0.8125rem;
+  --text-xs: 0.875rem;
   --text-xs--line-height: 1.45;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.5;
 }
 
 @layer base {

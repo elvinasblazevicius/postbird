@@ -127,7 +127,7 @@ export default async function PricingPage() {
           <div className="flex items-center justify-between gap-3">
             <h2 id="plan-premium" className="text-2xl font-semibold leading-tight text-ink">{siteConfig.freeWeeklyEmail ? "Daily alerts" : p.name}</h2>
             {BILLING_LIVE
-              ? <span className="rounded-md bg-[#ffe680] px-2 py-0.5 text-[0.8125rem] font-bold text-ink">{p.trialDays} days free</span>
+              ? <span className="rounded-md bg-[#ffe680] px-2 py-0.5 text-xs font-bold text-ink">{p.trialDays} days free</span>
               : <span className="rounded-full bg-paper px-2.5 py-0.5 text-xs font-semibold text-ink">Launching soon</span>}
           </div>
           {/* What only the paid plan does comes first; the prices follow. */}

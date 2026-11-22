@@ -6,7 +6,7 @@
 export default function AdminLoading() {
   const bar = "rounded-md bg-rule/70 motion-safe:animate-pulse";
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6" aria-busy="true">
+    <div className="mx-auto max-w-[78rem] px-4 py-8 sm:px-6" aria-busy="true">
       <div className="flex flex-wrap gap-1">
         {[72, 56, 104, 72, 104, 76, 92].map((w, i) => <div key={i} className={`h-8 ${bar}`} style={{ width: w }} />)}
       </div>

@@ -31,7 +31,7 @@ function ClosedVacancy({ job, similar }: { job: JobDetail; similar: Awaited<Retu
   return (
     <>
       <div className="brand-band">
-        <div className="mx-auto max-w-6xl px-4 pb-9 pt-7 sm:px-6">
+        <div className="mx-auto max-w-[78rem] px-4 pb-9 pt-7 sm:px-6">
           <Breadcrumbs items={[{ href: "/", label: "Home" }, { href: "/jobs", label: "Jobs" }]} />
           <h1 className="mt-4 text-[1.9rem] font-semibold leading-tight text-ink sm:text-[2.4rem]">This vacancy has closed</h1>
           <p className="mt-3 max-w-3xl text-[1.05rem] leading-relaxed text-slate">
@@ -43,7 +43,7 @@ function ClosedVacancy({ job, similar }: { job: JobDetail; similar: Awaited<Retu
           </p>
         </div>
       </div>
-      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+      <div className="mx-auto max-w-[78rem] px-4 py-10 sm:px-6">
         {similar.length ? (
           <section aria-labelledby="similar-heading">
             <h2 id="similar-heading" className="text-[1.45rem] font-semibold leading-tight text-ink">Similar open vacancies</h2>

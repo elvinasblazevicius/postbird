@@ -51,7 +51,7 @@ export async function AlertsChoice({ weeklyHref, trialHref, source, onBand = fal
     <div className={`flex flex-col gap-2 rounded-[14px] border-[3px] border-highlight bg-paper p-4 ${onBand ? "" : "sm:p-5"}`}>
       <div className="flex flex-wrap items-center gap-2">
         <strong className="text-lg text-ink">{p.name}</strong>
-        <span className="rounded-md bg-[#ffe680] px-2 py-0.5 text-[0.8125rem] font-bold text-ink">
+        <span className="rounded-md bg-[#ffe680] px-2 py-0.5 text-xs font-bold text-ink">
           {BILLING_LIVE ? `${p.trialDays} days free` : "Coming soon"}
         </span>
       </div>
@@ -64,7 +64,7 @@ export async function AlertsChoice({ weeklyHref, trialHref, source, onBand = fal
         <li className="flex gap-2"><Check /><span><strong className="text-ink">Closing-date reminders:</strong> each matching vacancy {CLOSING_SOON_DAYS} days before its published closing date</span></li>
         <li className="flex gap-2"><Check />Up to {MAX_SAVED_SEARCHES} searches</li>
       </ul>
-      <p className="text-[0.8125rem] leading-snug text-slate">
+      <p className="text-xs leading-snug text-slate">
         {BILLING_LIVE
           ? `Card required. After the trial, ${quarterly.price} every 3 months (${fromPrice} a month) or ${monthly.price} monthly. Cancel any time.`
           : `${p.trialDays}-day free trial at launch, then ${p.priceSummary}.`}

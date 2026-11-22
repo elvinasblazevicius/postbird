@@ -32,7 +32,7 @@ export default async function OrganizationsPage() {
         crumbs={[{ href: "/", label: "Home" }, { href: "/organizations", label: "Organizations" }]}
         intro={`${orgs.length} organizations currently have open vacancies.`}
       />
-      <div className="mx-auto max-w-6xl space-y-12 px-4 py-10 sm:px-6">
+      <div className="mx-auto max-w-[78rem] space-y-12 px-4 py-10 sm:px-6">
         {sorted.map(([type, list]) => (
           <section key={type} aria-labelledby={`g-${type}`}>
             <h2 id={`g-${type}`} className="text-[1.5rem] font-semibold leading-tight text-ink">{heading(type)}</h2>

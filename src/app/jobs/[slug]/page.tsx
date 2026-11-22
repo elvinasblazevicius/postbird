@@ -487,7 +487,7 @@ export default async function JobPage({ params }: Props) {
       <TrackOnMount event={{ type: "job_view", jobId: job.id }} />
 
       <div className="brand-band">
-        <div className="mx-auto max-w-6xl px-4 pb-8 pt-7 sm:px-6">
+        <div className="mx-auto max-w-[78rem] px-4 pb-8 pt-7 sm:px-6">
           {crumbs}
           <div className="mt-5 flex gap-4">
             <div className="min-w-0">
@@ -503,7 +503,7 @@ export default async function JobPage({ params }: Props) {
         </div>
       </div>
 
-      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_21rem] lg:gap-12">
+      <div className="mx-auto grid max-w-[78rem] gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_21rem] lg:gap-12">
         <div className="min-w-0">
           <section aria-labelledby="facts-heading">
             <h2 id="facts-heading" className="sr-only">Vacancy details</h2>

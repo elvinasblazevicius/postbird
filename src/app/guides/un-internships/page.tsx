@@ -45,7 +45,7 @@ function PayTable() {
           <li key={p.org} className="py-3">
             <div className="flex flex-wrap items-center gap-2">
               <a href={p.href} rel="noopener" className="font-semibold text-ink underline decoration-rule underline-offset-2 hover:text-accent">{p.org}</a>
-              <span className={`rounded-full px-2.5 py-0.5 text-[0.8125rem] font-bold ${tone(p.pay)}`}>{p.pay}</span>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${tone(p.pay)}`}>{p.pay}</span>
             </div>
             <p className="mt-1 text-[0.95rem] text-tint-ink">{p.detail}</p>
           </li>

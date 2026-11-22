@@ -60,7 +60,7 @@ export default async function JobsPage({ searchParams }: Props) {
         intro={activeFilterCount(filters) ? undefined : "Open vacancies from UN agencies, NGOs and other international organizations. Filter by place, organization, grade, contract type and closing date."}
         note={INDEPENDENCE_NOTE}
       />
-      <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-8">
+      <div className="mx-auto max-w-[78rem] px-4 py-4 sm:px-6 sm:py-8">
         <JobsBrowser filters={filters} />
       </div>
     </>

@@ -9,7 +9,7 @@ export async function SiteFooter() {
   const employers = await employerNav();
   return (
     <footer className="mt-24 border-t border-rule bg-mist">
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
+      <div className="mx-auto grid max-w-[78rem] gap-10 px-4 py-12 sm:px-6 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
         <div className="sm:col-span-2 lg:col-span-1">
           <Link href="/" className="flex items-center gap-2.5 text-ink no-underline">
             <BrandMark className="h-6 w-6" />
@@ -68,7 +68,7 @@ export async function SiteFooter() {
         </nav>
       </div>
       <div className="border-t border-rule">
-        <p className="mx-auto max-w-6xl px-4 py-5 text-xs text-slate sm:px-6">
+        <p className="mx-auto max-w-[78rem] px-4 py-5 text-xs text-slate sm:px-6">
           {/* The disclaimer above already says where applications are made; this line doesn't repeat it. */}
           © {year} {siteConfig.operator.name}. Vacancy details belong to the organizations that publish them.
         </p>

@@ -50,7 +50,7 @@ function PhoneWeekAndPlaces({ week, countries }: { week: WeekInReview; countries
             </Link>
           ) : null}
         </div>
-        {showWeek ? <span className="shrink-0 rounded-full bg-tint px-2.5 py-1 text-[0.8125rem] font-semibold text-tint-ink">Week to {formatShortDate(new Date())}</span> : null}
+        {showWeek ? <span className="shrink-0 rounded-full bg-tint px-2.5 py-1 text-xs font-semibold text-tint-ink">Week to {formatShortDate(new Date())}</span> : null}
       </div>
       {countries.length ? (
         <div className={showWeek ? "mt-4 border-t border-rule pt-3" : "mt-3"}>
@@ -122,17 +122,18 @@ export default async function HomePage() {
 
       {/* Hero: a light sky field, the search in a white card, and the flags of the places these employers post. */}
       <section className="border-b border-sky-rule bg-sky-wash">
-        <div className="hero-row mx-auto flex max-w-6xl flex-col gap-6 px-4 pb-7 pt-6 sm:px-6 sm:pb-12 sm:pt-14 lg:flex-row lg:items-center lg:gap-12">
-          <div className="min-w-0 lg:flex-[1.35]">
-            <h1 className="max-w-[20ch] text-[1.9rem] font-bold leading-[1.06] text-ink sm:text-[3.25rem]">{copy.headline}</h1>
-            <p className="mt-4 hidden max-w-2xl text-lg leading-relaxed text-tint-ink sm:block">
+        <div className="hero-row mx-auto flex max-w-[78rem] flex-col gap-6 px-4 pb-7 pt-6 sm:px-6 sm:pb-10 sm:pt-11 lg:flex-row lg:items-center lg:gap-10">
+          {/* The headline gets the width to fit on two lines on a laptop screen, so the first jobs show sooner. */}
+          <div className="min-w-0 lg:flex-[1.75]">
+            <h1 className="max-w-[24ch] text-[1.9rem] font-bold leading-[1.06] text-ink sm:text-[3.25rem]">{copy.headline}</h1>
+            <p className="mt-4 hidden max-w-[40rem] text-lg leading-relaxed text-tint-ink sm:block">
               {copy.subheadline}
             </p>
             <div className="mt-5 rounded-2xl bg-paper p-3 shadow-[0_10px_30px_rgba(11,99,206,0.14)] sm:mt-7 sm:p-4">
               <HeroSearch facets={{ orgs, countries, regions, categories, types, grades, langs, exps, orgTypes }} />
             </div>
             {/* The one thing only the paid plan does, said once under the search. */}
-            <p className="mt-4 flex items-start gap-2 text-[0.95rem] leading-relaxed text-ink">
+            <p className="mt-4 flex max-w-[44rem] items-start gap-2 text-[0.95rem] leading-relaxed text-ink">
               <svg viewBox="0 0 20 20" className="mt-0.5 h-[1.125rem] w-[1.125rem] shrink-0 text-brand" aria-hidden="true">
                 <circle cx="10" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
                 <path d="M10 7v3.7l2.4 1.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
@@ -143,7 +144,7 @@ export default async function HomePage() {
               </span>
             </p>
             {/* Said once, where a first-time visitor decides whether to trust the site. */}
-            <p className="mt-4 flex items-start gap-2 text-sm leading-relaxed text-tint-ink">
+            <p className="mt-3 flex max-w-[44rem] items-start gap-2 text-sm leading-relaxed text-tint-ink">
               <svg viewBox="0 0 20 20" className="mt-0.5 h-[1.125rem] w-[1.125rem] shrink-0 text-brand" aria-hidden="true">
                 <path d="M10 2.5 4 5v4.5c0 3.6 2.4 6.6 6 8 3.6-1.4 6-4.4 6-8V5l-6-2.5Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
                 <path d="m7.4 10 1.9 1.9 3.4-3.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
@@ -159,7 +160,7 @@ export default async function HomePage() {
                       className="inline-flex items-center gap-1.5 rounded-full border border-sky-rule bg-paper px-3.5 py-1.5 text-sm font-semibold text-ink hover:border-brand hover:text-accent max-sm:min-h-11"
                     >
                       {t.label}
-                      <span className="text-[0.8125rem] font-medium tabular-nums text-slate">{t.count.toLocaleString("en-US")}</span>
+                      <span className="text-xs font-medium tabular-nums text-slate">{t.count.toLocaleString("en-US")}</span>
                     </Link>
                   </li>
                 ))}
@@ -185,7 +186,7 @@ export default async function HomePage() {
 
       {/* Latest */}
       <div className="dots-soft border-b border-rule pb-14">
-      <section className="mx-auto max-w-6xl px-4 pt-8 sm:px-6 sm:pt-12" aria-labelledby="latest-heading">
+      <section className="mx-auto max-w-[78rem] px-4 pt-8 sm:px-6 sm:pt-12" aria-labelledby="latest-heading">
         <div className="flex items-end justify-between gap-4">
           <h2 id="latest-heading" className="text-[1.6rem] font-semibold leading-tight text-ink sm:text-[1.9rem]">Recently posted</h2>
           <Link href="/jobs" className="hidden shrink-0 text-[0.95rem] font-medium text-accent hover:underline sm:inline">{showTotal ? `See all ${stats.active.toLocaleString("en-US")} jobs` : "See all jobs"}</Link>
@@ -207,7 +208,7 @@ export default async function HomePage() {
         </div>
       </section>
       {closingSoon.length ? (
-        <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6" aria-labelledby="closing-heading">
+        <section className="mx-auto max-w-[78rem] px-4 pt-12 sm:px-6" aria-labelledby="closing-heading">
           <div className="flex items-end justify-between gap-4">
             <div>
               <h2 id="closing-heading" className="text-[1.6rem] font-semibold leading-tight text-ink">Closing soon</h2>
@@ -222,7 +223,7 @@ export default async function HomePage() {
       <WeekInReviewStrip week={week} className="hidden sm:block sm:pt-12" />
       <PhoneWeekAndPlaces week={week} countries={countries} />
       {countries.length ? (
-        <section className="mx-auto hidden max-w-6xl px-4 pt-12 sm:block sm:px-6" aria-label="Browse by duty station">
+        <section className="mx-auto hidden max-w-[78rem] px-4 pt-12 sm:block sm:px-6" aria-label="Browse by duty station">
           <div className="space-y-3">
             {countries.length ? (
               <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
@@ -251,7 +252,7 @@ export default async function HomePage() {
       {/* What is true of every listing: facts, not claims. Checked against the code: imports run every 2 hours
           (.github/workflows/scheduled.yml), listings without an employer link aren't shown (src/lib/feeds), local-only
           posts carry a tag (isLocalOnly in src/lib/grades.ts) and nothing on the site needs an account. */}
-      <section className="mx-auto mt-12 max-w-6xl px-4 sm:px-6" aria-labelledby="facts-heading">
+      <section className="mx-auto mt-12 max-w-[78rem] px-4 sm:px-6" aria-labelledby="facts-heading">
         <h2 id="facts-heading" className="sr-only">About the listings</h2>
         <div className="flex flex-col gap-3 border-y border-rule py-4 sm:flex-row sm:items-center sm:justify-between">
           {/* No text separators: the gap and a small mark before each fact, so a wrapped line never ends or starts with a lone "·". */}
@@ -271,7 +272,7 @@ export default async function HomePage() {
       </section>
 
       {/* Browse. Phones: two links instead of the two long lists. */}
-      <nav aria-label="Browse organizations and categories" className="mx-auto mt-10 grid max-w-6xl grid-cols-2 gap-3 px-4 sm:hidden">
+      <nav aria-label="Browse organizations and categories" className="mx-auto mt-10 grid max-w-[78rem] grid-cols-2 gap-3 px-4 sm:hidden">
         {[
           { href: "/organizations", label: "Browse by organization", count: orgs.length },
           { href: "/categories", label: "Browse by category", count: categories.filter((c) => c.count > 0).length },
@@ -282,7 +283,7 @@ export default async function HomePage() {
           </Link>
         ))}
       </nav>
-      <section className="mx-auto mt-14 hidden max-w-6xl gap-12 px-4 sm:grid sm:px-6 lg:grid-cols-2" aria-label="Browse">
+      <section className="mx-auto mt-14 hidden max-w-[78rem] gap-12 px-4 sm:grid sm:px-6 lg:grid-cols-2" aria-label="Browse">
         <div>
           <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
             <h2 className="text-[1.6rem] font-semibold leading-tight text-ink">Browse by organization</h2>
@@ -318,10 +319,10 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <Testimonials className="mx-auto mt-14 max-w-6xl px-4 sm:px-6" />
+      <Testimonials className="mx-auto mt-14 max-w-[78rem] px-4 sm:px-6" />
 
       {/* Alerts: one choice, weekly (free) or daily (trial) */}
-      <section className="mx-auto mt-20 max-w-6xl px-4 sm:px-6" aria-labelledby="alerts-heading">
+      <section className="mx-auto mt-20 max-w-[78rem] px-4 sm:px-6" aria-labelledby="alerts-heading">
         <div className="bg-candy-band grid items-center gap-6 rounded-2xl px-5 py-8 text-white sm:px-8 lg:grid-cols-[1fr_1.25fr] lg:gap-8">
           <div>
             <h2 id="alerts-heading" className="text-[1.65rem] font-bold leading-tight text-white">Get new jobs by email</h2>

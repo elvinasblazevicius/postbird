@@ -20,7 +20,7 @@ export default async function CategoriesPage() {
         crumbs={[{ href: "/", label: "Home" }, { href: "/categories", label: "Categories" }]}
         intro="Each vacancy is placed in a category based on its job title."
       />
-      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+      <div className="mx-auto max-w-[78rem] px-4 py-10 sm:px-6">
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {cats.filter((c) => c.count > 0).map((c) => (
             <li key={c.slug}>

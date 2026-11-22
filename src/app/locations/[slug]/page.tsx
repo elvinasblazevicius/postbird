@@ -50,7 +50,7 @@ export default async function LocationPage({ params, searchParams }: Props) {
         crumbs={[{ href: "/", label: "Home" }, { href: "/locations", label: "Locations" }, { href: `/locations/${slug}`, label: place.name }]}
         intro={`Vacancies with a duty station in ${place.isRegion ? "this region" : place.name}. Home-based roles are listed separately under remote jobs.`}
       />
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <div className="mx-auto max-w-[78rem] px-4 py-8 sm:px-6">
         <JobsBrowser filters={filters} fixed={place.fixed} base={`/locations/${slug}`} />
       </div>
     </>

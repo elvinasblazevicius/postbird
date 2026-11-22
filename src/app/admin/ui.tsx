@@ -13,7 +13,7 @@ const TABS = [
 
 export function AdminShell({ title, active, children, actions }: { title: string; active: string; children: React.ReactNode; actions?: React.ReactNode }) {
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-[78rem] px-4 py-8 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <nav aria-label="Admin" className="flex flex-wrap gap-1">
           {TABS.map((t) => (

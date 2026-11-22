@@ -50,7 +50,7 @@ export function Breadcrumbs({ items, dark = false, back }: { items: Crumb[]; dar
  * edge (prose pages use "max-w-3xl"). `note`: a small line under the intro (e.g. non-affiliation).
  * `subline`: a short line right under the title (an organization page's "Open vacancies").
  */
-export function PageHeader({ title, subline, intro, crumbs, badge, compact = false, width = "max-w-6xl", note, children }: { title: string; subline?: string; intro?: React.ReactNode; crumbs?: Crumb[]; badge?: React.ReactNode; compact?: boolean; width?: string; note?: React.ReactNode; children?: React.ReactNode }) {
+export function PageHeader({ title, subline, intro, crumbs, badge, compact = false, width = "max-w-[78rem]", note, children }: { title: string; subline?: string; intro?: React.ReactNode; crumbs?: Crumb[]; badge?: React.ReactNode; compact?: boolean; width?: string; note?: React.ReactNode; children?: React.ReactNode }) {
   return (
     <header className="brand-band">
       <div className={`mx-auto ${width} px-4 sm:px-6 ${compact ? "pb-4 pt-4 sm:pb-9 sm:pt-7" : "pb-9 pt-7"}`}>

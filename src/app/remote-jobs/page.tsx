@@ -29,7 +29,7 @@ export default async function RemoteJobsPage({ searchParams }: Props) {
         crumbs={[{ href: "/", label: "Home" }, { href: "/remote-jobs", label: "Remote jobs" }]}
         intro="Vacancies whose posting says the work is remote, home-based or teleworking. Many are consultancies; check each posting for time-zone or nationality requirements."
       />
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <div className="mx-auto max-w-[78rem] px-4 py-8 sm:px-6">
         <JobsBrowser filters={filters} fixed={{ remote: true }} base="/remote-jobs" />
       </div>
     </>

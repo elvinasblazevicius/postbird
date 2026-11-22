@@ -40,7 +40,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
         crumbs={[{ href: "/", label: "Home" }, { href: "/categories", label: "Categories" }, { href: `/categories/${slug}`, label: cat.name }]}
         intro={`${cat.blurb} Openings at UN agencies and international organizations.`}
       />
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <div className="mx-auto max-w-[78rem] px-4 py-8 sm:px-6">
         <JobsBrowser filters={filters} fixed={{ category: [slug] }} base={`/categories/${slug}`} />
       </div>
     </>

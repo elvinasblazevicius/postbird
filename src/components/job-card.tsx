@@ -19,7 +19,7 @@ export function Tag({ children, tone = "plain" }: { children: React.ReactNode; t
     signal: "bg-signal-bg text-signal",
     demo: "bg-[#eef1f5] text-slate",
   };
-  return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[0.8125rem] font-medium ${tones[tone]}`}>{children}</span>;
+  return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${tones[tone]}`}>{children}</span>;
 }
 
 const WEEKDAY = new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" });
@@ -135,7 +135,7 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
   const posted = postedMarker(job);
   const title = titleWithoutGrade(job.title, grade);
   // Every pill has the same shape and a visible border; facts the listing doesn't give get a dashed pill, so each card shows the same row in the same order.
-  const pill = "inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[0.8125rem] leading-5 [&>span]:truncate";
+  const pill = "inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs leading-5 [&>span]:truncate";
   const plain = `${pill} border-[#bfd0e3] bg-paper text-ink`;
   const missing = `${pill} border-dashed border-[#bfd0e3] text-slate`;
   // Required languages besides English (two at most): their own kind of pill, easy to spot.
@@ -157,7 +157,7 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
         <p className="flex min-h-[1.5rem] items-center gap-x-2 text-sm leading-snug [&>*:not(:first-child)]:shrink-0">
           {/* No employer name when the source gives none (the listing on the employer's site has it): nothing guessed here. */}
           {job.org_name ? <span className="min-w-0 truncate font-semibold text-slate" title={orgDisplayName(job.org_name, job.org_short)}>{orgCardName(job.org_name, job.org_short)}</span> : null}
-          {posted?.fresh ? <span className="rounded-full bg-remote-bg px-2.5 py-0.5 text-[0.75rem] font-bold leading-5 text-remote">New</span> : null}
+          {posted?.fresh ? <span className="rounded-full bg-remote-bg px-2.5 py-0.5 text-xs font-bold leading-5 text-remote">New</span> : null}
           {job.is_demo ? <Tag tone="demo">Demo data</Tag> : null}
         </p>
         <H className="font-sans text-[1.1rem] font-bold leading-snug tracking-normal text-ink">
@@ -183,7 +183,7 @@ export function JobCard({ job, headingLevel = 3, posts = 1 }: { job: JobListItem
         {lang && !languages.includes(lang.name) ? <li className={`${pill} border-[#d6ccf3] bg-[#f1edfb] font-medium text-[#4a3b8f]`}>Ad in {lang.name}</li> : null}
         {languages.map((l) => <li key={l} className={`${pill} border-[#d6ccf3] bg-[#f1edfb] font-medium text-[#4a3b8f]`}>{l} required</li>)}
       </ul>
-      {details.length ? <p className="mt-1.5 text-[0.8125rem] leading-snug text-slate">{details.join(" · ")}</p> : null}
+      {details.length ? <p className="mt-1.5 text-xs leading-snug text-slate">{details.join(" · ")}</p> : null}
       {/* Date and Apply share one row on every width: the date's day moves under "Closes in…" when space is short. */}
       <div className="mt-2 flex items-center justify-between gap-3 border-t border-rule pt-2 [&>p]:min-w-0">
         <DeadlinePill deadline={job.deadline} />

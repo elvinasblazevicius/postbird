@@ -64,7 +64,7 @@ function Rows({ rows }: { rows: { key: string | number; title: string; meta: str
           ) : (
             <p className="text-[0.94rem] font-semibold leading-snug text-ink">{r.title}</p>
           )}
-          <p className="text-[0.8125rem] leading-snug text-slate">{r.meta}</p>
+          <p className="text-xs leading-snug text-slate">{r.meta}</p>
         </li>
       ))}
     </ul>
@@ -166,7 +166,7 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
         </p>
       )}
       <figure className="mt-3 rounded-xl border border-rule bg-mist p-2 sm:p-3">
-        <figcaption className="px-2 pb-2 pt-1 text-[0.8125rem] leading-relaxed text-slate">
+        <figcaption className="px-2 pb-2 pt-1 text-xs leading-relaxed text-slate">
           <span className="block"><span className="text-ink">From:</span> {siteConfig.name}</span>
           <span className="block"><span className="text-ink">Subject:</span> <span className="font-semibold text-ink">{subject}</span></span>
         </figcaption>
@@ -189,16 +189,16 @@ export async function AlertExample({ heading = "What an alert looks like", kind 
               </p>
             ) : null}
             <div className={real ? "mt-1" : "mt-3"}><Rows rows={rows} /></div>
-            {moreCount > 0 ? <p className="mt-2 text-[0.8125rem] font-medium text-slate">{moreLabel(moreCount)}</p> : null}
+            {moreCount > 0 ? <p className="mt-2 text-xs font-medium text-slate">{moreLabel(moreCount)}</p> : null}
             {kind === "daily" ? (
               soon.length ? (
                 <>
                   <p className="mt-5 text-[0.95rem] font-semibold text-ink">Closing in the next {CLOSING_SOON_DAYS} days</p>
-                  <p className="text-[0.8125rem] text-slate">Open vacancies that match your saved searches. Each one is listed here once.</p>
+                  <p className="text-xs text-slate">Open vacancies that match your saved searches. Each one is listed here once.</p>
                   <div className="mt-1"><Rows rows={soon.map((j) => ({ key: j.id, title: j.title, meta: jobMeta(j), href: jobPath(j) }))} /></div>
                 </>
               ) : (
-                <p className="mt-4 text-[0.8125rem] text-slate">
+                <p className="mt-4 text-xs text-slate">
                   When a matching vacancy closes in the next {CLOSING_SOON_DAYS} days, it appears in a section of its own at the end, once.
                 </p>
               )

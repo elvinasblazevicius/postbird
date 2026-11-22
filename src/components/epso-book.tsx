@@ -33,7 +33,7 @@ export function EpsoBook({ className = "", source }: { className?: string; sourc
         </div>
         <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2">
           <p className="text-sm leading-relaxed text-tint-ink">{EPSO_BOOK.blurb}</p>
-          <p className="mt-2 text-[0.8125rem] leading-snug text-slate">
+          <p className="mt-2 text-xs leading-snug text-slate">
             Our own book, by {EPSO_BOOK.author}, published by {siteConfig.operator.name}, which runs {siteConfig.name}. We earn from each sale. Not affiliated with or endorsed by EPSO or the EU institutions.
           </p>
         </div>

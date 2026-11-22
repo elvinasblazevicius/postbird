@@ -61,7 +61,7 @@ export function WeekInReviewStrip({ week, headingId = "week-heading", className 
   const item = "whitespace-nowrap";
   const link = "font-medium text-accent hover:underline";
   return (
-    <section className={`mx-auto max-w-6xl px-4 pt-8 sm:px-6 sm:pt-10 ${className}`} aria-labelledby={headingId}>
+    <section className={`mx-auto max-w-[78rem] px-4 pt-8 sm:px-6 sm:pt-10 ${className}`} aria-labelledby={headingId}>
       <div className="rounded-xl border border-rule bg-paper px-4 py-4 sm:px-6 sm:py-5">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -69,7 +69,7 @@ export function WeekInReviewStrip({ week, headingId = "week-heading", className 
             {lead ? <p className="mt-1.5 max-w-[62ch] text-[0.95rem] leading-snug text-ink">{lead}</p> : null}
           </div>
           {/* The day the 7 days run to (today, UTC). */}
-          <span className="shrink-0 rounded-full bg-tint px-3 py-1 text-[0.8125rem] font-semibold text-tint-ink">Week to {formatShortDate(new Date())}</span>
+          <span className="shrink-0 rounded-full bg-tint px-3 py-1 text-xs font-semibold text-tint-ink">Week to {formatShortDate(new Date())}</span>
         </div>
         <div className="mt-3 grid gap-4 md:grid-cols-[minmax(0,14rem)_1fr_1fr] md:gap-8">
           <p className="text-[0.95rem] leading-snug text-slate">

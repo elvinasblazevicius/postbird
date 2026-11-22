@@ -390,7 +390,7 @@ export function TrialCheckoutForm({ source, search, compact = false, tone = "lig
       <input id={id("email")} name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={field} {...warmup.email} />
       <TermsAndButton dark={dark} trial confirmNote plan={plan} trialEnds={trialEnds} busy={busy} label={pending ? "Preparing…" : phase.step === "checkout" ? "Checkout open…" : trialButton} />
       {error ? <p role="alert" className={`mt-2 text-sm ${dark ? "text-[#ffd7d7]" : "text-[#9b1c1c]"}`}>{error}</p> : null}
-      <ul className={`mt-3 space-y-1 text-[0.8125rem] ${dark ? "text-white/90" : "text-slate"}`}>
+      <ul className={`mt-3 space-y-1 text-xs ${dark ? "text-white/90" : "text-slate"}`}>
         <li className="flex items-start gap-1.5">
           <svg viewBox="0 0 16 16" className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true"><path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2M3.5 7h9v6.5h-9z" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
           Next: your card in Paddle&apos;s secure checkout. Nothing is charged today.

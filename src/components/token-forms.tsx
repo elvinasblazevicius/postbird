@@ -223,7 +223,7 @@ export function FreeWeeklyForm({ source = "alerts-page", search, searchLabel, wa
         <button disabled={pending} className="flex min-h-11 w-full items-center justify-center rounded-[10px] bg-brand px-4 py-2.5 text-[0.95rem] font-bold text-white hover:bg-accent disabled:opacity-60">
           {pending ? "Saving…" : "Get the free weekly email"}
         </button>
-        <p className="text-[0.8125rem] leading-snug text-slate">
+        <p className="text-xs leading-snug text-slate">
           We email once to confirm. Unsubscribe in one click. <Link href="/privacy" className="underline underline-offset-2 hover:text-accent">Privacy</Link>
         </p>
       </form>

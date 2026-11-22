@@ -45,7 +45,7 @@ export async function EmployerTypeListing({ orgtype, searchParams }: { orgtype: 
         note={nonAffiliationLine(siteConfig.name, null)}
         compact
       />
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <div className="mx-auto max-w-[78rem] px-4 py-8 sm:px-6">
         <JobsBrowser
           filters={filters}
           fixed={{ orgtype: [orgtype] }}

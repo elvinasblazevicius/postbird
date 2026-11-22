@@ -88,7 +88,7 @@ export default async function OrganizationPage({ params, searchParams }: Props) 
           </dl>
         ) : null}
       </PageHeader>
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <div className="mx-auto max-w-[78rem] px-4 py-8 sm:px-6">
         <JobsBrowser filters={filters} fixed={{ org: [slug] }} base={`/organizations/${slug}`} alertNoun={orgInText(org.name, org.short_name) ?? undefined} />
         {/* Our own EPSO workbook: after the organization's vacancies, never before them. */}
         {isEuInstitution(org.org_type) ? <EpsoBook className="mt-10" source="org-page" /> : null}

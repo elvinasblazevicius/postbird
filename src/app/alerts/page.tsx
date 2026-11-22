@@ -77,7 +77,7 @@ export default async function AlertsPage({ searchParams }: Props) {
         />
         {fromMeta ? (
           // Visitors from Meta ads: only the free weekly email (see above), in the same card as on the plain page.
-          <div className="mx-auto grid max-w-6xl gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_1fr] lg:gap-12">
+          <div className="mx-auto grid max-w-[78rem] gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_1fr] lg:gap-12">
             <section className="max-w-xl" aria-labelledby="free-h">
               <h2 id="free-h" className="sr-only">Sign up for the free weekly email</h2>
               <div id="alert-signup" className="scroll-mt-24 rounded-[14px] border-[3px] border-sky-wash bg-sky-wash p-4 sm:p-5">{weeklyForm}</div>
@@ -89,7 +89,7 @@ export default async function AlertsPage({ searchParams }: Props) {
           </div>
         ) : (
           <>
-            <section className="mx-auto max-w-6xl px-4 pt-10 sm:px-6" aria-labelledby="choice-h">
+            <section className="mx-auto max-w-[78rem] px-4 pt-10 sm:px-6" aria-labelledby="choice-h">
               <h2 id="choice-h" className="sr-only">Daily alerts or weekly email</h2>
               {searchLabel ? (
                 <p data-carried-search="" className="mb-4 rounded-xl border border-sky-rule bg-sky-wash px-4 py-3 text-[0.95rem] text-ink">
@@ -107,7 +107,7 @@ export default async function AlertsPage({ searchParams }: Props) {
               />
             </section>
             {/* One sign-up per plan, in its card above: here only what the emails look like. */}
-            <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+            <div className="mx-auto max-w-[78rem] px-4 py-10 sm:px-6">
               <div className="max-w-xl">
                 <AlertExample heading="What the weekly email looks like" kind="weekly" search={search} />
               </div>
@@ -124,7 +124,7 @@ export default async function AlertsPage({ searchParams }: Props) {
         crumbs={[{ href: "/", label: "Home" }, { href: "/alerts", label: "Job alerts" }]}
         intro={`Many international vacancies are open for only a few weeks. Alerts (launching soon) send new matches for the roles, organizations and places you choose. ${p.trialDays}-day free trial, then ${p.priceSummary}.`}
       />
-      <div className="mx-auto grid max-w-6xl gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[1.2fr_1fr]">
+      <div className="mx-auto grid max-w-[78rem] gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[1.2fr_1fr]">
         <div className="max-w-xl">
           <div id="alert-signup" className="scroll-mt-24">
             <PremiumInterestForm source="alerts-page" search={search ?? undefined} watch={<WatchFields search={search} searchLabel={searchLabel} resetHref="/alerts#alert-signup" />} />

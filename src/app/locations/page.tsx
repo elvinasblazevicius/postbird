@@ -25,7 +25,7 @@ export default async function LocationsPage() {
         crumbs={[{ href: "/", label: "Home" }, { href: "/locations", label: "Locations" }]}
         intro={`${countries.length} countries currently have open vacancies. Jobs without a stated location are listed under all jobs.`}
       />
-      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+      <div className="mx-auto max-w-[78rem] px-4 py-10 sm:px-6">
         <h2 className="text-[1.5rem] font-semibold leading-tight text-ink">Regions</h2>
         <ul className="mt-4 mb-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {regions.filter((r) => r.count > 0).map((r) => (
