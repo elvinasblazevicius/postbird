@@ -18,6 +18,7 @@
     "digest": "tsx --env-file-if-exists=.env.local scripts/digest.ts",
     "build:map": "node scripts/build-world-dots.mjs",
     "diagnose": "tsx --env-file-if-exists=.env.local scripts/diagnose.ts",
+    "billing-check": "tsx --env-file-if-exists=.env.local scripts/billing-check.ts",
     "sources": "tsx --env-file-if-exists=.env.local scripts/sources.ts",
     "tidy-jobs": "tsx --env-file-if-exists=.env.local scripts/tidy-jobs.ts",
     "data-audit": "tsx --env-file-if-exists=.env.local scripts/data-audit.ts",

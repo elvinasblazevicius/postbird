@@ -37,6 +37,13 @@ async function main() {
       console.log(`::warning title=${title}::${annotation(`${r.failed} email(s) were not sent (${r.message ?? "no details"}); the next daily run tries again.`)}`);
     }
   }
+  // No email key means no alert reaches anyone: fail the job so GitHub reports it, instead of a quiet "skipped".
+  const noEmail = [planEmails, digest, alerts].some((r) => /RESEND_API_KEY missing/.test(JSON.stringify(r)));
+  if (noEmail) {
+    console.log("::error title=Emails not sent::Email sending isn't set up for the scheduled jobs: add the RESEND_API_KEY and EMAIL_FROM repository secrets (the same values as on Netlify). No alert, weekly email or trial reminder is sent until then.");
+    await getSql().end();
+    process.exit(1);
+  }
   await getSql().end();
   // A failed task must fail the scheduled job so it shows up in GitHub Actions.
   if (failed.length) {
