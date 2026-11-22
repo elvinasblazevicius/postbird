@@ -83,3 +83,11 @@ describe("title language with an English unit name", () => {
     expect(titleLanguage("Health and Nutrition Officer, programme de santé")).toBeNull();
   });
 });
+
+describe("a category label repeating the title", () => {
+  it("drops the label", () => {
+    expect(cleanTitle("Consultant: Consultant on Regional Environmental Assessment, Monitoring and Data Analysis")).toBe("Consultant on Regional Environmental Assessment, Monitoring and Data Analysis");
+    expect(cleanTitle("Internship: Internship in Communications")).toBe("Internship in Communications");
+    expect(cleanTitle("Consultant: Data Analysis")).toBe("Consultant: Data Analysis");
+  });
+});

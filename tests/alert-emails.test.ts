@@ -98,13 +98,13 @@ describe("alert emails", () => {
     const bytes = Buffer.byteLength(email.html, "utf8");
     expect(bytes).toBeLessThan(90 * 1024);
     expect(email.html).toContain(links.unsubscribeUrl);
-    expect(email.html).toContain("Closing in the next 3 days");
+    expect(email.html).toContain("Closing soon");
     // Still 50 listed in all: the 10 closing soon, and 40 new matches.
     expect((email.text.match(/\/jobs\/senior-programme/g) ?? []).length).toBe(MAX_JOBS_PER_EMAIL);
     expect((email.html.match(/utm_content=closing/g) ?? []).length).toBe(CLOSING_SOON_MAX);
   });
 
-  it("closing soon: listed after the new matches with the closing date, kept within the 50 cap, at most 10", () => {
+  it("closing soon: listed first with the closing date, kept within the 50 cap, at most 10", () => {
     const closing = Array.from({ length: 12 }, (_, i) => job(700 + i, { title: `Closing role ${i}`, deadline: "2026-11-11" }));
     const email = alertEmail({ groups: [group(20, 0, 20), group(20, 100, 20), group(20, 200, 20)], closing, frequency: "daily", ...links });
     expect(email.subject).toBe("60 new vacancies match your searches");
@@ -113,14 +113,15 @@ describe("alert emails", () => {
     expect(email.text).not.toContain("#14\n");
     expect(email.text).toContain("#212\n");
     expect(email.text).not.toContain("#213\n");
-    expect(email.text.indexOf("Closing in the next 3 days")).toBeGreaterThan(email.text.indexOf("#212\n"));
+    expect(email.text.indexOf("Closing soon (next 3 days)")).toBeGreaterThan(-1);
+    expect(email.text.indexOf("Closing soon (next 3 days)")).toBeLessThan(email.text.indexOf("#212\n"));
     expect(email.text).toContain("Closing role 0\nUnited Nations Office for the Coordination of Humanitarian Affairs & Partners · Ouagadougou, Burkina Faso · P-4 · Closes 11 Nov 2026");
     expect(email.text).toContain("Closing role 9\n");
     expect(email.text).not.toContain("Closing role 10");
     expect((email.text.match(/\/jobs\//g) ?? []).length).toBe(MAX_JOBS_PER_EMAIL);
     // Without closing-soon jobs the email is unchanged.
     const plain = alertEmail({ groups: [group(2, 0, 2)], frequency: "daily", ...links });
-    expect(plain.html).not.toContain("Closing in the next");
+    expect(plain.html).not.toContain("Closing soon");
   });
 
   it("an email with only closing-soon vacancies says so in the subject and heading", () => {

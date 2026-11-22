@@ -3,20 +3,38 @@ import type { JobListItem } from "@/lib/jobs";
 import { BILLING_LIVE } from "@/lib/billing/live";
 import { CARD_STATEMENT_LINE, EMAIL_TAX_NOTE, planDescription } from "@/lib/early-access-copy";
 import { displayGrade, localOnlyShort } from "@/lib/grades";
-import { absoluteUrl, formatDate, jobPath, locationLabel, NOT_SPECIFIED } from "@/lib/site";
+import { absoluteUrl, daysUntil, formatDate, jobPath, locationLabel, NOT_SPECIFIED } from "@/lib/site";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
-function layout(title: string, bodyHtml: string, footerHtml: string): string {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${esc(title)}</title></head>
-<body style="margin:0;background:#f4f6f9;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#0e1b2c">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:24px 12px"><tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border:1px solid #dde3ea;border-radius:12px">
-<tr><td style="padding:20px 28px;background:#ddf1ff;border-bottom:1px solid #bfe0fa;border-radius:12px 12px 0 0;font-size:21px;font-weight:700;letter-spacing:-0.2px;color:#0b1f3a">${esc(siteConfig.name)}</td></tr>
-<tr><td style="padding:28px">${bodyHtml}</td></tr>
-<tr><td style="padding:18px 28px;border-top:1px solid #dde3ea;font-size:12px;line-height:1.6;color:#566476">${footerHtml}<br>${esc(postal())}</td></tr>
+/** Email colours: the site's, written out (email clients don't read CSS variables). */
+const C = { ink: "#0e1b2c", slate: "#566476", rule: "#e3e8ee", page: "#f4f6f9", brand: siteConfig.colors.brand, accent: siteConfig.colors.accent };
+/** The site's own sans-serif stack: emails match the site's headings and text. */
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
+
+/**
+ * Every email: a white card on a light page, the logo and name at the top (a thin brand-blue bar
+ * above them), the body, and a quiet footer. `preheader`: the line inboxes show after the subject.
+ */
+function layout(title: string, bodyHtml: string, footerHtml: string, preheader = ""): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${esc(title)}</title></head>
+<body style="margin:0;padding:0;background:${C.page};font-family:${FONT};color:${C.ink};-webkit-text-size-adjust:100%">
+${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(preheader)}</div>` : ""}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.page};padding:24px 10px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border:1px solid ${C.rule};border-top:4px solid ${C.brand};border-radius:12px">
+<tr><td style="padding:20px 28px 16px;border-bottom:1px solid ${C.rule}">
+  <a href="${esc(absoluteUrl("/"))}" style="text-decoration:none;color:${C.ink}"><img src="${esc(absoluteUrl("/email-logo.png"))}" width="32" height="32" alt="" style="vertical-align:middle;border:0;border-radius:8px"><span style="vertical-align:middle;margin-left:10px;font-size:20px;font-weight:700;letter-spacing:-0.2px;color:${C.ink}">${esc(siteConfig.name)}</span></a>
+</td></tr>
+<tr><td style="padding:26px 28px 28px">${bodyHtml}</td></tr>
+<tr><td style="padding:18px 28px 22px;background:#fafbfc;border-top:1px solid ${C.rule};border-radius:0 0 12px 12px;font-size:12px;line-height:1.6;color:${C.slate}">${footerHtml}<br><br>${esc(footerHtml.includes(esc(siteConfig.disclaimer)) ? operatorLine() : postal())}</td></tr>
 </table></td></tr></table></body></html>`;
 }
+
+/** The big heading at the top of an email body. */
+const h1 = (text: string) => `<h1 style="font-family:${FONT};font-size:24px;line-height:1.25;font-weight:700;letter-spacing:-0.3px;margin:0 0 8px;color:${C.ink}">${esc(text)}</h1>`;
+
+/** Who runs the site, with its address (after a footer that already says the site is independent). */
+const operatorLine = () => `${siteConfig.name} is run by ${siteConfig.operator.name}, ${siteConfig.operator.address}.`;
 
 /** Every email ends with who runs the site and that it is independent (the first email an ad visitor gets included). */
 const postal = () => `${siteConfig.name} is run by ${siteConfig.operator.name}, ${siteConfig.operator.address}. ${siteConfig.name} is independent and not affiliated with the UN, the EU or any employer listed.`;
@@ -104,7 +122,7 @@ export function newVacancyCount(groups: AlertGroup[]): number {
   return ids.size + groups.reduce((n, g) => n + Math.max(0, g.total - g.jobs.length), 0);
 }
 
-/** "UNICEF · Nairobi, Kenya · P-3 · Closes 30 Nov 2026": what is known, nothing guessed. */
+/** "UNICEF · Nairobi, Kenya · P-3 · Closes 30 Nov 2026": what is known, nothing guessed (the plain-text email; the HTML rows say it as "Closes in 5 days"). */
 function jobMeta(j: JobListItem): string {
   const where = locationLabel(j);
   return [
@@ -117,14 +135,54 @@ function jobMeta(j: JobListItem): string {
   ].filter(Boolean).join(" · ");
 }
 
-/** One compact row per vacancy (kept small so a full email stays well under Gmail's clipping size). */
+/** "Closes today", "Closes tomorrow", "Closes in 5 days (Fri 27 Nov)", "Closes 30 Jan 2027". */
+function closingText(deadline: string): string {
+  const n = daysUntil(deadline);
+  const day = new Date(`${deadline}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  if (n === null || n < 0) return `Closes ${formatDate(deadline)}`;
+  if (n === 0) return "Closes today";
+  if (n === 1) return `Closes tomorrow (${day})`;
+  return n <= 14 ? `Closes in ${n} days (${day})` : `Closes ${formatDate(deadline)}`;
+}
+
+/** The closing date as a coloured label: red for today or tomorrow, amber within a week, grey after. */
+function closingPill(deadline: string | null): string {
+  if (!deadline) return `<span style="font-size:13px;color:${C.slate}">No closing date given</span>`;
+  const n = daysUntil(deadline);
+  const [bg, fg] = n !== null && n <= 1 ? ["#fde8e6", "#a3261b"] : n !== null && n <= 7 ? ["#fff1cc", "#7a4b00"] : ["#eef1f5", "#3d4a5c"];
+  return `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:${bg};color:${fg};font-size:13px;font-weight:600">${esc(closingText(deadline))}</span>`;
+}
+
+/**
+ * One row per vacancy, laid out like a card on the site: the employer, the title (the link), where
+ * and what (place, grade, nationals only), and the closing date as a coloured label. Kept compact
+ * so a full email stays well under Gmail's clipping size.
+ */
 function jobRowsHtml(jobs: JobListItem[], utm: string): string {
   if (!jobs.length) return "";
   const rows = jobs
-    .map((j) => `<tr><td style="padding:8px 0;border-bottom:1px solid #dde3ea"><a href="${esc(absoluteUrl(jobPath(j)) + utm)}" style="font-size:15px;font-weight:600;color:#0e1b2c;text-decoration:none">${esc(j.title)}</a><br><span style="font-size:13px;color:#566476">${esc(jobMeta(j))}</span></td></tr>`)
+    .map((j) => {
+      const where = locationLabel(j);
+      const facts = [where === NOT_SPECIFIED ? null : where, displayGrade(j), localOnlyShort(j)].filter(Boolean).join(" · ");
+      return `<tr><td style="padding:14px 0;border-bottom:1px solid ${C.rule}">
+<div style="font-size:13px;font-weight:600;color:${C.slate};margin:0 0 2px">${esc(j.org_name ?? "")}</div>
+<a href="${esc(absoluteUrl(jobPath(j)) + utm)}" style="font-size:16px;line-height:1.35;font-weight:700;color:${C.brand};text-decoration:none">${esc(j.title)}</a>
+${facts ? `<div style="font-size:14px;color:${C.ink};margin:4px 0 0">${esc(facts)}</div>` : ""}
+<div style="margin:8px 0 0">${closingPill(j.deadline)}</div>
+</td></tr>`;
+    })
     .join("");
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>`;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid ${C.rule}">${rows}</table>`;
 }
+
+/** A section heading with a small count beside it ("Closing soon  4"). */
+function sectionHead(title: string, count: string | null, note?: string): string {
+  return `<h2 style="font-size:18px;line-height:1.3;font-weight:700;margin:30px 0 ${note ? "2px" : "10px"};color:${C.ink}">${esc(title)}${count ? ` <span style="display:inline-block;vertical-align:2px;margin-left:4px;padding:1px 9px;border-radius:999px;background:#e7f0fc;color:${C.accent};font-size:13px;font-weight:700">${esc(count)}</span>` : ""}</h2>${note ? `<p style="font-size:14px;line-height:1.5;color:${C.slate};margin:0 0 10px">${esc(note)}</p>` : ""}`;
+}
+
+/** A plain call to action under a list ("See all 23 matches"). */
+const moreLink = (href: string, label: string) =>
+  `<p style="margin:14px 0 0"><a href="${esc(href)}" style="display:inline-block;padding:9px 16px;border:1px solid ${C.rule};border-radius:8px;color:${C.accent};font-size:14px;font-weight:600;text-decoration:none">${esc(label)}</a></p>`;
 
 const jobRowsText = (jobs: JobListItem[]) => jobs.map((j) => `${j.title}\n${jobMeta(j)}\n${absoluteUrl(jobPath(j))}`).join("\n\n");
 
@@ -141,9 +199,7 @@ export function weeklyEmail(opts: { group: AlertGroup; search: string; trialUrl:
     ? `${g.total} new international ${g.total === 1 ? "vacancy" : "vacancies"} this week`
     : `${g.total} new ${g.total === 1 ? "vacancy matches" : "vacancies match"} your search this week`;
   const rows = jobRowsHtml(g.jobs, "?utm_source=digest&utm_medium=email");
-  const more = g.total > g.jobs.length
-    ? `<p style="margin:20px 0 0">${button(g.url, `See all ${g.total} new vacancies`)}</p>`
-    : "";
+  const more = g.total > g.jobs.length ? moreLink(g.url, `See all ${g.total} new vacancies on ${siteConfig.name}`) : "";
   const p = siteConfig.premium;
   const upsell = BILLING_LIVE
     ? { lead: "Some vacancies close within days of being posted, before the next weekly email. Daily alerts send new matches every day, with a reminder before each closing date.", link: opts.hadTrial ? "Get daily alerts" : `Start a ${p.trialDays}-day free trial` }
@@ -151,7 +207,7 @@ export function weeklyEmail(opts: { group: AlertGroup; search: string; trialUrl:
   const intro = all ? "The newest vacancies of the past week." : `New this week for your search: ${g.label}.`;
   const html = layout(
     subject,
-    `<h1 style="font-family:Georgia,serif;font-size:24px;line-height:1.3;margin:0 0 6px">This week's new vacancies</h1>
+    `<h1 style="font-family:${FONT};font-size:24px;line-height:1.25;font-weight:700;letter-spacing:-0.3px;margin:0 0 8px">This week's new vacancies</h1>
      <p style="font-size:15px;color:#566476;margin:0 0 10px">${esc(intro)} Apply on each employer's own website.</p>
      ${rows}${more}
      <p style="font-size:14px;line-height:1.6;color:#566476;margin:24px 0 0">${esc(upsell.lead)} <a href="${esc(opts.trialUrl)}" style="color:${siteConfig.colors.accent};font-weight:600">${esc(upsell.link)}</a></p>`,
@@ -178,8 +234,8 @@ function shareLine(): string {
 
 /** Footer of every paid-alert email: the account link and the unsubscribe link (the postal line is added by layout()). */
 function accountFooter(accountUrl: string, unsubscribeUrl: string): string {
-  return `${esc(siteConfig.disclaimer)}<br><br>${shareLine()}<br><br><a href="${esc(accountUrl)}" style="color:#566476">Your account</a>: saved searches, daily or weekly, billing.
-    &nbsp;|&nbsp; <a href="${esc(unsubscribeUrl)}" style="color:#566476">Unsubscribe</a> from these emails.`;
+  return `<a href="${esc(accountUrl)}" style="color:${C.ink};font-weight:600">Your account</a> (saved searches, daily or weekly, plan)
+    &nbsp;&middot;&nbsp; <a href="${esc(unsubscribeUrl)}" style="color:${C.ink};font-weight:600">Unsubscribe</a><br><br>${shareLine()}<br><br>${esc(siteConfig.disclaimer)}`;
 }
 
 const accountFooterText = (accountUrl: string, unsubscribeUrl: string) =>
@@ -212,7 +268,7 @@ export function welcomeEmail(opts: { accountUrl: string; unsubscribeUrl: string;
   const refundHtml = `Refund policy: <a href="${esc(refundsUrl)}" style="color:#566476">${esc(refundsUrl)}</a>`;
   const html = layout(
     subject,
-    `<h1 style="font-family:Georgia,serif;font-size:24px;line-height:1.3;margin:0 0 12px">Welcome to ${esc(siteConfig.premium.name.toLowerCase())}</h1>
+    `<h1 style="font-family:${FONT};font-size:24px;line-height:1.3;margin:0 0 12px">Welcome to ${esc(siteConfig.premium.name.toLowerCase())}</h1>
      <p style="font-size:16px;line-height:1.6;margin:0 0 12px">We'll email you once a day with new vacancies that match your saved searches, and remind you of matching vacancies that close in the next ${CLOSING_SOON_DAYS} days. Your first alert comes with the next daily send, if there is something new for you. You can switch to one email a week on your account page.</p>
      <p style="font-size:15px;line-height:1.6;margin:0 0 20px;color:#566476">${esc(billing)} ${refundHtml}</p>
      <p style="margin:0 0 20px">${button(opts.accountUrl, "Open my account")}</p>
@@ -321,46 +377,50 @@ export function alertEmail(opts: { groups: AlertGroup[]; closing?: JobListItem[]
     : `${closing.length} matching ${closing.length === 1 ? "vacancy closes" : "vacancies close"} soon`;
   /** A search whose new matches are all listed under an earlier search (or in the closing-soon section). */
   const LISTED_ELSEWHERE = "Its new matches are already listed in this email.";
-  const closingHead = `Closing in the next ${CLOSING_SOON_DAYS} days`;
-  const closingNote = "Open vacancies that match your saved searches. Each one is listed here once.";
+  const closingHead = "Closing soon";
+  const closingNote = `Matching vacancies that close in the next ${CLOSING_SOON_DAYS} days. Each one is listed here once, so you have time to apply.`;
   const closingHtml = closing.length
-    ? `<h2 style="font-size:16px;margin:28px 0 4px;color:#0e1b2c">${esc(closingHead)}</h2><p style="font-size:13px;color:#566476;margin:0 0 4px">${esc(closingNote)}</p>${jobRowsHtml(closing, "?utm_source=alert&utm_medium=email&utm_content=closing")}`
+    ? `${sectionHead(closingHead, String(closing.length), closingNote)}${jobRowsHtml(closing, "?utm_source=alert&utm_medium=email&utm_content=closing")}`
     : "";
-  const closingText = closing.length ? `${closingHead}\n${closingNote}\n\n${jobRowsText(closing)}` : "";
+  const closingText = closing.length ? `${closingHead} (next ${CLOSING_SOON_DAYS} days)\n${closingNote}\n\n${jobRowsText(closing)}` : "";
   // "See all" for a search when the email doesn't list every one of its new matches somewhere.
   const listed = new Set([...groups.flatMap((g) => g.jobs.map((j) => j.id)), ...closing.map((j) => j.id)]);
   const hasMore = opts.groups.map((g) => g.total > g.jobs.filter((j) => listed.has(j.id)).length);
   const sections = groups
     .map((g, i) => {
-      const more = hasMore[i]
-        ? `<p style="margin:10px 0 0"><a href="${esc(g.url)}" style="color:${siteConfig.colors.accent};font-weight:600">See all ${g.total} matches</a></p>`
-        : "";
+      const more = hasMore[i] ? moreLink(g.url, `See all ${g.total} matches on ${siteConfig.name}`) : "";
       const rows = g.jobs.length
         ? jobRowsHtml(g.jobs, "?utm_source=alert&utm_medium=email")
-        : `<p style="font-size:14px;color:#566476;margin:6px 0 0">${esc(LISTED_ELSEWHERE)}</p>`;
-      return `<h2 style="font-size:16px;margin:24px 0 4px;color:#0e1b2c">${esc(g.label)} <span style="font-weight:400;color:#566476">(${g.total} new)</span></h2>${rows}${more}`;
+        : `<p style="font-size:14px;color:${C.slate};margin:0">${esc(LISTED_ELSEWHERE)}</p>`;
+      return `${sectionHead(g.label, `${g.total} new`)}${rows}${more}`;
     })
     .join("");
   const when = opts.frequency === "daily" ? "since yesterday's email" : "since last week's email";
   // An email with no new matches is only the closing-soon reminder.
   const intro = groups.length
-    ? { h1: "New vacancies for your saved searches", lead: `New on ${siteConfig.name} ${when} (or since you saved the search). Apply on each employer's own website.` }
+    ? { h1: `${total} new ${total === 1 ? "vacancy" : "vacancies"} for you`, lead: `New on ${siteConfig.name} ${when} (or since you saved the search). Apply on each employer's own website.` }
     : { h1: "Vacancies closing soon", lead: `Nothing new matches your saved searches ${opts.frequency === "daily" ? "today" : "this week"}, but these matching vacancies close soon. Apply on each employer's own website.` };
+  const preheader = closing.length && groups.length
+    ? `${total} new, and ${closing.length} closing in the next ${CLOSING_SOON_DAYS} days.`
+    : closing.length ? `${closing.length} matching ${closing.length === 1 ? "vacancy closes" : "vacancies close"} in the next ${CLOSING_SOON_DAYS} days.` : intro.lead;
+  const manage = `<p style="font-size:14px;line-height:1.6;color:${C.slate};margin:28px 0 0">Want different vacancies? <a href="${esc(opts.accountUrl)}" style="color:${C.accent};font-weight:600">Change your saved searches</a></p>`;
+  // Closing soon first: the deadline is the reason to act today.
   const html = layout(
     subject,
-    `<h1 style="font-family:Georgia,serif;font-size:24px;line-height:1.3;margin:0 0 6px">${esc(intro.h1)}</h1>
-     <p style="font-size:15px;color:#566476;margin:0">${esc(intro.lead)}</p>
-     ${sections}${closingHtml}`,
+    `${h1(intro.h1)}
+     <p style="font-size:15px;line-height:1.55;color:${C.slate};margin:0">${esc(intro.lead)}</p>
+     ${closingHtml}${sections}${manage}`,
     accountFooter(opts.accountUrl, opts.unsubscribeUrl),
+    preheader,
   );
   const text =
     `${intro.h1} on ${siteConfig.name}\n` +
     (groups.length ? "\n" : `${intro.lead}\n\n`) +
     [
+      ...(closingText ? [closingText] : []),
       ...groups.map((g, i) => `${g.label} (${g.total} new)\n\n` +
         (g.jobs.length ? jobRowsText(g.jobs) : LISTED_ELSEWHERE) +
         (hasMore[i] ? `\n\nSee all ${g.total}: ${g.url}` : "")),
-      ...(closingText ? [closingText] : []),
     ].join("\n\n---\n\n") +
     `\n\n${accountFooterText(opts.accountUrl, opts.unsubscribeUrl)}`;
   return { subject, html, text };
@@ -388,7 +448,7 @@ export function trialReminderEmail(opts: { plan: string; price: string; chargeDa
   ];
   const html = layout(
     subject,
-    `<h1 style="font-family:Georgia,serif;font-size:24px;line-height:1.3;margin:0 0 12px">Your free trial ends on ${esc(date)}</h1>
+    `<h1 style="font-family:${FONT};font-size:24px;line-height:1.3;margin:0 0 12px">Your free trial ends on ${esc(date)}</h1>
      ${lines.map((l) => `<p style="font-size:16px;line-height:1.6;margin:0 0 12px">${esc(l)}</p>`).join("")}
      <p style="margin:8px 0 20px">${button(opts.accountUrl, "Cancel or manage my plan")}</p>
      <p style="font-size:14px;line-height:1.6;color:#566476;margin:0">Billing is handled by Paddle, our reseller. Keep this email private: the button is your account link.</p>`,
@@ -468,7 +528,7 @@ export function alertsOpenEmail(opts: { trialUrl: string; unsubscribeUrl: string
   ];
   const html = layout(
     subject,
-    `<h1 style="font-family:Georgia,serif;font-size:24px;line-height:1.3;margin:0 0 12px">${esc(p.name)} are open</h1>
+    `<h1 style="font-family:${FONT};font-size:24px;line-height:1.3;margin:0 0 12px">${esc(p.name)} are open</h1>
      ${lines.map((l) => `<p style="font-size:16px;line-height:1.6;margin:0 0 12px">${esc(l)}</p>`).join("")}
      <p style="margin:8px 0 0">${button(opts.trialUrl, `Start my ${p.trialDays}-day free trial`)}</p>`,
     `You received this because you joined the early-access list on ${esc(siteConfig.name)}. <a href="${esc(opts.unsubscribeUrl)}" style="color:#566476">Unsubscribe</a>.`,

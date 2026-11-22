@@ -1,5 +1,5 @@
 /**
- * "Closing in the next 3 days" in paid alerts, against a real database: matching open vacancies
+ * "Closing soon (next 3 days)" in paid alerts, against a real database: matching open vacancies
  * (any posting date) that close from today to 3 days ahead (UTC), soonest first, each listed at
  * most once per subscriber; never without a closing date; never in the free weekly email; an
  * email goes out with only that section; at most 10 in the section and 50 in the email.
@@ -47,7 +47,8 @@ describe.skipIf(!TEST_DB)("paid alerts: closing soon (database)", () => {
     await sql`update jobs set first_seen_at = first_seen_at - interval '21 hours', published_at = published_at - interval '21 hours'`;
   }
 
-  const closingPart = (text: string) => text.split("Closing in the next 3 days")[1] ?? "";
+  // The closing-soon section comes first and ends at the "---" before the new matches.
+  const closingPart = (text: string) => (text.split("Closing soon (next 3 days)")[1] ?? "").split("\n---\n")[0];
   const sentRows = async (id: number) =>
     (await sql`select j.title from alert_closing_sent a join jobs j on j.id = a.job_id where a.subscriber_id = ${id} order by j.title`).map((r: { title: string }) => r.title);
 
@@ -96,7 +97,7 @@ describe.skipIf(!TEST_DB)("paid alerts: closing soon (database)", () => {
     await sql`update locks set locked_until = null, holder = null`;
   });
 
-  it("lists matching vacancies closing from today to 3 days ahead, soonest first, after the new matches", async () => {
+  it("lists matching vacancies closing from today to 3 days ahead, soonest first, before the new matches", async () => {
     const res = await digest.runAlerts();
     expect(res).toMatchObject({ status: "sent", due: 1, sent: 1, failed: 0 });
     expect(sent.map((m) => m.to)).toEqual(["paid@example.org"]);
@@ -145,7 +146,7 @@ describe.skipIf(!TEST_DB)("paid alerts: closing soon (database)", () => {
     expect(res.sent).toBe(1);
     expect(sent.map((m) => m.to)).toEqual(["free@example.org"]);
     expect(sent[0].text).toContain("Nurse weekly new");
-    expect(sent[0].text).not.toContain("Closing in the next");
+    expect(sent[0].text).not.toContain("Closing soon (next");
     expect(sent[0].text).not.toMatch(/Nurse closing today|Pilot closing|Nurse closing in three days/);
     expect(await sentRows(freeId)).toEqual([]);
   });
